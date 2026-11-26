@@ -83,6 +83,7 @@ internal class ThreadFeatureHosts(
     val taskConversationJointSurface: Boolean,
     val effectiveMessageAvatarResolver: RaftMemberAvatarResolver,
     val quoteReplyHost: ThreadQuoteReplyHost,
+    val voiceDictationHost: ThreadVoiceDictationHost,
 )
 
 /** The thread page's feature hosts: see [ThreadFeatureHosts]. */
@@ -371,6 +372,17 @@ internal fun rememberThreadFeatureHosts(
             threadViewModel = threadViewModel,
             bridge = bridge,
         )
+    val voiceDictationHost =
+        rememberThreadVoiceDictationHost(
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            active = active,
+            currentSession = currentSession,
+            currentServerId = currentServerId,
+            headerProjectionServerId = headerProjectionServerId,
+            renderedThread = renderedThread,
+            viewerIsGuest = threadViewerIsGuest,
+        )
     return ThreadFeatureHosts(
         inPlaceTextSelectionHost = inPlaceTextSelectionHost,
         peerReadReceipts = peerReadReceipts,
@@ -397,6 +409,7 @@ internal fun rememberThreadFeatureHosts(
         taskConversationJointSurface = taskConversationJointSurface,
         effectiveMessageAvatarResolver = effectiveMessageAvatarResolver,
         quoteReplyHost = quoteReplyHost,
+        voiceDictationHost = voiceDictationHost,
     )
 }
 
@@ -431,6 +444,7 @@ internal fun rememberThreadProvidedValues(
     renderedThread: RaftThreadScreenPayload,
     sharedHomeStore: SharedHomeStore?,
     quoteReplyHost: ThreadQuoteReplyHost,
+    voiceDictationHost: ThreadVoiceDictationHost? = null,
     viewerServerLogos: Map<String, String>,
     channelJointServers: List<build.raft.app.model.MemberServerRef>,
     memberPreviewCardSource: RaftMemberPreviewCardSource,
@@ -475,6 +489,7 @@ internal fun rememberThreadProvidedValues(
                     serverId = headerProjectionServerId,
                 ),
             LocalThreadQuoteReplyHost provides quoteReplyHost,
+            LocalThreadVoiceDictationHost provides voiceDictationHost,
             LocalRaftViewerServerLogos provides viewerServerLogos,
             LocalRaftChannelJointServers provides channelJointServers,
             // One channel-kind glyph per channel (forward targets, composer suggestions). Read

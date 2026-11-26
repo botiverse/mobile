@@ -100,6 +100,12 @@ internal fun preferredAudioDeviceListForSpeaker(speakerOn: Boolean): List<Class<
         )
     }
 
+internal enum class AndroidRecordAudioPermissionOutcome {
+    Granted,
+    Denied,
+    NoForegroundActivity,
+}
+
 internal fun interface AndroidRecordAudioPermissionRequester {
     suspend fun ensureRecordAudioPermission(): Boolean
 }
@@ -213,16 +219,19 @@ internal object AndroidRecordAudioPermissionBridge {
         return true
     }
 
-    suspend fun ensureRecordAudioPermission(appContext: Context): Boolean {
+    suspend fun ensureRecordAudioPermission(appContext: Context): Boolean =
+        requestRecordAudioPermissionOutcome(appContext) == AndroidRecordAudioPermissionOutcome.Granted
+
+    suspend fun requestRecordAudioPermissionOutcome(appContext: Context): AndroidRecordAudioPermissionOutcome {
         val granted =
             ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED
-        if (granted) return true
+        if (granted) return AndroidRecordAudioPermissionOutcome.Granted
 
         val activity = currentForegroundActivity()
         if (activity == null) {
             RaftAppLog.w(LOG_TAG, "record_audio_permission_unavailable reason=no_foreground_activity")
-            return false
+            return AndroidRecordAudioPermissionOutcome.NoForegroundActivity
         }
 
         val deferred = CompletableDeferred<Boolean>()
@@ -257,16 +266,22 @@ internal object AndroidRecordAudioPermissionBridge {
             }
         }
 
-        return try {
-            deferred.await()
-        } catch (cancelled: CancellationException) {
-            synchronized(lock) {
-                if (pendingRequest === deferred) {
-                    pendingRequest = null
-                    pendingActivity = null
+        val approved =
+            try {
+                deferred.await()
+            } catch (cancelled: CancellationException) {
+                synchronized(lock) {
+                    if (pendingRequest === deferred) {
+                        pendingRequest = null
+                        pendingActivity = null
+                    }
                 }
+                throw cancelled
             }
-            throw cancelled
+        return if (approved) {
+            AndroidRecordAudioPermissionOutcome.Granted
+        } else {
+            AndroidRecordAudioPermissionOutcome.Denied
         }
     }
 

@@ -82,4 +82,55 @@ final class RaftIosAgentVoiceCallEngineTests: XCTestCase {
         XCTAssertNotNil(registered)
         XCTAssertEqual(registered?.isSupported, true)
     }
+
+    func testVoiceDictationPolicyPcm16RmsAndLevelNormalization() {
+        let silence = Data(repeating: 0, count: RaftIosVoiceDictationPolicy.chunkByteSize)
+        XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16RawRms(data: silence), 0)
+        XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: silence), 0)
+
+        // Sub-noise-floor signal (~0.01 amplitude) clamps to 0.
+        var quietBytes = Data()
+        let quietSample = Int16(300).littleEndian
+        for _ in 0..<160 {
+            withUnsafeBytes(of: quietSample) { quietBytes.append(contentsOf: $0) }
+        }
+        XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: quietBytes), 0)
+
+        // Conversational speech (~0.10 amplitude) produces a mid-range visual level in (0, 1).
+        var speechBytes = Data()
+        let speechSample = Int16(3277).littleEndian
+        for _ in 0..<160 {
+            withUnsafeBytes(of: speechSample) { speechBytes.append(contentsOf: $0) }
+        }
+        let speechLevel = RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: speechBytes)
+        XCTAssertGreaterThan(speechLevel, 0.3)
+        XCTAssertLessThan(speechLevel, 1.0)
+
+        // Peak signal saturates at 1.0.
+        var loudBytes = Data()
+        let loudSample = Int16(16_384).littleEndian
+        for _ in 0..<160 {
+            withUnsafeBytes(of: loudSample) { loudBytes.append(contentsOf: $0) }
+        }
+        XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: loudBytes), 1.0, accuracy: 0.0001)
+    }
+
+    func testVoiceDictationInstallRegistersSupportedRecorder() {
+        let wasInstalled = RaftIosVoiceDictationRecorderHost.shared.isInstalled()
+        defer {
+            if wasInstalled {
+                RaftIosVoiceDictationAudioRecorder.install()
+            } else {
+                RaftIosVoiceDictationRecorderHost.shared.unregister()
+            }
+        }
+        RaftIosVoiceDictationRecorderHost.shared.unregister()
+        XCTAssertFalse(RaftIosVoiceDictationRecorderHost.shared.isInstalled())
+        RaftIosVoiceDictationAudioRecorder.install()
+        XCTAssertTrue(RaftIosVoiceDictationRecorderHost.shared.isInstalled())
+        XCTAssertEqual(
+            RaftIosVoiceDictationRecorderHost.shared.currentSampleRateHz(),
+            Int32(RaftIosVoiceDictationPolicy.sampleRateHz)
+        )
+    }
 }

@@ -6967,4 +6967,26 @@
     <string name="thread_action_card_mcp_error_generic">Algo deu errado. Tente novamente.</string>
     <string name="thread_action_card_mcp_error_header_names_unset">Este app não tem nomes de cabeçalho registrados. Defina-os em “Servidor MCP” e depois adicione a conexão.</string>
     <string name="thread_action_card_mcp_error_oauth_unsafe_url">O serviço retornou um endereço de login que não é uma página web segura, por isso o Raft não o abriu.</string>
+    <string name="thread_voice_dictation_start">Ditado por voz</string>
+    <string name="thread_voice_dictation_stop">Parar ditado</string>
+    <string name="thread_voice_dictation_cancel">Cancelar ditado</string>
+    <string name="thread_voice_dictation_connecting">Conectando…</string>
+    <string name="thread_voice_dictation_listening">Ouvindo</string>
+    <string name="thread_voice_dictation_finishing">Finalizando…</string>
+    <string name="thread_voice_dictation_dismiss_notice">Dispensar aviso de ditado</string>
+    <string name="thread_voice_dictation_low_quota">O ditado por voz de hoje está quase acabando. Reinicia às %1$s.</string>
+    <string name="thread_voice_dictation_low_quota_tomorrow">O ditado por voz de hoje está quase acabando. Reinicia amanhã às %1$s.</string>
+    <string name="thread_voice_dictation_low_quota_no_reset">O ditado por voz de hoje está quase acabando.</string>
+    <string name="thread_voice_dictation_error_mic_permission">O Raft não pode usar seu microfone. Permita o acesso ao microfone nas configurações do dispositivo e tente novamente.</string>
+    <string name="thread_voice_dictation_error_mic_none">Nenhum microfone encontrado. Conecte um e tente novamente.</string>
+    <string name="thread_voice_dictation_error_quota_exceeded">Você atingiu o limite de ditado por voz de hoje. Ele reinicia às %1$s.</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_tomorrow">Você atingiu o limite de ditado por voz de hoje. Ele reinicia amanhã às %1$s.</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_no_reset">Você atingiu o limite de ditado por voz de hoje. Tente novamente amanhã.</string>
+    <string name="thread_voice_dictation_error_rate_limited">Muitos inícios de ditado seguidos. Aguarde %1$d s e tente novamente.</string>
+    <string name="thread_voice_dictation_error_rate_limited_no_seconds">Muitos inícios de ditado seguidos. Aguarde um momento e tente novamente.</string>
+    <string name="thread_voice_dictation_error_unavailable">O ditado por voz não está disponível no momento. Tente novamente em instantes.</string>
+    <string name="thread_voice_dictation_error_disabled">O ditado por voz não está ativado para este servidor.</string>
+    <string name="thread_voice_dictation_error_session_limit">O ditado por voz atingiu o limite da sessão. O texto já transcrito foi mantido — toque no microfone para continuar.</string>
+    <string name="thread_voice_dictation_error_connection_lost">A conexão do ditado caiu. O texto já transcrito foi mantido — tente novamente.</string>
+    <string name="thread_voice_dictation_error_failed">Não foi possível iniciar o ditado por voz. Tente novamente.</string>
 </resources>

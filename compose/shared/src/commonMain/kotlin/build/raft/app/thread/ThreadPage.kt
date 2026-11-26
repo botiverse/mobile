@@ -4356,6 +4356,7 @@ private fun SharedThreadRouteContentContent(
                 renderedThread = renderedThread,
                 sharedHomeStore = sharedHomeStore,
                 quoteReplyHost = quoteReplyHost,
+                voiceDictationHost = threadFeatureHosts.voiceDictationHost,
                 viewerServerLogos = threadFeatureHosts.viewerServerLogos,
                 channelJointServers = threadFeatureHosts.channelJointServers,
                 memberPreviewCardSource = threadFeatureHosts.memberPreviewCardSource,

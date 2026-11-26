@@ -6968,4 +6968,26 @@
     <string name="thread_action_card_mcp_error_generic">問題が発生しました。もう一度お試しください。</string>
     <string name="thread_action_card_mcp_error_header_names_unset">このアプリにはヘッダー名が登録されていません。「MCP サーバー」で設定してから、接続を追加してください。</string>
     <string name="thread_action_card_mcp_error_oauth_unsafe_url">サービスから返されたログイン用のアドレスが安全な Web ページではないため、Raft では開きませんでした。</string>
+    <string name="thread_voice_dictation_start">音声入力</string>
+    <string name="thread_voice_dictation_stop">音声入力を停止</string>
+    <string name="thread_voice_dictation_cancel">音声入力をキャンセル</string>
+    <string name="thread_voice_dictation_connecting">接続中…</string>
+    <string name="thread_voice_dictation_listening">聞き取り中</string>
+    <string name="thread_voice_dictation_finishing">終了処理中…</string>
+    <string name="thread_voice_dictation_dismiss_notice">音声入力の通知を閉じる</string>
+    <string name="thread_voice_dictation_low_quota">本日の音声入力の上限が近づいています。%1$s にリセットされます。</string>
+    <string name="thread_voice_dictation_low_quota_tomorrow">本日の音声入力の上限が近づいています。明日 %1$s にリセットされます。</string>
+    <string name="thread_voice_dictation_low_quota_no_reset">本日の音声入力の上限が近づいています。</string>
+    <string name="thread_voice_dictation_error_mic_permission">Raft はマイクを使用できません。端末の設定でマイクへのアクセスを許可してから、もう一度お試しください。</string>
+    <string name="thread_voice_dictation_error_mic_none">マイクが見つかりません。接続してからもう一度お試しください。</string>
+    <string name="thread_voice_dictation_error_quota_exceeded">本日の音声入力の上限に達しました。%1$s にリセットされます。</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_tomorrow">本日の音声入力の上限に達しました。明日 %1$s にリセットされます。</string>
+    <string name="thread_voice_dictation_error_quota_exceeded_no_reset">本日の音声入力の上限に達しました。明日もう一度お試しください。</string>
+    <string name="thread_voice_dictation_error_rate_limited">音声入力の開始が多すぎます。%1$d 秒待ってからもう一度お試しください。</string>
+    <string name="thread_voice_dictation_error_rate_limited_no_seconds">音声入力の開始が多すぎます。しばらく待ってからもう一度お試しください。</string>
+    <string name="thread_voice_dictation_error_unavailable">現在、音声入力は利用できません。しばらくしてからもう一度お試しください。</string>
+    <string name="thread_voice_dictation_error_disabled">このサーバーでは音声入力が有効になっていません。</string>
+    <string name="thread_voice_dictation_error_session_limit">1回の音声入力の上限に達しました。変換済みのテキストは保持されています。マイクをタップして続けてください。</string>
+    <string name="thread_voice_dictation_error_connection_lost">音声入力の接続が切断されました。変換済みのテキストは保持されています。もう一度お試しください。</string>
+    <string name="thread_voice_dictation_error_failed">音声入力を開始できませんでした。もう一度お試しください。</string>
 </resources>
