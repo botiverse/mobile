@@ -138,7 +138,8 @@ internal data class ThreadMemberRemovalConfirmation(
     val memberRowId: String,
     val memberLabel: String,
     val channelName: String,
-    val request: RemoveChannelMemberRequest
+    val request: RemoveChannelMemberRequest,
+    val personName: String? = memberLabel.takeIf { it.isNotBlank() && it != request.memberId.value },
 )
 
 internal enum class ThreadMemberRemovalFailure {
@@ -323,7 +324,8 @@ internal fun threadMemberRemovalConfirmation(
         memberRowId = member.id,
         memberLabel = memberLabel,
         channelName = channelName.trim().removePrefix("#").ifBlank { channelId.value },
-        request = RemoveChannelMemberRequest(channelId, identity.memberId, identity.kind)
+        request = RemoveChannelMemberRequest(channelId, identity.memberId, identity.kind),
+        personName = member.stillInChannelPersonName(),
     )
 }
 
@@ -618,6 +620,7 @@ private fun ThreadMembersPageScreen() {
     val errorStrings = localizedErrorPresentationStrings()
     val unableToOpenProfileLabel = stringResource(Res.string.thread_error_open_profile)
     val memberRemovedLabel = stringResource(Res.string.thread_feedback_member_removed)
+    val stillInChannelStrings = stillInChannelToastStrings()
     val channelName =
         channelProjections[route.channelId.value]
             ?.title
@@ -890,7 +893,14 @@ private fun ThreadMembersPageScreen() {
                             state = removalGate,
                             intent = ThreadMemberRemovalGateIntent.CompleteSuccess(confirmation),
                         ).state
-                    if (applied) bridge.toast(memberRemovedLabel)
+                    if (applied) {
+                        bridge.postChannelMemberRemovedToast(
+                            stillInChannel = result.data.stillInChannel,
+                            personName = confirmation.personName,
+                            stillInChannelStrings = stillInChannelStrings,
+                            memberRemovedLabel = memberRemovedLabel,
+                        )
+                    }
                 }
                 is DataResult.NoPermission -> {
                     removalGate =

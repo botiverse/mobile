@@ -4118,6 +4118,7 @@
     <string name="channel_members_update_role_failed">Could not update this member's channel role. Try again.</string>
     <string name="channel_members_cannot_demote_server_admin_title">Can't demote server admins</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s is a server owner or admin, so they remain a Channel Admin in every channel. Change their server role in Server Administration first.</string>
+    <string name="channel_members_still_in_channel_through">%1$s is still in the channel through %2$s. Only your server’s side of their membership was removed.</string>
     <string name="member_row_status_online">Online</string>
     <string name="member_row_status_likely_online">Likely online</string>
     <string name="member_row_status_offline">Offline</string>

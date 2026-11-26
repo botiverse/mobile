@@ -745,15 +745,21 @@ internal fun ThreadRouteEventHandler.handleRemoveMember(itemId: String) {
                     coroutineScope.launch {
                         when (val result = dataSource.removeChannelMember(previousPayload, itemId, member?.kind)) {
                             is DataResult.Content -> {
+                                val updated = result.data.payload
                                 threadViewModel.dispatch(
                                     SharedThreadIntent.ApplyMembersPatch(
-                                        membersCount = result.data.membersCount,
-                                        members = result.data.members,
-                                        memberCandidates = result.data.memberCandidates,
-                                        canAddMembers = result.data.canAddMembers
+                                        membersCount = updated.membersCount,
+                                        members = updated.members,
+                                        memberCandidates = updated.memberCandidates,
+                                        canAddMembers = updated.canAddMembers
                                     )
                                 )
-                                bridge.toast(memberRemovedLabel)
+                                bridge.postChannelMemberRemovedToast(
+                                    stillInChannel = result.data.stillInChannel,
+                                    personName = member?.stillInChannelPersonName(),
+                                    stillInChannelStrings = stillInChannelToastStrings,
+                                    memberRemovedLabel = memberRemovedLabel,
+                                )
                             }
                             is DataResult.Empty,
                             is DataResult.Error -> {

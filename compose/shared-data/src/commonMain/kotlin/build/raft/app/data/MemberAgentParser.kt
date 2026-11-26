@@ -1025,7 +1025,13 @@ fun parseSharedChannelMemberActionResult(
 ): ChannelMemberActionResult? = runCatching {
     val decoded = memberAgentJson.decodeFromString(WireChannelMemberActionResponse.serializer(), bodyText)
     if (decoded.ok) {
-        ChannelMemberActionResult(channelId = channelId, memberId = memberId, member = null, added = added)
+        ChannelMemberActionResult(
+            channelId = channelId,
+            memberId = memberId,
+            member = null,
+            added = added,
+            stillInChannel = if (added) null else parseChannelMemberStillInChannel(decoded.stillInChannel),
+        )
     } else {
         null
     }
@@ -1034,7 +1040,40 @@ fun parseSharedChannelMemberActionResult(
 @Serializable
 private data class WireChannelMemberActionResponse(
     val ok: Boolean,
+    val stillInChannel: JsonElement? = null,
 )
+
+private fun parseChannelMemberStillInChannel(element: JsonElement?): ChannelMemberStillInChannel? {
+    val obj = element as? JsonObject ?: return null
+    val through =
+        (obj["through"] as? JsonArray)
+            ?.mapNotNull { entry ->
+                val serverObj = entry as? JsonObject ?: return@mapNotNull null
+                val name =
+                    (serverObj["name"] as? JsonPrimitive)
+                        ?.takeIf { it.isString }
+                        ?.content
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: return@mapNotNull null
+                val id =
+                    (serverObj["id"] as? JsonPrimitive)
+                        ?.takeIf { it.isString }
+                        ?.content
+                        ?.trim()
+                        .orEmpty()
+                ChannelMemberStillInChannelServer(id = id, name = name)
+            }
+            .orEmpty()
+    val text =
+        (obj["text"] as? JsonPrimitive)
+            ?.takeIf { it.isString }
+            ?.content
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    if (through.isEmpty() && text == null) return null
+    return ChannelMemberStillInChannel(through = through, text = text)
+}
 
 private fun WireServerMember.toMemberProfile(): MemberProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name

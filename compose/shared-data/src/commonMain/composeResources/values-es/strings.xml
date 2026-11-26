@@ -3938,6 +3938,7 @@
     <string name="channel_members_update_role_failed">No se pudo actualizar el rol de este miembro en el canal. Inténtalo de nuevo.</string>
     <string name="channel_members_cannot_demote_server_admin_title">No se puede degradar a los admins del servidor</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s tiene el rol de propietario o admin del servidor, por lo que conserva el rol de admin en todos los canales. Primero cambia su rol en el servidor desde Administración del servidor.</string>
+    <string name="channel_members_still_in_channel_through">%1$s sigue en el canal a través de %2$s. Solo se quitó su participación a través de tu servidor.</string>
     <string name="member_row_status_online">En línea</string>
     <string name="member_row_status_likely_online">Probablemente en línea</string>
     <string name="member_row_status_offline">Sin conexión</string>

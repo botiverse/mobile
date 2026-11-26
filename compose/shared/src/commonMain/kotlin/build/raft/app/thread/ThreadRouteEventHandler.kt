@@ -159,6 +159,7 @@ internal class ThreadRouteEventHandler(
     val memberAddedLabel = labels.memberAddedLabel
     val unableToAddMemberLabel = labels.unableToAddMemberLabel
     val memberRemovedLabel = labels.memberRemovedLabel
+    val stillInChannelToastStrings = labels.stillInChannelToastStrings
     val unableToRemoveMemberLabel = labels.unableToRemoveMemberLabel
     val channelArchivedLabel = labels.channelArchivedLabel
     val unableToArchiveChannelLabel = labels.unableToArchiveChannelLabel

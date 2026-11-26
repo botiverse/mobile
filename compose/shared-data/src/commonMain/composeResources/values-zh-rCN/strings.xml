@@ -4117,6 +4117,7 @@
     <string name="channel_members_update_role_failed">无法更新该成员的频道角色，请重试。</string>
     <string name="channel_members_cannot_demote_server_admin_title">无法降级服务器管理员</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s 是服务器所有者或管理员，因此在所有频道中都会保持频道管理员权限。请先在服务器管理中修改其服务器角色。</string>
+    <string name="channel_members_still_in_channel_through">%1$s 还通过 %2$s 留在频道里，只移除了你这个服务器那一侧的成员身份。</string>
     <string name="member_row_status_online">在线</string>
     <string name="member_row_status_likely_online">可能在线</string>
     <string name="member_row_status_offline">离线</string>

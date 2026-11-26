@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.SharedThreadDataSource.MembersEnrichOutcome
 import build.raft.app.data.AddChannelMemberRequest
+import build.raft.app.data.ChannelMemberStillInChannel
 import build.raft.app.data.ChannelProfileUpdateRequest
 import build.raft.app.data.ChannelProfileUpdateResult
 import build.raft.app.data.ChannelRepository
@@ -16,6 +17,11 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
+
+internal data class ThreadRemoveChannelMemberResult(
+    val payload: RaftThreadScreenPayload,
+    val stillInChannel: ChannelMemberStillInChannel? = null,
+)
 
 /**
  * The channel-member commands of [SharedThreadDataSource] (join, update profile, load / add /
@@ -159,7 +165,7 @@ internal class ThreadChannelMemberCommands(
         payload: RaftThreadScreenPayload,
         memberId: String,
         kind: String?
-    ): DataResult<RaftThreadScreenPayload> {
+    ): DataResult<ThreadRemoveChannelMemberResult> {
         val repository =
             memberRepository
                 ?: return DataResult.Error(ScreenError(code = "thread_member_repository_missing", retryable = false))
@@ -196,12 +202,16 @@ internal class ThreadChannelMemberCommands(
         ) {
             is DataResult.Content ->
                 DataResult.Content(
-                    refreshMembersAfterMutation(
-                        payload.copy(
-                            removeMemberStatus = "idle",
-                            removingMemberId = null,
-                            removeMemberErrorCode = null
-                        )
+                    ThreadRemoveChannelMemberResult(
+                        payload =
+                            refreshMembersAfterMutation(
+                                payload.copy(
+                                    removeMemberStatus = "idle",
+                                    removingMemberId = null,
+                                    removeMemberErrorCode = null
+                                )
+                            ),
+                        stillInChannel = result.data.stillInChannel,
                     )
                 )
             is DataResult.Empty -> DataResult.Empty(result.reason)

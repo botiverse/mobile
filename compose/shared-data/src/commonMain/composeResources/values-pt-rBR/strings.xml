@@ -3938,6 +3938,7 @@
     <string name="channel_members_update_role_failed">Não foi possível atualizar a função deste membro no canal. Tente novamente.</string>
     <string name="channel_members_cannot_demote_server_admin_title">Não é possível rebaixar admins do servidor</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s tem a função de proprietário ou admin do servidor e, por isso, continua como admin em todos os canais. Primeiro, altere a função de %1$s no servidor em Administração do servidor.</string>
+    <string name="channel_members_still_in_channel_through">%1$s continua no canal por meio de %2$s. Só a participação pelo seu servidor foi removida.</string>
     <string name="member_row_status_online">Online</string>
     <string name="member_row_status_likely_online">Provavelmente online</string>
     <string name="member_row_status_offline">Offline</string>

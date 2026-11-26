@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
@@ -269,6 +270,112 @@ class MemberRepositoryDataSourceTest {
             ChangeChannelMemberRoleRequest(ChannelId("channel-empty"), MemberId("user-2"), build.raft.app.model.MemberKind.Human, ChannelMemberRole.Member),
         )
         assertFalse(result is DataResult.Content)
+    }
+
+    @Test
+    fun removeChannelMemberParsesStillInChannelWithThroughAndText() = runBlocking {
+        val network =
+            FakeMemberNetworkClient().apply {
+                channelMemberRemoveResponse =
+                    HomeNetworkResponse(
+                        200,
+                        """
+                        {
+                          "ok": true,
+                          "stillInChannel": {
+                            "through": [
+                              {"id": " s-a ", "name": " Server A "},
+                              {"id": "s-blank", "name": "   "},
+                              {"id": "s-b", "name": "Server B"}
+                            ],
+                            "text": "  Alice is still in the channel through Server A and Server B. Only your server’s side of their membership was removed.  "
+                          }
+                        }
+                        """.trimIndent(),
+                    )
+            }
+        val repository = RealMemberRepository(sampleStore(), network)
+
+        val result =
+            assertIs<DataResult.Content<ChannelMemberActionResult>>(
+                repository.removeChannelMember(
+                    DataRequestPriority.Foreground,
+                    RemoveChannelMemberRequest(ChannelId("channel-empty"), MemberId("user-2"), build.raft.app.model.MemberKind.Human),
+                )
+            ).data
+
+        val request = network.requests.single()
+        assertEquals("DELETE", request.method)
+        assertEquals("channels/channel-empty/members/user/user-2", request.path)
+        assertFalse(result.added)
+        assertEquals(
+            ChannelMemberStillInChannel(
+                through =
+                    listOf(
+                        ChannelMemberStillInChannelServer(id = "s-a", name = "Server A"),
+                        ChannelMemberStillInChannelServer(id = "s-b", name = "Server B"),
+                    ),
+                text = "Alice is still in the channel through Server A and Server B. Only your server’s side of their membership was removed.",
+            ),
+            result.stillInChannel,
+        )
+    }
+
+    @Test
+    fun removeChannelMemberStillInChannelFallsBackToTextAndReturnsNullWhenAbsentOrUnusable() = runBlocking {
+        val network = FakeMemberNetworkClient()
+        val repository = RealMemberRepository(sampleStore(), network)
+        val humanRequest =
+            RemoveChannelMemberRequest(ChannelId("channel-empty"), MemberId("user-2"), build.raft.app.model.MemberKind.Human)
+
+        // Empty or malformed `through` entries still keep non-blank server `text`.
+        for (body in listOf(
+            """{"ok":true,"stillInChannel":{"through":[{"id":"s1","name":"  "},"invalid",42],"text":"Alice is still in the channel through Server A."}}""",
+            """{"ok":true,"stillInChannel":{"through":"not-an-array","text":"Alice is still in the channel through Server A."}}""",
+        )) {
+            network.channelMemberRemoveResponse = HomeNetworkResponse(200, body)
+            val result =
+                assertIs<DataResult.Content<ChannelMemberActionResult>>(
+                    repository.removeChannelMember(DataRequestPriority.Foreground, humanRequest)
+                ).data
+            assertEquals(
+                ChannelMemberStillInChannel(
+                    through = emptyList(),
+                    text = "Alice is still in the channel through Server A.",
+                ),
+                result.stillInChannel,
+                body,
+            )
+        }
+
+        // Absent, null, non-object, or empty `through` + blank `text` all normalize to null.
+        for (body in listOf(
+            """{"ok":true}""",
+            """{"ok":true,"stillInChannel":null}""",
+            """{"ok":true,"stillInChannel":"unexpected"}""",
+            """{"ok":true,"stillInChannel":[]}""",
+            """{"ok":true,"stillInChannel":{"through":[{"id":"s1","name":"   "}],"text":"   "}}""",
+            """{"ok":true,"stillInChannel":{}}""",
+        )) {
+            network.channelMemberRemoveResponse = HomeNetworkResponse(200, body)
+            val result =
+                assertIs<DataResult.Content<ChannelMemberActionResult>>(
+                    repository.removeChannelMember(DataRequestPriority.Foreground, humanRequest)
+                ).data
+            assertNull(result.stillInChannel, body)
+        }
+
+        // Agent removal carries no stillInChannel.
+        network.channelMemberRemoveResponse = HomeNetworkResponse(200, """{"ok":true}""")
+        val agentResult =
+            assertIs<DataResult.Content<ChannelMemberActionResult>>(
+                repository.removeChannelMember(
+                    DataRequestPriority.Foreground,
+                    RemoveChannelMemberRequest(ChannelId("channel-empty"), MemberId("agent-1"), build.raft.app.model.MemberKind.Agent),
+                )
+            ).data
+        assertEquals("channels/channel-empty/members/agent/agent-1", network.requests.last().path)
+        assertNull(agentResult.stillInChannel)
     }
 
     @Test
@@ -598,6 +705,7 @@ class MemberRepositoryDataSourceTest {
         var channelDetailResponse: HomeNetworkResponse = HomeNetworkResponse(403, "{}")
         var memberProfileResponse: HomeNetworkResponse = HomeNetworkResponse(404, """{"error":"User not found"}""")
         var channelRoleResponse: HomeNetworkResponse = HomeNetworkResponse(500, "{}")
+        var channelMemberRemoveResponse: HomeNetworkResponse = HomeNetworkResponse(200, """{"ok":true}""")
         var startBlocker: CompletableDeferred<Unit>? = null
         var patchConfigApply: String? = null
         var patchRefusal: HomeNetworkResponse? = null
@@ -747,6 +855,8 @@ class MemberRepositoryDataSourceTest {
                 normalized == "channels/channel-empty" && method == "GET" -> channelDetailResponse
                 normalized.startsWith("channels/channel-empty/members/") && normalized.endsWith("/role") && method == "PATCH" ->
                     channelRoleResponse
+                normalized.startsWith("channels/channel-empty/members/") && method == "DELETE" ->
+                    channelMemberRemoveResponse
                 normalized == "servers/server-1/members/user-remote/profile" && method == "GET" -> memberProfileResponse
                 normalized == "channels/channel-empty/members" && method == "GET" ->
                     channelMembersResponse ?: error("Missing channel members response")

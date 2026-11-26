@@ -3938,6 +3938,7 @@
     <string name="channel_members_update_role_failed">無法更新此成員的頻道角色。請再試一次。</string>
     <string name="channel_members_cannot_demote_server_admin_title">無法將伺服器管理員降級</string>
     <string name="channel_members_cannot_demote_server_admin_message">%1$s 是伺服器擁有者或管理員，因此在所有頻道中都會保有頻道管理員身分。請先到「伺服器管理」變更其伺服器角色。</string>
+    <string name="channel_members_still_in_channel_through">%1$s 仍透過 %2$s 留在頻道裡，只移除了你這個伺服器那一側的成員身分。</string>
     <string name="member_row_status_online">線上</string>
     <string name="member_row_status_likely_online">可能在線上</string>
     <string name="member_row_status_offline">離線</string>
