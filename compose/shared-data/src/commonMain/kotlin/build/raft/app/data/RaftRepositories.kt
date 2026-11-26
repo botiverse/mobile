@@ -858,7 +858,13 @@ enum class InboxFilter(val wireValue: String, val scopeWireValue: String? = null
     Saved("all", scopeWireValue = "saved"),
 
     /**
-     * web Artifacts: a scope over All, after Saved. Only Artifact rows (object rows, no
+     * web Tasks (slock #16990 / #proj-workspace:#444): a scope over All in the object-type group,
+     * before Artifacts. Only task conversation rows (`kind = "task"`): `filter=all&scope=tasks`.
+     */
+    Tasks("all", scopeWireValue = "tasks"),
+
+    /**
+     * web Artifacts: a scope over All, after Tasks. Only Artifact rows (object rows, no
      * conversations): `filter=all&scope=artifacts`, the server's app scope (routes/channels.ts
      * `parseInboxScopeParam`, `getObjectKindInboxItems`), none for a search or a channel.
      */
@@ -866,14 +872,14 @@ enum class InboxFilter(val wireValue: String, val scopeWireValue: String? = null
 }
 
 /**
- * All and its scopes (Pinned, Saved, Artifacts) list unfollowed, not-Done threads too; the read
- * filters don't (web: the unfollowed rows are fetched per scope, under the All read filter; Artifacts
- * lists no threads at all).
+ * All and its scopes (Pinned, Saved, Tasks, Artifacts) list unfollowed, not-Done threads too; the
+ * read filters don't (web: the unfollowed rows are fetched per scope, under the All read filter;
+ * Artifacts lists no threads at all).
  */
 @RaftCoreInternalApi val InboxFilter.listsUnfollowedActivityThreads: Boolean
     get() =
         this == InboxFilter.All || this == InboxFilter.Pinned || this == InboxFilter.Saved ||
-            this == InboxFilter.Artifacts
+            this == InboxFilter.Tasks || this == InboxFilter.Artifacts
 
 const val DEFAULT_PAGE_LIMIT = 30
 

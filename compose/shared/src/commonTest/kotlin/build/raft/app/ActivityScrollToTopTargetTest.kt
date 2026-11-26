@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.InboxFilter
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertSame
 
 /**
@@ -16,8 +17,9 @@ import kotlin.test.assertSame
 class ActivityScrollToTopTargetTest {
     @Test
     fun `title tap targets the exact state object of the selected filters page`() {
-        // Stand-ins for the six page LazyListStates (All, Unread, Mentions, Pinned, Saved, Artifacts); identity is the assertion.
-        val pageStates = listOf(Any(), Any(), Any(), Any(), Any(), Any())
+        // Stand-ins for the seven page LazyListStates (All, Unread, Mentions, Pinned, Saved, Tasks, Artifacts); identity is the assertion.
+        val pageStates = listOf(Any(), Any(), Any(), Any(), Any(), Any(), Any())
+        assertEquals(pageStates.size, InboxFilter.entries.size)
         for (filter in InboxFilter.entries) {
             val pageIndexThePagerRenders = InboxFilter.entries.indexOf(filter)
             assertSame(

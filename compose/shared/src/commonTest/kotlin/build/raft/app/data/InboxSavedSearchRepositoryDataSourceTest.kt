@@ -213,6 +213,150 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun tasksFilterAsksForTheAllFilterScopedToTasksOnEveryPage() = runBlocking {
+        // slock #16990 (#proj-workspace:#444): Tasks is a scope over All,
+        // `filter=all&scope=tasks`, on the first page and every subsequent page.
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "task",
+                          "threadChannelId": "task-conv-1",
+                          "parentChannelId": "channel-eng",
+                          "parentChannelName": "engineering",
+                          "parentChannelType": "channel",
+                          "taskId": "task-1",
+                          "taskNumber": 444,
+                          "taskTitle": "Add Tasks filter",
+                          "replyCount": 2,
+                          "unreadCount": 1,
+                          "isFollowing": true
+                        },
+                        {
+                          "kind": "task",
+                          "threadChannelId": "task-conv-unfollowed",
+                          "parentChannelId": "channel-eng",
+                          "parentChannelName": "engineering",
+                          "parentChannelType": "channel",
+                          "taskId": "task-2",
+                          "taskNumber": 445,
+                          "taskTitle": "Unfollowed task",
+                          "replyCount": 1,
+                          "unreadCount": 0,
+                          "isFollowing": false
+                        }
+                      ],
+                      "hasMore": true,
+                      "totalCount": 5,
+                      "totalUnreadCount": 1
+                    }
+                    """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val first = repository.loadInitial(ServerId("server-1"), InboxFilter.Tasks)
+        repository.loadMore(ServerId("server-1"), InboxFilter.Tasks, offset = 30)
+
+        assertEquals(
+            listOf(
+                InboxCall(filter = "all", limit = 30, offset = 0, scope = "tasks"),
+                InboxCall(filter = "all", limit = 30, offset = 30, scope = "tasks"),
+            ),
+            network.inboxCalls
+        )
+        assertTrue(first is DataResult.Content)
+        assertEquals(
+            listOf("thread:task-conv-1", "thread:task-conv-unfollowed"),
+            first.data.items.map(InboxItem::key)
+        )
+        assertTrue(first.data.items.all { it.isTaskConversation })
+        assertEquals(5, first.data.totalCount)
+        assertEquals(1, first.data.totalUnreadCount)
+    }
+
+    @Test
+    fun tasksFilterDefensivelyDropsNonTaskRowsFromOlderServers() = runBlocking {
+        // Pre-#16990 servers ignore unknown `scope=tasks` and answer with unscoped All rows.
+        // Client-side projection keeps only task conversations and strips object counts.
+        val network =
+            FakeInboxNetworkClient(
+                inboxJson =
+                    """
+                    {
+                      "items": [
+                        {
+                          "kind": "channel",
+                          "channelId": "channel-1",
+                          "channelName": "general",
+                          "unreadCount": 3
+                        },
+                        {
+                          "kind": "dm",
+                          "channelId": "dm-1",
+                          "channelName": "remy",
+                          "unreadCount": 2
+                        },
+                        {
+                          "kind": "thread",
+                          "threadChannelId": "thread-1",
+                          "parentMessageId": "parent-1",
+                          "parentChannelId": "channel-1",
+                          "parentChannelName": "general",
+                          "parentChannelType": "channel",
+                          "replyCount": 1,
+                          "unreadCount": 1,
+                          "isFollowing": true
+                        },
+                        {
+                          "kind": "task",
+                          "threadChannelId": "task-conv-1",
+                          "parentChannelId": "channel-1",
+                          "parentChannelName": "general",
+                          "parentChannelType": "channel",
+                          "taskId": "task-1",
+                          "taskNumber": 7,
+                          "taskTitle": "Ship scope=tasks",
+                          "replyCount": 3,
+                          "unreadCount": 4,
+                          "isFollowing": true
+                        },
+                        {
+                          "kind": "object",
+                          "objectKind": "artifact",
+                          "objectId": "00000000-0000-0000-0000-000000000001",
+                          "home": {"kind": "channel", "channelId": "channel-1", "label": "general"},
+                          "latestEvent": {"eventKind": "comment", "reason": "following", "actor": {"type": "user", "id": "user-1", "name": "Remy"}, "at": "2026-11-26T00:00:00Z"},
+                          "unreadCount": 1,
+                          "hasMention": false,
+                          "isFollowing": true,
+                          "lastActivityAt": "2026-11-26T00:00:00Z",
+                          "doneFrontierSeq": "1"
+                        }
+                      ],
+                      "hasMore": false,
+                      "totalCount": 4,
+                      "totalUnreadCount": 10,
+                      "objectCount": 1,
+                      "objectUnreadCount": 1,
+                      "objectMentionUnreadCount": 0
+                    }
+                    """.trimIndent()
+            )
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val result = repository.loadInitial(ServerId("server-1"), InboxFilter.Tasks)
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(listOf("thread:task-conv-1"), result.data.items.map(InboxItem::key))
+        assertEquals(1, result.data.totalCount)
+        assertEquals(4, result.data.totalUnreadCount)
+        assertNull(result.data.objectCounts)
+    }
+
+    @Test
     fun attentionFiltersNeverExposeAnUnfollowedThreadRow() = runBlocking {
         val repository =
             RealInboxRepository(

@@ -1112,9 +1112,10 @@ private fun SharedActivityPanelContent(
     // [activityScrollToTopTarget] (mapping unit-tested).
     // One retained scroll state per filter. Explicit calls (not a
     // loop over the experimental LazyListState constructor): the filter
-    // set is a closed enum of six, and this list is index-aligned with
-    // InboxFilter.entries (All/Unread/Mentions/Pinned/Saved/Artifacts entry order).
+    // set is a closed enum of seven, and this list is index-aligned with
+    // InboxFilter.entries (All/Unread/Mentions/Pinned/Saved/Tasks/Artifacts entry order).
     val pageListStates = listOf(
+        rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
         rememberLazyListState(),
@@ -1341,6 +1342,7 @@ private fun SharedActivityBodyContent(
                             InboxFilter.All -> stringResource(Res.string.inbox_state_activity_empty)
                             InboxFilter.Pinned -> stringResource(Res.string.inbox_state_no_pinned)
                             InboxFilter.Saved -> stringResource(Res.string.inbox_state_no_saved)
+                            InboxFilter.Tasks -> stringResource(Res.string.inbox_state_no_tasks)
                             InboxFilter.Artifacts -> stringResource(Res.string.inbox_state_no_artifacts)
                         },
                     detail = state.selectedFilter.localizedEmptyCopy(),
@@ -1580,11 +1582,14 @@ internal fun SharedActivityFilterBar(
     }
 }
 
-/** The Filter menu's rows: the read filters, then the scopes over All (Pinned, Saved, Artifacts) after a separator. */
+/** The Filter menu's rows: read filters, personal scopes (Pinned, Saved), then object types (Tasks, Artifacts). */
+internal fun InboxFilter.startsActivityFilterMenuGroup(): Boolean =
+    this == InboxFilter.Pinned || this == InboxFilter.Tasks
+
 @Composable
 internal fun ActivityFilterMenuRows(selectedFilter: InboxFilter, onPick: (InboxFilter) -> Unit) {
     InboxFilter.entries.forEach { filter ->
-        if (filter == InboxFilter.Pinned) RaftMenuSeparator()
+        if (filter.startsActivityFilterMenuGroup()) RaftMenuSeparator()
         RaftMenuItem(
             text = filter.localizedLabel(),
             onClick = { onPick(filter) },
@@ -3342,6 +3347,7 @@ private fun InboxFilter.localizedLabel(): String =
             InboxFilter.Mentions -> Res.string.activity_filter_mentions
             InboxFilter.Pinned -> Res.string.activity_filter_pinned
             InboxFilter.Saved -> Res.string.activity_filter_saved
+            InboxFilter.Tasks -> Res.string.activity_filter_tasks
             InboxFilter.Artifacts -> Res.string.activity_filter_artifacts
         }
     )
@@ -3354,6 +3360,7 @@ internal fun InboxFilter.iconName(): RaftLucideIconName =
         InboxFilter.Mentions -> RaftLucideIconName.AtSign
         InboxFilter.Pinned -> RaftLucideIconName.Pin
         InboxFilter.Saved -> RaftLucideIconName.Bookmark
+        InboxFilter.Tasks -> RaftLucideIconName.ListTodo
         // web raft-ui `ArtifactIcon` (object-icons.tsx), drawn path for path.
         InboxFilter.Artifacts -> RaftLucideIconName.Artifact
     }
@@ -3365,6 +3372,7 @@ private fun InboxFilter.emptyCopy(): String =
         InboxFilter.Mentions -> "No mentions yet."
         InboxFilter.Pinned -> "No pinned conversations."
         InboxFilter.Saved -> "No saved threads."
+        InboxFilter.Tasks -> "No tasks here."
         InboxFilter.Artifacts -> "No Artifacts here."
     }
 
@@ -3377,6 +3385,7 @@ private fun InboxFilter.localizedEmptyCopy(): String =
             InboxFilter.Mentions -> Res.string.inbox_empty_mentions_detail
             InboxFilter.Pinned -> Res.string.inbox_empty_pinned_detail
             InboxFilter.Saved -> Res.string.inbox_empty_saved_detail
+            InboxFilter.Tasks -> Res.string.inbox_empty_tasks_detail
             InboxFilter.Artifacts -> Res.string.inbox_empty_artifacts_detail
         }
     )

@@ -225,24 +225,50 @@ val InboxItem.isTaskConversation: Boolean
 
 /**
  * The Activity All projection may retain unfollowed rows, while attention
- * filters must never surface them.  Keep this rule next to the model so every
- * repository/fixture consumer applies the same membership contract.
+ * filters must never surface them. The Tasks scope (`scope=tasks`, slock #16990)
+ * keeps only task conversation rows (both followed and unfollowed) so servers
+ * that predate `scope=tasks` and return unscoped rows still display only tasks.
+ * Keep this rule next to the model so every repository/fixture consumer applies
+ * the same membership contract.
  */
 @RaftCoreInternalApi fun InboxSnapshot.projectActivityFilter(filter: InboxFilter): InboxSnapshot {
     // The unread aggregate is the server's (it already zeroes unfollowed rows);
     // only row membership/attention is guarded here.
     val normalizedItems = items.map { item -> item.withActivityFollowStateProjection() }
     val visibleItems =
-        if (filter.listsUnfollowedActivityThreads) {
-            normalizedItems
-        } else {
-            normalizedItems.filterNot { item -> item.isUnfollowedActivityThread }
+        when {
+            filter == InboxFilter.Tasks -> normalizedItems.filter { item -> item.isTaskConversation }
+            filter.listsUnfollowedActivityThreads -> normalizedItems
+            else -> normalizedItems.filterNot { item -> item.isUnfollowedActivityThread }
         }
-    val removedCount = normalizedItems.size - visibleItems.size
-    if (removedCount == 0 && normalizedItems == items) return this
+    val removedConversationCount =
+        if (filter == InboxFilter.Tasks) {
+            normalizedItems.count { item -> !item.isTaskConversation && item.kind != InboxItemKind.Object }
+        } else {
+            normalizedItems.size - visibleItems.size
+        }
+    val removedConversationUnread =
+        if (filter == InboxFilter.Tasks) {
+            normalizedItems
+                .filter { item -> !item.isTaskConversation && item.kind != InboxItemKind.Object }
+                .sumOf { item -> item.unreadCount.coerceAtLeast(0) }
+        } else {
+            0
+        }
+    val nextObjectCounts = if (filter == InboxFilter.Tasks) null else objectCounts
+    if (
+        removedConversationCount == 0 &&
+            visibleItems.size == normalizedItems.size &&
+            normalizedItems == items &&
+            nextObjectCounts == objectCounts
+    ) {
+        return this
+    }
     return copy(
         items = visibleItems,
-        totalCount = (totalCount - removedCount).coerceAtLeast(0)
+        totalCount = (totalCount - removedConversationCount).coerceAtLeast(0),
+        totalUnreadCount = (totalUnreadCount - removedConversationUnread).coerceAtLeast(0),
+        objectCounts = nextObjectCounts,
     )
 }
 

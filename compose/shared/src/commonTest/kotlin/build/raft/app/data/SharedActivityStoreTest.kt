@@ -46,6 +46,7 @@ import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedActivityStoreTest {
@@ -105,6 +106,50 @@ class SharedActivityStoreTest {
         assertEquals(listOf("thread:thread-followed"), mentions.items.map(InboxItem::key))
         assertEquals(2, mentions.totalUnreadCount)
         assertEquals(1, mentions.totalCount)
+    }
+
+    @Test
+    fun activityTasksFilterProjectionKeepsOnlyTaskConversationsAndStripsObjectCounts() {
+        val channel = activityItem("channel-1", unreadCount = 3)
+        val regularThread = threadItem("thread-1", unreadCount = 1).copy(isFollowing = true)
+        val followedTask =
+            threadItem("task-conv-1", unreadCount = 4).copy(
+                isFollowing = true,
+                taskConversation = InboxTaskConversation(taskId = TaskId("task-1"), taskTitle = "Ship Tasks filter"),
+            )
+        val unfollowedTask =
+            threadItem("task-conv-2", unreadCount = 2).copy(
+                isFollowing = false,
+                hasMention = true,
+                taskConversation = InboxTaskConversation(taskId = TaskId("task-2"), taskTitle = "Muted task"),
+            )
+        val artifactObject =
+            InboxItem(
+                key = "object:artifact:00000000-0000-0000-0000-000000000001",
+                kind = InboxItemKind.Object,
+                channelId = ChannelId("object:artifact:00000000-0000-0000-0000-000000000001"),
+                channelName = "Spec",
+                unreadCount = 1,
+                activityObject = ActivityObjectRow(objectKind = "artifact", objectId = "00000000-0000-0000-0000-000000000001", title = "Spec"),
+            )
+        val raw =
+            snapshot(
+                items = listOf(channel, regularThread, followedTask, unfollowedTask, artifactObject),
+                totalCount = 4,
+                totalUnreadCount = 8,
+            ).copy(
+                objectCounts = ActivityObjectCounts(objectUnreadCount = 1, objectMentionUnreadCount = 0, objectCount = 1),
+            )
+
+        val projected = raw.projectActivityFilter(InboxFilter.Tasks)
+
+        assertEquals(listOf("thread:task-conv-1", "thread:task-conv-2"), projected.items.map(InboxItem::key))
+        assertEquals(4, projected.items[0].unreadCount)
+        assertEquals(0, projected.items[1].unreadCount)
+        assertEquals(false, projected.items[1].hasMention)
+        assertEquals(2, projected.totalCount)
+        assertEquals(4, projected.totalUnreadCount)
+        assertNull(projected.objectCounts)
     }
 
     @Test
