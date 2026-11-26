@@ -196,8 +196,8 @@ internal val ThreadReactionSpriteCatalogV1 = ThreadReactionSpriteCatalog(
     )
 )
 
-// Mirrors web QUICK_REACTION_EMOJIS (packages/web/src/components/message/reactionConstants.ts):
-// the quick-reaction strip keeps the seven core emojis even as the bundled sprite atlas grows
-// (e.g. 🍻 beers in slock #16309 renders from the atlas when added via the full picker).
+// Mirrors web QUICK_REACTION_EMOJIS (packages/web/src/components/message/reactionConstants.ts,
+// botiverse/slock #16985 / #proj-raft-ui:#313): 🍻 joins immediately after ✅ as the 8th quick
+// reaction, backed by cell 8 of reaction_atlas_v1.png.
 internal val ThreadQuickReactionEmojis: List<String> =
-    listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅")
+    listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅", "🍻")
