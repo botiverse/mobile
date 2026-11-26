@@ -1017,102 +1017,31 @@ private fun RaftAppShellReadyContent(
                 warningLogger = raftLogger("SlockChannelRepository", "shared_channel_repository", RaftLogLevel.Warn)
             )
         }
-    // Pending joint-channel invites for the Home notification center (web usePendingJointInvites).
-    val jointInviteScope = rememberCoroutineScope()
-    val jointInviteStore =
-        remember(appShellNetworkClient, jointInviteScope) {
-            build.raft.app.data.SharedJointInviteStore(
-                dataSource =
-                    build.raft.app.data.NetworkJointInviteDataSource(
-                        networkClient = appShellNetworkClient,
-                        logger = raftLogger("SlockJointInvites", "shared_joint_invites", RaftLogLevel.Warn),
-                    ),
-                scope = jointInviteScope,
-            )
-        }
-    // web #12939: `joint-invites:changed` reads the pending invites again right away.
-    AppShellJointInviteEffect(
-        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
-        jointInviteStore = jointInviteStore,
-    )
-    // Pending App permission updates / admin review dot for owners & admins (#proj-mobile:#345).
-    val appPermissionUpdatesStore =
-        remember(appShellNetworkClient, jointInviteScope) {
-            build.raft.app.data.SharedAppPermissionUpdatesStore(
-                dataSource = build.raft.app.data.NetworkAppPermissionUpdatesDataSource(appShellNetworkClient),
-                scope = jointInviteScope,
-            )
-        }
-    // A pending two-step verification reset, first in the Home notification center (web #12295).
-    val secondFactorRecoveryStore =
-        remember(appShellNetworkClient, jointInviteScope) {
-            build.raft.app.data.SharedSecondFactorRecoveryStore(
-                dataSource = build.raft.app.data.NetworkSecondFactorRecoveryDataSource(appShellNetworkClient),
-                scope = jointInviteScope,
-            )
-        }
-    // Owner/admin usage-limit attention cards (GET /api/servers/:id/system-notifications-v2, slock #13079).
-    val usageLimitAttentionStore =
-        remember(appShellNetworkClient, jointInviteScope) {
-            build.raft.app.data.SharedUsageLimitAttentionStore(
-                dataSource = build.raft.app.data.NetworkUsageLimitAttentionDataSource(appShellNetworkClient),
-                scope = jointInviteScope,
-            )
-        }
-    val homeReadReceiptRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
-            RealReadReceiptRepository(
-                sessionStore = shellAuthStore,
-                networkClient = appShellNetworkClient,
-                warningLogger = raftLogger("SlockReadReceipt", "shared_home_read_receipt", RaftLogLevel.Warn)
-            )
-        }
-    val conversationRepository =
-        remember(shellAuthStore, appShellNetworkClient, selectedServerStore) {
-            RealConversationRepository(
-                sessionStore = shellAuthStore,
-                networkClient = appShellNetworkClient,
-                routeServerIdProvider = { selectedServerStore.selectedServerId.value },
-                warningLogger = raftLogger("SlockConversationRepository", "shared_conversation_repository", RaftLogLevel.Warn)
-            )
-        }
-    val agentsApiClient =
-        remember(appShellNetworkClient) {
-            RaftAgentsApiClient(
-                transport = RaftAgentsNetworkApi(appShellNetworkClient),
-                diagnosticsLogger = raftLogger("SlockAgentsApi", "app_shell_agents_api")
-            )
-        }
-    val computersApiClient =
-        remember(appShellNetworkClient) {
-            RaftComputersApiClient(RaftComputersNetworkApi(appShellNetworkClient))
-        }
-    val createAgentFormStore =
-        remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
-    val createAgentCoordinator =
-        remember(agentsApiClient, computersApiClient) {
-            SharedCreateAgentCoordinator(
-                agentsApiClient = agentsApiClient,
-                computersApiClient = computersApiClient,
-                logger = raftLogger("SlockCreateAgent", "app_shell_thread_create_agent")
-            )
-        }
-    val savedRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
-            RealSavedRepository(
-                sessionStore = shellAuthStore,
-                networkClient = appShellNetworkClient,
-                warningLogger = raftLogger("SlockSavedRepository", "shared_saved_repository", RaftLogLevel.Warn)
-            )
-        }
-    val searchRepository =
-        remember(shellAuthStore, appShellNetworkClient) {
-            RealSearchRepository(
-                sessionStore = shellAuthStore,
-                networkClient = appShellNetworkClient,
-                warningLogger = raftLogger("SlockSearchRepository", "shared_search_repository", RaftLogLevel.Warn)
-            )
-        }
+    val notificationStores =
+        rememberAppShellNotificationStores(
+            appShellNetworkClient = appShellNetworkClient,
+            appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        )
+    val jointInviteStore = notificationStores.jointInviteStore
+    val appPermissionUpdatesStore = notificationStores.appPermissionUpdatesStore
+    val secondFactorRecoveryStore = notificationStores.secondFactorRecoveryStore
+    val usageLimitAttentionStore = notificationStores.usageLimitAttentionStore
+    val auxRepos =
+        rememberAppShellAuxRepositories(
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            shellAuthStore = shellAuthStore,
+            appShellNetworkClient = appShellNetworkClient,
+            selectedServerStore = selectedServerStore,
+        )
+    val homeReadReceiptRepository = auxRepos.homeReadReceiptRepository
+    val conversationRepository = auxRepos.conversationRepository
+    val agentsApiClient = auxRepos.agentsApiClient
+    val computersApiClient = auxRepos.computersApiClient
+    val createAgentFormStore = auxRepos.createAgentFormStore
+    val createAgentCoordinator = auxRepos.createAgentCoordinator
+    val savedRepository = auxRepos.savedRepository
+    val searchRepository = auxRepos.searchRepository
     val composerDraftPersistSlice = sharedStores.composerDraftPersistSlice
     val activeDraftRecords by composerDraftPersistSlice.activeDraftRecordsState.collectAsStateWhileStarted()
     val draftProjection =
@@ -8375,4 +8304,164 @@ private fun AppShellColdRestoreSplash(
             }
         },
     )
+}
+
+private data class AppShellNotificationStores(
+    val jointInviteStore: build.raft.app.data.SharedJointInviteStore,
+    val appPermissionUpdatesStore: build.raft.app.data.SharedAppPermissionUpdatesStore,
+    val secondFactorRecoveryStore: build.raft.app.data.SharedSecondFactorRecoveryStore,
+    val usageLimitAttentionStore: build.raft.app.data.SharedUsageLimitAttentionStore,
+)
+
+@Composable
+private fun rememberAppShellNotificationStores(
+    appShellNetworkClient: build.raft.app.data.RaftNetworkClient,
+    appShellRealtimeDomainEventOwner: build.raft.app.data.SharedRealtimeDomainEventOwner,
+): AppShellNotificationStores {
+    // Pending joint-channel invites for the Home notification center (web usePendingJointInvites).
+    val scope = rememberCoroutineScope()
+    val jointInviteStore =
+        remember(appShellNetworkClient, scope) {
+            build.raft.app.data.SharedJointInviteStore(
+                dataSource =
+                    build.raft.app.data.NetworkJointInviteDataSource(
+                        networkClient = appShellNetworkClient,
+                        logger = raftLogger("SlockJointInvites", "shared_joint_invites", RaftLogLevel.Warn),
+                    ),
+                scope = scope,
+            )
+        }
+    // web #12939: `joint-invites:changed` reads the pending invites again right away.
+    AppShellJointInviteEffect(
+        appShellRealtimeDomainEventOwner = appShellRealtimeDomainEventOwner,
+        jointInviteStore = jointInviteStore,
+    )
+    // Pending App permission updates / admin review dot for owners & admins (#proj-mobile:#345).
+    val appPermissionUpdatesStore =
+        remember(appShellNetworkClient, scope) {
+            build.raft.app.data.SharedAppPermissionUpdatesStore(
+                dataSource = build.raft.app.data.NetworkAppPermissionUpdatesDataSource(appShellNetworkClient),
+                scope = scope,
+            )
+        }
+    // A pending two-step verification reset, first in the Home notification center (web #12295).
+    val secondFactorRecoveryStore =
+        remember(appShellNetworkClient, scope) {
+            build.raft.app.data.SharedSecondFactorRecoveryStore(
+                dataSource = build.raft.app.data.NetworkSecondFactorRecoveryDataSource(appShellNetworkClient),
+                scope = scope,
+            )
+        }
+    // Owner/admin usage-limit attention cards (GET /api/servers/:id/system-notifications-v2, slock #13079).
+    val usageLimitAttentionStore =
+        remember(appShellNetworkClient, scope) {
+            build.raft.app.data.SharedUsageLimitAttentionStore(
+                dataSource = build.raft.app.data.NetworkUsageLimitAttentionDataSource(appShellNetworkClient),
+                scope = scope,
+            )
+        }
+    return remember(jointInviteStore, appPermissionUpdatesStore, secondFactorRecoveryStore, usageLimitAttentionStore) {
+        AppShellNotificationStores(
+            jointInviteStore = jointInviteStore,
+            appPermissionUpdatesStore = appPermissionUpdatesStore,
+            secondFactorRecoveryStore = secondFactorRecoveryStore,
+            usageLimitAttentionStore = usageLimitAttentionStore,
+        )
+    }
+}
+
+private data class AppShellAuxRepositories(
+    val homeReadReceiptRepository: RealReadReceiptRepository,
+    val conversationRepository: RealConversationRepository,
+    val agentsApiClient: RaftAgentsApiClient,
+    val computersApiClient: RaftComputersApiClient,
+    val createAgentFormStore: build.raft.app.data.SharedCreateAgentFormStore,
+    val createAgentCoordinator: SharedCreateAgentCoordinator,
+    val savedRepository: RealSavedRepository,
+    val searchRepository: RealSearchRepository,
+)
+
+@Composable
+private fun rememberAppShellAuxRepositories(
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    shellAuthStore: build.raft.app.data.RaftAuthSessionStore,
+    appShellNetworkClient: build.raft.app.data.RaftNetworkClient,
+    selectedServerStore: build.raft.app.data.SelectedServerStore,
+): AppShellAuxRepositories {
+    val homeReadReceiptRepository =
+        remember(shellAuthStore, appShellNetworkClient) {
+            RealReadReceiptRepository(
+                sessionStore = shellAuthStore,
+                networkClient = appShellNetworkClient,
+                warningLogger = raftLogger("SlockReadReceipt", "shared_home_read_receipt", RaftLogLevel.Warn),
+            )
+        }
+    val conversationRepository =
+        remember(shellAuthStore, appShellNetworkClient, selectedServerStore) {
+            RealConversationRepository(
+                sessionStore = shellAuthStore,
+                networkClient = appShellNetworkClient,
+                routeServerIdProvider = { selectedServerStore.selectedServerId.value },
+                warningLogger = raftLogger("SlockConversationRepository", "shared_conversation_repository", RaftLogLevel.Warn),
+            )
+        }
+    val agentsApiClient =
+        remember(appShellNetworkClient) {
+            RaftAgentsApiClient(
+                transport = RaftAgentsNetworkApi(appShellNetworkClient),
+                diagnosticsLogger = raftLogger("SlockAgentsApi", "app_shell_agents_api"),
+            )
+        }
+    val computersApiClient =
+        remember(appShellNetworkClient) {
+            RaftComputersApiClient(RaftComputersNetworkApi(appShellNetworkClient))
+        }
+    val createAgentFormStore =
+        remember(sharedStores, storeScope) { sharedStores.createAgentFormStore(storeScope) }
+    val createAgentCoordinator =
+        remember(agentsApiClient, computersApiClient) {
+            SharedCreateAgentCoordinator(
+                agentsApiClient = agentsApiClient,
+                computersApiClient = computersApiClient,
+                logger = raftLogger("SlockCreateAgent", "app_shell_thread_create_agent"),
+            )
+        }
+    val savedRepository =
+        remember(shellAuthStore, appShellNetworkClient) {
+            RealSavedRepository(
+                sessionStore = shellAuthStore,
+                networkClient = appShellNetworkClient,
+                warningLogger = raftLogger("SlockSavedRepository", "shared_saved_repository", RaftLogLevel.Warn),
+            )
+        }
+    val searchRepository =
+        remember(shellAuthStore, appShellNetworkClient) {
+            RealSearchRepository(
+                sessionStore = shellAuthStore,
+                networkClient = appShellNetworkClient,
+                warningLogger = raftLogger("SlockSearchRepository", "shared_search_repository", RaftLogLevel.Warn),
+            )
+        }
+    return remember(
+        homeReadReceiptRepository,
+        conversationRepository,
+        agentsApiClient,
+        computersApiClient,
+        createAgentFormStore,
+        createAgentCoordinator,
+        savedRepository,
+        searchRepository,
+    ) {
+        AppShellAuxRepositories(
+            homeReadReceiptRepository = homeReadReceiptRepository,
+            conversationRepository = conversationRepository,
+            agentsApiClient = agentsApiClient,
+            computersApiClient = computersApiClient,
+            createAgentFormStore = createAgentFormStore,
+            createAgentCoordinator = createAgentCoordinator,
+            savedRepository = savedRepository,
+            searchRepository = searchRepository,
+        )
+    }
 }
