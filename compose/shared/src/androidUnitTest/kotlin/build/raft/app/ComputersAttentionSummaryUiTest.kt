@@ -308,8 +308,10 @@ class ComputersAttentionSummaryUiTest {
 
         onNodeWithTag(COMPUTERS_ATTENTION_FILTER_TAG).performClick()
         assertEquals(
-            listOf(RaftComputersRackToolbarIntent.SetStatus(RaftComputersRackStatusFilter.Attention)),
-            intents,
+            listOf<RaftComputersRackToolbarIntent>(
+                RaftComputersRackToolbarIntent.SetStatus(RaftComputersRackStatusFilter.Attention),
+            ),
+            intents.toList(),
         )
     }
 
