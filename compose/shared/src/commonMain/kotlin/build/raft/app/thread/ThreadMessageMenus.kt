@@ -69,11 +69,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.channels.Channel
 import build.raft.designsystem.components.raftClickable
 
-private val ThreadNewMessageMenuWidth = 328.dp
+internal val ThreadNewMessageMenuWidth = 328.dp
+internal val ThreadNewMessageMenuColumnHorizontalPadding = 8.dp
 private val ThreadNewMessageMenuReactionRowHeight = 44.dp
-private val ThreadNewMessageMenuReactionButtonSize = 34.dp
+internal val ThreadNewMessageMenuReactionButtonSize = 32.dp
 private val ThreadNewMessageMenuReactionGlyphSize = 22.dp
-private val ThreadNewMessageMenuReactionHorizontalPadding = 9.dp
+internal val ThreadNewMessageMenuReactionHorizontalPadding = 4.dp
 private val ThreadNewMessageMenuToolRowHeight = 52.dp
 private val ThreadNewMessageMenuToolIconSize = 18.dp
 private val ThreadNewMessageMenuMoreOverlayHeight = 20.dp
@@ -227,7 +228,7 @@ internal fun ThreadNewMessageMenuChrome(
                 Modifier
                     .width(ThreadNewMessageMenuWidth)
                     .raftLookOverlaySurface()
-                    .padding(horizontal = 8.dp, vertical = ThreadNewMessageMenuVerticalPadding)
+                    .padding(horizontal = ThreadNewMessageMenuColumnHorizontalPadding, vertical = ThreadNewMessageMenuVerticalPadding)
         ) {
             if (link != null) ThreadNewMessageMenuLinkSection(link)
             if (menuAvailability.showsReactionRow()) {
@@ -240,7 +241,8 @@ internal fun ThreadNewMessageMenuChrome(
                     horizontalPadding = ThreadNewMessageMenuReactionHorizontalPadding,
                     enabled = menuAvailability.reactions,
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    // Eight 34dp slots over the 294dp inner width: still fits with SpaceBetween.
+                    // Nine 32dp slots (8 quick reactions + Add Reaction) over the 304dp inner width:
+                    // 9 * 32 = 288dp, leaving 2dp per gap with SpaceBetween.
                     onAddReaction = if (menuAvailability.addReaction) callbacks.onAddReaction else null
                 )
                 Box(

@@ -252,8 +252,8 @@ internal data class ThreadMessageMenuAction(
 // popup, 36dp `min-h-9` rows with 16dp icons (MenuItem forces `size-4` in `foreground-muted`
 // whatever size a caller passes; raft-design iconography.md: menus are 16px), and raft-ui's
 // `MessageReactionQuickRow` (`gap-0.5 px-0.75`) of 36dp (`size-9`) buttons with 22px drawings
-// -- with Add Reaction 8 * 36 + 7 * 2 + 2 * 3 = 308dp, which sets the menu's width (web
-// `MESSAGE_CONTEXT_MENU_WIDTH`), and so how far left of the screen edge it opens.
+// -- with Add Reaction 9 * 36 + 8 * 2 + 2 * 3 = 346dp (+ 8dp popup padding = 354dp), which sets
+// the menu's width (web `MESSAGE_CONTEXT_MENU_WIDTH`), and so how far left of the screen edge it opens.
 private val ThreadMessageMenuMinWidth = 240.dp
 private val ThreadMessageMenuRowHeight = 36.dp
 internal val ThreadMessageMenuReactionRowHeight = 36.dp

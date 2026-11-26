@@ -28,4 +28,24 @@ class ThreadMessageMenuLayoutTest {
         // Fits only to the left/above: end at the press point.
         assertEquals(Offset(32f, 325f), place(Offset(280f, 700f), Size(248f, 375f)))
     }
+
+    @Test
+    fun quickReactionBarAndMessageMenusFitAllEightQuickReactions() {
+        // 8 quick reactions without Add Reaction: 8*36 + 7*2 + 2*3 + 2*4 = 316dp.
+        assertEquals(316f, threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = false))
+        // 8 quick reactions + Add Reaction: 9*36 + 8*2 + 2*3 + 2*4 = 354dp (fits in 390dp phone with 8dp gaps).
+        val classicWithAdd = threadMessageMenuWidthDp(showReactionActions = true, showAddReactionAction = true)
+        assertEquals(354f, classicWithAdd)
+        assertEquals(true, classicWithAdd + ThreadMessageMenuViewportGap.value * 2 <= 390f)
+
+        // Compact menu inner reaction row width fits all 9 buttons (8 quick reactions + Add Reaction) with >= 2dp gap.
+        val compactSlotCount = ThreadQuickReactionEmojis.size + 1
+        val compactInnerWidth =
+            ThreadNewMessageMenuWidth.value -
+                ThreadNewMessageMenuColumnHorizontalPadding.value * 2 -
+                ThreadNewMessageMenuReactionHorizontalPadding.value * 2
+        val compactButtonsWidth = compactSlotCount * ThreadNewMessageMenuReactionButtonSize.value
+        val compactMinGapsWidth = (compactSlotCount - 1) * ThreadMessageMenuReactionGap.value
+        assertEquals(true, compactButtonsWidth + compactMinGapsWidth <= compactInnerWidth)
+    }
 }

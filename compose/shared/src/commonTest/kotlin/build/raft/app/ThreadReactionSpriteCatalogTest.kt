@@ -17,13 +17,18 @@ class ThreadReactionSpriteCatalogTest {
         val heart = assertNotNull(ThreadReactionSpriteCatalogV1.resolve("❤"))
         assertEquals("heart", heart.name)
         assertEquals(ThreadReactionSpriteCatalogV1.resolve("❤️"), heart)
-        // 🍻 joins the bundled sprite atlas (#16309) without expanding the 7-item quick bar.
+        // 🍻 is cell 8 of the bundled sprite atlas (#16309) and the 8th quick reaction after ✅ (#16985).
         val beers = assertNotNull(ThreadReactionSpriteCatalogV1.resolve("🍻"))
         assertEquals("beers", beers.name)
         assertEquals(ThreadReactionSpriteRect(x = 672, y = 0, width = 96, height = 96), beers.rect)
         assertEquals("干杯", beers.label("zh-Hans-CN"))
         assertEquals("Clinking beer mugs", beers.label("en"))
-        assertEquals(listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅"), ThreadQuickReactionEmojis)
+        assertEquals(listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅", "🍻"), ThreadQuickReactionEmojis)
+        assertEquals(8, ThreadQuickReactionEmojis.size)
+        assertEquals(listOf("✅", "🍻"), ThreadQuickReactionEmojis.takeLast(2))
+        ThreadQuickReactionEmojis.forEach { emoji ->
+            assertNotNull(ThreadReactionSpriteCatalogV1.resolve(emoji), "quick reaction $emoji must resolve to a sprite")
+        }
     }
 
     @Test
