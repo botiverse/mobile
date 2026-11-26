@@ -78,6 +78,16 @@ internal val RaftSettingsSearchCopies: Map<String, RaftSettingsSearchCopy> =
                 Res.string.settings_account_change_password_detail,
                 Res.string.settings_account_profile_section,
             ),
+        "passkeys" to
+            RaftSettingsSearchCopy(
+                Res.string.settings_account_passkeys_title,
+                section = Res.string.settings_account_login_security_title,
+            ),
+        "two-step" to
+            RaftSettingsSearchCopy(
+                Res.string.settings_account_two_step_title,
+                section = Res.string.settings_account_login_security_title,
+            ),
         "sign-out" to
             RaftSettingsSearchCopy(Res.string.settings_account_logout, Res.string.settings_account_logout_detail, Res.string.settings_account_session),
         "delete-account" to RaftSettingsSearchCopy(Res.string.settings_account_delete, Res.string.settings_account_delete_detail),
