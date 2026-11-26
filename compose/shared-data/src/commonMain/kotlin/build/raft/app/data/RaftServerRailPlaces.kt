@@ -26,24 +26,36 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.put
+import kotlin.math.floor
 
-// Per-server rail places (botiverse/slock #16682 + #16684; #wg-mobile-sync:#294):
+// Per-server desktop rail places (botiverse/slock #16682 + #16684 + #16773 + #16808 + #16857 + #16864 + #16957 + #16960;
+// #wg-mobile-sync:#294 + #wg-mobile-sync:#322):
 //
-//   packages/shared/src/railPlaces.ts     RAIL_FIXED_TAB_IDS, RAIL_BUILT_IN_PLACE_IDS,
-//                                         canonicalRailPlaceKey, railAppPlaceClientId,
-//                                         railPlacesFromAccountOrder
-//   GET   /api/servers/:id/sidebar-order  returns optional `places`, `placesVersion`, `placeableApps`
+//   packages/shared/src/railPlaces.ts     RAIL_FIXED_TAB_IDS (search only), RAIL_KEPT_PLACE_IDS
+//                                         (chat, activity: moved like any place, never removed),
+//                                         RAIL_BUILT_IN_PLACE_IDS, canonicalRailPlaceKey,
+//                                         railAppPlaceClientId, railPlacesFromAccountOrder,
+//                                         withRailKeptPlaces
+//   GET   /api/servers/:id/sidebar-order  returns optional `desktopPlaces` (whole list, Chat and
+//                                         Activity in their spots), `places` (without Chat and
+//                                         Activity for older clients), `placesVersion`, `placeableApps`
 //   PATCH /api/servers/:id/sidebar-order  { places: string[] | null, placesVersion: number }
 //                                         409 RAIL_PLACES_VERSION_CONFLICT returns current
-//                                         { error, code, placesVersion, places }
-//   Socket `rail_places:updated`          { serverId, places, placesVersion } to `user:<id>`
+//                                         { error, code, placesVersion, places, desktopPlaces }
+//   Socket `rail_places:updated`          { serverId, places, desktopPlaces, placesVersion } to `user:<id>`
 
-/** Tabs fixed at the top of the rail; never part of the per-server `places` list. */
-@RaftCoreInternalApi val RaftRailFixedTabIds: List<String> = listOf("search", "chat", "activity")
+/** Tabs fixed at the top of the desktop rail; never part of the per-server `desktopPlaces` list (`RAIL_FIXED_TAB_IDS`). */
+@RaftCoreInternalApi val RaftRailFixedTabIds: List<String> = listOf("search")
 
-/** Built-in rail places in default order (slock `RAIL_BUILT_IN_PLACE_IDS`). */
+/** Built-in places present on every desktop rail list, first by default: moved like any place, never removed (`RAIL_KEPT_PLACE_IDS`). */
+@RaftCoreInternalApi val RaftRailKeptPlaceIds: List<String> = listOf("chat", "activity")
+
+/** Built-in desktop rail places in default order (slock `RAIL_BUILT_IN_PLACE_IDS`, Chat and Activity first). */
 @RaftCoreInternalApi val RaftRailBuiltInPlaceIds: List<String> =
-    listOf("tasks", "artifacts", "members", "computers", "apps", "assistant")
+    RaftRailKeptPlaceIds + listOf("tasks", "artifacts", "members", "computers", "apps", "assistant")
+
+/** Retired desktop rail place ids ignored on read and dropped by the server on write (`RETIRED_RAIL_PLACE_IDS`). */
+@RaftCoreInternalApi val RaftRailRetiredPlaceIds: Set<String> = setOf("code")
 
 /** Prefix of an installed App place key (`app:<clientId>`). */
 @RaftCoreInternalApi const val RaftRailAppPlacePrefix: String = "app:"
@@ -57,6 +69,7 @@ import kotlinx.serialization.json.put
 @RaftCoreInternalApi const val RailPlacesVersionConflictCode: String = "RAIL_PLACES_VERSION_CONFLICT"
 
 private val RailPlaceBuiltInSet: Set<String> = RaftRailBuiltInPlaceIds.toSet()
+private val RailPlaceKeptSet: Set<String> = RaftRailKeptPlaceIds.toSet()
 private val RailAppPlaceUuidRegex =
     Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOption.IGNORE_CASE)
 
@@ -109,7 +122,10 @@ data class RaftRailPlacesSnapshot(
     val placeableApps: List<RaftRailPlaceApp> = emptyList(),
 )
 
-/** Whether [value] is one of Raft's built-in place ids (`RAIL_BUILT_IN_PLACE_IDS`). */
+/** Whether [value] is Chat or Activity: kept on every desktop rail list, moved like any place, never removed (`isRailKeptPlaceId`). */
+@RaftCoreInternalApi fun isRaftRailKeptPlaceId(value: String): Boolean = value in RailPlaceKeptSet
+
+/** Whether [value] is one of Raft's built-in desktop place ids (`RAIL_BUILT_IN_PLACE_IDS`, Chat and Activity included). */
 @RaftCoreInternalApi fun isRaftRailBuiltInPlaceId(value: String): Boolean = value in RailPlaceBuiltInSet
 
 /** The lowercased App clientId inside an `app:<uuid>` key, or null when [key] is not one. */
@@ -119,7 +135,7 @@ data class RaftRailPlacesSnapshot(
     return if (RailAppPlaceUuidRegex.matches(id)) id.lowercase() else null
 }
 
-/** Canonical place key (lowercasing App UUIDs), or null for fixed tabs (`chat`/`activity`/`search`) and unknown keys. */
+/** Canonical desktop place key (built-ins including `chat`/`activity`, plus lowercased `app:<uuid>`), or null for `search`, retired, or unknown keys. */
 @RaftCoreInternalApi fun canonicalRaftRailPlaceKey(value: String): String? {
     if (isRaftRailBuiltInPlaceId(value)) return value
     val clientId = raftRailAppPlaceClientId(value) ?: return null
@@ -127,11 +143,32 @@ data class RaftRailPlacesSnapshot(
 }
 
 /**
- * Default places derived from an account-level `users.rail_tab_order` when the member has never
- * saved per-server places (slock `railPlacesFromAccountOrder`).
+ * [keys] with Chat or Activity prepended (in their default order) when missing: a list stored
+ * before they could move (slock `withRailKeptPlaces`, #16773).
+ */
+@RaftCoreInternalApi fun withRaftRailKeptPlaceKeys(keys: List<String>): List<String> {
+    val missing = RaftRailKeptPlaceIds.filter { it !in keys }
+    return if (missing.isEmpty()) keys else missing + keys
+}
+
+/**
+ * [places] with Chat or Activity prepended as built-in entries when missing, preserving the stored
+ * positions of any kept places already present (slock `parseListOf` / `withRailKeptPlaces`).
+ */
+@RaftCoreInternalApi fun withRaftRailKeptPlaces(places: List<RaftRailPlace>): List<RaftRailPlace> {
+    val present = places.mapTo(hashSetOf()) { it.key }
+    val missing = RaftRailKeptPlaceIds.filter { it !in present }.map(RaftRailPlace::builtIn)
+    return if (missing.isEmpty()) places else missing + places
+}
+
+/**
+ * Default desktop places derived from an account-level `users.rail_tab_order` when the member has
+ * never saved per-server places (slock `railPlacesFromAccountOrder`, #16773): Chat and Activity
+ * first, then the remaining built-in places in the account's rail order (never `search`).
  */
 @RaftCoreInternalApi fun raftRailPlacesFromAccountOrder(accountOrder: List<String>?): List<String> =
-    normalizeRaftRailTabOrder(accountOrder).filter(::isRaftRailBuiltInPlaceId)
+    RaftRailKeptPlaceIds +
+        normalizeRaftRailTabOrder(accountOrder).filter { isRaftRailBuiltInPlaceId(it) && !isRaftRailKeptPlaceId(it) }
 
 /** Parses one `RailPlaceApp` wire object (`clientId` lowercased; `name` and `homepageUrl` required). */
 private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
@@ -148,7 +185,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     )
 }
 
-/** Parses a wire `places` array, deduplicating canonical keys and dropping malformed entries (web `parsePlaces`). */
+/** Parses a wire `desktopPlaces` or `places` array, deduplicating canonical keys and dropping malformed entries (web `parsePlaces`). */
 @RaftCoreInternalApi fun parseRaftRailPlacesArray(element: JsonElement?): List<RaftRailPlace> {
     val array = element as? JsonArray ?: return emptyList()
     val seen = hashSetOf<String>()
@@ -175,6 +212,17 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     return result
 }
 
+/**
+ * Parses the whole desktop places list from a response, 409 conflict, or `rail_places:updated`
+ * object (slock #16773 `parseListOf`): prefers `desktopPlaces` when present as an array, else
+ * falls back to `places` (pre-#16773 server), and guarantees Chat & Activity are present via
+ * [withRaftRailKeptPlaces]. Returns null when neither field is a JSON array.
+ */
+@RaftCoreInternalApi fun parseRaftRailPlacesList(obj: JsonObject): List<RaftRailPlace>? {
+    val rawArray = (obj["desktopPlaces"] as? JsonArray) ?: (obj["places"] as? JsonArray) ?: return null
+    return withRaftRailKeptPlaces(parseRaftRailPlacesArray(rawArray))
+}
+
 /** Parses a wire `placeableApps` array. */
 @RaftCoreInternalApi fun parseRaftRailPlaceAppsArray(element: JsonElement?): List<RaftRailPlaceApp> {
     val array = element as? JsonArray ?: return emptyList()
@@ -182,14 +230,15 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
 }
 
 /**
- * Parses `places`, `placesVersion`, and `placeableApps` from a sidebar-order response JSON object.
- * Returns null when the response omits `places` or `placesVersion` (older server pre-slock #16682).
+ * Parses `desktopPlaces` (falling back to `places` + kept places), `placesVersion`, and
+ * `placeableApps` from a sidebar-order response JSON object. Returns null when the response omits
+ * places fields or `placesVersion` (older server pre-slock #16682).
  */
 @RaftCoreInternalApi fun parseRaftRailPlacesObject(obj: JsonObject): RaftRailPlacesSnapshot? {
-    val placesElement = obj["places"] as? JsonArray ?: return null
+    val places = parseRaftRailPlacesList(obj) ?: return null
     val version = obj.strictNonNegativeIntOrNull("placesVersion") ?: return null
     return RaftRailPlacesSnapshot(
-        places = parseRaftRailPlacesArray(placesElement),
+        places = places,
         placesVersion = version,
         placeableApps = parseRaftRailPlaceAppsArray(obj["placeableApps"]),
     )
@@ -213,11 +262,11 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     val text = bodyText?.takeIf { it.isNotBlank() } ?: return null
     val obj = runCatching { railPlacesJson.parseToJsonElement(text) as? JsonObject }.getOrNull() ?: return null
     if (obj.strictStringOrNull("code") != RailPlacesVersionConflictCode) return null
-    val placesElement = obj["places"] as? JsonArray ?: return null
+    val places = parseRaftRailPlacesList(obj) ?: return null
     val version = obj.strictNonNegativeIntOrNull("placesVersion") ?: return null
     return RailPlacesConflictPayload(
         placesVersion = version,
-        places = parseRaftRailPlacesArray(placesElement),
+        places = places,
     )
 }
 
@@ -281,6 +330,135 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     val shownSet = shown.toSet()
     val moved = shown.iterator()
     return canonicalFull.map { key -> if (key in shownSet) moved.next() else key }
+}
+
+/** Moves [key] one visible step (`direction` = -1 or +1) preserving hidden places in their slots (web `movePlace`). */
+@RaftCoreInternalApi fun raftRailMovePlace(
+    keys: List<String>,
+    visibleKeys: List<String>,
+    key: String,
+    direction: Int,
+): List<String>? {
+    if (direction == 0) return null
+    val at = visibleKeys.indexOf(key)
+    val neighbour = visibleKeys.getOrNull(at + direction) ?: return null
+    return raftRailMovePlaceTo(keys, key, neighbour)
+}
+
+/** Puts [key] at [target]'s index in [keys]; null if either is absent or equal (web `movePlaceTo`). */
+@RaftCoreInternalApi fun raftRailMovePlaceTo(
+    keys: List<String>,
+    key: String,
+    target: String,
+): List<String>? {
+    val from = keys.indexOf(key)
+    val to = keys.indexOf(target)
+    if (from < 0 || to < 0 || from == to) return null
+    val next = keys.toMutableList()
+    val moved = next.removeAt(from)
+    next.add(to, moved)
+    return next
+}
+
+/**
+ * Places [key] immediately before or [after] [target] in [keys] (web `placeNextTo`, #16808/#16857/#16864):
+ * - If [key] is already on [keys] (dragged along the rail or from More's overflow), moves it so it never appears twice.
+ * - If [key] is not on [keys] (dragged from More's "More places"), adds it at that slot.
+ * - Returns null when [key] or [target] is not a canonical place key, [key] == [target], or [target] is not on [keys].
+ */
+@RaftCoreInternalApi fun raftRailPlaceNextTo(
+    keys: List<String>,
+    key: String,
+    target: String,
+    after: Boolean,
+): List<String>? {
+    val canonicalKey = canonicalRaftRailPlaceKey(key) ?: return null
+    val canonicalTarget = canonicalRaftRailPlaceKey(target) ?: return null
+    if (canonicalKey == canonicalTarget) return null
+    val next = keys.filterNot { it == canonicalKey }.toMutableList()
+    val at = next.indexOf(canonicalTarget)
+    if (at < 0) return null
+    next.add(at + if (after) 1 else 0, canonicalKey)
+    return next
+}
+
+/** Removes [key] from [keys]; unchanged for Chat and Activity which stay on every desktop list (web `removePlace`, #16773). */
+@RaftCoreInternalApi fun raftRailRemovePlace(keys: List<String>, key: String): List<String> {
+    val canonical = canonicalRaftRailPlaceKey(key) ?: return keys
+    if (isRaftRailKeptPlaceId(canonical)) return keys
+    return keys.filterNot { it == canonical }
+}
+
+/** Appends [key] to [keys] if valid and not already present (web `addPlace`). */
+@RaftCoreInternalApi fun raftRailAddPlace(keys: List<String>, key: String): List<String> {
+    val canonical = canonicalRaftRailPlaceKey(key) ?: return keys
+    return if (canonical in keys) keys else keys + canonical
+}
+
+/**
+ * How many rail items fit in [availablePx] with [itemPx] height and [gapPx] spacing, reserving one
+ * gap for the frame decoration strip (web `railSlots`). Unmeasured (`<= 0`), returns [Int.MAX_VALUE].
+ */
+@RaftCoreInternalApi fun raftRailSlots(availablePx: Float, itemPx: Float, gapPx: Float): Int {
+    if (availablePx <= 0f || itemPx <= 0f) return Int.MAX_VALUE
+    val stride = itemPx + gapPx.coerceAtLeast(0f)
+    return floor((availablePx / stride).toDouble()).toInt().coerceAtLeast(0)
+}
+
+/**
+ * How many of [placeCount] places fit on the rail given [slots] total slots, [fixedCount] fixed
+ * items (Search), [trailingCount] trailing items, and 1 slot always reserved for More (web `visiblePlaceCount`).
+ */
+@RaftCoreInternalApi fun raftVisiblePlaceCount(
+    placeCount: Int,
+    slots: Int,
+    fixedCount: Int,
+    trailingCount: Int = 0,
+): Int {
+    if (placeCount <= 0) return 0
+    if (slots == Int.MAX_VALUE) return placeCount
+    return (slots - fixedCount - trailingCount - 1).coerceIn(0, placeCount)
+}
+
+/** Normalizes an http(s) URL to its lowercase `scheme://host[:port]` origin without default port, or null. */
+@RaftCoreInternalApi fun raftRailPlaceOriginOf(url: String): String? {
+    val trimmed = url.trim()
+    val schemeEnd = trimmed.indexOf("://")
+    if (schemeEnd <= 0) return null
+    val scheme = trimmed.substring(0, schemeEnd).lowercase()
+    if (scheme != "https" && scheme != "http") return null
+    val afterScheme = trimmed.substring(schemeEnd + 3)
+    val authorityEnd = afterScheme.indexOfAny(charArrayOf('/', '?', '#')).let { if (it < 0) afterScheme.length else it }
+    val authority = afterScheme.substring(0, authorityEnd)
+    if (authority.isEmpty() || '@' in authority) return null
+    val host: String
+    val port: Int?
+    if (authority.startsWith("[")) {
+        val close = authority.indexOf(']')
+        if (close <= 1) return null
+        host = authority.substring(0, close + 1).lowercase()
+        val rest = authority.substring(close + 1)
+        port =
+            when {
+                rest.isEmpty() -> null
+                rest.startsWith(":") -> rest.substring(1).toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
+                else -> return null
+            }
+    } else {
+        val colon = authority.indexOf(':')
+        if (colon < 0) {
+            host = authority.lowercase()
+            port = null
+        } else {
+            if (authority.indexOf(':', colon + 1) >= 0) return null
+            host = authority.substring(0, colon).lowercase()
+            port = authority.substring(colon + 1).toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
+        }
+    }
+    if (host.isEmpty() || host.any { it.isWhitespace() }) return null
+    val defaultPort = if (scheme == "https") 443 else 80
+    val explicitPort = port?.takeUnless { it == defaultPort }
+    return if (explicitPort != null) "$scheme://$host:$explicitPort" else "$scheme://$host"
 }
 
 /** Built-in places the viewer can see that are not currently on [keys], in default order (web `builtInsNotOnList`). */
@@ -534,7 +712,8 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         if ((savesInFlightByServer[serverId] ?: 0) > 0) return
         val existing = mutableState.value.byServer[serverId]?.snapshot
         if (existing != null && snapshot.placesVersion < existing.placesVersion) return
-        updateServerEntry(serverId, ServerRailPlacesEntry(snapshot = snapshot, loadedAtMs = nowMs()))
+        val normalized = snapshot.copy(places = withRaftRailKeptPlaces(snapshot.places))
+        updateServerEntry(serverId, ServerRailPlacesEntry(snapshot = normalized, loadedAtMs = nowMs()))
     }
 
     /** Applies a live `rail_places:updated` socket event when it is at or ahead of the current version. */
@@ -547,7 +726,11 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         updateServerEntry(
             serverId,
             existing.copy(
-                snapshot = existing.snapshot.copy(places = event.places, placesVersion = event.placesVersion),
+                snapshot =
+                    existing.snapshot.copy(
+                        places = withRaftRailKeptPlaces(event.places),
+                        placesVersion = event.placesVersion,
+                    ),
             ),
         )
     }
@@ -573,6 +756,17 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
         val snapshot = mutableState.value.byServer[serverId]?.snapshot ?: return null
         val target = clientId.lowercase()
         return snapshot.placeableApps.firstOrNull { it.clientId.lowercase() == target }
+    }
+
+    /**
+     * The usable App on [serverId] (from `placeableApps`, on the rail or not) whose homepage is on
+     * [url]'s origin, or null (botiverse/slock #16957 `usableRailAppOn`).
+     */
+    fun usableAppOn(serverId: String, url: String): RaftRailPlaceApp? {
+        if (!isServerEnabled(serverId)) return null
+        val origin = raftRailPlaceOriginOf(url) ?: return null
+        val snapshot = mutableState.value.byServer[serverId]?.snapshot ?: return null
+        return snapshot.placeableApps.firstOrNull { app -> raftRailPlaceOriginOf(app.homepageUrl) == origin }
     }
 
     /**
@@ -617,7 +811,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
             if (gen != (saveGenerationByServer[serverId] ?: 0L)) return
             if ((savesInFlightByServer[serverId] ?: 0) > 0) return
             if (result is DataResult.Content && result.data != null) {
-                val parsed = result.data
+                val parsed = result.data.copy(places = withRaftRailKeptPlaces(result.data.places))
                 val existing = mutableState.value.byServer[serverId]?.snapshot
                 if (existing == null || parsed.placesVersion >= existing.placesVersion) {
                     updateServerEntry(serverId, ServerRailPlacesEntry(snapshot = parsed, loadedAtMs = nowMs()))
@@ -647,7 +841,8 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     /**
      * Saves [keys] (or null to reset to default) for [serverId] through `PATCH /servers/:id/sidebar-order`.
      * Updates state optimistically, serializes writes per server, handles 409 conflicts with the
-     * server's authoritative list, and rolls back on other errors.
+     * server's authoritative list, and rolls back on other errors. Kept places (`chat`, `activity`)
+     * are always retained on non-null saves.
      */
     suspend fun savePlaces(
         serverId: String,
@@ -656,7 +851,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
     ): RailPlacesSaveOutcome {
         if (!isServerEnabled(serverId)) return RailPlacesSaveOutcome.Skipped
         val beforeEntry = mutableState.value.byServer[serverId] ?: return RailPlacesSaveOutcome.Skipped
-        val canonicalKeys = keys?.mapNotNull(::canonicalRaftRailPlaceKey)?.distinct()
+        val canonicalKeys = keys?.mapNotNull(::canonicalRaftRailPlaceKey)?.distinct()?.let(::withRaftRailKeptPlaceKeys)
         val epoch = accountEpoch
         val gen = (saveGenerationByServer[serverId] ?: 0L) + 1L
         saveGenerationByServer[serverId] = gen
@@ -694,9 +889,10 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
             if (epoch != accountEpoch) return@withLock RailPlacesSaveOutcome.Skipped
             when (wire) {
                 is RailPlacesSaveWireResult.Saved -> {
-                    logger("rail_places_save_result serverId=$serverId outcome=saved version=${wire.snapshot.placesVersion}")
+                    val savedSnapshot = wire.snapshot.copy(places = withRaftRailKeptPlaces(wire.snapshot.places))
+                    logger("rail_places_save_result serverId=$serverId outcome=saved version=${savedSnapshot.placesVersion}")
                     if (gen == (saveGenerationByServer[serverId] ?: 0L)) {
-                        updateServerEntry(serverId, ServerRailPlacesEntry(snapshot = wire.snapshot, loadedAtMs = nowMs()))
+                        updateServerEntry(serverId, ServerRailPlacesEntry(snapshot = savedSnapshot, loadedAtMs = nowMs()))
                     } else {
                         // A newer queued write exists; update placesVersion & placeableApps so it chains cleanly.
                         val latest = mutableState.value.byServer[serverId]
@@ -706,8 +902,8 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
                                 latest.copy(
                                     snapshot =
                                         latest.snapshot.copy(
-                                            placesVersion = wire.snapshot.placesVersion,
-                                            placeableApps = wire.snapshot.placeableApps,
+                                            placesVersion = savedSnapshot.placesVersion,
+                                            placeableApps = savedSnapshot.placeableApps,
                                         ),
                                     loadedAtMs = nowMs(),
                                 ),
@@ -724,7 +920,7 @@ private fun parseRailPlaceAppElement(element: JsonElement): RaftRailPlaceApp? {
                         ServerRailPlacesEntry(
                             snapshot =
                                 latest.snapshot.copy(
-                                    places = wire.payload.places,
+                                    places = withRaftRailKeptPlaces(wire.payload.places),
                                     placesVersion = wire.payload.placesVersion,
                                 ),
                             loadedAtMs = nowMs(),

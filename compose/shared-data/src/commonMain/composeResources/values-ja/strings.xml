@@ -5226,6 +5226,16 @@
     <string name="rail_places_edit_conflict">別のデバイスでナビゲーションバーが変更されました。最新の状態を確認してもう一度保存してください。</string>
     <string name="rail_places_unavailable_title">%1$sは%2$sで利用できなくなりました</string>
     <string name="rail_places_unavailable_go_to_apps">アプリへ移動</string>
+    <string name="rail_places_more">その他</string>
+    <string name="rail_places_more_places">その他の場所</string>
+    <string name="rail_places_removed">%1$s をナビゲーションバーから削除しました</string>
+    <string name="rail_places_search_stays_first">検索は常に先頭に表示されます</string>
+    <string name="rail_places_kept_stay_on_rail">チャットとアクティビティはナビゲーションバーに残ります</string>
+    <string name="rail_places_drag_added">%1$s をナビゲーションバーに追加しました。</string>
+    <string name="rail_places_drag_added_before">%1$s をナビゲーションバーの %2$s の前に追加しました。</string>
+    <string name="rail_places_drag_added_after">%1$s をナビゲーションバーの %2$s の後に追加しました。</string>
+    <string name="rail_places_drag_dropped_before">%1$s を %2$s の前に配置しました。</string>
+    <string name="rail_places_drag_dropped_after">%1$s を %2$s の後に配置しました。</string>
     <string name="settings_notifications_device_section">このデバイス</string>
     <string name="settings_notifications_pause_section">一時停止とスケジュール</string>
     <string name="settings_notifications_pause_custom">カスタム</string>

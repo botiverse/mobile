@@ -28,6 +28,7 @@ import build.raft.app.data.TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY
 import build.raft.app.data.isRaftMobileBuiltInPlaceId
 import build.raft.app.data.raftRailPlacesWithVisibleReorder
 import build.raft.app.data.raftRailTabOrderWithVisibleOrder
+import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -430,7 +431,7 @@ internal fun appShellResolvedRailTabReorder(
             if (useDesktopRailPlaces && serverId != null && snapshot != null) {
                 val reordered =
                     raftRailPlacesWithVisibleReorder(
-                        fullKeys = snapshot.places.map { it.key },
+                        fullKeys = withRaftRailKeptPlaceKeys(snapshot.places.map { it.key }),
                         visibleOrder = keys.mapNotNull(::raftRailPlaceKeyForItemKey),
                     )
                 scope.launch { railPlacesStore.savePlaces(serverId, reordered) }

@@ -5226,6 +5226,16 @@
     <string name="rail_places_edit_conflict">你的导航栏刚在另一台设备上改过，这里显示的是最新的，请检查后再保存。</string>
     <string name="rail_places_unavailable_title">%1$s 已不在 %2$s 上</string>
     <string name="rail_places_unavailable_go_to_apps">前往应用</string>
+    <string name="rail_places_more">更多</string>
+    <string name="rail_places_more_places">更多位置</string>
+    <string name="rail_places_removed">已从导航栏移除 %1$s</string>
+    <string name="rail_places_search_stays_first">搜索始终在最前</string>
+    <string name="rail_places_kept_stay_on_rail">聊天和动态留在导航栏上</string>
+    <string name="rail_places_drag_added">已将 %1$s 添加到导航栏。</string>
+    <string name="rail_places_drag_added_before">已将 %1$s 添加到导航栏，放在 %2$s 前面。</string>
+    <string name="rail_places_drag_added_after">已将 %1$s 添加到导航栏，放在 %2$s 后面。</string>
+    <string name="rail_places_drag_dropped_before">%1$s 已放到 %2$s 前面。</string>
+    <string name="rail_places_drag_dropped_after">%1$s 已放到 %2$s 后面。</string>
     <string name="settings_notifications_device_section">本机</string>
     <string name="settings_notifications_pause_section">暂停与时段</string>
     <string name="settings_notifications_pause_custom">自定义</string>

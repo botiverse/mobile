@@ -1172,21 +1172,23 @@ private fun JsonObject.parseActivityDoneUpdatedOrNull(): ActivityDoneUpdated? {
 }
 
 /**
- * Strict parser for `rail_places:updated` (botiverse/slock #16682 `routes/servers.ts`
- * `emitRailPlacesUpdated`): `{ serverId, places, placesVersion }`.
+ * Strict parser for `rail_places:updated` (botiverse/slock #16682 + #16773 `routes/servers.ts`
+ * `emitRailPlacesUpdated`): `{ serverId, places, desktopPlaces?, placesVersion }`. Prefers
+ * `desktopPlaces` (Chat and Activity in their stored spots) and falls back to `places` with
+ * kept places prepended for older servers.
  */
 private fun JsonObject.parseRailPlacesUpdatedOrNull(): build.raft.app.model.RailPlacesUpdated? {
     val serverId =
         (this["serverId"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
             ?: return null
-    val placesArray = this["places"] as? JsonArray ?: return null
+    val places = build.raft.app.data.parseRaftRailPlacesList(this) ?: return null
     val versionPrimitive = (this["placesVersion"] as? JsonPrimitive)?.takeIf { !it.isString } ?: return null
     val placesVersion =
         versionPrimitive.intOrNull?.takeIf { it >= 0 && versionPrimitive.content == it.toString() }
             ?: return null
     return build.raft.app.model.RailPlacesUpdated(
         serverId = ServerId(serverId),
-        places = build.raft.app.data.parseRaftRailPlacesArray(placesArray),
+        places = places,
         placesVersion = placesVersion,
     )
 }

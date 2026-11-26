@@ -5020,6 +5020,16 @@
     <string name="rail_places_edit_conflict">다른 기기에서 탐색 모음이 변경되었어요. 최신 목록을 확인한 뒤 다시 저장해 주세요.</string>
     <string name="rail_places_unavailable_title">%1$s이(가) 더 이상 %2$s에 없습니다</string>
     <string name="rail_places_unavailable_go_to_apps">앱으로 이동</string>
+    <string name="rail_places_more">더 보기</string>
+    <string name="rail_places_more_places">항목 더 보기</string>
+    <string name="rail_places_removed">내비게이션 바에서 ‘%1$s’ 항목을 제거했어요</string>
+    <string name="rail_places_search_stays_first">검색은 항상 맨 앞에 있어요</string>
+    <string name="rail_places_kept_stay_on_rail">채팅과 활동은 내비게이션 바에 항상 표시돼요</string>
+    <string name="rail_places_drag_added">내비게이션 바에 ‘%1$s’ 항목을 추가했어요.</string>
+    <string name="rail_places_drag_added_before">내비게이션 바의 ‘%2$s’ 앞에 ‘%1$s’ 항목을 추가했어요.</string>
+    <string name="rail_places_drag_added_after">내비게이션 바의 ‘%2$s’ 뒤에 ‘%1$s’ 항목을 추가했어요.</string>
+    <string name="rail_places_drag_dropped_before">‘%1$s’ 항목을 ‘%2$s’ 앞에 놓았어요.</string>
+    <string name="rail_places_drag_dropped_after">‘%1$s’ 항목을 ‘%2$s’ 뒤에 놓았어요.</string>
     <string name="settings_notifications_device_section">이 기기</string>
     <string name="settings_notifications_pause_section">일시 중지 및 일정</string>
     <string name="settings_notifications_pause_custom">직접 설정</string>
