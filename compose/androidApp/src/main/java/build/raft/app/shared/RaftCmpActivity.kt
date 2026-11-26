@@ -884,6 +884,7 @@ internal open class RaftCmpActivity :
     @Volatile private var renderReadinessResumedAtMillis: Long? = null
     private val postFirstFrameResumeCoordinator = RaftPostFirstFrameResumeCoordinator()
     private var postFirstFrameResumeJob: Job? = null
+    private var pendingPostFirstFrameVisibilityReport = false
     @Volatile private var renderReadinessTopPageLoad: RaftLoadReadiness? = null
     private val renderReadinessChildLoads = ConcurrentHashMap<String, RaftLoadReadiness>()
     private var pageSpec: RaftPageSpec? = null
@@ -2000,6 +2001,7 @@ internal open class RaftCmpActivity :
     override fun onPause() {
         threadAttachmentPickerLatch.onHostPausedOrStopped()
         cancelPendingAttachmentPickerRecovery()
+        pendingPostFirstFrameVisibilityReport = false
         postFirstFrameResumeCoordinator.cancel()
         postFirstFrameResumeJob?.cancel()
         postFirstFrameResumeJob = null
@@ -2053,7 +2055,16 @@ internal open class RaftCmpActivity :
         RaftScrollFrameProbe.onActivityResumed(this, pageName)
         suppressVisualKeyboard()
         if (hostAttached) {
-            reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
+            // Update the in-memory host-visibility bit immediately for Frame 1 readers, and defer
+            // the ActionAppLifecycle broadcast until right after Frame 1 draws so the shell's
+            // foreground refresh fan-out does not compete with Frame 1 (#proj-mobile:#269).
+            AndroidAppScopeRealtimeOwner.markHostVisibilityState(
+                visibility = AndroidHostVisibility.Visible,
+                shellInstanceId = realtimeVisibilityOwnerId,
+            )
+            pendingPostFirstFrameVisibilityReport = true
+        } else {
+            pendingPostFirstFrameVisibilityReport = false
         }
         schedulePendingAttachmentPickerRecoveryIfNeeded()
         // Defer non-first-frame Binder IPCs (Play services/battery probes, widget queries,
@@ -2065,15 +2076,20 @@ internal open class RaftCmpActivity :
     }
 
     private fun dispatchPostFirstFrameResume() {
+        if (pendingPostFirstFrameVisibilityReport && hostAttached) {
+            pendingPostFirstFrameVisibilityReport = false
+            reportRealtimeVisibility(AndroidHostVisibility.Visible, "activity_on_resume")
+        }
         val appContext = applicationContext
         RaftBridgeModule.resumePendingHandsAutoInstall(appContext)
         RaftBridgeModule.resumeHandsDeltaInstallAfterPermission(appContext, lifecycleScope)
-        if (!BuildConfig.HANDS_APK_UPDATE_ENABLED) {
-            playUpdateController?.onActivityResume(this)
-        }
         postFirstFrameResumeJob?.cancel()
         postFirstFrameResumeJob =
             lifecycleScope.launch(Dispatchers.IO) {
+                if (!BuildConfig.HANDS_APK_UPDATE_ENABLED) {
+                    playUpdateController?.onActivityResume(this@RaftCmpActivity)
+                }
+                coroutineContext.ensureActive()
                 RaftNotificationPermissionReporter.report(appContext)
                 AndroidRealtimeKeepAliveController.onHostResumed(appContext)
                 // A tapped conversation notification auto-cancels and lands here; drop its server's
@@ -9987,15 +10003,18 @@ internal class RaftBridgeModule(
          * clears the marker and opens nothing.
          */
         internal fun resumeHandsDeltaInstallAfterPermission(context: Context, scope: CoroutineScope) {
-            val updateRoute = handsUpdateRouteForRuntime(context)
-            if (!updateRoute.deltaEnabled) return
-            scope.launch {
+            val appContext = context.applicationContext
+            // Run route resolution, marker lookup, and install-permission IPC off the main thread
+            // (#proj-mobile:#269); hop back to Main only when reopening the system installer.
+            scope.launch(Dispatchers.IO) {
+                val updateRoute = handsUpdateRouteForRuntime(appContext)
+                if (!updateRoute.deltaEnabled) return@launch
                 val checker by lazy {
                     handsDeltaUpdateChecker(
-                            context = context,
+                            context = appContext,
                             updateRoute = updateRoute,
                             arch = handsUpdateArch(),
-                            deviceId = HandsDeviceId.get(context),
+                            deviceId = HandsDeviceId.get(appContext),
                             languageTag = null
                     )
                 }
@@ -10005,8 +10024,10 @@ internal class RaftBridgeModule(
                                     marker = RaftAppUpdatePermissionResume.repository,
                                     canInstall = { checker.canInstallUpdates() },
                                     reopen = {
-                                        handsDeltaUpdateCallOwner.runIfEligible(eligible = true) {
-                                            checker.reopenPendingInstaller()
+                                        withContext(Dispatchers.Main.immediate) {
+                                            handsDeltaUpdateCallOwner.runIfEligible(eligible = true) {
+                                                checker.reopenPendingInstaller()
+                                            }
                                         }
                                     }
                             )

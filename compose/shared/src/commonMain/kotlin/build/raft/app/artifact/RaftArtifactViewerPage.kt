@@ -452,7 +452,12 @@ internal fun RaftArtifactViewerPrewarmRuntime(
     prewarmEffect(config)
 }
 
-internal const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 1_200L
+/**
+ * Wait past the 3 s foreground-resume settle window before instantiating Chromium WebView for
+ * `/artifacts/raft-app-warm` (#proj-mobile:#269, Hands f0c2fa63: 1.2 s fired mid-resume and added
+ * an 83–101 ms main-thread stall on return from background).
+ */
+internal const val RAFT_ARTIFACT_VIEWER_PREWARM_DELAY_MS = 3_500L
 
 /** After this long without the document shown, the viewer logs where its load stands. */
 internal const val RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS = 10_000L
