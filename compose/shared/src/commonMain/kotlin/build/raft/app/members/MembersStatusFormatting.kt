@@ -252,9 +252,12 @@ internal fun MemberProfile.membersAgentRuntimeErrorDisplay(
     val keptBillingError =
         agentTypedRuntimeErrorKind(summary?.lastRuntimeErrorClass, summary?.lastRuntimeErrorReason) ==
             AgentRuntimeErrorKind.BillingExhausted
-    // A held agent's Error is its status words, not a runtime error (web reads the raw activity
-    // here, which a revoked Computer never sends): only the kept error, as for an offline agent.
-    val liveStatus = statusIndicatorState?.status.takeIf { statusIndicatorState?.blocked == null }
+    // A held or attention agent's Error is its status words, not a runtime error (web reads the raw
+    // activity here): only the kept error, as for an offline agent.
+    val liveStatus =
+        statusIndicatorState?.status.takeIf {
+            statusIndicatorState?.blocked == null && statusIndicatorState?.attention == null
+        }
     val runtimeError =
         when (liveStatus) {
             AgentStatus.Error -> summary?.activityDetail.orEmpty()

@@ -8918,22 +8918,30 @@ private fun DirectMessageAvatar(
         } else {
             null
         }
-    val signIn =
+    val signInResolution =
         if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null) {
-            rememberAgentRuntimeSignInState(status, fallbackName = avatarLabel)
+            rememberAgentRuntimeSignInResolution(status, fallbackName = avatarLabel)
+        } else {
+            AgentRuntimeSignInResolution(state = null, clearedByLiveLogin = false)
+        }
+    val signIn = signInResolution.state
+    val effectiveStatus = status?.withoutClearedLoginRequiredAttention(signInResolution.clearedByLiveLogin)
+    val attentionParts =
+        if (agentMemberId != null && runtimeRetired == null && signIn == null) {
+            rememberAgentAttentionParts(effectiveStatus)
         } else {
             null
         }
     val deliveryHold =
-        if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null && signIn == null) {
-            rememberAgentDeliveryHoldView(status)
+        if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null && signIn == null && attentionParts == null) {
+            rememberAgentDeliveryHoldView(effectiveStatus)
         } else {
             null
         }
     val workersBusyText =
-        if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null && signIn == null && deliveryHold == null) {
+        if (agentMemberId != null && holdingReadiness == null && runtimeRetired == null && signIn == null && attentionParts == null && deliveryHold == null) {
             val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
-            status?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
+            effectiveStatus?.busyThroughWorkers(nowMs = nowMs)?.localizedText()
         } else {
             null
         }
@@ -8942,11 +8950,12 @@ private fun DirectMessageAvatar(
             when {
                 holdingReadiness != null -> holdingReadiness.dotColor()
                 runtimeRetired != null -> RaftColor.AccentOrange
-                signIn != null && status?.external != true -> RaftColor.AccentOrange
+                signIn != null && effectiveStatus?.external != true -> RaftColor.AccentOrange
+                attentionParts != null -> RaftColor.AccentOrange
                 deliveryHold != null -> RaftColor.AccentOrange
-                else -> status?.color
+                else -> effectiveStatus?.color
             },
-        statusDescription = runtimeRetired?.detail ?: signIn?.detail ?: deliveryHold?.text ?: workersBusyText,
+        statusDescription = runtimeRetired?.detail ?: signIn?.detail ?: attentionParts?.fullText ?: deliveryHold?.text ?: workersBusyText,
         avatarSize = ChannelAvatarSize,
     ) {
         RaftAppAvatar(
@@ -9017,12 +9026,13 @@ private fun DirectMessageAgentMeta(
         )
         return
     }
-    val signIn =
+    val signInResolution =
         if (agentMemberId != null && status?.external != true) {
-            rememberAgentRuntimeSignInState(status, fallbackName = agentName)
+            rememberAgentRuntimeSignInResolution(status, fallbackName = agentName)
         } else {
-            null
+            AgentRuntimeSignInResolution(state = null, clearedByLiveLogin = false)
         }
+    val signIn = signInResolution.state
     if (signIn != null) {
         Text(
             signIn.shortText,
@@ -9037,9 +9047,30 @@ private fun DirectMessageAgentMeta(
         )
         return
     }
+    val effectiveStatus = status?.withoutClearedLoginRequiredAttention(signInResolution.clearedByLiveLogin)
+    val attentionParts =
+        if (agentMemberId != null && effectiveStatus?.external != true) {
+            rememberAgentAttentionParts(effectiveStatus)
+        } else {
+            null
+        }
+    if (attentionParts != null) {
+        Text(
+            attentionParts.short,
+            style = RaftType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = RaftMonoFamily),
+            color = if (selected) RaftColor.StickerInk else RaftColor.ForegroundHint,
+            modifier =
+                modifier
+                    .testTag(AgentAttentionTestTags.SidebarShort)
+                    .semantics { contentDescription = attentionParts.detail.ifBlank { attentionParts.short } },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        return
+    }
     val deliveryHold =
-        if (agentMemberId != null && status?.external != true) {
-            rememberAgentDeliveryHoldView(status)
+        if (agentMemberId != null && effectiveStatus?.external != true) {
+            rememberAgentDeliveryHoldView(effectiveStatus)
         } else {
             null
         }
@@ -9060,9 +9091,9 @@ private fun DirectMessageAgentMeta(
     // Web SidebarAgentMeta (#16819): busy only through its Workers says the short "Working…"
     // with the full sentence ("Working through 2 Workers") in semantics.
     val workersBusy =
-        if (agentMemberId != null && status?.external != true) {
+        if (agentMemberId != null && effectiveStatus?.external != true) {
             val nowMs = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis()
-            status?.busyThroughWorkers(nowMs = nowMs)
+            effectiveStatus?.busyThroughWorkers(nowMs = nowMs)
         } else {
             null
         }
@@ -9082,7 +9113,7 @@ private fun DirectMessageAgentMeta(
         return
     }
     build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
-    val meta = raftHomeDmAgentMeta(status) ?: return
+    val meta = raftHomeDmAgentMeta(effectiveStatus) ?: return
     val (text, style, color) =
         when (meta) {
             is RaftHomeDmAgentMeta.Live ->

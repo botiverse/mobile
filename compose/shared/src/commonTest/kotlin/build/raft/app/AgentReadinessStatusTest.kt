@@ -30,8 +30,12 @@ import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.agentReadinessResetCountdown
+import build.raft.app.model.attentionReadinessOrNull
 import build.raft.app.model.holds
+import build.raft.app.model.isModelUnavailableAdvisory
 import build.raft.app.model.light
+import build.raft.app.model.resolvedModel
+import build.raft.app.model.resolvedRuntimeId
 import build.raft.app.resources.*
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -468,5 +472,149 @@ class AgentReadinessStatusTest {
         assertEquals("—", neutralStatus.statusLabel)
         assertTrue(neutralStatus.paused)
         assertNull(effectiveHoldingReadiness(neutralStatus.toRaftAgentStatusIndicatorState()))
+    }
+
+    @Test
+    fun parsesModelUnavailableReadinessGuardsMissingResourceKeyAndResolvesCopySpec() {
+        val body =
+            """
+            [
+              {
+                "id": "agent-blocked",
+                "name": "Muse",
+                "status": "active",
+                "runtime": "antigravity",
+                "model": "gemini-4-neon",
+                "readiness": {
+                  "state": "blocked",
+                  "primary": {
+                    "resource": { "kind": "model", "key": "shared:antigravity", "model": "gemini-4-neon" },
+                    "code": "model_unavailable",
+                    "behaviour": "blocked",
+                    "since": 1795245291000,
+                    "params": { "model": "gemini-4-neon" }
+                  },
+                  "scope": "agent",
+                  "actor": "agent_owner",
+                  "actorName": "Agnes",
+                  "action": "change_model",
+                  "also": []
+                }
+              },
+              {
+                "id": "agent-advisory",
+                "name": "WarmMuse",
+                "status": "active",
+                "runtime": "antigravity",
+                "model": "gemini-4-neon",
+                "readiness": {
+                  "state": "advisory",
+                  "primary": {
+                    "resource": { "kind": "model", "key": "shared:antigravity", "model": "gemini-4-neon" },
+                    "code": "model_unavailable",
+                    "behaviour": "advisory",
+                    "since": 1795245291000,
+                    "params": { "model": "gemini-4-neon" }
+                  },
+                  "scope": "agent",
+                  "actor": "agent_owner",
+                  "actorName": "Agnes",
+                  "action": "change_model",
+                  "also": []
+                }
+              }
+            ]
+            """.trimIndent()
+
+        val members = assertNotNull(parseSharedSettingsAgentsAsMembers(body))
+        assertEquals(2, members.size)
+
+        val blocked = assertNotNull(members[0].agentReadiness)
+        assertTrue(blocked.holds())
+        assertFalse(blocked.isModelUnavailableAdvisory())
+        assertEquals(blocked, blocked.attentionReadinessOrNull())
+        assertEquals("antigravity", blocked.resolvedRuntimeId(fallbackRuntimeId = "claude"))
+        assertEquals("gemini-4-neon", blocked.primary?.resolvedModel())
+
+        val blockedSpec = resolveAgentReadinessCopySpec(blocked, fallbackRuntimeId = null, nowEpochMillis = 1_795_250_000_000L)
+        assertEquals(AgentReadinessLight.Error, blockedSpec.light)
+        assertEquals(Res.string.agent_readiness_model_unavailable_title, blockedSpec.title.res)
+        assertEquals(Res.string.agent_readiness_model_unavailable_detail, blockedSpec.detail.res)
+        assertEquals(raftAgentRuntimeDisplayName("antigravity"), blockedSpec.detail.stringArg)
+        assertEquals("gemini-4-neon", blockedSpec.detail.stringArg2)
+        assertTrue(blockedSpec.offersChangeModel)
+        assertFalse(blockedSpec.offersRetry)
+
+        val advisory = assertNotNull(members[1].agentReadiness)
+        assertFalse(advisory.holds())
+        assertTrue(advisory.isModelUnavailableAdvisory())
+        assertNull(advisory.attentionReadinessOrNull())
+        assertNull(effectiveHoldingReadiness(advisory, blocked = null, external = false, paused = false))
+
+        // Guard missing resource.key on login / login_window / model (#17133): never throws and falls back cleanly.
+        val missingKeyModel =
+            AgentReadiness(
+                state = "blocked",
+                primary =
+                    AgentReadinessFact(
+                        resource = AgentReadinessResource(kind = "model", key = null, model = "gemini-4-neon"),
+                        code = "model_unavailable",
+                        behaviour = "blocked",
+                    ),
+            )
+        assertEquals("antigravity", missingKeyModel.resolvedRuntimeId("antigravity"))
+        assertEquals("gemini-4-neon", missingKeyModel.primary?.resolvedModel())
+
+        val missingKeyLogin =
+            AgentReadiness(
+                state = "blocked",
+                primary =
+                    AgentReadinessFact(
+                        resource = AgentReadinessResource(kind = "login", key = null),
+                        code = "verification_required",
+                        behaviour = "blocked",
+                    ),
+            )
+        assertEquals("claude", missingKeyLogin.resolvedRuntimeId("claude"))
+
+        // Trimmed readiness with change_model action (named actor, role-only actor, unknown future action).
+        val trimmedNamed =
+            AgentReadiness(
+                state = "blocked",
+                primary = null,
+                actor = "agent_owner",
+                actorName = "Agnes",
+                action = "change_model",
+            )
+        val trimmedNamedSpec = resolveAgentReadinessCopySpec(trimmedNamed, null, 0L)
+        assertEquals(Res.string.agent_readiness_can_change_model, trimmedNamedSpec.actor?.res)
+        assertEquals("Agnes", trimmedNamedSpec.actor?.stringArg)
+        assertTrue(trimmedNamedSpec.wrapActorInSentence)
+
+        val trimmedRole =
+            AgentReadiness(
+                state = "blocked",
+                primary = null,
+                actor = "agent_owner",
+                actorName = null,
+                action = "change_model",
+            )
+        assertEquals(
+            Res.string.agent_readiness_owner_can_change_model_agent_owner,
+            resolveAgentReadinessCopySpec(trimmedRole, null, 0L).actor?.res,
+        )
+
+        val trimmedFutureAction =
+            AgentReadiness(
+                state = "blocked",
+                primary = null,
+                actor = "agent_owner",
+                actorName = "Agnes",
+                action = "future_unknown_action",
+            )
+        assertEquals(
+            Res.string.agent_readiness_can_fix,
+            resolveAgentReadinessCopySpec(trimmedFutureAction, null, 0L).actor?.res,
+        )
     }
 }

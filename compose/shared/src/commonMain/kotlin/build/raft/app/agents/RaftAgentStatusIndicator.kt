@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.resources.*
 import build.raft.app.data.AgentActivitySubscriptions
 import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges
+import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.statusLabelRes
 import build.raft.app.data.AgentRuntimeErrorCode
@@ -11,15 +12,19 @@ import build.raft.app.data.NeutralAgentStatusLabel
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.truncateAgentToolLabel
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.model.AgentAttention
 import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentReadiness
+import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.model.attentionReadinessOrNull
+import build.raft.app.model.storedStartFailureAttentionOf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -76,8 +81,14 @@ internal data class RaftAgentStatusIndicatorState(
     val blocked: AgentBlockedState? = null,
     /** Live failed-start reason (`agent:activity` `spawnFailure.reason`, slock #15282). */
     val spawnFailureReason: String? = null,
+    /** Live or synthesized failed-start carrier (slock #17124, #17133). */
+    val spawnFailure: AgentSpawnFailure? = null,
     /** Stored failed-start reason (`GET /agents` `lastRuntimeError.spawnFailureReason`, slock #15282). */
     val lastRuntimeErrorSpawnFailureReason: String? = null,
+    /** Stored failed-start message (`GET /agents` `lastRuntimeError.message`, slock #17124). */
+    val lastRuntimeErrorMessage: String? = null,
+    /** Raw lifecycle status (`active` / `inactive` / `stopped`) from the authoritative profile. */
+    val lifecycleStatus: String? = null,
     /** True while this personal assistant is paused. */
     val paused: Boolean = false,
     /** The agent's Computer id from the roster, for live sign-in status / in-place Sign in. */
@@ -88,6 +99,8 @@ internal data class RaftAgentStatusIndicatorState(
     val agentDisplayName: String? = null,
     /** Server-composed readiness from `GET /api/agents` (already trimmed per viewer). */
     val readiness: AgentReadiness? = null,
+    /** Why this agent needs a person on every status dot (web `AgentDisplayState.attention`, slock #17124). */
+    val attention: AgentAttention? = null,
     /** Older daemon idle credential hold (`agent:activity` `credentialHold`, botiverse/slock #13276). */
     val credentialHold: AgentCredentialHoldReason? = null,
     /** The daemon holds this agent's deliveries on any activity or coarse state (botiverse/slock #16333). */
@@ -232,9 +245,10 @@ internal fun rememberRaftAgentStatusIndicatorState(
             // Strip an expired ProviderLimit hold once our LaunchedEffect reaches untilMs so
             // downstream label surfaces (which read minute-granular RaftTimeContext) immediately
             // agree with the updated dot color instead of waiting up to 59s.
-            val effectiveBase = if (activeHold == null) base.copy(deliveryHold = null) else base
+            val effectiveBase = if (activeHold == null && base.attention == null) base.copy(deliveryHold = null) else base
             val resolvedColor =
                 when {
+                    effectiveBase.attention != null -> RaftColor.AccentOrange
                     activeHold != null -> RaftColor.AccentOrange
                     effectiveBase.busyThroughWorkers(nowMs = nowForHold) != null -> RaftColor.BrandYellow
                     else ->
@@ -255,8 +269,8 @@ internal fun rememberRaftAgentStatusIndicatorState(
  */
 internal fun RaftAgentStatusIndicatorState.withoutActivityDetail(): RaftAgentStatusIndicatorState =
     copy(
-        // A held agent's words are its status, not an activity detail (web lists show them too).
-        label = if (external || likelyOnline || blocked != null) label else status?.label ?: label,
+        // A held or attention agent's words are its status, not an activity detail (web lists show them too).
+        label = if (external || likelyOnline || blocked != null || attention != null) label else status?.label ?: label,
         detailKind = null,
         activityToolName = null,
         wakeCrashLoop = null,
@@ -285,11 +299,15 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(
             likelyOnline = likelyOnline,
             blocked = blocked,
             spawnFailureReason = spawnFailureReason,
+            spawnFailure = spawnFailure,
             lastRuntimeErrorSpawnFailureReason = lastRuntimeErrorSpawnFailureReason,
+            lastRuntimeErrorMessage = lastRuntimeErrorMessage,
+            lifecycleStatus = lifecycleStatus,
             paused = paused,
             machineId = machineId,
             machineName = machineName,
             readiness = readiness,
+            attention = attention,
             credentialHold = credentialHold,
             deliveryHold = deliveryHold,
             runningWorkers = runningWorkers,
@@ -297,6 +315,55 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(
             serviceTier = serviceTier,
             creatorUserId = creatorUserId,
         )
+    // Web resolveAgentDisplayState (#17124): blocked readiness (except computer_offline) or an
+    // offline non-stopped agent with a non-retryable stored failed start always paints the error light.
+    val resolvedAttention =
+        base.attention
+            ?: if (!base.external && !base.paused && base.blocked == null) {
+                base.readiness.attentionReadinessOrNull()
+                    ?.let { AgentAttention.Readiness(readiness = it, runtimeId = base.runtime) }
+                    ?: if (
+                        !base.likelyOnline &&
+                        base.status == AgentStatus.Offline &&
+                        base.lifecycleStatus != "stopped" &&
+                        !(base.readiness?.state == "blocked" && base.readiness.primary?.code == "computer_offline")
+                    ) {
+                        storedStartFailureAttentionOf(
+                            lastRuntimeErrorSpawnFailureReason = base.lastRuntimeErrorSpawnFailureReason,
+                            liveSpawnFailure = base.spawnFailure,
+                            model = base.model,
+                        )?.let { AgentAttention.StartFailure(spawnFailure = it) }
+                    } else {
+                        null
+                    }
+            } else {
+                null
+            }
+    if (resolvedAttention != null) {
+        return when (resolvedAttention) {
+            is AgentAttention.Readiness ->
+                base.copy(
+                    status = AgentStatus.Error,
+                    color = RaftColor.AccentOrange,
+                    likelyOnline = false,
+                    attention = resolvedAttention,
+                )
+            is AgentAttention.StartFailure ->
+                base.copy(
+                    status = AgentStatus.Error,
+                    color = RaftColor.AccentOrange,
+                    likelyOnline = false,
+                    detailKind = base.detailKind ?: AgentActivityDetailKindRuntimeUnavailable,
+                    spawnFailureReason = resolvedAttention.spawnFailure.reason,
+                    spawnFailure = resolvedAttention.spawnFailure,
+                    label =
+                        base.label.takeIf { it.isNotBlank() && !it.equals("Offline", ignoreCase = true) }
+                            ?: base.lastRuntimeErrorMessage?.takeIf { it.isNotBlank() }
+                            ?: AgentStatus.Error.label,
+                    attention = resolvedAttention,
+                )
+        }
+    }
     // Web AgentActivityDot (botiverse/slock #16333, #16819): a held agent paints the error light on
     // every avatar and in the @mention list while its hold is active; otherwise an online agent
     // whose Workers are working paints the busy yellow light.
@@ -605,9 +672,18 @@ internal fun RaftAgentActivityDetailText.localizedText(): String =
 
 /** Translate transport labels, retaining activity details supplied by the store. */
 @Composable
-internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(): String {
+internal fun RaftAgentStatusIndicatorState.localizedMemberStatusLabel(
+    withDetail: Boolean = false,
+): String {
     // Web formatAgentDisplayStateText: a held agent reads why before anything else.
     blocked?.let { return it.localizedStatusLabel() }
+    // Web formatAgentDisplayStateText (#17124): an attention state reads its short title (or
+    // "title: detail" when withDetail is true), before any fallback activity text.
+    if (attention != null && !external && !paused) {
+        rememberAgentAttentionParts(this)?.let { parts ->
+            return if (withDetail) parts.fullText else parts.short
+        }
+    }
     // Web getActivityTextDescriptor (botiverse/slock #12892): Claude Code refused to start as root;
     // say how to fix it instead of "Offline".
     if (detailKind == AgentActivityDetailKindClaudeRootPrivileges) {

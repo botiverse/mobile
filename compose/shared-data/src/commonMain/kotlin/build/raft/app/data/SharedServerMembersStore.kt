@@ -14,14 +14,18 @@ import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.composerMentionHandle
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.ChannelId
+import build.raft.app.model.AgentAttention
 import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentReadiness
+import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentToolStuck
 import build.raft.app.model.AgentWakeCrashLoop
+import build.raft.app.model.attentionReadinessOrNull
 import build.raft.app.model.holds
+import build.raft.app.model.storedStartFailureAttentionOf
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.MemberKind
@@ -448,8 +452,14 @@ data class SharedServerMemberStatus(
     val blocked: AgentBlockedState? = null,
     /** Live failed-start reason from `agent:activity` `spawnFailure.reason` (slock #15282). */
     val spawnFailureReason: String? = null,
+    /** Live or synthesized failed-start carrier (slock #17124, #17133). */
+    val spawnFailure: AgentSpawnFailure? = null,
     /** Stored failed-start reason from `GET /agents` `lastRuntimeError.spawnFailureReason` (slock #15282). */
     val lastRuntimeErrorSpawnFailureReason: String? = null,
+    /** Stored failed-start message from `GET /agents` `lastRuntimeError.message` (slock #17124). */
+    val lastRuntimeErrorMessage: String? = null,
+    /** Raw lifecycle status (`active` / `inactive` / `stopped`) from the authoritative profile. */
+    val lifecycleStatus: String? = null,
     /** True while this personal assistant is paused (`assistantPausedAt` non-blank). */
     val paused: Boolean = false,
     /** The agent's Computer id from the roster (`computer-id:` badge), for runtime sign-in checks. */
@@ -458,6 +468,8 @@ data class SharedServerMemberStatus(
     val machineName: String? = null,
     /** Server-composed agent readiness from `GET /api/agents` (already trimmed per viewer). */
     val readiness: AgentReadiness? = null,
+    /** Why this agent needs a person on every status dot (web `AgentDisplayState.attention`, slock #17124). */
+    val attention: AgentAttention? = null,
     /** Older daemon idle credential hold (`agent:activity` `credentialHold`, botiverse/slock #13276). */
     val credentialHold: AgentCredentialHoldReason? = null,
     /** The daemon holds this agent's deliveries on any activity or coarse state (botiverse/slock #16333). */
@@ -596,6 +608,82 @@ private fun MemberProfile.isOtherServerFor(serverKey: String): Boolean {
         servers.none { it.id.trim() == cleanServerKey }
 }
 
+private fun MemberProfile?.readinessAttentionMemberStatusOrNull(
+    presenceFact: MemberPresenceUpdated?,
+): SharedServerMemberStatus? {
+    val member = this ?: return null
+    if (member.kind != MemberKind.Agent || member.isExternal) return null
+    if (!member.managedByAppInstallId.isNullOrBlank()) return null
+    if (!member.agentDeletedAt.isNullOrBlank() || member.membershipStatus == "deleted") return null
+    if (!member.assistantPausedAt.isNullOrBlank()) return null
+    val attentionReadiness = member.agentReadiness.attentionReadinessOrNull() ?: return null
+    val runtime = member.agentRuntimeOrNull()
+    return SharedServerMemberStatus(
+        status = AgentStatus.Error,
+        presence = Presence.Offline,
+        statusLabel = presenceFact?.statusLabel,
+        detailKind = presenceFact?.detailKind,
+        activityToolName = presenceFact?.activityToolName,
+        runtime = runtime,
+        model = member.model?.trim()?.takeIf { it.isNotBlank() },
+        external = false,
+        spawnFailureReason = presenceFact?.spawnFailure?.reason?.trim()?.takeIf { it.isNotBlank() },
+        spawnFailure = presenceFact?.spawnFailure,
+        lastRuntimeErrorSpawnFailureReason = member.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
+        lastRuntimeErrorMessage = member.lastRuntimeErrorMessage?.trim()?.takeIf { it.isNotBlank() },
+        lifecycleStatus = member.agentLifecycleStatus?.trim()?.lowercase()?.takeIf { it.isNotBlank() },
+        paused = false,
+        machineId = member.agentComputerIdOrNull(),
+        machineName = member.agentComputerNameOrNull(),
+        readiness = attentionReadiness,
+        attention = AgentAttention.Readiness(readiness = attentionReadiness, runtimeId = runtime),
+        creatorUserId = member.agentCreatorUserId?.trim()?.takeIf { it.isNotBlank() },
+    )
+}
+
+private fun MemberProfile?.startFailureAttentionMemberStatusOrNull(
+    presenceFact: MemberPresenceUpdated?,
+    resolvedStatus: AgentStatus?,
+): SharedServerMemberStatus? {
+    val member = this ?: return null
+    if (member.kind != MemberKind.Agent || member.isExternal) return null
+    if (!member.managedByAppInstallId.isNullOrBlank()) return null
+    if (!member.agentDeletedAt.isNullOrBlank() || member.membershipStatus == "deleted") return null
+    if (!member.assistantPausedAt.isNullOrBlank()) return null
+    if (member.agentReadiness?.state == "blocked" && member.agentReadiness.primary?.code == "computer_offline") return null
+    val lifecycle = member.agentLifecycleStatus?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    if (lifecycle == "stopped") return null
+    if (resolvedStatus != null && resolvedStatus != AgentStatus.Offline) return null
+    val model = member.model?.trim()?.takeIf { it.isNotBlank() }
+    val failure =
+        storedStartFailureAttentionOf(
+            lastRuntimeErrorSpawnFailureReason = member.lastRuntimeErrorSpawnFailureReason,
+            liveSpawnFailure = presenceFact?.spawnFailure,
+            model = model,
+        ) ?: return null
+    val keptMessage = member.lastRuntimeErrorMessage?.trim()?.takeIf { it.isNotBlank() }
+    return SharedServerMemberStatus(
+        status = AgentStatus.Error,
+        presence = Presence.Offline,
+        statusLabel = presenceFact?.statusLabel?.takeIf { it.isNotBlank() } ?: keptMessage,
+        detailKind = presenceFact?.detailKind?.trim()?.takeIf { it.isNotBlank() } ?: AgentActivityDetailKindRuntimeUnavailable,
+        runtime = member.agentRuntimeOrNull(),
+        model = model,
+        external = false,
+        spawnFailureReason = failure.reason,
+        spawnFailure = failure,
+        lastRuntimeErrorSpawnFailureReason = member.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
+        lastRuntimeErrorMessage = keptMessage,
+        lifecycleStatus = lifecycle,
+        paused = false,
+        machineId = member.agentComputerIdOrNull(),
+        machineName = member.agentComputerNameOrNull(),
+        readiness = member.agentReadiness,
+        attention = AgentAttention.StartFailure(spawnFailure = failure),
+        creatorUserId = member.agentCreatorUserId?.trim()?.takeIf { it.isNotBlank() },
+    )
+}
+
 private fun MemberProfile?.toSharedServerMemberStatus(
     presenceFact: MemberPresenceUpdated?,
     viewerServerId: String? = null,
@@ -612,6 +700,9 @@ private fun MemberProfile?.toSharedServerMemberStatus(
     val memberModel = this?.model?.trim()?.takeIf { it.isNotBlank() }
     val memberPaused = !this?.assistantPausedAt.isNullOrBlank()
     val keptSpawnFailureReason = this?.lastRuntimeErrorSpawnFailureReason?.trim()?.takeIf { it.isNotBlank() }
+    val keptErrorMessage = this?.lastRuntimeErrorMessage?.trim()?.takeIf { it.isNotBlank() }
+    val lifecycle = this?.agentLifecycleStatus?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+    val creatorUserId = this?.agentCreatorUserId?.trim()?.takeIf { it.isNotBlank() }
     val resolvedReadiness = if (authoritativeReadiness) this?.agentReadiness else null
     val resolvedProfileDeliveryHold = if (authoritativeReadiness) this?.agentDeliveryHold else null
     val cleanViewerServerId = viewerServerId.normalizedServerMembersId()
@@ -629,6 +720,11 @@ private fun MemberProfile?.toSharedServerMemberStatus(
                 this?.kind == MemberKind.Agent
         )
     ) {
+        val resolvedStatus = presenceFact.agentStatus ?: this?.agentStatus
+        if (authoritativeReadiness) {
+            this.readinessAttentionMemberStatusOrNull(presenceFact)?.let { return it }
+            this.startFailureAttentionMemberStatusOrNull(presenceFact = presenceFact, resolvedStatus = resolvedStatus)?.let { return it }
+        }
         val rawRunningWorkers = normalizeAgentRunningWorkers(presenceFact.runningWorkers)
         val resolvedRunningWorkers =
             when {
@@ -637,7 +733,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
                 else -> rawRunningWorkers
             }
         return SharedServerMemberStatus(
-            status = presenceFact.agentStatus ?: this?.agentStatus,
+            status = resolvedStatus,
             presence = presenceFact.presence,
             statusLabel = presenceFact.statusLabel,
             detailKind = presenceFact.detailKind,
@@ -652,7 +748,10 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             external = this?.isExternal == true,
             lastSeenAt = resolvedLastSeenAt,
             spawnFailureReason = presenceFact.spawnFailure?.reason?.trim()?.takeIf { it.isNotBlank() },
+            spawnFailure = presenceFact.spawnFailure,
             lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
+            lastRuntimeErrorMessage = keptErrorMessage,
+            lifecycleStatus = lifecycle,
             paused = memberPaused,
             machineId = memberMachineId,
             machineName = memberMachineName,
@@ -662,9 +761,16 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             runningWorkers = resolvedRunningWorkers,
             runningWorkersPresenceOnly = resolvedRunningWorkers != null && otherServer,
             serviceTier = normalizeAgentServiceTier(presenceFact.serviceTier),
+            creatorUserId = creatorUserId,
         )
     }
     if (this?.kind != MemberKind.Agent) return null
+    if (authoritativeReadiness) {
+        readinessAttentionMemberStatusOrNull(presenceFact = null)?.let { return it }
+        if (lifecycle != "active" || agentStatus == AgentStatus.Offline) {
+            startFailureAttentionMemberStatusOrNull(presenceFact = null, resolvedStatus = agentStatus)?.let { return it }
+        }
+    }
     val rawProfileRunningWorkers =
         if (authoritativeReadiness) normalizeAgentRunningWorkers(agentRunningWorkers) else null
     val resolvedProfileRunningWorkers =
@@ -681,6 +787,8 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         external = isExternal,
         lastSeenAt = resolvedLastSeenAt,
         lastRuntimeErrorSpawnFailureReason = keptSpawnFailureReason,
+        lastRuntimeErrorMessage = keptErrorMessage,
+        lifecycleStatus = lifecycle,
         paused = memberPaused,
         machineId = memberMachineId,
         machineName = memberMachineName,
@@ -689,6 +797,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         runningWorkers = resolvedProfileRunningWorkers,
         runningWorkersPresenceOnly = resolvedProfileRunningWorkers != null && otherServer,
         serviceTier = if (authoritativeReadiness) normalizeAgentServiceTier(agentServiceTier) else null,
+        creatorUserId = creatorUserId,
     )
 }
 
@@ -1695,14 +1804,21 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
     ): SharedServerMemberStatus? {
         val member = resolution.profile
         val presenceFact = presenceOwnerSnapshot.facts[memberId]
-        // Web resolveAgentDisplayState (botiverse/slock #13575): an agent its server runs nowhere
-        // (its Computer's access was revoked) reads why, before any guess or activity: its last
-        // activity no longer says anything about it. Only an authoritative record carries it.
-        if (resolution.authoritative) member.blockedMemberStatusOrNull()?.let { return it }
+        // Web resolveAgentDisplayState (botiverse/slock #13575, #17124): an agent its server runs
+        // nowhere (revoked/too-old/retired) or whose readiness is blocked (except computer_offline)
+        // reads why, before any guess or activity. Only an authoritative record carries it.
+        if (resolution.authoritative) {
+            member.blockedMemberStatusOrNull()?.let { return it }
+            member.readinessAttentionMemberStatusOrNull(presenceFact)?.let { return it }
+        }
         if (presenceFact == null && resolution.authoritative) {
             // No fact at all (a carried-over fact is still a fact): an `active` managed agent
             // reads "Likely online" rather than neutral or Offline (artin, #triage:#97).
             member.likelyOnlineMemberStatusOrNull()?.let { return it }
+            // Web startFailureAttentionDisplay (#17124): an offline, non-stopped agent whose stored
+            // failed start requires a person shows the error light even before activity loads.
+            member.startFailureAttentionMemberStatusOrNull(presenceFact = null, resolvedStatus = member?.agentStatus)
+                ?.let { return it }
         }
         return if (presenceOwnerSnapshot.transport != null && presenceFact == null) {
             // A native transport is live and this member has no fact at all

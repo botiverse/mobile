@@ -45,6 +45,7 @@ import kotlinx.serialization.json.doubleOrNull
         "computer_too_old",
         "runtime_missing",
         "verification_required",
+        "model_unavailable",
     )
 
 /**
@@ -110,6 +111,7 @@ private val READINESS_CODE_PATTERN = Regex("^[a-z][a-z0-9_]{0,63}$")
     SignIn("sign_in"),
     VerifyAccount("verify_account"),
     UpdateComputer("update_computer"),
+    ChangeModel("change_model"),
     Fix("fix");
 
     companion object {
@@ -144,6 +146,8 @@ private val READINESS_CODE_PATTERN = Regex("^[a-z][a-z0-9_]{0,63}$")
     val untilMs: Long? = null,
     /** `params.managedByDesktop` for `computer_too_old` (Raft Desktop bundled Computer). */
     val managedByDesktop: Boolean? = null,
+    /** `params.model` for `model_unavailable` (configured model that left the runtime catalog). */
+    val model: String? = null,
 )
 
 /** Shared `Readiness`: composed conclusion for one chain (the Computer itself or one runtime on it). */
@@ -230,6 +234,7 @@ private val READINESS_CODE_PATTERN = Regex("^[a-z][a-z0-9_]{0,63}$")
                 ComputerReadinessAction.VerifyAccount -> ComputerLoginStepAction.VerifyAccount
                 ComputerReadinessAction.SignIn -> ComputerLoginStepAction.SignIn
                 ComputerReadinessAction.UpdateComputer,
+                ComputerReadinessAction.ChangeModel,
                 ComputerReadinessAction.Fix -> return@mapNotNull null
             }
         ComputerLoginStep(runtimeId, step)
@@ -361,10 +366,12 @@ private fun parseComputerReadinessAttentionItem(element: JsonElement): ComputerR
     val behaviour = ComputerReadinessBehaviour.fromWire(obj["behaviour"].nonBlankStringOrNull()) ?: return null
     val sinceMs = obj["since"].finitePositiveLongOrNull() ?: return null
     val untilMs = obj["until"].finitePositiveLongOrNull()
+    val paramsObj = obj["params"] as? JsonObject
     val managedByDesktop =
-        ((obj["params"] as? JsonObject)?.get("managedByDesktop") as? JsonPrimitive)
+        (paramsObj?.get("managedByDesktop") as? JsonPrimitive)
             ?.takeIf { !it.isString }
             ?.booleanOrNull
+    val model = paramsObj?.get("model").nonBlankStringOrNull()?.takeIf { it.length <= 200 }
     return ComputerReadinessFact(
         resource = resource,
         code = code,
@@ -372,6 +379,7 @@ private fun parseComputerReadinessAttentionItem(element: JsonElement): ComputerR
         sinceMs = sinceMs,
         untilMs = untilMs,
         managedByDesktop = managedByDesktop,
+        model = model,
     )
 }
 

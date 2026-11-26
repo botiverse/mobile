@@ -510,10 +510,16 @@ data class MemberProfile(
      */
     val agentBlockedReason: String? = null,
     /**
-     * `GET /agents` `lastRuntimeError.spawnFailureReason` (slock #15273/#15282): kept failed-start
-     * reason (e.g. `runtime_login_required`), cleared by the server on the next successful start.
+     * `GET /agents` `lastRuntimeError.spawnFailureReason` (slock #15273/#15282/#17124): kept
+     * failed-start reason (e.g. `runtime_login_required`, `model_unsupported`), cleared by the
+     * server on the next successful start.
      */
     val lastRuntimeErrorSpawnFailureReason: String? = null,
+    /**
+     * `GET /agents` `lastRuntimeError.message` (slock #17124): fallback detail for a stored
+     * non-retryable failed start before live activity has loaded.
+     */
+    val lastRuntimeErrorMessage: String? = null,
     /**
      * `GET /agents` server-composed `readiness` (botiverse/slock `f43f9245` `routes/agents.ts` /
      * `packages/shared/src/readiness.ts`), already trimmed per viewer. Carries holding states such

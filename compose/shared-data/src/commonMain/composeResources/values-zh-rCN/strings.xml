@@ -3682,10 +3682,12 @@
     <string name="settings_computers_readiness_do_verify_account">验证账户</string>
     <string name="settings_computers_readiness_do_sign_in">登录</string>
     <string name="settings_computers_readiness_do_update_computer">更新</string>
+    <string name="settings_computers_readiness_do_change_model">更换模型</string>
     <string name="settings_computers_readiness_do_fix">打开</string>
     <string name="settings_computers_readiness_can_sign_in">%1$s 可以登录</string>
     <string name="settings_computers_readiness_can_verify_account">%1$s 可以验证账户</string>
     <string name="settings_computers_readiness_can_update_computer">%1$s 可以更新这台 Computer</string>
+    <string name="settings_computers_readiness_can_change_model">%1$s 可以更换模型</string>
     <string name="settings_computers_readiness_can_fix">%1$s 可以处理</string>
     <string name="settings_computers_readiness_actor_role_computer_owner">Computer 的所有者</string>
     <string name="settings_computers_readiness_actor_role_agent_owner">Agent 的所有者</string>
@@ -3693,6 +3695,7 @@
     <string name="settings_computers_readiness_owner_can_sign_in">%1$s可以登录</string>
     <string name="settings_computers_readiness_owner_can_verify_account">%1$s可以验证账户</string>
     <string name="settings_computers_readiness_owner_can_update_computer">%1$s可以更新这台 Computer</string>
+    <string name="settings_computers_readiness_owner_can_change_model">%1$s可以更换模型</string>
     <string name="settings_computers_readiness_owner_can_fix">%1$s可以处理</string>
     <string name="settings_computers_readiness_attention_count_one">%1$d 台需要处理</string>
     <string name="settings_computers_readiness_attention_count_other">%1$d 台需要处理</string>
@@ -3741,6 +3744,8 @@
     <string name="settings_computers_readiness_computer_too_old_desktop_detail">这台 Computer 上的 Raft 版本过旧，无法运行 Agent。请在上面更新 Raft Desktop。消息会保留，之后送达。</string>
     <string name="settings_computers_readiness_runtime_missing_title">未安装 %1$s</string>
     <string name="settings_computers_readiness_runtime_missing_detail">这台 Computer 上没有安装 %1$s。请在上面安装，或把 Agent 移到装有它的 Computer。消息会保留，之后送达。</string>
+    <string name="settings_computers_readiness_model_unavailable_title">模型不可用</string>
+    <string name="settings_computers_readiness_model_unavailable_detail">这台 Computer 上的 %1$s 已不再提供 %2$s，换一个模型就能继续用。</string>
     <string name="settings_computers_rack_view_label">计算机视图</string>
     <string name="settings_computers_rack_view_list">列表</string>
     <string name="settings_computers_rack_view_cards">卡片</string>
@@ -5507,6 +5512,9 @@
     <string name="agent_status_credential_sign_in">需要重新登录 %1$s</string>
     <string name="agent_status_runtime_sign_in_full">需要登录 %1$s</string>
     <string name="agent_status_runtime_sign_in_short">需要登录</string>
+    <string name="agent_status_attention_model_unavailable">模型不可用</string>
+    <string name="agent_status_attention_needs_restart">需要重启</string>
+    <string name="agent_status_attention_with_detail">%1$s：%2$s</string>
     <string name="agent_status_runtime_sign_in_detail">%2$s 在 %3$s 上登录后，%1$s 才能启动。请在那台电脑上登录，或者把 %1$s 换到其他运行时。</string>
     <string name="agent_status_credential_plan_model">套餐不包含 %1$s</string>
     <string name="agent_status_credential_plan_default_model">套餐不包含这个模型</string>
@@ -6659,6 +6667,7 @@
     <string name="agent_readiness_can_sign_in">%1$s 可以登录</string>
     <string name="agent_readiness_can_verify_account">%1$s 可以验证账户</string>
     <string name="agent_readiness_can_update_computer">%1$s 可以更新这台 Computer</string>
+    <string name="agent_readiness_can_change_model">%1$s 可以更换模型</string>
     <string name="agent_readiness_can_fix">%1$s 可以处理</string>
     <string name="agent_readiness_verification_required_title">账户需要验证</string>
     <string name="agent_readiness_verification_required_detail">这里登录的 %1$s 账户在完成验证前无法收到回复。账户持有人需要在 Anthropic 验证门户完成验证，然后选择“重试”。消息会保留，之后送达。</string>
@@ -6676,6 +6685,8 @@
     <string name="agent_readiness_computer_too_old_desktop_detail">这台 Computer 上的 Raft 版本过旧，无法运行 Agent。请在上面更新 Raft Desktop。消息会保留，之后送达。</string>
     <string name="agent_readiness_runtime_missing_title">未安装 %1$s</string>
     <string name="agent_readiness_runtime_missing_detail">这台 Computer 上没有安装 %1$s。请在上面安装，或把 Agent 移到装有它的 Computer。消息会保留，之后送达。</string>
+    <string name="agent_readiness_model_unavailable_title">模型不可用</string>
+    <string name="agent_readiness_model_unavailable_detail">这台 Computer 上的 %1$s 已不再提供 %2$s，换一个模型就能继续用。</string>
     <string name="agent_readiness_owner_can_sign_in_computer_owner">Computer 的所有者可以登录</string>
     <string name="agent_readiness_owner_can_sign_in_agent_owner">Agent 的所有者可以登录</string>
     <string name="agent_readiness_owner_can_sign_in_server_admin">服务器管理员可以登录</string>
@@ -6685,6 +6696,9 @@
     <string name="agent_readiness_owner_can_update_computer_computer_owner">Computer 的所有者可以更新这台 Computer</string>
     <string name="agent_readiness_owner_can_update_computer_agent_owner">Agent 的所有者可以更新这台 Computer</string>
     <string name="agent_readiness_owner_can_update_computer_server_admin">服务器管理员可以更新这台 Computer</string>
+    <string name="agent_readiness_owner_can_change_model_computer_owner">Computer 的所有者可以更换模型</string>
+    <string name="agent_readiness_owner_can_change_model_agent_owner">Agent 的所有者可以更换模型</string>
+    <string name="agent_readiness_owner_can_change_model_server_admin">服务器管理员可以更换模型</string>
     <string name="agent_readiness_owner_can_fix_computer_owner">Computer 的所有者可以处理</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">Agent 的所有者可以处理</string>
     <string name="agent_readiness_owner_can_fix_server_admin">服务器管理员可以处理</string>

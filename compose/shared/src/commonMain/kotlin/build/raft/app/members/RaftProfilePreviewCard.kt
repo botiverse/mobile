@@ -288,17 +288,32 @@ internal fun RaftProfilePreviewCardContent(model: RaftProfilePreviewCardModel) {
             if (appBot != null) {
                 RaftAppBotBadge(identity = appBot, botName = model.displayName, modifier = Modifier.padding(start = 6.dp))
             } else if (status != null) {
+                val holdingReadiness = effectiveHoldingReadiness(status)
+                val readinessCopy = rememberAgentReadinessDisplayCopy(status)
+                val attentionParts = rememberAgentAttentionParts(status)
                 val deliveryHold = rememberAgentDeliveryHoldView(status)
-                RaftStatusDot(Modifier.padding(start = 6.dp), size = RaftStatusSize.Sm, color = status.color)
+                val dotColor =
+                    holdingReadiness?.dotColor()
+                        ?: if (attentionParts != null) RaftColor.AccentOrange else status.color
+                val visibleText =
+                    readinessCopy?.title
+                        ?: attentionParts?.short
+                        ?: deliveryHold?.shortText
+                        ?: status.localizedMemberStatusLabel()
+                val detailSemantics =
+                    readinessCopy?.fullDetail
+                        ?: attentionParts?.fullText
+                        ?: deliveryHold?.text
+                RaftStatusDot(Modifier.padding(start = 6.dp), size = RaftStatusSize.Sm, color = dotColor)
                 RaftText(
-                    text = deliveryHold?.shortText ?: status.localizedMemberStatusLabel(),
+                    text = visibleText,
                     modifier =
                         Modifier
                             .padding(start = 6.dp)
                             .weight(1f, fill = false)
                             .then(
-                                if (deliveryHold != null) {
-                                    Modifier.semantics { contentDescription = deliveryHold.text }
+                                if (detailSemantics != null) {
+                                    Modifier.semantics { contentDescription = detailSemantics }
                                 } else {
                                     Modifier
                                 }

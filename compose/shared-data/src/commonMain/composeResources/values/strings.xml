@@ -3683,10 +3683,12 @@
     <string name="settings_computers_readiness_do_verify_account">Verify account</string>
     <string name="settings_computers_readiness_do_sign_in">Sign in</string>
     <string name="settings_computers_readiness_do_update_computer">Update</string>
+    <string name="settings_computers_readiness_do_change_model">Change model</string>
     <string name="settings_computers_readiness_do_fix">Open</string>
     <string name="settings_computers_readiness_can_sign_in">%1$s can sign in</string>
     <string name="settings_computers_readiness_can_verify_account">%1$s can verify the account</string>
     <string name="settings_computers_readiness_can_update_computer">%1$s can update this computer</string>
+    <string name="settings_computers_readiness_can_change_model">%1$s can change the model</string>
     <string name="settings_computers_readiness_can_fix">%1$s can fix it</string>
     <string name="settings_computers_readiness_actor_role_computer_owner">The computer's owner</string>
     <string name="settings_computers_readiness_actor_role_agent_owner">The agent's owner</string>
@@ -3694,6 +3696,7 @@
     <string name="settings_computers_readiness_owner_can_sign_in">%1$s can sign in</string>
     <string name="settings_computers_readiness_owner_can_verify_account">%1$s can verify the account</string>
     <string name="settings_computers_readiness_owner_can_update_computer">%1$s can update this computer</string>
+    <string name="settings_computers_readiness_owner_can_change_model">%1$s can change the model</string>
     <string name="settings_computers_readiness_owner_can_fix">%1$s can fix it</string>
     <string name="settings_computers_readiness_attention_count_one">%1$d need attention</string>
     <string name="settings_computers_readiness_attention_count_other">%1$d need attention</string>
@@ -3742,6 +3745,8 @@
     <string name="settings_computers_readiness_computer_too_old_desktop_detail">This Computer's Raft version is too old to run agents. Update Raft Desktop on it. Messages are kept and will be delivered.</string>
     <string name="settings_computers_readiness_runtime_missing_title">%1$s not installed</string>
     <string name="settings_computers_readiness_runtime_missing_detail">%1$s isn't installed on this Computer. Install it there, or move the agent to a Computer that has it. Messages are kept and will be delivered.</string>
+    <string name="settings_computers_readiness_model_unavailable_title">Model unavailable</string>
+    <string name="settings_computers_readiness_model_unavailable_detail">%1$s on this Computer no longer offers %2$s. Pick another model.</string>
     <string name="settings_computers_rack_view_label">Computers view</string>
     <string name="settings_computers_rack_view_list">List</string>
     <string name="settings_computers_rack_view_cards">Cards</string>
@@ -5508,6 +5513,9 @@
     <string name="agent_status_credential_sign_in">Sign-in needed for %1$s</string>
     <string name="agent_status_runtime_sign_in_full">Sign-in needed for %1$s</string>
     <string name="agent_status_runtime_sign_in_short">Sign-in needed</string>
+    <string name="agent_status_attention_model_unavailable">Model unavailable</string>
+    <string name="agent_status_attention_needs_restart">Needs a restart</string>
+    <string name="agent_status_attention_with_detail">%1$s: %2$s</string>
     <string name="agent_status_runtime_sign_in_detail">%1$s can't start until %2$s is signed in on %3$s. Sign in there, or switch %1$s to another runtime.</string>
     <string name="agent_status_credential_plan_model">Plan doesn't include %1$s</string>
     <string name="agent_status_credential_plan_default_model">Plan doesn't include this model</string>
@@ -6660,6 +6668,7 @@
     <string name="agent_readiness_can_sign_in">%1$s can sign in</string>
     <string name="agent_readiness_can_verify_account">%1$s can verify the account</string>
     <string name="agent_readiness_can_update_computer">%1$s can update this computer</string>
+    <string name="agent_readiness_can_change_model">%1$s can change the model</string>
     <string name="agent_readiness_can_fix">%1$s can fix it</string>
     <string name="agent_readiness_verification_required_title">Account needs verification</string>
     <string name="agent_readiness_verification_required_detail">The %1$s account signed in here can't receive replies until it is verified. The account holder must finish the step in the Anthropic Verification Portal, then choose Retry. Messages are kept and will be delivered.</string>
@@ -6677,6 +6686,8 @@
     <string name="agent_readiness_computer_too_old_desktop_detail">This Computer's Raft version is too old to run agents. Update Raft Desktop on it. Messages are kept and will be delivered.</string>
     <string name="agent_readiness_runtime_missing_title">%1$s not installed</string>
     <string name="agent_readiness_runtime_missing_detail">%1$s isn't installed on this Computer. Install it there, or move the agent to a Computer that has it. Messages are kept and will be delivered.</string>
+    <string name="agent_readiness_model_unavailable_title">Model unavailable</string>
+    <string name="agent_readiness_model_unavailable_detail">%1$s on this Computer no longer offers %2$s. Pick another model.</string>
     <string name="agent_readiness_owner_can_sign_in_computer_owner">The computer's owner can sign in</string>
     <string name="agent_readiness_owner_can_sign_in_agent_owner">The agent's owner can sign in</string>
     <string name="agent_readiness_owner_can_sign_in_server_admin">A server admin can sign in</string>
@@ -6686,6 +6697,9 @@
     <string name="agent_readiness_owner_can_update_computer_computer_owner">The computer's owner can update this computer</string>
     <string name="agent_readiness_owner_can_update_computer_agent_owner">The agent's owner can update this computer</string>
     <string name="agent_readiness_owner_can_update_computer_server_admin">A server admin can update this computer</string>
+    <string name="agent_readiness_owner_can_change_model_computer_owner">The computer's owner can change the model</string>
+    <string name="agent_readiness_owner_can_change_model_agent_owner">The agent's owner can change the model</string>
+    <string name="agent_readiness_owner_can_change_model_server_admin">A server admin can change the model</string>
     <string name="agent_readiness_owner_can_fix_computer_owner">The computer's owner can fix it</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">The agent's owner can fix it</string>
     <string name="agent_readiness_owner_can_fix_server_admin">A server admin can fix it</string>

@@ -212,6 +212,8 @@ internal fun raftReadinessRuntimeDisplayName(
                 if (resource.key.startsWith("shared:")) resource.key.removePrefix("shared:") else null
             is ComputerReadinessResource.LoginWindow ->
                 if (resource.key.startsWith("shared:")) resource.key.removePrefix("shared:") else null
+            is ComputerReadinessResource.Model ->
+                if (resource.key.startsWith("shared:")) resource.key.removePrefix("shared:") else null
             else -> null
         } ?: fallbackRuntimeId
     if (runtimeId.isNullOrBlank()) return ""
@@ -223,6 +225,7 @@ internal fun raftReadinessDoLabelRes(action: ComputerReadinessAction?): StringRe
         ComputerReadinessAction.SignIn -> Res.string.settings_computers_readiness_do_sign_in
         ComputerReadinessAction.VerifyAccount -> Res.string.settings_computers_readiness_do_verify_account
         ComputerReadinessAction.UpdateComputer -> Res.string.settings_computers_readiness_do_update_computer
+        ComputerReadinessAction.ChangeModel -> Res.string.settings_computers_readiness_do_change_model
         ComputerReadinessAction.Fix,
         null -> Res.string.settings_computers_readiness_do_fix
     }
@@ -251,6 +254,7 @@ internal fun raftReadinessWhoOf(
                 ComputerReadinessAction.SignIn -> Res.string.settings_computers_readiness_can_sign_in
                 ComputerReadinessAction.VerifyAccount -> Res.string.settings_computers_readiness_can_verify_account
                 ComputerReadinessAction.UpdateComputer -> Res.string.settings_computers_readiness_can_update_computer
+                ComputerReadinessAction.ChangeModel -> Res.string.settings_computers_readiness_can_change_model
                 ComputerReadinessAction.Fix,
                 null -> Res.string.settings_computers_readiness_can_fix
             }
@@ -270,6 +274,7 @@ internal fun raftReadinessWhoOf(
             ComputerReadinessAction.SignIn -> Res.string.settings_computers_readiness_owner_can_sign_in
             ComputerReadinessAction.VerifyAccount -> Res.string.settings_computers_readiness_owner_can_verify_account
             ComputerReadinessAction.UpdateComputer -> Res.string.settings_computers_readiness_owner_can_update_computer
+            ComputerReadinessAction.ChangeModel -> Res.string.settings_computers_readiness_owner_can_change_model
             ComputerReadinessAction.Fix,
             null -> Res.string.settings_computers_readiness_owner_can_fix
         }
@@ -434,6 +439,19 @@ internal fun raftFormatReadiness(
                 actor = actor,
                 link = null,
             )
+        "model_unavailable" -> {
+            val model =
+                primary.model?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: (primary.resource as? ComputerReadinessResource.Model)?.model?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: ""
+            RaftReadinessCopy(
+                title = stringResource(Res.string.settings_computers_readiness_model_unavailable_title),
+                scope = scope,
+                detail = stringResource(Res.string.settings_computers_readiness_model_unavailable_detail, runtime, model),
+                actor = actor,
+                link = null,
+            )
+        }
         else ->
             RaftReadinessCopy(
                 title = stringResource(Res.string.settings_computers_readiness_generic_title),
@@ -509,7 +527,8 @@ internal fun raftFormatAttentionItem(
     val baseTitle = raftFormatReadiness(synthetic, runtimeId = null, runtimeCatalog = runtimeCatalog, onAgent = false, nowMillis = nowMillis).title
     val onSharedLogin =
         (resource is ComputerReadinessResource.Login && resource.key.startsWith("shared:")) ||
-            (resource is ComputerReadinessResource.LoginWindow && resource.key.startsWith("shared:"))
+            (resource is ComputerReadinessResource.LoginWindow && resource.key.startsWith("shared:")) ||
+            (resource is ComputerReadinessResource.Model && resource.key.startsWith("shared:"))
     val title =
         if (onSharedLogin) {
             val runtimeName = raftReadinessRuntimeDisplayName(resource, fallbackRuntimeId = null, runtimeCatalog = runtimeCatalog)

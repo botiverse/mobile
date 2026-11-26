@@ -1949,22 +1949,30 @@ internal fun ThreadMembersPagerRow(
         } else {
             null
         }
-    val signIn =
+    val signInResolution =
         if (appBot == null && runtimeRetired == null && readinessCopy == null && member.kind.equals("agent", ignoreCase = true)) {
-            rememberAgentRuntimeSignInState(status, fallbackName = member.displayName)
+            rememberAgentRuntimeSignInResolution(status, fallbackName = member.displayName)
+        } else {
+            AgentRuntimeSignInResolution(state = null, clearedByLiveLogin = false)
+        }
+    val signIn = signInResolution.state
+    val effectiveStatus = status?.withoutClearedLoginRequiredAttention(signInResolution.clearedByLiveLogin)
+    val attentionParts =
+        if (appBot == null && runtimeRetired == null && readinessCopy == null && signIn == null && member.kind.equals("agent", ignoreCase = true)) {
+            rememberAgentAttentionParts(effectiveStatus)
         } else {
             null
         }
     val deliveryHold =
-        if (appBot == null && runtimeRetired == null && readinessCopy == null && signIn == null && member.kind.equals("agent", ignoreCase = true)) {
-            rememberAgentDeliveryHoldView(status)
+        if (appBot == null && runtimeRetired == null && readinessCopy == null && signIn == null && attentionParts == null && member.kind.equals("agent", ignoreCase = true)) {
+            rememberAgentDeliveryHoldView(effectiveStatus)
         } else {
             null
         }
     val subtitle =
         threadMembersRosterSubtitle(
             memberKind = member.kind,
-            liveActivityLabel = status?.localizedMemberStatusLabel(),
+            liveActivityLabel = effectiveStatus?.localizedMemberStatusLabel(),
             humanRoleLabel =
                 if (member.kind.equals("agent", ignoreCase = true)) {
                     ""
@@ -2003,7 +2011,7 @@ internal fun ThreadMembersPagerRow(
         }
     ChannelMembersRow(
         title = member.displayName,
-        subtitle = runtimeRetired?.shortText ?: readinessCopy?.title ?: deliveryHold?.text ?: subtitle,
+        subtitle = runtimeRetired?.shortText ?: readinessCopy?.title ?: attentionParts?.short ?: deliveryHold?.text ?: subtitle,
         subtitleContent =
             when {
                 runtimeRetired != null -> {
@@ -2058,6 +2066,21 @@ internal fun ThreadMembersPagerRow(
                         }
                     }
                 }
+                attentionParts != null -> {
+                    {
+                        RaftText(
+                            text = attentionParts.short,
+                            style = RaftTheme.typography.caption,
+                            color = RaftTheme.colors.foregroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier
+                                    .testTag(AgentAttentionTestTags.MemberRowStatus)
+                                    .semantics { contentDescription = attentionParts.fullText },
+                        )
+                    }
+                }
                 deliveryHold != null -> {
                     {
                         RaftText(
@@ -2091,7 +2114,11 @@ internal fun ThreadMembersPagerRow(
         cacheServerId = member.sourceServerId,
         statusColor =
             readinessCopy?.light?.dotColor()
-                ?: if (signIn != null || deliveryHold != null) RaftColor.AccentOrange else status?.color,
+                ?: if (runtimeRetired != null || signIn != null || attentionParts != null || deliveryHold != null) {
+                    RaftColor.AccentOrange
+                } else {
+                    effectiveStatus?.color
+                },
         badges = listOfNotNull(roleBadge),
         titleBadge =
             if (appBot == null && originNames.isEmpty() && alsoIn == null) {

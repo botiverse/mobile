@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -22,7 +24,9 @@ import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.agentReadinessResetCountdown
 import build.raft.app.model.holds
+import build.raft.app.model.isModelUnavailableAdvisory
 import build.raft.app.model.light
+import build.raft.app.model.resolvedModel
 import build.raft.app.model.resolvedRuntimeId
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -33,8 +37,10 @@ import build.raft.designsystem.theme.RaftTheme
 import org.jetbrains.compose.resources.StringResource
 
 internal object AgentReadinessTestTags {
+    const val ProfileChip = "agent-status-chip"
     const val ProfileDetail = "agent-readiness-detail"
     const val ProfileLink = "agent-readiness-link"
+    const val ProfileAdvisory = "agent-readiness-advisory"
     const val DmHeaderStatus = "agent_dm_status_readiness"
     const val MemberRowStatus = "member_row_readiness"
     const val SidebarShort = "sidebar_agent_readiness"
@@ -87,6 +93,7 @@ internal fun AgentReadinessLight.badgeVariant(): RaftBadgeVariant =
 internal data class AgentReadinessTextSpec(
     val res: StringResource,
     val stringArg: String? = null,
+    val stringArg2: String? = null,
     val intArg: Int? = null,
 )
 
@@ -99,21 +106,25 @@ internal data class AgentReadinessCopySpec(
     val wrapActorInSentence: Boolean = false,
     val verificationPortalUrl: String? = null,
     val offersRetry: Boolean = false,
+    val offersChangeModel: Boolean = false,
     val code: String? = null,
 )
 
 internal data class AgentReadinessDisplayCopy(
     val light: AgentReadinessLight,
     val title: String,
+    val detail: String,
+    val body: String,
     val fullDetail: String,
     val verificationPortalUrl: String?,
     val offersRetry: Boolean,
+    val offersChangeModel: Boolean = false,
     val code: String?,
 )
 
 private fun normalizedReadinessAction(action: String?): String =
     when (action?.trim()?.lowercase()) {
-        "sign_in", "verify_account", "update_computer", "fix" -> action.trim().lowercase()
+        "sign_in", "verify_account", "update_computer", "change_model", "fix" -> action.trim().lowercase()
         else -> "fix"
     }
 
@@ -126,6 +137,7 @@ private fun readinessWhoSpec(readiness: AgentReadiness): AgentReadinessTextSpec?
                 "sign_in" -> Res.string.agent_readiness_can_sign_in
                 "verify_account" -> Res.string.agent_readiness_can_verify_account
                 "update_computer" -> Res.string.agent_readiness_can_update_computer
+                "change_model" -> Res.string.agent_readiness_can_change_model
                 else -> Res.string.agent_readiness_can_fix
             }
         return AgentReadinessTextSpec(res = res, stringArg = actorName)
@@ -150,6 +162,12 @@ private fun readinessWhoSpec(readiness: AgentReadiness): AgentReadinessTextSpec?
                     "computer_owner" -> Res.string.agent_readiness_owner_can_update_computer_computer_owner
                     "agent_owner" -> Res.string.agent_readiness_owner_can_update_computer_agent_owner
                     else -> Res.string.agent_readiness_owner_can_update_computer_server_admin
+                }
+            "change_model" ->
+                when (actor) {
+                    "computer_owner" -> Res.string.agent_readiness_owner_can_change_model_computer_owner
+                    "agent_owner" -> Res.string.agent_readiness_owner_can_change_model_agent_owner
+                    else -> Res.string.agent_readiness_owner_can_change_model_server_admin
                 }
             else ->
                 when (actor) {
@@ -302,6 +320,21 @@ internal fun resolveAgentReadinessCopySpec(
                 actor = actor,
                 code = primary.code,
             )
+        "model_unavailable" ->
+            AgentReadinessCopySpec(
+                light = light,
+                title = AgentReadinessTextSpec(res = Res.string.agent_readiness_model_unavailable_title),
+                scope = scope,
+                detail =
+                    AgentReadinessTextSpec(
+                        res = Res.string.agent_readiness_model_unavailable_detail,
+                        stringArg = runtimeName,
+                        stringArg2 = primary.resolvedModel().orEmpty(),
+                    ),
+                actor = actor,
+                offersChangeModel = true,
+                code = primary.code,
+            )
         else ->
             AgentReadinessCopySpec(
                 light = light,
@@ -318,17 +351,17 @@ internal fun resolveAgentReadinessCopySpec(
 private fun AgentReadinessTextSpec.localized(): String =
     when {
         intArg != null -> stringResource(res, intArg)
+        stringArg != null && stringArg2 != null -> stringResource(res, stringArg, stringArg2)
         stringArg != null -> stringResource(res, stringArg)
         else -> stringResource(res)
     }
 
 @Composable
-internal fun rememberAgentReadinessDisplayCopy(
-    readiness: AgentReadiness?,
+internal fun formatAgentReadinessDisplayCopy(
+    readiness: AgentReadiness,
     fallbackRuntimeId: String?,
     timeContext: RaftTimeContext? = null,
-): AgentReadinessDisplayCopy? {
-    if (readiness == null || !readiness.holds()) return null
+): AgentReadinessDisplayCopy {
     build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs()
     val nowMillis =
         currentRaftTimeContextProvider?.current?.nowEpochMillis
@@ -360,10 +393,41 @@ internal fun rememberAgentReadinessDisplayCopy(
     return AgentReadinessDisplayCopy(
         light = spec.light,
         title = title,
+        detail = detail,
+        body = body,
         fullDetail = fullDetail,
         verificationPortalUrl = spec.verificationPortalUrl,
         offersRetry = spec.offersRetry,
+        offersChangeModel = spec.offersChangeModel,
         code = spec.code,
+    )
+}
+
+@Composable
+internal fun rememberAgentReadinessDisplayCopy(
+    readiness: AgentReadiness?,
+    fallbackRuntimeId: String?,
+    timeContext: RaftTimeContext? = null,
+): AgentReadinessDisplayCopy? {
+    if (readiness == null || !readiness.holds()) return null
+    return formatAgentReadinessDisplayCopy(
+        readiness = readiness,
+        fallbackRuntimeId = fallbackRuntimeId,
+        timeContext = timeContext,
+    )
+}
+
+@Composable
+internal fun rememberAgentModelUnavailableAdvisoryCopy(
+    readiness: AgentReadiness?,
+    fallbackRuntimeId: String?,
+    timeContext: RaftTimeContext? = null,
+): AgentReadinessDisplayCopy? {
+    if (!readiness.isModelUnavailableAdvisory()) return null
+    return formatAgentReadinessDisplayCopy(
+        readiness = readiness!!,
+        fallbackRuntimeId = fallbackRuntimeId,
+        timeContext = timeContext,
     )
 }
 
@@ -417,5 +481,41 @@ internal fun AgentReadinessStatusNotice(
                     .testTag(AgentReadinessTestTags.ProfileDetail)
                     .semantics { contentDescription = text },
         )
+    }
+}
+
+/**
+ * Web `AgentStatusBadge` `agent-readiness-advisory` (botiverse/slock #17127):
+ * while a warm session is still live on a removed model, the chip stays green/working with this
+ * owner-only note and Change model link below.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun AgentReadinessAdvisoryNotice(
+    text: String,
+    onChangeModel: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth().testTag(AgentReadinessTestTags.ProfileAdvisory),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        RaftText(
+            text = text,
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foregroundMuted,
+            modifier = Modifier.semantics { contentDescription = text },
+        )
+        if (onChangeModel != null) {
+            RaftTextLink(
+                text = stringResource(Res.string.agent_status_change_model),
+                onClick = onChangeModel,
+                variant = RaftTextLinkVariant.Strong,
+                style = RaftTheme.typography.footnote,
+                modifier = Modifier.testTag(AgentSpawnFailureStatusTestTags.ChangeModel),
+            )
+        }
     }
 }

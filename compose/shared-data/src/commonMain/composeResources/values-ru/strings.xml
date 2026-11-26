@@ -3503,10 +3503,12 @@
     <string name="settings_computers_readiness_do_verify_account">Подтвердить аккаунт</string>
     <string name="settings_computers_readiness_do_sign_in">Войти</string>
     <string name="settings_computers_readiness_do_update_computer">Обновить</string>
+    <string name="settings_computers_readiness_do_change_model">Сменить модель</string>
     <string name="settings_computers_readiness_do_fix">Открыть</string>
     <string name="settings_computers_readiness_can_sign_in">%1$s может войти</string>
     <string name="settings_computers_readiness_can_verify_account">%1$s может подтвердить аккаунт</string>
     <string name="settings_computers_readiness_can_update_computer">%1$s может обновить этот компьютер</string>
+    <string name="settings_computers_readiness_can_change_model">%1$s может сменить модель</string>
     <string name="settings_computers_readiness_can_fix">%1$s может это исправить</string>
     <string name="settings_computers_readiness_actor_role_computer_owner">Владелец компьютера</string>
     <string name="settings_computers_readiness_actor_role_agent_owner">Владелец агента</string>
@@ -3514,6 +3516,7 @@
     <string name="settings_computers_readiness_owner_can_sign_in">%1$s может войти</string>
     <string name="settings_computers_readiness_owner_can_verify_account">%1$s может подтвердить аккаунт</string>
     <string name="settings_computers_readiness_owner_can_update_computer">%1$s может обновить этот компьютер</string>
+    <string name="settings_computers_readiness_owner_can_change_model">%1$s может сменить модель</string>
     <string name="settings_computers_readiness_owner_can_fix">%1$s может это исправить</string>
     <string name="settings_computers_readiness_attention_count_one">требуют внимания: %1$d</string>
     <string name="settings_computers_readiness_attention_count_other">требуют внимания: %1$d</string>
@@ -3562,6 +3565,8 @@
     <string name="settings_computers_readiness_computer_too_old_desktop_detail">Версия Raft на этом компьютере слишком старая для работы агентов. Обновите на нём Raft Desktop. Сообщения сохранятся и будут доставлены.</string>
     <string name="settings_computers_readiness_runtime_missing_title">%1$s не установлен</string>
     <string name="settings_computers_readiness_runtime_missing_detail">%1$s не установлен на этом компьютере. Установите его там или перенесите агента на компьютер, где он есть. Сообщения сохранятся и будут доставлены.</string>
+    <string name="settings_computers_readiness_model_unavailable_title">Модель недоступна</string>
+    <string name="settings_computers_readiness_model_unavailable_detail">%1$s на этом компьютере больше не предлагает %2$s. Выберите другую модель.</string>
     <string name="settings_computers_rack_view_label">Режим отображения компьютеров</string>
     <string name="settings_computers_rack_view_list">Список</string>
     <string name="settings_computers_rack_view_cards">Карточки</string>
@@ -5299,6 +5304,9 @@
     <string name="agent_status_credential_sign_in">Нужно снова войти в %1$s</string>
     <string name="agent_status_runtime_sign_in_full">Нужно войти в %1$s</string>
     <string name="agent_status_runtime_sign_in_short">Нужен вход</string>
+    <string name="agent_status_attention_model_unavailable">Модель недоступна</string>
+    <string name="agent_status_attention_needs_restart">Нужен перезапуск</string>
+    <string name="agent_status_attention_with_detail">%1$s: %2$s</string>
     <string name="agent_status_runtime_sign_in_detail">%1$s не запустится, пока не выполнен вход в %2$s на компьютере %3$s. Войдите там или переключите %1$s на другую среду выполнения.</string>
     <string name="agent_status_credential_plan_model">Тариф не включает %1$s</string>
     <string name="agent_status_credential_plan_default_model">Тариф не включает эту модель</string>
@@ -6658,6 +6666,7 @@
     <string name="agent_readiness_can_sign_in">%1$s может войти</string>
     <string name="agent_readiness_can_verify_account">%1$s может подтвердить аккаунт</string>
     <string name="agent_readiness_can_update_computer">%1$s может обновить этот компьютер</string>
+    <string name="agent_readiness_can_change_model">%1$s может сменить модель</string>
     <string name="agent_readiness_can_fix">%1$s может это исправить</string>
     <string name="agent_readiness_verification_required_title">Аккаунт не подтверждён</string>
     <string name="agent_readiness_verification_required_detail">Аккаунт %1$s, в который здесь выполнен вход, не сможет получать ответы, пока не будет подтверждён. Владелец аккаунта должен пройти этот шаг на портале проверки Anthropic, а затем нажать «Повторить». Сообщения сохранятся и будут доставлены.</string>
@@ -6675,6 +6684,8 @@
     <string name="agent_readiness_computer_too_old_desktop_detail">Версия Raft на этом компьютере слишком старая для работы агентов. Обновите на нём Raft Desktop. Сообщения сохранятся и будут доставлены.</string>
     <string name="agent_readiness_runtime_missing_title">%1$s не установлен</string>
     <string name="agent_readiness_runtime_missing_detail">%1$s не установлен на этом компьютере. Установите его там или перенесите агента на компьютер, где он есть. Сообщения сохранятся и будут доставлены.</string>
+    <string name="agent_readiness_model_unavailable_title">Модель недоступна</string>
+    <string name="agent_readiness_model_unavailable_detail">%1$s на этом компьютере больше не предлагает %2$s. Выберите другую модель.</string>
     <string name="agent_readiness_owner_can_sign_in_computer_owner">Владелец компьютера может войти</string>
     <string name="agent_readiness_owner_can_sign_in_agent_owner">Владелец агента может войти</string>
     <string name="agent_readiness_owner_can_sign_in_server_admin">Администратор сервера может войти</string>
@@ -6684,6 +6695,9 @@
     <string name="agent_readiness_owner_can_update_computer_computer_owner">Владелец компьютера может обновить этот компьютер</string>
     <string name="agent_readiness_owner_can_update_computer_agent_owner">Владелец агента может обновить этот компьютер</string>
     <string name="agent_readiness_owner_can_update_computer_server_admin">Администратор сервера может обновить этот компьютер</string>
+    <string name="agent_readiness_owner_can_change_model_computer_owner">Владелец компьютера может сменить модель</string>
+    <string name="agent_readiness_owner_can_change_model_agent_owner">Владелец агента может сменить модель</string>
+    <string name="agent_readiness_owner_can_change_model_server_admin">Администратор сервера может сменить модель</string>
     <string name="agent_readiness_owner_can_fix_computer_owner">Владелец компьютера может это исправить</string>
     <string name="agent_readiness_owner_can_fix_agent_owner">Владелец агента может это исправить</string>
     <string name="agent_readiness_owner_can_fix_server_admin">Администратор сервера может это исправить</string>

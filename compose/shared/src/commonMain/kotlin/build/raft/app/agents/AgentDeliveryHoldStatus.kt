@@ -65,7 +65,7 @@ internal fun RaftAgentStatusIndicatorState?.activeDeliveryHold(
     nowMs: Long,
     appBot: Boolean = false,
 ): AgentDeliveryHold? =
-    this?.let { state ->
+    this?.takeIf { it.attention == null }?.let { state ->
         agentDeliveryHoldOf(
             status = state.status,
             deliveryHold = state.deliveryHold,
@@ -91,7 +91,7 @@ internal fun membersAgentDeliveryHold(
     nowMs: Long,
     appBot: Boolean = false,
 ): AgentDeliveryHold? {
-    if (appBot || external || blocked != null || indicator?.likelyOnline == true) return null
+    if (appBot || external || blocked != null || indicator?.likelyOnline == true || indicator?.attention != null) return null
     val status =
         indicator?.status
             ?: summary?.let { normalizedAgentRuntimeStatus(activity = it.activity, lifecycleStatus = it.status) }
@@ -275,7 +275,7 @@ internal fun rememberMembersAgentDeliveryHoldView(
     appBot: Boolean = false,
 ): AgentDeliveryHoldView? {
     val rawHold = if (indicator?.status != null) indicator.deliveryHold else summary?.deliveryHold
-    if (rawHold == null || appBot || external || blocked != null || indicator?.likelyOnline == true) return null
+    if (rawHold == null || appBot || external || blocked != null || indicator?.likelyOnline == true || indicator?.attention != null) return null
     val live = currentRaftTimeContextProvider?.current
     val pinnedNow = timeContext?.nowEpochMillis
     var clockFloorMs by remember(rawHold) { mutableStateOf(Long.MIN_VALUE) }

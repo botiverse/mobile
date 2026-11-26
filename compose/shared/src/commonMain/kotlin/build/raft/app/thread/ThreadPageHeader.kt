@@ -1817,7 +1817,13 @@ private fun ThreadDmAgentActivity(
         }
         return
     }
-    val signIn = if (toolStuck == null) rememberAgentRuntimeSignInState(state, fallbackName = agentName) else null
+    val signInResolution =
+        if (toolStuck == null) {
+            rememberAgentRuntimeSignInResolution(state, fallbackName = agentName)
+        } else {
+            AgentRuntimeSignInResolution(state = null, clearedByLiveLogin = false)
+        }
+    val signIn = signInResolution.state
     if (signIn != null) {
         val wide = raftWindowWide()
         val signInLabel = if (wide) signIn.fullText else signIn.shortText
@@ -1853,7 +1859,40 @@ private fun ThreadDmAgentActivity(
         }
         return
     }
-    val deliveryHold = if (toolStuck == null) rememberAgentDeliveryHoldView(state) else null
+    val effectiveState = state.withoutClearedLoginRequiredAttention(signInResolution.clearedByLiveLogin)
+    val attentionParts = if (toolStuck == null) rememberAgentAttentionParts(effectiveState) else null
+    if (attentionParts != null) {
+        Row(
+            modifier =
+                modifier
+                    .widthIn(max = ThreadHeaderDmAgentActivityMaxWidth)
+                    .semantics { contentDescription = attentionParts.fullText },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
+        ) {
+            RaftStatusIndicator(
+                color = RaftColor.AccentOrange,
+                size = ThreadHeaderDmAgentActivityDotSize,
+            )
+            Text(
+                text = attentionParts.short,
+                style =
+                    RaftType.Caption.copy(
+                        color = RaftColor.ForegroundHint,
+                        fontFamily = RaftMonoFamily
+                    ),
+                color = RaftColor.ForegroundHint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier
+                        .weight(1f, fill = false)
+                        .testTag(AgentAttentionTestTags.DmHeaderStatus)
+            )
+        }
+        return
+    }
+    val deliveryHold = if (toolStuck == null) rememberAgentDeliveryHoldView(effectiveState) else null
     if (deliveryHold != null) {
         val wide = raftWindowWide()
         val holdLabel = if (wide) deliveryHold.text else deliveryHold.shortText
@@ -1884,7 +1923,7 @@ private fun ThreadDmAgentActivity(
         }
         return
     }
-    val label = if (toolStuck != null) localizedAgentToolStuckText(toolStuck) else state.localizedMemberStatusLabel()
+    val label = if (toolStuck != null) localizedAgentToolStuckText(toolStuck) else effectiveState.localizedMemberStatusLabel()
     val labelColor = if (toolStuck != null) RaftColor.WarningStrong else RaftColor.ForegroundHint
     Row(
         modifier =
@@ -1895,7 +1934,7 @@ private fun ThreadDmAgentActivity(
         horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs)
     ) {
         RaftStatusIndicator(
-            color = state.color,
+            color = effectiveState.color,
             size = ThreadHeaderDmAgentActivityDotSize,
         )
         Text(

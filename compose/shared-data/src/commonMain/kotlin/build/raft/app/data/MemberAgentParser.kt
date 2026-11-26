@@ -234,6 +234,7 @@ private data class WireAgent(
 @Serializable
 private data class WireAgentLastRuntimeError(
     val spawnFailureReason: String? = null,
+    val message: String? = null,
 )
 
 /** slock `projectAssistantPause` `assistantPausedBy`: `{ id, name }`. */
@@ -835,6 +836,7 @@ private fun parseWireAgentReadiness(element: JsonElement?): AgentReadiness? {
                 }
             val paramsObj = fact["params"] as? JsonObject
             val managedByDesktop = (paramsObj?.get("managedByDesktop") as? JsonPrimitive)?.booleanOrNull
+            val modelParam = paramsObj?.stringValue("model")
             AgentReadinessFact(
                 resource = resource,
                 code = code,
@@ -842,6 +844,7 @@ private fun parseWireAgentReadiness(element: JsonElement?): AgentReadiness? {
                 since = fact.longValue("since"),
                 until = fact.longValue("until"),
                 managedByDesktop = managedByDesktop,
+                model = modelParam,
             )
         }
     return AgentReadiness(
@@ -1162,6 +1165,7 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         agentLifecycleStatus = status.trim().lowercase().takeIf { it.isNotBlank() },
         agentBlockedReason = blockedReason?.trim()?.takeIf { it.isNotBlank() },
         lastRuntimeErrorSpawnFailureReason = lastRuntimeError?.spawnFailureReason?.trim()?.takeIf { it.isNotBlank() },
+        lastRuntimeErrorMessage = lastRuntimeError?.message?.trim()?.takeIf { it.isNotBlank() },
         agentReadiness = parseWireAgentReadiness(readiness),
         agentDeliveryHold = parseAgentDeliveryHold(deliveryHold),
         agentRunningWorkers = parseAgentRunningWorkers(runningWorkers),

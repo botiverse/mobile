@@ -348,4 +348,68 @@ class ComputerReadinessAttentionParsingTest {
         assertNull(byId.getValue("m-old").readiness)
         assertNull(byId.getValue("m-old").serverNeedsAttention)
     }
+
+    @Test
+    fun parsesModelUnavailableReadinessFactAndChangeModelAction() {
+        val attention =
+            assertNotNull(
+                parseComputerReadinessAttention(
+                    parseJson(
+                        """
+                        {
+                          "count": 1,
+                          "items": [
+                            {
+                              "code": "model_unavailable",
+                              "resource": {"kind": "model", "key": "shared:antigravity", "model": "gemini-4-neon"},
+                              "actor": "agent_owner",
+                              "actorName": "Agnes",
+                              "action": "change_model",
+                              "agentIds": ["agent-muse"],
+                              "agentCount": 1
+                            }
+                          ],
+                          "waitingAgents": 0
+                        }
+                        """.trimIndent(),
+                    ),
+                ),
+            )
+        val item = attention.items.single()
+        assertEquals("model_unavailable", item.code)
+        assertEquals(ComputerReadinessResource.Model("shared:antigravity", "gemini-4-neon"), item.resource)
+        assertEquals(ComputerReadinessActor.AgentOwner, item.actor)
+        assertEquals("Agnes", item.actorName)
+        assertEquals(ComputerReadinessAction.ChangeModel, item.action)
+        assertEquals(emptyList<ComputerLoginStep>(), attention.toLoginSteps())
+
+        val readiness =
+            assertNotNull(
+                parseComputerReadiness(
+                    parseJson(
+                        """
+                        {
+                          "state": "blocked",
+                          "primary": {
+                            "resource": {"kind": "model", "key": "shared:antigravity", "model": "gemini-4-neon"},
+                            "code": "model_unavailable",
+                            "behaviour": "blocked",
+                            "since": 1794301000000,
+                            "params": {"model": "gemini-4-neon"}
+                          },
+                          "scope": "agent",
+                          "actor": "agent_owner",
+                          "actorName": "Agnes",
+                          "action": "change_model",
+                          "also": [],
+                          "runtimes": {}
+                        }
+                        """.trimIndent(),
+                    ),
+                ),
+            )
+        assertEquals("model_unavailable", readiness.own.primary?.code)
+        assertEquals("gemini-4-neon", readiness.own.primary?.model)
+        assertEquals(ComputerReadinessAction.ChangeModel, readiness.own.action)
+    }
 }
