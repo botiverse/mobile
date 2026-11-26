@@ -530,7 +530,7 @@ class AgentAttentionStateTest {
                 lastRuntimeErrorSpawnFailureReason = "model_unsupported",
                 lastRuntimeErrorMessage = "model gone",
                 lifecycleStatus = "inactive",
-                deliveryHold = AgentDeliveryHold(reason = AgentDeliveryHoldReason.CredentialInvalid),
+                deliveryHold = AgentDeliveryHold(reason = AgentDeliveryHoldReason.CredentialInvalid, since = 1_000L),
             ).toRaftAgentStatusIndicatorState()
 
         assertIs<AgentAttention.StartFailure>(attentionIndicator.attention)
