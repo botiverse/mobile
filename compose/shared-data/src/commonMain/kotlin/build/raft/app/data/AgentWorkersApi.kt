@@ -6,11 +6,20 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
-// Worker v1: an agent's live Workers in Agent Detail › Activity › Workers
+// Worker v1: an agent's Workers in Agent Detail › Activity › Workers
 // (botiverse/slock `docs/contracts/worker-snapshot.md` & `docs/contracts/worker-events.md`):
 //  - `GET /api/agents/:id/workers` -> `WorkersReadResponse` (`packages/shared/src/workersSnapshot.ts`)
 //  - `POST /api/agents/:id/workers/:worker/stop` -> `WorkerStopResponse` (`routes/agents.ts`)
+//  - `GET /api/agents/:id/workers/recent?days=7` -> `WorkersRecentResponse` (`packages/shared/src/workerEvents.ts`)
+//  - `GET /api/agents/:id/workers/:launchId/timeline` -> `WorkerTimelineResponse` (`packages/shared/src/workerEvents.ts`)
+
+/** Retention window for recent Workers and timeline events (`WORKER_EVENT_RETENTION_MS`, 7 days). */
+@RaftCoreInternalApi const val AGENT_WORKER_RECENT_DAYS: Int = 7
+
+/** A Worker launch id (`worker-<name>-<uuid>`, `workerEvents.ts` `launchIdSchema`). */
+@RaftCoreInternalApi val AGENT_WORKER_LAUNCH_ID_PATTERN: Regex = Regex("^worker-[A-Za-z0-9_-]{1,160}$")
 
 /** A snapshot received longer ago than this is stale (`WORKERS_SNAPSHOT_STALE_MS`). */
 @RaftCoreInternalApi const val AGENT_WORKERS_SNAPSHOT_STALE_MS: Long = 30_000L
@@ -249,4 +258,836 @@ private data class AgentWorkerStopResponseDto(
             AgentWorkerStopOutcome.Stopped.wireValue -> AgentWorkerStopOutcome.Stopped
             else -> AgentWorkerStopOutcome.NotFound
         }
+    }.getOrNull()
+
+// ── Worker observability: Recently ended (7 days) & Worker Timeline Detail ──
+// Wire shapes verified against botiverse/slock `packages/shared/src/workerEvents.ts` and
+// `packages/web/src/components/agent/AgentWorkerTimeline.tsx`.
+
+/** Why a Worker ended (`WORKER_EVENT_END_REASONS` in `workerEvents.ts`). */
+@RaftCoreInternalApi enum class AgentWorkerEndReason(val wireValue: String) {
+    Exited("exited"),
+    Stopped("stopped"),
+    ParentRestarted("parent_restarted"),
+    DaemonShutdown("daemon_shutdown"),
+    StartFailed("start_failed"),
+    Done("done"),
+    WaitingOn("waiting_on"),
+    StoppedBy("stopped_by"),
+    StoppedByPerson("stopped_by_person"),
+    Expired("expired"),
+    TurnFailed("turn_failed");
+
+    /** Web `endedWithError`: error chip / warning timeline dot. */
+    fun isErrorReason(): Boolean =
+        this == Exited || this == StartFailed || this == TurnFailed
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerEndReason? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+/** One event kind on a Worker's timeline (`WORKER_EVENT_KINDS` in `workerEvents.ts`). */
+@RaftCoreInternalApi enum class AgentWorkerEventKind(val wireValue: String) {
+    HandedOut("handed_out"),
+    Delivered("delivered"),
+    TurnStarted("turn_started"),
+    TurnEnded("turn_ended"),
+    Reported("reported"),
+    Quiet("quiet"),
+    Active("active"),
+    HumanWaiting("human_waiting"),
+    HandedToParent("handed_to_parent"),
+    HumanSettled("human_settled"),
+    Ended("ended");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerEventKind? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerDeliverySender(val wireValue: String) {
+    Human("human"),
+    Agent("agent"),
+    System("system");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerDeliverySender? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerDeliveryVia(val wireValue: String) {
+    NewTurn("new_turn"),
+    Steered("steered"),
+    Queued("queued");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerDeliveryVia? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerTurnOutcome(val wireValue: String) {
+    Completed("completed"),
+    Failed("failed"),
+    Interrupted("interrupted");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerTurnOutcome? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerReportKind(val wireValue: String) {
+    Progress("progress"),
+    NeedsDecision("needs_decision"),
+    NeedsParent("needs_parent"),
+    OutOfScope("out_of_scope");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerReportKind? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerQuietDoing(val wireValue: String) {
+    Model("model"),
+    Tool("tool");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerQuietDoing? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerHandedToParentReason(val wireValue: String) {
+    Overdue("overdue"),
+    Ended("ended");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerHandedToParentReason? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerSettledBy(val wireValue: String) {
+    Worker("worker"),
+    Parent("parent");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerSettledBy? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi enum class AgentWorkerSettledHow(val wireValue: String) {
+    Replied("replied"),
+    Reacted("reacted"),
+    Deleted("deleted"),
+    AgentLeft("agent_left"),
+    Expired24h("expired_24h");
+
+    companion object {
+        fun fromWire(raw: String?): AgentWorkerSettledHow? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+@RaftCoreInternalApi data class AgentWorkerEventTokens(
+    val input: Long,
+    val output: Long,
+    val cacheRead: Long? = null,
+    val cacheWrite: Long? = null,
+) {
+    val totalInputOutput: Long
+        get() = input + output
+}
+
+/** One Worker launch of the last 7 days (`GET /api/agents/:id/workers/recent?days=7`, `WorkersRecentResponse`). */
+@RaftCoreInternalApi data class AgentRecentWorkerRow(
+    val launchId: String,
+    val worker: String,
+    val objectRef: String,
+    val objectKind: AgentWorkerObjectKind,
+    val startedAt: String,
+    val startedAtEpochMillis: Long? = parseRaftTimestampEpochMillisOrNull(startedAt),
+    /** Null while the Worker is still running (no `ended` received yet). */
+    val endedAt: String? = null,
+    val endedAtEpochMillis: Long? = parseRaftTimestampEpochMillisOrNull(endedAt),
+    val reason: AgentWorkerEndReason? = null,
+    val handedBack: Int? = null,
+    val stoppedBy: String? = null,
+    val waitingOn: String? = null,
+    val noteFirstLine: String? = null,
+)
+
+/** Launch metadata used to open one Worker's timeline (web `OpenWorkerTimeline`). */
+@RaftCoreInternalApi data class AgentWorkerOpenTimeline(
+    val launchId: String,
+    val worker: String,
+    val objectRef: String,
+)
+
+/** Resolved conversation target for a timeline `"View message"` link (`GET /messages/context/:id`). */
+@RaftCoreInternalApi data class AgentWorkerMessageTarget(
+    val channelId: String,
+    val messageId: String,
+)
+
+/** Typed payload of each `WorkerEventKind` on `GET /api/agents/:id/workers/:launchId/timeline`. */
+@RaftCoreInternalApi sealed interface AgentWorkerTimelineEventData {
+    data class HandedOut(
+        val objectRef: String,
+        val objectKind: AgentWorkerObjectKind,
+        val runtime: String? = null,
+        val model: String? = null,
+        val rule: String? = null,
+    ) : AgentWorkerTimelineEventData
+
+    data class Delivered(
+        val messageId: String,
+        val sender: AgentWorkerDeliverySender,
+        val via: AgentWorkerDeliveryVia,
+    ) : AgentWorkerTimelineEventData
+
+    data class TurnStarted(
+        val turn: Int,
+        val inputs: List<String> = emptyList(),
+    ) : AgentWorkerTimelineEventData
+
+    data class TurnEnded(
+        val turn: Int,
+        val outcome: AgentWorkerTurnOutcome,
+        val durationMs: Long,
+        val toolCalls: Int,
+        val sent: List<String> = emptyList(),
+        val tokens: AgentWorkerEventTokens? = null,
+    ) : AgentWorkerTimelineEventData
+
+    data class Reported(
+        val reportKind: AgentWorkerReportKind,
+        /** Retained only for [AgentWorkerReportKind.Progress]; never shown for other kinds. */
+        val text: String? = null,
+    ) : AgentWorkerTimelineEventData
+
+    data class Quiet(
+        val doing: AgentWorkerQuietDoing,
+        val tool: String? = null,
+        val quietSinceAt: String,
+        val quietSinceAtEpochMillis: Long? = parseRaftTimestampEpochMillisOrNull(quietSinceAt),
+    ) : AgentWorkerTimelineEventData
+
+    data class Active(
+        val doing: AgentWorkerQuietDoing,
+        val tool: String? = null,
+        val quietSinceAt: String,
+        val quietSinceAtEpochMillis: Long? = parseRaftTimestampEpochMillisOrNull(quietSinceAt),
+    ) : AgentWorkerTimelineEventData
+
+    data class HumanWaiting(
+        val messageId: String,
+        val sinceAt: String,
+        val sinceAtEpochMillis: Long? = parseRaftTimestampEpochMillisOrNull(sinceAt),
+    ) : AgentWorkerTimelineEventData
+
+    data class HandedToParent(
+        val messageId: String,
+        val reason: AgentWorkerHandedToParentReason,
+        val waitedMs: Long,
+    ) : AgentWorkerTimelineEventData
+
+    data class HumanSettled(
+        val messageId: String,
+        val by: AgentWorkerSettledBy?,
+        val how: AgentWorkerSettledHow,
+        val waitedMs: Long,
+    ) : AgentWorkerTimelineEventData
+
+    data class Ended(
+        val reason: AgentWorkerEndReason,
+        val stoppedBy: String? = null,
+        val waitingOn: String? = null,
+        val note: String? = null,
+        val handedBack: Int = 0,
+        val durationMs: Long = 0L,
+        val tokens: AgentWorkerEventTokens? = null,
+    ) : AgentWorkerTimelineEventData
+}
+
+/** One chronological event on `GET /api/agents/:id/workers/:launchId/timeline`. */
+@RaftCoreInternalApi data class AgentWorkerTimelineEvent(
+    val seq: Int,
+    val kind: AgentWorkerEventKind,
+    val occurredAt: String,
+    val occurredAtEpochMillis: Long? = parseRaftTimestampEpochMillisOrNull(occurredAt),
+    val data: AgentWorkerTimelineEventData,
+)
+
+/** Parsed answer from `GET /api/agents/:id/workers/:launchId/timeline` (`WorkerTimelineResponse`). */
+@RaftCoreInternalApi data class AgentWorkerTimelineSnapshot(
+    val launchId: String,
+    val events: List<AgentWorkerTimelineEvent>,
+)
+
+/** Timeline dot variant matching raft-ui `TimelineItemVariant` in `AgentWorkerTimeline.tsx`. */
+@RaftCoreInternalApi enum class AgentWorkerTimelineVariant {
+    Default,
+    Information,
+    Success,
+    Warning,
+}
+
+/** Header state chip matching web `STATE_CHIP` / `stateOf` in `AgentWorkerTimeline.tsx`. */
+@RaftCoreInternalApi enum class AgentWorkerTimelineChipState {
+    Working,
+    Finished,
+    Stopped,
+    Error,
+    Ended,
+}
+
+@RaftCoreInternalApi fun agentWorkerTimelineChipState(
+    isLive: Boolean,
+    reason: AgentWorkerEndReason?,
+): AgentWorkerTimelineChipState =
+    when {
+        isLive -> AgentWorkerTimelineChipState.Working
+        reason == null -> AgentWorkerTimelineChipState.Ended
+        reason == AgentWorkerEndReason.Done -> AgentWorkerTimelineChipState.Finished
+        reason.isErrorReason() -> AgentWorkerTimelineChipState.Error
+        else -> AgentWorkerTimelineChipState.Stopped
+    }
+
+/** One rendered timeline item after folding finished `turn_started` events and dropping `needs_parent`. */
+@RaftCoreInternalApi data class AgentWorkerTimelineDisplayItem(
+    val seq: Int,
+    val kind: AgentWorkerEventKind,
+    val occurredAt: String,
+    val occurredAtEpochMillis: Long?,
+    val variant: AgentWorkerTimelineVariant,
+    val warning: Boolean,
+    val data: AgentWorkerTimelineEventData,
+    /** Server-clock duration for `quiet`, `active`, and `human_waiting` (`occurredAt - sinceAt`). */
+    val elapsedMs: Long? = null,
+    /** Start timestamp of the `turn_started` folded into a `turn_ended`, if present. */
+    val foldedTurnStartedAt: String? = null,
+)
+
+/**
+ * Web `RecentWorkersGroup` filter: only launches that have ended (`endedAt != null`), deduped by
+ * `launchId` while preserving newest-first server order.
+ */
+@RaftCoreInternalApi fun recentEndedAgentWorkers(rows: List<AgentRecentWorkerRow>): List<AgentRecentWorkerRow> {
+    val seen = LinkedHashMap<String, AgentRecentWorkerRow>()
+    for (row in rows) {
+        if (row.endedAt != null && row.launchId.isNotBlank() && row.launchId !in seen) {
+            seen[row.launchId] = row
+        }
+    }
+    return seen.values.toList()
+}
+
+/**
+ * Web `useWorkersPanelTimeline` `refreshKey`: changes when the open launch's live row moves on,
+ * disappears, or its ended record lands.
+ */
+@RaftCoreInternalApi fun agentWorkerTimelineRefreshKey(
+    live: AgentWorkerRow?,
+    ended: AgentRecentWorkerRow?,
+): String =
+    if (live != null) {
+        listOf(
+            live.state.wireValue,
+            live.lastEventAt.orEmpty(),
+            live.doing?.wireValue.orEmpty(),
+            live.tool.orEmpty(),
+            live.queued?.toString().orEmpty(),
+            live.progress?.at.orEmpty(),
+            live.oldestWaitingAt.orEmpty(),
+        ).joinToString("|")
+    } else {
+        "ended:${ended?.endedAt ?: "pending"}"
+    }
+
+/**
+ * Pure event projection matching web `AgentWorkerTimeline.tsx` `eventItems`:
+ * - A finished turn's `turn_started` folds into its `turn_ended` (one item per turn).
+ * - A still-running turn (no matching `turn_ended`) keeps its `turn_started`.
+ * - `reported` with `needs_parent` is omitted; only `progress` retains text.
+ * - `quiet` in the model is a warning; in a tool is not.
+ * - `human_waiting` and `human_settled` (`expired_24h`) are warnings.
+ */
+@RaftCoreInternalApi fun projectAgentWorkerTimelineEvents(
+    events: List<AgentWorkerTimelineEvent>,
+): List<AgentWorkerTimelineDisplayItem> {
+    val endedTurns = HashSet<Int>()
+    val turnStartsByTurn = HashMap<Int, AgentWorkerTimelineEvent>()
+    for (event in events) {
+        when (val data = event.data) {
+            is AgentWorkerTimelineEventData.TurnEnded -> endedTurns += data.turn
+            is AgentWorkerTimelineEventData.TurnStarted -> {
+                if (data.turn !in turnStartsByTurn) {
+                    turnStartsByTurn[data.turn] = event
+                }
+            }
+            else -> Unit
+        }
+    }
+    fun between(fromMillis: Long?, toMillis: Long?): Long =
+        if (fromMillis != null && toMillis != null) maxOf(0L, toMillis - fromMillis) else 0L
+
+    val items = ArrayList<AgentWorkerTimelineDisplayItem>(events.size)
+    for (event in events) {
+        when (val data = event.data) {
+            is AgentWorkerTimelineEventData.HandedOut ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = AgentWorkerTimelineVariant.Default,
+                    warning = false,
+                    data = data,
+                )
+            is AgentWorkerTimelineEventData.Delivered ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = AgentWorkerTimelineVariant.Default,
+                    warning = false,
+                    data = data,
+                )
+            is AgentWorkerTimelineEventData.TurnStarted -> {
+                if (data.turn !in endedTurns) {
+                    items += AgentWorkerTimelineDisplayItem(
+                        seq = event.seq,
+                        kind = event.kind,
+                        occurredAt = event.occurredAt,
+                        occurredAtEpochMillis = event.occurredAtEpochMillis,
+                        variant = AgentWorkerTimelineVariant.Information,
+                        warning = false,
+                        data = data,
+                    )
+                }
+            }
+            is AgentWorkerTimelineEventData.TurnEnded ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant =
+                        if (data.outcome == AgentWorkerTurnOutcome.Completed) AgentWorkerTimelineVariant.Success
+                        else AgentWorkerTimelineVariant.Warning,
+                    warning = false,
+                    data = data,
+                    foldedTurnStartedAt = turnStartsByTurn[data.turn]?.occurredAt,
+                )
+            is AgentWorkerTimelineEventData.Reported -> {
+                if (data.reportKind != AgentWorkerReportKind.NeedsParent) {
+                    val safeData =
+                        if (data.reportKind == AgentWorkerReportKind.Progress) data
+                        else data.copy(text = null)
+                    items += AgentWorkerTimelineDisplayItem(
+                        seq = event.seq,
+                        kind = event.kind,
+                        occurredAt = event.occurredAt,
+                        occurredAtEpochMillis = event.occurredAtEpochMillis,
+                        variant = AgentWorkerTimelineVariant.Default,
+                        warning = false,
+                        data = safeData,
+                    )
+                }
+            }
+            is AgentWorkerTimelineEventData.Quiet -> {
+                val isWarning = data.doing == AgentWorkerQuietDoing.Model
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = if (isWarning) AgentWorkerTimelineVariant.Warning else AgentWorkerTimelineVariant.Default,
+                    warning = isWarning,
+                    data = data,
+                    elapsedMs = between(data.quietSinceAtEpochMillis, event.occurredAtEpochMillis),
+                )
+            }
+            is AgentWorkerTimelineEventData.Active ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = AgentWorkerTimelineVariant.Default,
+                    warning = false,
+                    data = data,
+                    elapsedMs = between(data.quietSinceAtEpochMillis, event.occurredAtEpochMillis),
+                )
+            is AgentWorkerTimelineEventData.HumanWaiting ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = AgentWorkerTimelineVariant.Warning,
+                    warning = true,
+                    data = data,
+                    elapsedMs = between(data.sinceAtEpochMillis, event.occurredAtEpochMillis),
+                )
+            is AgentWorkerTimelineEventData.HandedToParent ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = AgentWorkerTimelineVariant.Default,
+                    warning = false,
+                    data = data,
+                )
+            is AgentWorkerTimelineEventData.HumanSettled -> {
+                val unanswered = data.how == AgentWorkerSettledHow.Expired24h
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = if (unanswered) AgentWorkerTimelineVariant.Warning else AgentWorkerTimelineVariant.Success,
+                    warning = unanswered,
+                    data = data,
+                )
+            }
+            is AgentWorkerTimelineEventData.Ended ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant =
+                        when {
+                            data.reason == AgentWorkerEndReason.Done -> AgentWorkerTimelineVariant.Success
+                            data.reason.isErrorReason() -> AgentWorkerTimelineVariant.Warning
+                            else -> AgentWorkerTimelineVariant.Default
+                        },
+                    warning = false,
+                    data = data,
+                )
+        }
+    }
+    return items
+}
+
+// ── Wire DTOs & parsers for /workers/recent and /workers/:launchId/timeline ──
+
+@Serializable
+private data class AgentRecentWorkerRowDto(
+    val launchId: String? = null,
+    val worker: String? = null,
+    @SerialName("object")
+    val objectRef: String? = null,
+    val objectKind: String? = null,
+    val startedAt: String? = null,
+    val endedAt: String? = null,
+    val reason: String? = null,
+    val handedBack: Int? = null,
+    val stoppedBy: String? = null,
+    val waitingOn: String? = null,
+    val noteFirstLine: String? = null,
+) {
+    fun toDomain(): AgentRecentWorkerRow? {
+        val cleanLaunchId = launchId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val cleanWorker = worker?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val cleanObject = objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val kind = AgentWorkerObjectKind.fromWire(objectKind?.trim()) ?: return null
+        val cleanStartedAt = startedAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val cleanEndedAt = endedAt?.trim()?.takeIf { it.isNotEmpty() }
+        return AgentRecentWorkerRow(
+            launchId = cleanLaunchId,
+            worker = cleanWorker,
+            objectRef = cleanObject,
+            objectKind = kind,
+            startedAt = cleanStartedAt,
+            endedAt = cleanEndedAt,
+            reason = AgentWorkerEndReason.fromWire(reason?.trim()),
+            handedBack = handedBack?.takeIf { it >= 0 },
+            stoppedBy = stoppedBy?.trim()?.removePrefix("@")?.takeIf { it.isNotEmpty() },
+            waitingOn = waitingOn?.trim()?.removePrefix("@")?.takeIf { it.isNotEmpty() },
+            noteFirstLine = noteFirstLine?.trim()?.takeIf { it.isNotEmpty() },
+        )
+    }
+}
+
+@Serializable
+private data class AgentRecentWorkersResponseDto(
+    val workers: List<AgentRecentWorkerRowDto>? = null,
+)
+
+@Serializable
+private data class AgentWorkerEventTokensDto(
+    val input: Long? = null,
+    val output: Long? = null,
+    val cacheRead: Long? = null,
+    val cacheWrite: Long? = null,
+) {
+    fun toDomain(): AgentWorkerEventTokens? {
+        val cleanInput = input?.takeIf { it >= 0L } ?: return null
+        val cleanOutput = output?.takeIf { it >= 0L } ?: return null
+        return AgentWorkerEventTokens(
+            input = cleanInput,
+            output = cleanOutput,
+            cacheRead = cacheRead?.takeIf { it >= 0L },
+            cacheWrite = cacheWrite?.takeIf { it >= 0L },
+        )
+    }
+}
+
+@Serializable
+private data class HandedOutEventDataDto(
+    @SerialName("object")
+    val objectRef: String? = null,
+    val objectKind: String? = null,
+    val runtime: String? = null,
+    val model: String? = null,
+    val rule: String? = null,
+)
+
+@Serializable
+private data class DeliveredEventDataDto(
+    val messageId: String? = null,
+    val sender: String? = null,
+    val via: String? = null,
+)
+
+@Serializable
+private data class TurnStartedEventDataDto(
+    val turn: Int? = null,
+    val inputs: List<String>? = null,
+)
+
+@Serializable
+private data class TurnEndedEventDataDto(
+    val turn: Int? = null,
+    val outcome: String? = null,
+    val durationMs: Long? = null,
+    val toolCalls: Int? = null,
+    val sent: List<String>? = null,
+    val tokens: AgentWorkerEventTokensDto? = null,
+)
+
+@Serializable
+private data class ReportedEventDataDto(
+    val reportKind: String? = null,
+    val text: String? = null,
+)
+
+@Serializable
+private data class QuietOrActiveEventDataDto(
+    val doing: String? = null,
+    val tool: String? = null,
+    val quietSinceAt: String? = null,
+)
+
+@Serializable
+private data class HumanWaitingEventDataDto(
+    val messageId: String? = null,
+    val sinceAt: String? = null,
+)
+
+@Serializable
+private data class HandedToParentEventDataDto(
+    val messageId: String? = null,
+    val reason: String? = null,
+    val waitedMs: Long? = null,
+)
+
+@Serializable
+private data class HumanSettledEventDataDto(
+    val messageId: String? = null,
+    val by: String? = null,
+    val how: String? = null,
+    val waitedMs: Long? = null,
+)
+
+@Serializable
+private data class EndedEventDataDto(
+    val reason: String? = null,
+    val stoppedBy: String? = null,
+    val waitingOn: String? = null,
+    val note: String? = null,
+    val handedBack: Int? = null,
+    val durationMs: Long? = null,
+    val tokens: AgentWorkerEventTokensDto? = null,
+)
+
+@Serializable
+private data class AgentWorkerTimelineEventDto(
+    val seq: Int? = null,
+    val kind: String? = null,
+    val data: JsonObject? = null,
+    val occurredAt: String? = null,
+) {
+    fun toDomain(): AgentWorkerTimelineEvent? {
+        val cleanSeq = seq?.takeIf { it > 0 } ?: return null
+        val parsedKind = AgentWorkerEventKind.fromWire(kind?.trim()) ?: return null
+        val cleanOccurredAt = occurredAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val rawData = data ?: return null
+        val parsedData: AgentWorkerTimelineEventData =
+            runCatching {
+                when (parsedKind) {
+                    AgentWorkerEventKind.HandedOut -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(HandedOutEventDataDto.serializer(), rawData)
+                        val obj = dto.objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        val objKind = AgentWorkerObjectKind.fromWire(dto.objectKind?.trim()) ?: return null
+                        AgentWorkerTimelineEventData.HandedOut(
+                            objectRef = obj,
+                            objectKind = objKind,
+                            runtime = dto.runtime?.trim()?.takeIf { it.isNotEmpty() },
+                            model = dto.model?.trim()?.takeIf { it.isNotEmpty() },
+                            rule = dto.rule?.trim()?.takeIf { it.isNotEmpty() },
+                        )
+                    }
+                    AgentWorkerEventKind.Delivered -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(DeliveredEventDataDto.serializer(), rawData)
+                        val messageId = dto.messageId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        val sender = AgentWorkerDeliverySender.fromWire(dto.sender?.trim()) ?: return null
+                        val via = AgentWorkerDeliveryVia.fromWire(dto.via?.trim()) ?: return null
+                        AgentWorkerTimelineEventData.Delivered(messageId = messageId, sender = sender, via = via)
+                    }
+                    AgentWorkerEventKind.TurnStarted -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(TurnStartedEventDataDto.serializer(), rawData)
+                        val turn = dto.turn?.takeIf { it > 0 } ?: return null
+                        AgentWorkerTimelineEventData.TurnStarted(
+                            turn = turn,
+                            inputs = dto.inputs.orEmpty().mapNotNull { it.trim().takeIf(String::isNotEmpty) },
+                        )
+                    }
+                    AgentWorkerEventKind.TurnEnded -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(TurnEndedEventDataDto.serializer(), rawData)
+                        val turn = dto.turn?.takeIf { it > 0 } ?: return null
+                        val outcome = AgentWorkerTurnOutcome.fromWire(dto.outcome?.trim()) ?: return null
+                        val durationMs = dto.durationMs?.takeIf { it >= 0L } ?: 0L
+                        val toolCalls = dto.toolCalls?.takeIf { it >= 0 } ?: 0
+                        AgentWorkerTimelineEventData.TurnEnded(
+                            turn = turn,
+                            outcome = outcome,
+                            durationMs = durationMs,
+                            toolCalls = toolCalls,
+                            sent = dto.sent.orEmpty().mapNotNull { it.trim().takeIf(String::isNotEmpty) },
+                            tokens = dto.tokens?.toDomain(),
+                        )
+                    }
+                    AgentWorkerEventKind.Reported -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(ReportedEventDataDto.serializer(), rawData)
+                        val reportKind = AgentWorkerReportKind.fromWire(dto.reportKind?.trim()) ?: return null
+                        val progressText =
+                            if (reportKind == AgentWorkerReportKind.Progress) {
+                                dto.text?.trim()?.takeIf { it.isNotEmpty() }
+                            } else {
+                                null
+                            }
+                        AgentWorkerTimelineEventData.Reported(reportKind = reportKind, text = progressText)
+                    }
+                    AgentWorkerEventKind.Quiet -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(QuietOrActiveEventDataDto.serializer(), rawData)
+                        val doing = AgentWorkerQuietDoing.fromWire(dto.doing?.trim()) ?: return null
+                        val quietSinceAt = dto.quietSinceAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        AgentWorkerTimelineEventData.Quiet(
+                            doing = doing,
+                            tool = dto.tool?.trim()?.takeIf { it.isNotEmpty() },
+                            quietSinceAt = quietSinceAt,
+                        )
+                    }
+                    AgentWorkerEventKind.Active -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(QuietOrActiveEventDataDto.serializer(), rawData)
+                        val doing = AgentWorkerQuietDoing.fromWire(dto.doing?.trim()) ?: return null
+                        val quietSinceAt = dto.quietSinceAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        AgentWorkerTimelineEventData.Active(
+                            doing = doing,
+                            tool = dto.tool?.trim()?.takeIf { it.isNotEmpty() },
+                            quietSinceAt = quietSinceAt,
+                        )
+                    }
+                    AgentWorkerEventKind.HumanWaiting -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(HumanWaitingEventDataDto.serializer(), rawData)
+                        val messageId = dto.messageId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        val sinceAt = dto.sinceAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        AgentWorkerTimelineEventData.HumanWaiting(messageId = messageId, sinceAt = sinceAt)
+                    }
+                    AgentWorkerEventKind.HandedToParent -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(HandedToParentEventDataDto.serializer(), rawData)
+                        val messageId = dto.messageId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        val reason = AgentWorkerHandedToParentReason.fromWire(dto.reason?.trim()) ?: return null
+                        val waitedMs = dto.waitedMs?.takeIf { it >= 0L } ?: 0L
+                        AgentWorkerTimelineEventData.HandedToParent(
+                            messageId = messageId,
+                            reason = reason,
+                            waitedMs = waitedMs,
+                        )
+                    }
+                    AgentWorkerEventKind.HumanSettled -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(HumanSettledEventDataDto.serializer(), rawData)
+                        val messageId = dto.messageId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        val how = AgentWorkerSettledHow.fromWire(dto.how?.trim()) ?: return null
+                        val waitedMs = dto.waitedMs?.takeIf { it >= 0L } ?: 0L
+                        AgentWorkerTimelineEventData.HumanSettled(
+                            messageId = messageId,
+                            by = AgentWorkerSettledBy.fromWire(dto.by?.trim()),
+                            how = how,
+                            waitedMs = waitedMs,
+                        )
+                    }
+                    AgentWorkerEventKind.Ended -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(EndedEventDataDto.serializer(), rawData)
+                        val reason = AgentWorkerEndReason.fromWire(dto.reason?.trim()) ?: return null
+                        val handedBack = dto.handedBack?.takeIf { it >= 0 } ?: 0
+                        val durationMs = dto.durationMs?.takeIf { it >= 0L } ?: 0L
+                        AgentWorkerTimelineEventData.Ended(
+                            reason = reason,
+                            stoppedBy = dto.stoppedBy?.trim()?.removePrefix("@")?.takeIf { it.isNotEmpty() },
+                            waitingOn = dto.waitingOn?.trim()?.removePrefix("@")?.takeIf { it.isNotEmpty() },
+                            note = dto.note?.trim()?.takeIf { it.isNotEmpty() },
+                            handedBack = handedBack,
+                            durationMs = durationMs,
+                            tokens = dto.tokens?.toDomain(),
+                        )
+                    }
+                }
+            }.getOrNull() ?: return null
+        return AgentWorkerTimelineEvent(
+            seq = cleanSeq,
+            kind = parsedKind,
+            occurredAt = cleanOccurredAt,
+            data = parsedData,
+        )
+    }
+}
+
+@Serializable
+private data class AgentWorkerTimelineResponseDto(
+    val launchId: String? = null,
+    val events: List<AgentWorkerTimelineEventDto>? = null,
+)
+
+/** Parses a 2xx `GET /api/agents/:id/workers/recent` body (`WorkersRecentResponse`). */
+@RaftCoreInternalApi fun parseSharedAgentRecentWorkers(bodyText: String): List<AgentRecentWorkerRow>? =
+    runCatching {
+        val dto = agentWorkersJson.decodeFromString(AgentRecentWorkersResponseDto.serializer(), bodyText)
+        val rows = dto.workers ?: return@runCatching null
+        rows.mapNotNull { it.toDomain() }
+    }.getOrNull()
+
+/** Parses a 2xx `GET /api/agents/:id/workers/:launchId/timeline` body (`WorkerTimelineResponse`). */
+@RaftCoreInternalApi fun parseSharedAgentWorkerTimeline(bodyText: String): AgentWorkerTimelineSnapshot? =
+    runCatching {
+        val dto = agentWorkersJson.decodeFromString(AgentWorkerTimelineResponseDto.serializer(), bodyText)
+        val launchId = dto.launchId?.trim()?.takeIf { it.isNotEmpty() } ?: return@runCatching null
+        val events = dto.events ?: return@runCatching null
+        AgentWorkerTimelineSnapshot(
+            launchId = launchId,
+            events = events.mapNotNull { it.toDomain() },
+        )
     }.getOrNull()

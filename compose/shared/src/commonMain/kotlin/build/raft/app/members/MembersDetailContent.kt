@@ -21,6 +21,7 @@ import build.raft.app.data.AgentSubagentStopIntent
 import build.raft.app.data.AgentSubagentStopState
 import build.raft.app.data.AgentAppGrantsRevokeStore
 import build.raft.app.data.AgentSubagentStopStore
+import build.raft.app.data.AgentWorkerTimelineStore
 import build.raft.app.data.AgentWorkersIntent
 import build.raft.app.data.AgentWorkersState
 import build.raft.app.data.AgentWorkersStore
@@ -248,6 +249,8 @@ internal class MembersAgentRemoteControls(
     val subagentStopStore: AgentSubagentStopStore? = null,
     /** Worker v1 (`worker_v1` on for a Computer agent): Activity › Workers panel store; null when flag off or external. */
     val workersStore: AgentWorkersStore? = null,
+    /** Worker v1 observability: one launch's timeline pushed inside the Workers panel; null when flag off or external. */
+    val workerTimelineStore: AgentWorkerTimelineStore? = null,
     /** The Apps tab's Revoke access and per-grant Revoke (web AgentAppAccessTab); null offers neither. */
     val appAccess: MembersAgentAppAccessBinding? = null
 )
@@ -302,6 +305,8 @@ internal class MembersDetailActions(
     val onOpenReminderMessage: (String) -> Unit = {},
     /** Opens a message the agent Activity overview names, by channel and message id. */
     val onOpenActivityMessage: (channelId: String, messageId: String) -> Unit = { _, _ -> },
+    /** Resolves and opens a message named by a Worker timeline `"View message"` link. */
+    val onOpenWorkerTimelineMessage: ((messageId: String) -> Unit)? = null,
     val onUnavailableAction: (String) -> Unit,
     /** Opens the profile of an agent listed under a human's Created Agents. */
     val onOpenCreatedAgent: ((AgentProfile) -> Unit)? = null,
@@ -627,6 +632,7 @@ internal fun MembersDetailContent(
     }
     val activityWorkersComputerOffline =
         (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)?.online == false
+    val workerTimelineStore = remoteControls?.workerTimelineStore
     val activityWorkers: MembersAgentWorkersBinding? =
         if (member.kind == MemberKind.Agent && workersStore != null && !isExternalAgent) {
             MembersAgentWorkersBinding(
@@ -643,6 +649,9 @@ internal fun MembersDetailContent(
                     ),
                 computerOffline = activityWorkersComputerOffline,
                 onIntent = workersStore::dispatch,
+                timelineState = workerTimelineStore?.state,
+                onTimelineIntent = workerTimelineStore?.let { it::dispatch },
+                onOpenTimelineMessage = actions.onOpenWorkerTimelineMessage,
             )
         } else {
             null

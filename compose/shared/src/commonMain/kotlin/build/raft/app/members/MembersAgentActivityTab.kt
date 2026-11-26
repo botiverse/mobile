@@ -18,8 +18,11 @@ import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.agentActivitySubagentRowPresence
 import build.raft.app.data.groupAgentActivitySubagents
 import build.raft.app.data.AgentActivityOverviewIntent
+import build.raft.app.data.AgentWorkerTimelineIntent
+import build.raft.app.data.AgentWorkerTimelineState
 import build.raft.app.data.AgentWorkersIntent
 import build.raft.app.data.AgentWorkersState
+import build.raft.app.data.agentWorkerTimelineRefreshKey
 import build.raft.app.data.agentMemoryLimitExit
 import build.raft.app.data.isAgentBackgroundOomActivityTitle
 import build.raft.app.data.parseAgentBackgroundOomActivityText
@@ -94,6 +97,8 @@ internal fun MembersAgentActivityTab(
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
     val fallbackWorkersState = remember { MutableStateFlow(AgentWorkersState()) }
     val workersState by (workers?.state ?: fallbackWorkersState).collectAsState()
+    val fallbackTimelineState = remember { MutableStateFlow(AgentWorkerTimelineState()) }
+    val workerTimelineState by (workers?.timelineState ?: fallbackTimelineState).collectAsState()
     var chosenActivityView by remember(detail?.agentId) { mutableStateOf(MembersAgentActivityView.Overview) }
     // Without the Overview (its flag off or unresolved) the Overview choice reads as the raw log.
     val activityView =
@@ -115,13 +120,44 @@ internal fun MembersAgentActivityTab(
             }
         }
     val openSubagent = openSubagentKey?.let { key -> subagents.firstOrNull { it.key == key } }
-    // A sub-agent's page is transient: Back returns to the list first.
-    RaftBackHandler(enabled = activityView == MembersAgentActivityView.Subagents && openSubagent != null, label = "agent_subagent_detail") {
-        openSubagentKey = null
-    }
     // Web AgentActivityLog (slock #14961 + Worker v1): always offered when worker_v1 is on for a Computer agent,
     // or for a runtime that can start sub-agents; any other runtime shows it once a sub-agent has appeared.
     val workersEnabled = workers != null
+    val openWorkerTimeline =
+        workerTimelineState.open?.takeIf { workersEnabled && workerTimelineState.agentId == detail?.agentId }
+    val openWorkerLiveRow =
+        openWorkerTimeline?.let { open -> workersState.workers.firstOrNull { it.launchId == open.launchId } }
+    val openWorkerEndedRow =
+        openWorkerTimeline?.let { open ->
+            workersState.recentWorkers.firstOrNull { it.launchId == open.launchId && it.endedAt != null }
+        }
+    val openWorkerRefreshKey =
+        if (openWorkerTimeline != null) {
+            agentWorkerTimelineRefreshKey(live = openWorkerLiveRow, ended = openWorkerEndedRow)
+        } else {
+            null
+        }
+    LaunchedEffect(workers, openWorkerTimeline?.launchId, openWorkerRefreshKey) {
+        if (openWorkerRefreshKey != null) {
+            workers?.onTimelineIntent?.invoke(AgentWorkerTimelineIntent.SyncRefreshKey(openWorkerRefreshKey))
+        }
+    }
+    LaunchedEffect(workers, detail?.agentId) {
+        val openAgentId = workers?.timelineState?.value?.agentId
+        if (openAgentId != null && openAgentId != detail?.agentId) {
+            workers.onTimelineIntent?.invoke(AgentWorkerTimelineIntent.Close)
+        }
+    }
+    // A sub-agent's or Worker's detail page is transient: Back returns to the list first.
+    RaftBackHandler(enabled = activityView == MembersAgentActivityView.Subagents && openSubagent != null, label = "agent_subagent_detail") {
+        openSubagentKey = null
+    }
+    RaftBackHandler(
+        enabled = activityView == MembersAgentActivityView.Subagents && openSubagent == null && openWorkerTimeline != null,
+        label = "agent_worker_timeline",
+    ) {
+        workers?.onTimelineIntent?.invoke(AgentWorkerTimelineIntent.Close)
+    }
     val showSubagents =
         membersAgentActivityShowsSubagents(
             runtime = detail?.summary?.runtime,
@@ -141,6 +177,7 @@ internal fun MembersAgentActivityTab(
     val changeView: (MembersAgentActivityView) -> Unit = { next ->
         chosenActivityView = next
         openSubagentKey = null
+        workers?.onTimelineIntent?.invoke(AgentWorkerTimelineIntent.Close)
     }
     if (overview != null && detail != null) {
         MembersAgentActivityOverviewEffects(overview, detail.agentId, detail.summary?.activity, serverId)
@@ -281,6 +318,27 @@ internal fun MembersAgentActivityTab(
                         ) { _, entry, last ->
                             MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = last)
                         }
+                    } else if (workers != null && openWorkerTimeline != null) {
+                        MembersAgentWorkerTimelineDetail(
+                            agentId = detail?.agentId ?: MemberId(""),
+                            open = openWorkerTimeline,
+                            parentHandle = workers.parentHandle,
+                            live = openWorkerLiveRow,
+                            ended = openWorkerEndedRow,
+                            timelineState = workerTimelineState,
+                            nowMillis = workersState.nowMillis,
+                            stale = workersState.stale,
+                            canStop = workers.canStop,
+                            computerOffline = workers.computerOffline,
+                            stoppingWorker = workersState.stoppingWorker,
+                            timeContext = timeContext,
+                            horizontalInset = MembersPageInset,
+                            onBack = { workers.onTimelineIntent?.invoke(AgentWorkerTimelineIntent.Close) },
+                            onRefresh = { workers.onTimelineIntent?.invoke(AgentWorkerTimelineIntent.Refresh) },
+                            onWorkersIntent = workers.onIntent,
+                            onOpenMessage = { messageId -> workers.onOpenTimelineMessage?.invoke(messageId) },
+                            modifier = contentModifier,
+                        )
                     } else if (workers != null) {
                         MembersAgentWorkersList(
                             agentId = detail?.agentId ?: MemberId(""),

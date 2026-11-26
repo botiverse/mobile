@@ -10,7 +10,8 @@ internal data class AgentControlsRecordedRequest(
     val priority: DataRequestPriority,
     val method: String,
     val path: String,
-    val bodyText: String?
+    val bodyText: String?,
+    val query: List<Pair<String, String>> = emptyList(),
 )
 
 /**
@@ -46,7 +47,7 @@ internal class ScriptedAgentControlsNetworkClient : RaftNetworkClient {
         serverIdOverride: ServerId?,
         bodyText: String?
     ): HomeNetworkResponse {
-        requests += AgentControlsRecordedRequest(priority, method, path, bodyText)
+        requests += AgentControlsRecordedRequest(priority, method, path, bodyText, query)
         val key = "$method $path"
         holds[key]?.await()
         val answers = script[key] ?: return HomeNetworkResponse(code = 404, bodyText = null)
