@@ -100,4 +100,50 @@ class RaftTraceSamplingTest {
         assertEquals("platform_rule", snapshot.reasons["trace_sample.mobile.thread_open"])
         assertEquals(0.1, resolveTraceSampleRate(MOBILE_THREAD_OPEN_TRACE_NAME, snapshot.traceSampleEvaluations(MOBILE_THREAD_OPEN_TRACE_NAME), 1.0))
     }
+
+    @Test
+    fun clientErrorAndWebViewTraceSampleFamiliesAreRegisteredWithExpectedDefaults() {
+        assertEquals(REGISTERED_SERVER_FEATURE_FLAG_KEYS.distinct(), REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        for (name in listOf(
+            MOBILE_HTTP_ERROR_TRACE_NAME,
+            MOBILE_UI_ERROR_TRACE_NAME,
+            MOBILE_WEBVIEW_TRACE_NAME,
+            MOBILE_WEB_CONTAINER_TRACE_NAME,
+        )) {
+            assertTrue(
+                traceSampleKeys(name).all { it in REGISTERED_SERVER_FEATURE_FLAG_KEYS },
+                "missing trace_sample keys for $name",
+            )
+        }
+        assertEquals(1.0, TRACE_SAMPLE_ERROR_DEFAULT_RATE)
+        assertEquals(0.1, defaultWebViewForegroundTraceSampleRate(buildType = "release", debugBuild = false))
+        assertEquals(1.0, defaultWebViewForegroundTraceSampleRate(buildType = "alpha", debugBuild = false))
+        assertEquals(1.0, defaultWebViewForegroundTraceSampleRate(buildType = "release", debugBuild = true))
+        assertEquals(0.02, defaultWebViewPrewarmTraceSampleRate(buildType = "release", debugBuild = false))
+        assertEquals(1.0, defaultWebViewPrewarmTraceSampleRate(buildType = "alpha", debugBuild = false))
+        assertEquals(1.0, defaultWebViewPrewarmTraceSampleRate(buildType = "release", debugBuild = true))
+
+        val snapshot =
+            ServerFeatureFlagSnapshot(
+                serverId = ServerId("s1"),
+                resolved = true,
+                values = mapOf(
+                    "trace_sample.mobile" to true,
+                    "trace_sample.mobile.http_error" to false,
+                    "trace_sample.mobile.web_container" to true,
+                ),
+                reasons = mapOf(
+                    "trace_sample.mobile" to "platform_rule",
+                    "trace_sample.mobile.http_error" to "kill_switch",
+                    "trace_sample.mobile.web_container" to "platform_rule",
+                ),
+                variants = mapOf(
+                    "trace_sample.mobile" to "0.5",
+                    "trace_sample.mobile.web_container" to "0.25",
+                ),
+            )
+        assertEquals(0.0, resolveActiveServerTraceSampleRate("s1", MOBILE_HTTP_ERROR_TRACE_NAME, 1.0, flags = snapshot))
+        assertEquals(0.5, resolveActiveServerTraceSampleRate("s1", MOBILE_UI_ERROR_TRACE_NAME, 1.0, flags = snapshot))
+        assertEquals(0.25, resolveActiveServerTraceSampleRate("s1", MOBILE_WEB_CONTAINER_TRACE_NAME, 1.0, flags = snapshot))
+    }
 }

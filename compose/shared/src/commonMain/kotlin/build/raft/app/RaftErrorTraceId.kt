@@ -4,12 +4,16 @@ import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.MobileUiErrorCode
+import build.raft.app.data.MobileUiErrorSurface
+import build.raft.app.data.MobileUiErrorTrace
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.LocalRaftToastHostState
@@ -27,8 +31,22 @@ import build.raft.designsystem.theme.RaftTheme
  * through the app's copy action (host pasteboard + "Copied"). Draws nothing without a [traceId].
  */
 @Composable
-internal fun RaftTraceIdNote(traceId: String?, modifier: Modifier = Modifier) {
+internal fun RaftTraceIdNote(
+    traceId: String?,
+    modifier: Modifier = Modifier,
+    uiErrorSurface: MobileUiErrorSurface = MobileUiErrorSurface.ScreenError,
+    uiErrorRoute: String? = null,
+    uiErrorCode: MobileUiErrorCode = MobileUiErrorCode.Unknown,
+) {
     val id = raftValidTraceIdOrNull(traceId) ?: return
+    LaunchedEffect(id, uiErrorSurface, uiErrorRoute, uiErrorCode) {
+        MobileUiErrorTrace.record(
+            surface = uiErrorSurface,
+            route = uiErrorRoute,
+            errorCode = uiErrorCode,
+            requestTraceId = id,
+        )
+    }
     val copy = rememberRaftCopyAction()
     Row(
         modifier.testTag(RaftTraceIdNoteTestTag),
@@ -74,6 +92,14 @@ internal fun rememberRaftErrorToast(): (title: String, traceId: String?, intent:
     return remember(toastHost, hasCopyHandler, copy, traceIdFormat, copyLabel, copiedToast) {
         { title, rawTraceId, intent ->
             val id = raftValidTraceIdOrNull(rawTraceId)
+            if (intent == RaftToastIntent.Error) {
+                MobileUiErrorTrace.record(
+                    surface = MobileUiErrorSurface.Toast,
+                    route = null,
+                    errorCode = MobileUiErrorCode.Unknown,
+                    requestTraceId = id,
+                )
+            }
             toastHost?.show(
                 title = title,
                 footnote = id?.let { traceIdFormat.replace("%s", raftShortTraceId(it)) },

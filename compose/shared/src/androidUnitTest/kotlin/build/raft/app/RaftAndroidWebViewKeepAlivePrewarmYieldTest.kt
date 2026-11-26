@@ -2,6 +2,8 @@ package build.raft.app
 
 import android.os.Looper
 import android.webkit.WebView
+import build.raft.app.data.RaftWebSpanRecord
+import build.raft.app.network.RaftTraceIds
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebContainerConfig
 import build.raft.webcontainer.WebIsolationScope
@@ -17,6 +19,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
@@ -259,5 +262,66 @@ class RaftAndroidWebViewKeepAlivePrewarmYieldTest {
         val sameKey = WebContainerPoolKey(keepAliveKey, WebIsolationScope.Default, isDarkTheme = false)
         assertEquals(0, WebContainerAndroidKeepAlive.abortInFlightPrewarmForForeground("artifact_viewer", exceptKey = sameKey, telemetrySink = sink))
         assertNotNull(WebContainerAndroidKeepAlive.keptDocument(keepAliveKey))
+    }
+
+    @Test
+    fun prewarmEmitsMobileWebViewLoadSpansForOkForegroundYieldTimeoutAndDropErrors() {
+        val app = RuntimeEnvironment.getApplication()
+        val spans = mutableListOf<RaftWebSpanRecord>()
+        val recorder =
+            MobileWebViewLoadTraceRecorder(
+                nowEpochMs = { 1_795_500_000_000L + fakeNowMs },
+                resolveServerId = { "srv-1" },
+                resolveBaseRate = { _, _ -> 1.0 },
+                newTraceIds = { RaftTraceIds("4bf92f3577b34da6a3ce929d0e0e4736", "00f067aa0ba902b7") },
+                emitSpan = { _, span -> spans += span },
+            )
+        RaftAndroidWebViewKeepAlive.startPrewarmTrace = { surface ->
+            MobileWebViewLoadAttemptHandle(
+                kind = MobileWebViewLoadKind.Prewarm,
+                surface = normalizeMobileWebViewSurface(surface, MobileWebViewLoadKind.Prewarm),
+                engine = MobileWebViewLoadEngine.SandboxWebView,
+                prewarmHit = null,
+                startedAtEpochMs = 1_795_500_000_000L + fakeNowMs,
+                recorder = recorder,
+            )
+        }
+
+        // 1. Clean finish -> ok / none.
+        RaftAndroidWebViewKeepAlive.prewarm(app, warmConfig())
+        val okView = assertNotNull(RaftAndroidWebViewKeepAlive.kept(keepAliveKey))
+        val okWebView = okView.getChildAt(0) as WebView
+        val okClient = shadowOf(okWebView).webViewClient
+        okClient.onPageStarted(okWebView, warmUrl, null)
+        okClient.onPageCommitVisible(okWebView, warmUrl)
+        okClient.onPageFinished(okWebView, warmUrl)
+        assertEquals(1, spans.size)
+        assertEquals("prewarm", spans[0].attrs.getValue("kind").jsonPrimitive.content)
+        assertEquals("ok", spans[0].attrs.getValue("outcome").jsonPrimitive.content)
+        assertEquals("none", spans[0].attrs.getValue("error_code").jsonPrimitive.content)
+        assertNull(spans[0].attrs["prewarm_hit"])
+        RaftAndroidWebViewKeepAlive.drop("test_next")
+
+        // 2. Yield for foreground -> cancelled_for_foreground.
+        RaftAndroidWebViewKeepAlive.prewarm(app, warmConfig())
+        assertTrue(RaftAndroidWebViewKeepAlive.abortInFlightPrewarmForForeground("settings_marketplace", null))
+        assertEquals(2, spans.size)
+        assertEquals("cancelled_for_foreground", spans[1].attrs.getValue("outcome").jsonPrimitive.content)
+
+        // 3. Safety timeout -> timeout / timeout.
+        RaftAndroidWebViewKeepAlive.prewarm(app, warmConfig())
+        fakeNowMs += RaftAndroidWebViewKeepAlive.PREWARM_LOAD_TIMEOUT_MS + 100L
+        shadowOf(Looper.getMainLooper()).idleFor(RaftAndroidWebViewKeepAlive.PREWARM_LOAD_TIMEOUT_MS + 100L, TimeUnit.MILLISECONDS)
+        assertEquals(3, spans.size)
+        assertEquals("timeout", spans[2].attrs.getValue("outcome").jsonPrimitive.content)
+        assertEquals("timeout", spans[2].attrs.getValue("error_code").jsonPrimitive.content)
+
+        // 4. Render process gone drop -> failed / render_process_gone.
+        RaftAndroidWebViewKeepAlive.prewarm(app, warmConfig())
+        val crashed = assertNotNull(RaftAndroidWebViewKeepAlive.kept(keepAliveKey))
+        RaftAndroidWebViewKeepAlive.dropIfSame(crashed, "render_process_gone")
+        assertEquals(4, spans.size)
+        assertEquals("failed", spans[3].attrs.getValue("outcome").jsonPrimitive.content)
+        assertEquals("render_process_gone", spans[3].attrs.getValue("error_code").jsonPrimitive.content)
     }
 }

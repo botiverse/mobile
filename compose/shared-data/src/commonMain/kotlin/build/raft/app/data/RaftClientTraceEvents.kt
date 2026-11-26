@@ -929,6 +929,11 @@ object RaftClientTraceEvents {
     @RaftCoreInternalApi fun emitActivityUnreadStateFlipped(serverId: String, event: ActivityUnreadStateFlipped) {
         sender.emit(serverId, RaftActivityUnreadStateFlippedTraceName, event.toTraceAttrs())
     }
+
+    /** #proj-mobile:#399 (slock #16971): canonical user-visible error record (`mobile.ui_error`). */
+    @RaftCoreInternalApi fun emitUiError(serverId: String, attrs: JsonObject, traceId: String? = null) {
+        sender.emit(serverId, MOBILE_UI_ERROR_EVENT_NAME, attrs, traceId = traceId)
+    }
 }
 
 /** `clientPlatform` as `X-Raft-Client-Platform` names the app, its `appVersion`, and `app_build`. */

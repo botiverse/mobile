@@ -102,6 +102,9 @@ internal expect fun raftPlatformName(): String
 /** Kuikly `Pager`: one page instance; created and driven by [RaftPagerHost]. */
 abstract class Pager : IPagerId {
     override var pagerId: String = ""
+    /** Registered route name ([RaftCmpPageArgs.pageName]) for this page; empty in unit tests that instantiate a Pager directly. */
+    var pageName: String = ""
+        internal set
     lateinit var pageData: PageData
         internal set
 

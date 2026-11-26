@@ -292,4 +292,43 @@ class RaftWebContainerTraceTest {
             )
         assertFalse(throwingReporter.report(crash))
     }
+
+    @Test
+    fun reporterHonorsWebContainerSampleRateAndZeroKillSwitch() {
+        var sampleRate = 0.0
+        var draw = 0.0
+        val emitted = mutableListOf<RaftWebSpanRecord>()
+        val reporter =
+            RaftWebContainerTraceReporter(
+                nowEpochMs = { epochMs },
+                nowMonotonicMs = { 10_000L },
+                newTraceIds = { ids },
+                canEmit = { true },
+                resolveSampleRate = { sampleRate },
+                random = { draw },
+                emitSpan = { emitted += it },
+            )
+        val crash =
+            WebContainerTelemetryEvent.RenderProcessGone(
+                surfaceId = "artifact_viewer",
+                didCrash = true,
+                recovered = false,
+                attempt = 1,
+                engine = "android_webview",
+            )
+
+        // Explicit 0 kill switch suppresses emission completely.
+        assertFalse(reporter.report(crash))
+        assertTrue(emitted.isEmpty())
+
+        // Fractional rate drops draws >= rate and tags emitted spans with the effective sample_rate.
+        sampleRate = 0.25
+        draw = 0.5
+        assertFalse(reporter.report(crash))
+        assertTrue(emitted.isEmpty())
+
+        draw = 0.1
+        assertTrue(reporter.report(crash))
+        assertEquals(0.25, emitted.single().attrs.getValue("sample_rate").jsonPrimitive.double)
+    }
 }

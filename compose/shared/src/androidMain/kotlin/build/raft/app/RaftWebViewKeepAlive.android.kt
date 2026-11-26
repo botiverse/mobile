@@ -40,6 +40,7 @@ internal object RaftAndroidWebViewKeepAlive {
 
     private var parked: RaftAndroidSandboxWebView? = null
     private var parkedPrewarmStartedAtMs: Long = 0L
+    private var parkedPrewarmTraceHandle: MobileWebViewLoadAttemptHandle? = null
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private val expire = Runnable { drop("expired") }
     private val prewarmLoadTimeout = Runnable { abortInFlightPrewarmOnTimeout() }
@@ -47,6 +48,9 @@ internal object RaftAndroidWebViewKeepAlive {
     internal var nowMs: () -> Long = { SystemClock.elapsedRealtime() }
     internal var prewarmLoadTimeoutMs: Long = PREWARM_LOAD_TIMEOUT_MS
     internal var logInfo: (String) -> Unit = { message -> raftLogInfo(LOG_TAG, message) }
+    internal var startPrewarmTrace: (diagnosticsSurface: String?) -> MobileWebViewLoadAttemptHandle = { surface ->
+        MobileWebViewLoadTrace.startPrewarm(diagnosticsSurface = surface, useWebContainer = false)
+    }
 
     /** The view parked under [key] (now owned by the caller), or null. A view under another key or failed load is destroyed. */
     fun take(
@@ -58,10 +62,12 @@ internal object RaftAndroidWebViewKeepAlive {
         if (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) return null
         dropIfOtherThemeMode()
         val view = parked ?: return null
+        val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(expire)
         handler.removeCallbacks(prewarmLoadTimeout)
         parked = null
         parkedPrewarmStartedAtMs = 0L
+        parkedPrewarmTraceHandle = null
         if (
             view.isDestroyed ||
             view.mainFrameLoadFailed ||
@@ -75,9 +81,17 @@ internal object RaftAndroidWebViewKeepAlive {
                     view.hasPendingRenderProcessRestore -> "render_process_gone"
                     else -> "other_key"
                 }
+            finishPrewarmHandleForDrop(prewarmHandle, reason)
             view.destroy()
             logInfo("keep_alive result=dropped reason=$reason")
             return null
+        }
+        if (!view.isMainFrameLoadInFlight) {
+            prewarmHandle?.finish(
+                outcome = MobileWebViewLoadOutcome.Ok,
+                errorCode = MobileWebViewLoadErrorCode.None,
+                uiErrorShown = false,
+            )
         }
         view.attachFromKeepAlive(hostContext, events)
         logInfo("keep_alive result=reused")
@@ -94,10 +108,19 @@ internal object RaftAndroidWebViewKeepAlive {
             view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
         ) {
             if (parked === view) {
+                val prewarmHandle = parkedPrewarmTraceHandle
                 handler.removeCallbacks(expire)
                 handler.removeCallbacks(prewarmLoadTimeout)
                 parked = null
                 parkedPrewarmStartedAtMs = 0L
+                parkedPrewarmTraceHandle = null
+                val reason =
+                    when {
+                        view.hasPendingRenderProcessRestore -> "render_process_gone"
+                        view.mainFrameLoadFailed -> "load_error"
+                        else -> "refused"
+                    }
+                finishPrewarmHandleForDrop(prewarmHandle, reason)
             }
             if (view.mainFrameLoadFailed) {
                 logInfo("keep_alive result=refused reason=load_error")
@@ -107,7 +130,14 @@ internal object RaftAndroidWebViewKeepAlive {
             return false
         }
         val previous = parked
-        if (previous != null && previous !== view) previous.destroy()
+        if (previous != null && previous !== view) {
+            val previousHandle = parkedPrewarmTraceHandle
+            parkedPrewarmTraceHandle = null
+            if (previous.isMainFrameLoadInFlight) {
+                finishPrewarmHandleForDrop(previousHandle, "other_key")
+            }
+            previous.destroy()
+        }
         view.detachForKeepAlive()
         parked = view
         handler.removeCallbacks(expire)
@@ -138,6 +168,7 @@ internal object RaftAndroidWebViewKeepAlive {
         ) {
             return
         }
+        val prewarmHandle = startPrewarmTrace(config.diagnosticsSurface)
         // Built on the page's (Activity) context, whose theme carries the app's light/dark mode
         // (the application context's does not on API 29-30); park() switches it to the
         // application context at once, so no Activity is held.
@@ -149,8 +180,28 @@ internal object RaftAndroidWebViewKeepAlive {
             )
         view.applyConfig(config)
         if (park(view)) {
+            if (view.isMainFrameLoadInFlight) {
+                parkedPrewarmTraceHandle = prewarmHandle
+            } else {
+                prewarmHandle.finish(
+                    outcome = MobileWebViewLoadOutcome.Ok,
+                    errorCode = MobileWebViewLoadErrorCode.None,
+                    uiErrorShown = false,
+                )
+            }
             logInfo("keep_alive result=prewarmed")
         } else {
+            val errorCode =
+                when {
+                    view.hasPendingRenderProcessRestore -> MobileWebViewLoadErrorCode.RenderProcessGone
+                    view.mainFrameLoadFailed -> MobileWebViewLoadErrorCode.NetworkError
+                    else -> MobileWebViewLoadErrorCode.Other
+                }
+            prewarmHandle.finish(
+                outcome = MobileWebViewLoadOutcome.Failed,
+                errorCode = errorCode,
+                uiErrorShown = false,
+            )
             view.destroy()
         }
     }
@@ -172,10 +223,17 @@ internal object RaftAndroidWebViewKeepAlive {
         if (!view.isMainFrameLoadInFlight) return false
         val elapsedMs =
             if (parkedPrewarmStartedAtMs > 0L) (nowMs() - parkedPrewarmStartedAtMs).coerceAtLeast(0L) else -1L
+        val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(expire)
         handler.removeCallbacks(prewarmLoadTimeout)
         parked = null
         parkedPrewarmStartedAtMs = 0L
+        parkedPrewarmTraceHandle = null
+        prewarmHandle?.finish(
+            outcome = MobileWebViewLoadOutcome.CancelledForForeground,
+            errorCode = MobileWebViewLoadErrorCode.Other,
+            uiErrorShown = false,
+        )
         view.destroy()
         logInfo(
             "keep_alive result=aborted_for_foreground reason=prewarm_aborted_for_foreground " +
@@ -191,8 +249,15 @@ internal object RaftAndroidWebViewKeepAlive {
             return
         }
         if (parked !== view) return
+        val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(prewarmLoadTimeout)
         parkedPrewarmStartedAtMs = 0L
+        parkedPrewarmTraceHandle = null
+        prewarmHandle?.finish(
+            outcome = MobileWebViewLoadOutcome.Ok,
+            errorCode = MobileWebViewLoadErrorCode.None,
+            uiErrorShown = false,
+        )
     }
 
     private fun abortInFlightPrewarmOnTimeout() {
@@ -203,10 +268,17 @@ internal object RaftAndroidWebViewKeepAlive {
         }
         val elapsedMs =
             if (parkedPrewarmStartedAtMs > 0L) (nowMs() - parkedPrewarmStartedAtMs).coerceAtLeast(0L) else -1L
+        val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(expire)
         handler.removeCallbacks(prewarmLoadTimeout)
         parked = null
         parkedPrewarmStartedAtMs = 0L
+        parkedPrewarmTraceHandle = null
+        prewarmHandle?.finish(
+            outcome = MobileWebViewLoadOutcome.Timeout,
+            errorCode = MobileWebViewLoadErrorCode.Timeout,
+            uiErrorShown = false,
+        )
         view.destroy()
         logInfo("keep_alive result=aborted_timeout reason=prewarm_load_timeout elapsedMs=$elapsedMs")
     }
@@ -238,20 +310,26 @@ internal object RaftAndroidWebViewKeepAlive {
             return
         }
         if (parked !== view) return
+        val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(expire)
         handler.removeCallbacks(prewarmLoadTimeout)
         parked = null
         parkedPrewarmStartedAtMs = 0L
+        parkedPrewarmTraceHandle = null
+        finishPrewarmHandleForDrop(prewarmHandle, reason)
         view.destroy()
         logInfo("keep_alive result=dropped reason=$reason")
     }
 
     fun drop(reason: String) {
+        val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(expire)
         handler.removeCallbacks(prewarmLoadTimeout)
         parkedPrewarmStartedAtMs = 0L
+        parkedPrewarmTraceHandle = null
         val view = parked ?: return
         parked = null
+        finishPrewarmHandleForDrop(prewarmHandle, reason)
         view.destroy()
         logInfo("keep_alive result=dropped reason=$reason")
     }
@@ -260,6 +338,50 @@ internal object RaftAndroidWebViewKeepAlive {
         nowMs = { SystemClock.elapsedRealtime() }
         prewarmLoadTimeoutMs = PREWARM_LOAD_TIMEOUT_MS
         logInfo = { message -> raftLogInfo(LOG_TAG, message) }
+        parkedPrewarmTraceHandle = null
+        startPrewarmTrace = { surface ->
+            MobileWebViewLoadTrace.startPrewarm(diagnosticsSurface = surface, useWebContainer = false)
+        }
+    }
+
+    private fun finishPrewarmHandleForDrop(
+        handle: MobileWebViewLoadAttemptHandle?,
+        reason: String,
+    ) {
+        if (handle == null) return
+        when (reason) {
+            "render_process_gone" ->
+                handle.finish(
+                    outcome = MobileWebViewLoadOutcome.Failed,
+                    errorCode = MobileWebViewLoadErrorCode.RenderProcessGone,
+                    uiErrorShown = false,
+                )
+            "ssl_error" ->
+                handle.finish(
+                    outcome = MobileWebViewLoadOutcome.Failed,
+                    errorCode = MobileWebViewLoadErrorCode.SslError,
+                    uiErrorShown = false,
+                )
+            "http_error" ->
+                handle.finish(
+                    outcome = MobileWebViewLoadOutcome.Failed,
+                    errorCode = MobileWebViewLoadErrorCode.HttpError,
+                    uiErrorShown = false,
+                )
+            "load_error" ->
+                handle.finish(
+                    outcome = MobileWebViewLoadOutcome.Failed,
+                    errorCode = MobileWebViewLoadErrorCode.NetworkError,
+                    uiErrorShown = false,
+                )
+            "other_key" ->
+                handle.finish(
+                    outcome = MobileWebViewLoadOutcome.CancelledForForeground,
+                    errorCode = MobileWebViewLoadErrorCode.Other,
+                    uiErrorShown = false,
+                )
+            else -> Unit
+        }
     }
 
     private fun sanitizeKeepAliveSurfaceToken(surface: String): String =

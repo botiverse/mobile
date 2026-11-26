@@ -412,9 +412,29 @@ internal class BridgeModule : Module() {
         reason: String?,
         traceId: String?,
         strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
+    ) = errorToastInternal(
+        title = title,
+        reason = reason,
+        traceId = traceId,
+        errorCode = build.raft.app.data.MobileUiErrorCode.Unknown,
+        strings = strings,
+    )
+
+    private fun errorToastInternal(
+        title: String,
+        reason: String?,
+        traceId: String?,
+        errorCode: build.raft.app.data.MobileUiErrorCode,
+        strings: () -> RaftTraceIdToastStrings,
     ) {
         val cleanReason = reason?.trim()?.takeIf { it.isNotEmpty() }
         val id = raftValidTraceIdOrNull(traceId)
+        build.raft.app.data.MobileUiErrorTrace.record(
+            surface = build.raft.app.data.MobileUiErrorSurface.Toast,
+            route = pager?.pageName,
+            errorCode = errorCode,
+            requestTraceId = id,
+        )
         val copy = if (id != null) strings() else null
         val line = if (id != null && copy != null) copy.line(raftShortTraceId(id)) else null
         val posted =
@@ -458,6 +478,12 @@ internal class BridgeModule : Module() {
             errorToast(content, traceId, strings)
             return
         }
+        build.raft.app.data.MobileUiErrorTrace.record(
+            surface = build.raft.app.data.MobileUiErrorSurface.Toast,
+            route = pager?.pageName,
+            errorCode = build.raft.app.data.MobileUiErrorCode.NetworkError,
+            requestTraceId = null,
+        )
         if (RaftCmpToasts.post(content, origin = pager?.host?.capabilities, intent = RaftToastIntent.Error, actionLabel = retryLabel, onAction = onRetry)) return
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
@@ -469,10 +495,11 @@ internal class BridgeModule : Module() {
         content: String,
         error: ScreenError,
         strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
-    ) = errorToast(
+    ) = errorToastInternal(
         title = content,
         reason = usableServerRefusalReasonForToast(content, error),
         traceId = error.traceId,
+        errorCode = build.raft.app.data.classifyMobileUiErrorCode(error),
         strings = strings,
     )
 
@@ -481,10 +508,11 @@ internal class BridgeModule : Module() {
         content: String,
         blocker: PermissionBlocker,
         strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
-    ) = errorToast(
+    ) = errorToastInternal(
         title = content,
         reason = usableServerRefusalReasonForToast(content, blocker),
         traceId = blocker.traceId,
+        errorCode = build.raft.app.data.classifyMobileUiErrorCode(blocker),
         strings = strings,
     )
 
@@ -493,10 +521,16 @@ internal class BridgeModule : Module() {
         content: String,
         result: DataResult<*>,
         strings: () -> RaftTraceIdToastStrings = ::localizedRaftTraceIdToastStrings,
-    ) = errorToast(
+    ) = errorToastInternal(
         title = content,
         reason = usableServerRefusalReasonForToast(content, result),
         traceId = result.failureTraceIdOrNull(),
+        errorCode =
+            when (result) {
+                is DataResult.Error -> build.raft.app.data.classifyMobileUiErrorCode(result.error)
+                is DataResult.NoPermission -> build.raft.app.data.classifyMobileUiErrorCode(result.blocker)
+                else -> build.raft.app.data.MobileUiErrorCode.Unknown
+            },
         strings = strings,
     )
 
