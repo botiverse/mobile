@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -29,12 +30,12 @@ import org.robolectric.annotation.Config
 /**
  * Verifies [RaftAnchoredPopover] single-pass measure-then-place (`contentSize = null`) and
  * [ThreadAppLinkCardPopoverFrame]: dynamic-height content anchored near the bottom of the viewport
- * must be placed above the anchor on its very first drawn frame without flashing below it first,
- * preserve inside/outside hit-testing, and reposition in the same pass if its height changes.
+ * must be placed above the anchor on its very first frame without flashing below it first, preserve
+ * inside/outside hit-testing, and reposition in the same pass if its height changes.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w400dp-h840dp-mdpi")
 class RaftAnchoredPopoverSinglePassPlacementUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
@@ -44,8 +45,11 @@ class RaftAnchoredPopoverSinglePassPlacementUiTest {
         runRobolectricComposeUiTest {
             val anchorY = 760f
             val anchor = RaftPopoverAnchor.forRootOffset(Offset(x = 80f, y = anchorY))
+            val placedTops = mutableListOf<Float>()
+            val placedBottoms = mutableListOf<Float>()
             val drawnTops = mutableListOf<Float>()
             val drawnBottoms = mutableListOf<Float>()
+            var currentTop = Float.NaN
             var lastHeightPx = 0f
 
             setContent {
@@ -54,15 +58,18 @@ class RaftAnchoredPopoverSinglePassPlacementUiTest {
                         anchor = anchor,
                         onDismiss = {},
                     ) { frameModifier ->
-                        var currentTop = Float.NaN
                         Box(
                             modifier =
                                 frameModifier
                                     .height(220.dp)
                                     .testTag(CardTag)
-                                    .onGloballyPositioned { coords ->
-                                        currentTop = coords.positionInRoot().y
-                                        lastHeightPx = coords.size.height.toFloat()
+                                    .onPlaced { coords ->
+                                        val top = coords.positionInRoot().y
+                                        val height = coords.size.height.toFloat()
+                                        currentTop = top
+                                        lastHeightPx = height
+                                        placedTops += top
+                                        placedBottoms += top + height
                                     }
                                     .drawWithContent {
                                         if (!currentTop.isNaN()) {
@@ -77,9 +84,15 @@ class RaftAnchoredPopoverSinglePassPlacementUiTest {
             }
 
             waitForIdle()
-            assertTrue(drawnTops.isNotEmpty(), "Expected popover card to draw at least once")
+            assertTrue(placedTops.isNotEmpty(), "Expected popover card to be placed at least once")
             assertTrue(lastHeightPx > 0f, "Expected popover card to have measured non-zero height")
-            // Every drawn frame — including frame 1 — must already sit above the bottom anchor.
+            // Every placement — including the very first pass before any draw — must already sit above the bottom anchor.
+            placedBottoms.forEachIndexed { index, bottom ->
+                assertTrue(
+                    bottom <= anchorY,
+                    "Placement $index placed popover below anchor (bottom=$bottom, anchorY=$anchorY, top=${placedTops[index]})",
+                )
+            }
             drawnBottoms.forEachIndexed { index, bottom ->
                 assertTrue(
                     bottom <= anchorY,
@@ -134,7 +147,7 @@ class RaftAnchoredPopoverSinglePassPlacementUiTest {
             var latestBottom = Float.NaN
 
             setContent {
-                Box(Modifier.size(width = 400.dp, height = 800.dp)) {
+                Box(Modifier.size(width = 400.dp, height = 840.dp)) {
                     RaftAnchoredPopover(
                         anchor = anchor,
                         contentSize = null,
