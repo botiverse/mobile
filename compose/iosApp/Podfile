@@ -1,4 +1,6 @@
 source 'https://cdn.cocoapods.org/'
+# Official LiveKit CocoaPods specs repo for LiveKitClient + LiveKitWebRTC + LiveKitFFI.
+source 'https://github.com/livekit/podspecs.git'
 
 target 'iosApp' do
   use_frameworks!
@@ -20,6 +22,11 @@ target 'iosApp' do
   # as a dynamic framework (listed in THIRD_PARTY_NOTICES.md and Settings > About > Open Source
   # Licenses). Pinned exactly; the trunk spec pins the binary's sha256.
   pod 'MobileVLCKit', '3.7.5'
+  # Agent Voice calls (LiveKit native audio rooms): RaftIosAgentVoiceCallEngine.swift.
+  # Apache-2.0 (pulls LiveKitWebRTC 150.7871.08 [BSD-3-Clause] and LiveKitFFI 0.13.4 [Apache-2.0]
+  # from https://github.com/livekit/podspecs.git; listed in THIRD_PARTY_NOTICES.md and
+  # Settings > About > Open Source Licenses). Pinned exactly.
+  pod 'LiveKitClient', '2.20.1'
 
   # Hosted tests resolve production symbols through TEST_HOST. Inherit the
   # same pod search paths for compile-time signatures, but do not link the

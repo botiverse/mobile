@@ -54,6 +54,30 @@
       "licenseUrl": "https://opensource.org/licenses/MIT",
       "sourceUrl": "https://www.slf4j.org",
       "reason": "The module POM inherits its license from the SLF4J parent POM, which is not resolved by the Android release license generator."
+    },
+    {
+      "id": "com.google.protobuf:protobuf-javalite",
+      "displayName": "Protocol Buffers (Java Lite)",
+      "licenseName": "BSD 3-Clause License",
+      "licenseUrl": "https://github.com/protocolbuffers/protobuf/blob/main/LICENSE",
+      "sourceUrl": "https://github.com/protocolbuffers/protobuf",
+      "reason": "Pulled transitively by io.livekit:livekit-android; the module POM inherits its license from the protobuf parent POM, which is not resolved by the Android release license generator."
+    },
+    {
+      "id": "javax.sip:android-jain-sip-ri",
+      "displayName": "Android JAIN-SIP Reference Implementation",
+      "licenseName": "Public Domain",
+      "licenseUrl": "https://www.gnu.org/licenses/license-list.html#PublicDomain",
+      "sourceUrl": "https://github.com/RestComm/jain-sip",
+      "reason": "Pulled transitively by io.livekit:livekit-android; the module POM inherits its license from the jain-sip parent POM, which is not resolved by the Android release license generator."
+    },
+    {
+      "id": "net.java.dev.jna:jna",
+      "displayName": "Java Native Access (JNA)",
+      "licenseName": "Apache License 2.0 (dual-licensed with LGPL-2.1-or-later)",
+      "licenseUrl": "https://www.apache.org/licenses/LICENSE-2.0",
+      "sourceUrl": "https://github.com/java-native-access/jna",
+      "reason": "Pulled transitively by io.livekit:livekit-ffi-android; JNA is dual-licensed under Apache-2.0 or LGPL-2.1-or-later and Raft Mobile elects Apache-2.0."
     }
   ]
 }

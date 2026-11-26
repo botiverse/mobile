@@ -96,6 +96,8 @@ uiautomator = "2.4.1"
 # Its Compose Desktop module (checked at 1.77.0) is built against CMP 1.10.3, aligned
 # to composePlugin by cmp-ui-test-junit4 below.
 roborazzi = "1.79.0"
+# LiveKit Android Client SDK (Apache-2.0): native audio rooms for Agent Voice calls.
+livekitAndroid = "2.31.0"
 
 [libraries]
 androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
@@ -183,6 +185,7 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 atomicfu = { group = "org.jetbrains.kotlinx", name = "atomicfu", version.ref = "atomicfu" }
 roborazzi-android = { group = "io.github.takahirom.roborazzi", name = "roborazzi", version.ref = "roborazzi" }
 roborazzi-painter = { group = "io.github.takahirom.roborazzi", name = "roborazzi-painter", version.ref = "roborazzi" }
+livekit-android = { group = "io.livekit", name = "livekit-android", version.ref = "livekitAndroid" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

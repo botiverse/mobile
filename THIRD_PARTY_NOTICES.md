@@ -46,6 +46,11 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 | io.github.vinceglb:filekit-core (transitive, via composemediaplayer) | 0.14.2 | MIT |
 | org.mobilenativefoundation.store:store5 (+ core5 / cache5 / multicast5; offline-first resources) | 5.1.0-beta01 | Apache-2.0 |
 | co.touchlab:kermit (transitive, via store5) | 2.1.0 | Apache-2.0 |
+| io.livekit:livekit-android (Agent Voice native audio room SDK) | 2.31.0 | Apache-2.0 |
+| io.github.webrtc-sdk:android-prefixed (transitive WebRTC binary SDK, via livekit-android) | 150.7871.04 | BSD-3-Clause |
+| io.livekit:livekit-ffi-android (transitive, via livekit-android) | 0.13.2 | Apache-2.0 |
+| com.github.davidliu:audioswitch (transitive, via livekit-android; JitPack) | 039a35aefab7747c557242fa216c9ea11743b604 | Apache-2.0 |
+| net.java.dev.jna:jna (transitive, via livekit-ffi-android; dual-licensed Apache-2.0 / LGPL-2.1-or-later, used under Apache-2.0) | 5.19.1 | Apache-2.0 |
 | KaTeX fonts (`compose/designsystem/src/commonMain/composeResources/font/katex_*.ttf`, from the `katex` npm package) | 0.19.0 | MIT |
 | Test-only: junit 4.13.2 (EPL-1.0), org.json:json 20090211 (JSON License), androidx.test.* (Apache-2.0), org.robolectric:robolectric 4.14.1 (MIT), androidx.benchmark / uiautomator (Apache-2.0) | — | as listed |
 | Gradle plugins: AGP 8.13.2, Kotlin 2.1.21, KSP, Compose plugin 1.7.3, SQLDelight 2.4.1, google-services 4.5.0 | — | Apache-2.0 (google-services plugin: Apache-2.0) |
@@ -55,6 +60,9 @@ published package metadata (Maven POM `<licenses>`, npm registry `license`, Coco
 |---|---|---|
 | OpenKuiklyIOSRender (Botiverse-built podspec) | 2.28.0-raft.15-2.1.21 | KuiklyUI license |
 | Hands (oranix-io/hands, tag ios-v0.2.3) | 0.2.3 | MIT |
+| LiveKitClient (livekit/client-sdk-swift, via livekit/podspecs; Agent Voice native audio rooms) | 2.20.1 | Apache-2.0 |
+| LiveKitWebRTC (transitive dynamic XCFramework from livekit/webrtc-xcframework, via LiveKitClient) | 150.7871.08 | BSD-3-Clause |
+| LiveKitFFI (transitive XCFramework from livekit/livekit-ffi-xcframework, via LiveKitClient) | 0.13.4 | Apache-2.0 |
 | MMKV / MMKVCore | 2.4.3 | BSD-3-Clause |
 | MobileVLCKit (VLCKit + libVLC; in-app playback of WebM / MKV / MPEG-TS/PS / FLV; prebuilt dynamic framework from download.videolan.org, sha256 pinned by the trunk spec) | 3.7.5 | **LGPL-2.1-or-later** (VLCKit `COPYING.txt`; libVLC and its bundled codec/demux libraries under LGPL-2.1-or-later or compatible permissive licenses) — https://code.videolan.org/videolan/VLCKit |
 | SDWebImage | 5.21.7 | MIT |
