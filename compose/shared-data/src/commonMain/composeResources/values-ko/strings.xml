@@ -1419,6 +1419,8 @@
     <string name="inbox_empty_pinned_detail">사이드바에 고정한 채널과 DM이 스레드와 함께 여기에 표시돼요.</string>
     <string name="inbox_state_no_saved">저장한 스레드가 없어요</string>
     <string name="inbox_empty_saved_detail">메시지를 저장하면 그 메시지의 스레드가 여기에 표시돼요.</string>
+    <string name="inbox_state_no_tasks">여기에 작업이 없어요</string>
+    <string name="inbox_empty_tasks_detail">작업이 배정되거나 팔로우하면 새로운 소식이 있을 때 여기에 표시돼요.</string>
     <string name="inbox_state_no_artifacts">여기에 Artifact가 없어요</string>
     <string name="inbox_empty_artifacts_detail">Artifact에 댓글을 달거나 팔로우하면 새 댓글과 새 버전이 여기에 표시돼요.</string>
     <string name="inbox_error_load_more">더 불러오지 못했어요.</string>
@@ -1432,6 +1434,7 @@
     <string name="activity_filter_mentions">멘션</string>
     <string name="activity_filter_pinned">고정됨</string>
     <string name="activity_filter_saved">저장됨</string>
+    <string name="activity_filter_tasks">작업</string>
     <string name="activity_filter_artifacts">Artifacts</string>
     <string name="activity_filter_button">필터</string>
     <string name="activity_filter_clear">필터 지우기</string>

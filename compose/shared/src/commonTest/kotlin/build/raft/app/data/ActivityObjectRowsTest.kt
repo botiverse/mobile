@@ -156,6 +156,7 @@ class ActivityObjectRowsTest {
         assertEquals(6, counts.unreadFor(InboxFilter.Unread))
         assertEquals(0, counts.unreadFor(InboxFilter.Pinned))
         assertEquals(0, counts.unreadFor(InboxFilter.Saved))
+        assertEquals(0, counts.unreadFor(InboxFilter.Tasks))
         // Artifacts lists only object rows, under the All read filter.
         assertEquals(4, counts.unreadFor(InboxFilter.Artifacts))
     }

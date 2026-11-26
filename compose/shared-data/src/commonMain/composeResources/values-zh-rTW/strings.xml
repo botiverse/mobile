@@ -1419,6 +1419,8 @@
     <string name="inbox_empty_pinned_detail">在側欄釘選的頻道和私訊會顯示在這裡，連同它們的討論串。</string>
     <string name="inbox_state_no_saved">沒有已儲存的討論串</string>
     <string name="inbox_empty_saved_detail">儲存訊息後，它所在的討論串會顯示在這裡。</string>
+    <string name="inbox_state_no_tasks">這裡沒有任務</string>
+    <string name="inbox_empty_tasks_detail">任務指派給你或你關注它後，有新動態時會顯示在這裡。</string>
     <string name="inbox_state_no_artifacts">這裡沒有 Artifact</string>
     <string name="inbox_empty_artifacts_detail">在 Artifact 上留言或關注它之後，它的新留言和新版本會顯示在這裡。</string>
     <string name="inbox_error_load_more">無法載入更多內容。</string>
@@ -1432,6 +1434,7 @@
     <string name="activity_filter_mentions">提及</string>
     <string name="activity_filter_pinned">已釘選</string>
     <string name="activity_filter_saved">已儲存</string>
+    <string name="activity_filter_tasks">任務</string>
     <string name="activity_filter_artifacts">Artifacts</string>
     <string name="activity_filter_button">篩選</string>
     <string name="activity_filter_clear">清除篩選</string>

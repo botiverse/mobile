@@ -63,11 +63,18 @@ class ActivityFilterPreferenceRepositoryTest {
 
     @Test
     fun everyMenuChoiceRoundTrips() {
-        val preferences = ActivityFilterPreferenceRepository(InMemoryRaftKeyValueStore())
+        val keyValues = InMemoryRaftKeyValueStore()
+        val preferences = ActivityFilterPreferenceRepository(keyValues)
         InboxFilter.entries.forEach { filter ->
             preferences.write("server-1", filter)
             assertEquals(filter, preferences.read("server-1"))
         }
-        assertTrue(InboxFilter.entries.map { it.preferenceValue() }.toSet() == setOf("all", "unread", "mentions", "pinned", "saved", "artifacts"))
+        preferences.write("server-1", InboxFilter.Tasks)
+        assertEquals("tasks", keyValues.getString("raft.activity.filter.server-1"))
+        assertEquals(InboxFilter.Tasks, parseActivityFilterChoice("tasks"))
+        assertTrue(
+            InboxFilter.entries.map { it.preferenceValue() }.toSet() ==
+                setOf("all", "unread", "mentions", "pinned", "saved", "tasks", "artifacts")
+        )
     }
 }

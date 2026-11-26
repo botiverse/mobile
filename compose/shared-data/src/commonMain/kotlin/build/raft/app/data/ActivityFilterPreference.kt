@@ -38,6 +38,7 @@ class ActivityFilterPreferenceRepository(private val store: SharedPreferenceStor
         InboxFilter.Mentions -> "mentions"
         InboxFilter.Pinned -> "pinned"
         InboxFilter.Saved -> "saved"
+        InboxFilter.Tasks -> "tasks"
         InboxFilter.Artifacts -> "artifacts"
     }
 

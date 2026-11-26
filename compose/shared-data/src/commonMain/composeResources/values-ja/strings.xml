@@ -1419,6 +1419,8 @@
     <string name="inbox_empty_pinned_detail">サイドバーでピン留めしたチャンネルと DM が、そのスレッドと一緒にここに表示されます。</string>
     <string name="inbox_state_no_saved">保存したスレッドはありません</string>
     <string name="inbox_empty_saved_detail">メッセージを保存すると、そのスレッドがここに表示されます。</string>
+    <string name="inbox_state_no_tasks">ここにタスクはありません</string>
+    <string name="inbox_empty_tasks_detail">タスクが割り当てられるかフォローすると、新しい動きがあったときにここに表示されます。</string>
     <string name="inbox_state_no_artifacts">Artifact はありません</string>
     <string name="inbox_empty_artifacts_detail">Artifact にコメントするかフォローすると、その新しいコメントと新しいバージョンがここに表示されます。</string>
     <string name="inbox_error_load_more">これ以上読み込めませんでした。</string>
@@ -1432,6 +1434,7 @@
     <string name="activity_filter_mentions">メンション</string>
     <string name="activity_filter_pinned">ピン留め</string>
     <string name="activity_filter_saved">保存済み</string>
+    <string name="activity_filter_tasks">タスク</string>
     <string name="activity_filter_artifacts">Artifacts</string>
     <string name="activity_filter_button">絞り込み</string>
     <string name="activity_filter_clear">絞り込みを解除</string>

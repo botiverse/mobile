@@ -1419,6 +1419,8 @@
     <string name="inbox_empty_pinned_detail">Здесь появятся каналы и личные сообщения, закреплённые на боковой панели, вместе с их ветками.</string>
     <string name="inbox_state_no_saved">Нет сохранённых веток</string>
     <string name="inbox_empty_saved_detail">Сохраните сообщение, и его ветка появится здесь.</string>
+    <string name="inbox_state_no_tasks">Здесь нет задач</string>
+    <string name="inbox_empty_tasks_detail">Когда задача назначена вам или вы подписаны на неё, она появится здесь при новых событиях.</string>
     <string name="inbox_state_no_artifacts">Здесь нет Artifact</string>
     <string name="inbox_empty_artifacts_detail">Прокомментируйте Artifact или подпишитесь на него, и здесь появятся его новые комментарии и версии.</string>
     <string name="inbox_error_load_more">Не удалось загрузить остальное.</string>
@@ -1432,6 +1434,7 @@
     <string name="activity_filter_mentions">Упоминания</string>
     <string name="activity_filter_pinned">Закреплённые</string>
     <string name="activity_filter_saved">Сохранённые</string>
+    <string name="activity_filter_tasks">Задачи</string>
     <string name="activity_filter_artifacts">Artifacts</string>
     <string name="activity_filter_button">Фильтр</string>
     <string name="activity_filter_clear">Сбросить фильтр</string>

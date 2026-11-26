@@ -1419,6 +1419,8 @@
     <string name="inbox_empty_pinned_detail">Los canales y mensajes directos que fijes en la barra lateral aparecen aquí, con sus hilos.</string>
     <string name="inbox_state_no_saved">No hay hilos guardados</string>
     <string name="inbox_empty_saved_detail">Guarda un mensaje y su hilo aparecerá aquí.</string>
+    <string name="inbox_state_no_tasks">No hay tareas aquí</string>
+    <string name="inbox_empty_tasks_detail">Cuando se te asigne una tarea o la sigas, aparecerá aquí cuando haya novedades.</string>
     <string name="inbox_state_no_artifacts">No hay Artifacts aquí</string>
     <string name="inbox_empty_artifacts_detail">Comenta o sigue un Artifact, y sus nuevos comentarios y versiones aparecerán aquí.</string>
     <string name="inbox_error_load_more">No se pudo cargar más.</string>
@@ -1432,6 +1434,7 @@
     <string name="activity_filter_mentions">Menciones</string>
     <string name="activity_filter_pinned">Fijadas</string>
     <string name="activity_filter_saved">Guardado</string>
+    <string name="activity_filter_tasks">Tareas</string>
     <string name="activity_filter_artifacts">Artifacts</string>
     <string name="activity_filter_button">Filtrar</string>
     <string name="activity_filter_clear">Quitar filtro</string>
