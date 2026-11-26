@@ -2005,9 +2005,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val existing = snapshot.items[existingIndex]
         val viewerId = inPlace?.principalId ?: current.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
         val provenance = (intent.event as? MessageNew)?.systemProvenance
-        // Step 2c (raft-design #1440, slock #16837): a quiet task line leaves this person's task
-        // row as it is (place, time, preview, read state). Nothing to re-read.
-        if (existing.isTaskConversation && isQuietTaskLineForViewer(message, provenance, viewerId)) {
+        // Step 2c + #proj-raft-ui:#319 (slock #16837/#17080): a quiet line leaves this person's
+        // task or thread row as it is (place, time, preview, reply count, read state). No re-read.
+        if (quietLineLeavesRow(message, provenance, viewerId, existing.activityUnreadRowKind())) {
             return RealtimeRowPatch.Unchanged
         }
         if (existing.lastMessageId == message.id || existing.latestActivityMessageId == message.id) {
@@ -2071,10 +2071,22 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
     ): RealtimeRowPatch {
         // A thread reply carries its thread channel as `channelId`, which never names a channel row.
         val channelId = message.channelId ?: return RealtimeRowPatch.Absent
+        val viewerId = inPlace?.principalId ?: current.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
+        val provenance = (intent.event as? MessageNew)?.systemProvenance
         val existingIndex =
             snapshot.items.indexOfFirst { item -> item.isChannelOrDmRow() && item.channelId == channelId }
-        if (existingIndex < 0) return RealtimeRowPatch.Absent
+        if (existingIndex < 0) {
+            // #proj-raft-ui:#319 (slock #17080): a quiet channel/DM line does not bring back a row
+            // Done hid and needs no catch-up re-read.
+            if (quietLineLeavesRow(message, provenance, viewerId, ActivityUnreadRowKind.Channel)) {
+                return RealtimeRowPatch.Unchanged
+            }
+            return RealtimeRowPatch.Absent
+        }
         val existing = snapshot.items[existingIndex]
+        if (quietLineLeavesRow(message, provenance, viewerId, existing.activityUnreadRowKind())) {
+            return RealtimeRowPatch.Unchanged
+        }
         if (existing.lastMessageId == message.id) return RealtimeRowPatch.Unchanged
         // Fail closed when either side has no seq: the re-read supplies the row.
         val incomingSeq = message.seq?.takeIf { it >= 0L }?.toString() ?: return RealtimeRowPatch.NeedsRead
@@ -2178,7 +2190,21 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val current = _state.value
         val snapshot = current.snapshot ?: return RealtimeRowPatch.Absent
         val existingIndex = snapshot.threadRowIndex(event.threadChannelId)
-        if (existingIndex < 0) return RealtimeRowPatch.Absent
+        if (existingIndex < 0) {
+            val unlistedReply = event.latestReply?.toActivityLiveMessage(event)
+            if (
+                unlistedReply != null &&
+                    quietLineLeavesRow(
+                        unlistedReply,
+                        provenance = null,
+                        viewerId = inPlace.principalId,
+                        rowKind = ActivityUnreadRowKind.Thread,
+                    )
+            ) {
+                return RealtimeRowPatch.Unchanged
+            }
+            return RealtimeRowPatch.Absent
+        }
         val reply =
             event.latestReply?.toActivityLiveMessage(event)
                 ?: return RealtimeRowPatch.NeedsRead.also { applyThreadUpdatedPatch(event, intent) }
@@ -2201,9 +2227,13 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val existing = snapshot.items[existingIndex]
         val viewerId = current.ownerUserId?.trim()?.takeIf { it.isNotBlank() }
         if (
-            existing.isTaskConversation &&
-                event.latestReply != null &&
-                isQuietTaskLineForViewer(event.latestReply.toActivityLiveMessage(event), provenance = null, viewerId = viewerId)
+            event.latestReply != null &&
+                quietLineLeavesRow(
+                    event.latestReply.toActivityLiveMessage(event),
+                    provenance = null,
+                    viewerId = viewerId,
+                    rowKind = existing.activityUnreadRowKind(),
+                )
         ) {
             return false
         }
@@ -2927,7 +2957,21 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         if (!rowPositionOnLocked()) return null
         val snapshot = _state.value.snapshot ?: return null
         val index = snapshot.threadRowIndex(event.threadChannelId)
-        if (index < 0) return handleUnlistedThreadUpdatedLocked(event, intent, inPlace)
+        if (index < 0) {
+            val unlistedReply = event.latestReply?.toActivityLiveMessage(event)
+            if (
+                unlistedReply != null &&
+                    quietLineLeavesRow(
+                        unlistedReply,
+                        provenance = null,
+                        viewerId = inPlace.principalId,
+                        rowKind = ActivityUnreadRowKind.Thread,
+                    )
+            ) {
+                return RealtimeRowPatch.Unchanged
+            }
+            return handleUnlistedThreadUpdatedLocked(event, intent, inPlace)
+        }
         val existing = snapshot.items[index]
         if (!existing.isActivityPositionRow()) return null
         val scopeId = existing.activityRowScopeId() ?: return null

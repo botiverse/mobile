@@ -1,0 +1,46 @@
+{
+  "formatVersion": 1,
+  "id": "predicate_thread_quiet_line_stays",
+  "rule": "predicate",
+  "title": "On a person's thread row, a quiet line (\"task created\" in the source message's thread) does not count, light the @ or move the row",
+  "why": "#proj-raft-ui:#319 (Kirby 71732dab): one quiet-line rule for every row. A line quiet for people moves no person's row and is not its preview unless it personally mentions them; opening the conversation still shows it.",
+  "status": "agreed",
+  "sources": {
+    "web": [
+      "packages/shared/src/activityUnreadPredicate.ts (activityLiveUnread: moves on a person's row is peopleRowMessageMoves)",
+      "packages/web/src/store/inboxRowPosition.ts (rowPositionVerdict, with inbox_row_position_v1 on)"
+    ],
+    "server": [
+      "packages/server/src/services/inboxUnreadEligibility.ts (peopleRowMovingMessageSql: the Postgres thread row reads)",
+      "RisingWave people views: the shared fragment in Ray's rebuild (#proj-notification:#5)"
+    ]
+  },
+  "given": {
+    "viewer": {
+      "type": "user",
+      "id": "viewer-1"
+    },
+    "scope": {
+      "rowKind": "thread",
+      "threadFollowed": true
+    },
+    "message": {
+      "senderType": "user",
+      "senderId": "system",
+      "messageType": "system",
+      "causalActorType": "agent",
+      "causalActorId": "agent-1",
+      "systemSubtype": "task.created_summary",
+      "quietForPeople": true,
+      "mentions": []
+    }
+  },
+  "steps": [],
+  "expect": {
+    "verdict": {
+      "counts": false,
+      "mention": false,
+      "moves": false
+    }
+  }
+}
