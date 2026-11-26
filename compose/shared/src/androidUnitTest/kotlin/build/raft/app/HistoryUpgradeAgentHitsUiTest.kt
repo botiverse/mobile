@@ -215,14 +215,16 @@ class HistoryUpgradeAgentHitsUiTest {
 
     @Test
     fun localizedPluralsAndVerbConjugationsMatchWebCopy() {
-        // Russian CLDR one / few / many for both count and agent hit count.
+        // Russian CLDR one / few / many for both count and agent hit count (including 21 -> one).
         StringDesc.localeType = StringDesc.LocaleType.Custom("ru")
         val ruOne = Res.string.upgrade_dialog_history_agent_hits_one.format(1).resolve()
         val ruFew = Res.string.upgrade_dialog_history_agent_hits_other.format(2).resolve()
         val ruMany = Res.string.upgrade_dialog_history_agent_hits_other.format(6).resolve()
+        val ruTwentyOne = Res.string.upgrade_dialog_history_agent_hits_other.format(21).resolve()
         assertEquals("; за последние 7 дней ваши агенты наткнулись на это 1 раз.", ruOne)
         assertEquals("; за последние 7 дней ваши агенты наткнулись на это 2 раза.", ruFew)
         assertEquals("; за последние 7 дней ваши агенты наткнулись на это 6 раз.", ruMany)
+        assertEquals("; за последние 7 дней ваши агенты наткнулись на это 21 раз.", ruTwentyOne)
         assertEquals(
             "В канале #roadmap 2 сообщения старше 30 дней, которые вы и ваши агенты не можете прочитать на тарифе Free; за последние 7 дней ваши агенты наткнулись на это 6 раз.",
             Res.string.upgrade_dialog_history_hint_channel_other.format("#roadmap", "2", 30, ruMany).resolve(),
@@ -231,14 +233,26 @@ class HistoryUpgradeAgentHitsUiTest {
         // Japanese changes verb ending from 読めません。 to 読めず、...。
         StringDesc.localeType = StringDesc.LocaleType.Custom("ja")
         val jaNone = Res.string.upgrade_dialog_history_agent_hits_none.desc().resolve()
+        val jaOne = Res.string.upgrade_dialog_history_agent_hits_one.format(1).resolve()
         val jaHits = Res.string.upgrade_dialog_history_agent_hits_other.format(6).resolve()
         assertEquals(
             "#roadmap には 30 日より前のメッセージが 50 件あり、無料プランではあなたもエージェントも読めません。",
             Res.string.upgrade_dialog_history_hint_channel_other.format("#roadmap", "50", 30, jaNone).resolve(),
         )
         assertEquals(
+            "#roadmap には 30 日より前のメッセージが 50 件あり、無料プランではあなたもエージェントも読めず、過去 7 日間にエージェントが 1 回この制限に引っかかりました。",
+            Res.string.upgrade_dialog_history_hint_channel_other.format("#roadmap", "50", 30, jaOne).resolve(),
+        )
+        assertEquals(
             "#roadmap には 30 日より前のメッセージが 50 件あり、無料プランではあなたもエージェントも読めず、過去 7 日間にエージェントが 6 回この制限に引っかかりました。",
             Res.string.upgrade_dialog_history_hint_channel_other.format("#roadmap", "50", 30, jaHits).resolve(),
+        )
+
+        // Simplified Chinese singular & plural.
+        StringDesc.localeType = StringDesc.LocaleType.Custom("zh-CN")
+        assertEquals(
+            "，过去 7 天你的 Agent 已经有 1 次想读没读到。",
+            Res.string.upgrade_dialog_history_agent_hits_one.format(1).resolve(),
         )
 
         // Korean changes verb ending from 없어요. to 없고, ...

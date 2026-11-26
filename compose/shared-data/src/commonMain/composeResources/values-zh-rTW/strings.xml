@@ -6370,7 +6370,7 @@
     <string name="app_update_post_update_banner_title">已更新至 %1$s</string>
     <string name="app_update_post_update_banner_action">查看更新日誌</string>
     <string name="upgrade_dialog_history_agent_hits_none">。</string>
-    <string name="upgrade_dialog_history_agent_hits_one">，過去 7 天你的 Agent 已經有 %1$d 次想讀沒讀到。</string>
+    <string name="upgrade_dialog_history_agent_hits_one">，過去 7 天你的 Agent 已經有 1 次想讀沒讀到。</string>
     <string name="upgrade_dialog_history_agent_hits_other">，過去 7 天你的 Agent 已經有 %1$d 次想讀沒讀到。</string>
     <string name="upgrade_dialog_history_hint_channel_one">%1$s 有 %2$s 則超過 %3$d 天的訊息，免費版中你和你的 Agent 都讀不到%4$s</string>
     <string name="upgrade_dialog_history_hint_channel_other">%1$s 有 %2$s 則超過 %3$d 天的訊息，免費版中你和你的 Agent 都讀不到%4$s</string>

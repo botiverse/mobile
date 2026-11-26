@@ -6370,7 +6370,7 @@
     <string name="app_update_post_update_banner_title">Обновлено до %1$s</string>
     <string name="app_update_post_update_banner_action">Что нового</string>
     <string name="upgrade_dialog_history_agent_hits_none">.</string>
-    <string name="upgrade_dialog_history_agent_hits_one">; за последние 7 дней ваши агенты наткнулись на это %1$d раз.</string>
+    <string name="upgrade_dialog_history_agent_hits_one">; за последние 7 дней ваши агенты наткнулись на это 1 раз.</string>
     <string name="upgrade_dialog_history_agent_hits_other">; за последние 7 дней ваши агенты наткнулись на это %1$d раза.</string>
     <string name="upgrade_dialog_history_hint_channel_one">В канале %1$s %2$s сообщение старше %3$d дней, которое вы и ваши агенты не можете прочитать на тарифе Free%4$s</string>
     <string name="upgrade_dialog_history_hint_channel_other">В канале %1$s %2$s сообщений старше %3$d дней, которые вы и ваши агенты не можете прочитать на тарифе Free%4$s</string>
