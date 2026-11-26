@@ -6701,4 +6701,14 @@
     <string name="in_app_browser_external_app_title">¿Abrir en otra app?</string>
     <string name="in_app_browser_external_app_message">Esta página quiere abrir "%1$s" en otra app.</string>
     <string name="in_app_browser_external_app_open">Abrir</string>
+    <string name="server_panel_recently_used">Usados recientemente</string>
+    <string name="mobile_nav_edit_reset">Restablecer</string>
+    <string name="mobile_nav_edit_tab_bar">Barra de pestañas</string>
+    <string name="mobile_nav_edit_tab_bar_hint">Hasta 4 · tu servidor siempre al final</string>
+    <string name="mobile_nav_edit_more_hint">En este orden · Ajustes siempre al final</string>
+    <string name="mobile_nav_edit_helper">Arrastra para reordenar la barra de pestañas o Más, o para mover un lugar entre ambas.</string>
+    <string name="mobile_nav_edit_remove_place">Quitar %1$s de la barra de pestañas</string>
+    <string name="mobile_nav_edit_add_place">Añadir %1$s a la barra de pestañas</string>
+    <string name="mobile_nav_edit_move_left">Mover a la izquierda</string>
+    <string name="mobile_nav_edit_move_right">Mover a la derecha</string>
 </resources>

@@ -320,6 +320,7 @@ internal fun RaftBottomTabBar(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
     serverTab: (@Composable (Modifier) -> Unit)? = null,
+    onLongPress: ((String) -> Unit)? = null,
 ) {
     // #192 trace scope extension: bottom tab bar (Home / Tasks / etc.) render.
     // Tab switches are #191 hot path; this marker measures per-tab-item composition.
@@ -338,6 +339,7 @@ internal fun RaftBottomTabBar(
             .background(RaftColor.Card)
     ) {
         val currentOnSelect by rememberUpdatedState(onSelect)
+        val currentOnLongPress by rememberUpdatedState(onLongPress)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -347,6 +349,7 @@ internal fun RaftBottomTabBar(
         ) {
             items.forEach { item ->
                 val currentEnabled by rememberUpdatedState(item.enabled)
+                val itemLongPress = if (item.key == AppShellServerTabKey) null else onLongPress
                 // Expand each 45dp tab's effective tap area vertically across the bar's top 7dp
                 // (seam + TopPadding) and bottom 8dp (MinBottomPadding) while keeping the inner
                 // RaftMobileNavItem / server tab at its exact 45dp visual & semantics box. Taps
@@ -356,13 +359,25 @@ internal fun RaftBottomTabBar(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .pointerInput(item.key) {
+                        .pointerInput(item.key, itemLongPress != null) {
                             // raw-click: invisible vertical padding tap-forgiveness wrapper around the 45dp tab; inner DS item owns press/hover/a11y
-                            detectTapGestures {
-                                if (currentEnabled) {
-                                    currentOnSelect(item.key)
-                                }
-                            }
+                            detectTapGestures(
+                                onLongPress =
+                                    if (itemLongPress != null) {
+                                        {
+                                            if (currentEnabled) {
+                                                currentOnLongPress?.invoke(item.key)
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                onTap = {
+                                    if (currentEnabled) {
+                                        currentOnSelect(item.key)
+                                    }
+                                },
+                            )
                         }
                         .padding(
                             top = RaftAppStroke.Thin + RaftBottomTabBarSpec.TopPadding,
@@ -376,6 +391,7 @@ internal fun RaftBottomTabBar(
                         RaftBottomTabItem(
                             item = item,
                             onSelect = onSelect,
+                            onLongPress = itemLongPress,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -440,6 +456,7 @@ internal fun raftBottomTabLabelWeight(selected: Boolean): FontWeight =
 private fun RaftBottomTabItem(
     item: RaftBottomTabItemPayload,
     onSelect: (String) -> Unit,
+    onLongPress: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     // The design system's raft-ui MobileNavItem, as the server tab next to it: the 56x30 pill
@@ -448,6 +465,7 @@ private fun RaftBottomTabItem(
     // app adds its glyph, every one at 22dp as the web draws them, and its unread count.
     val attentionDescription =
         if (item.key == "more" || item.key == "settings") stringResource(Res.string.tab_more_attention_dot) else stringResource(Res.string.tab_activity_unread_dot)
+    val longPressLabel = if (onLongPress != null) stringResource(Res.string.rail_places_edit) else null
     RaftDesignSystemTheme {
         RaftMobileNavItem(
             label = item.label,
@@ -474,6 +492,8 @@ private fun RaftBottomTabItem(
                         .wrapContentSize(align = Alignment.TopStart, unbounded = true)
                 )
             },
+            onLongClick = onLongPress?.let { handler -> { handler(item.key) } },
+            onLongClickLabel = longPressLabel,
         )
     }
 }
@@ -518,6 +538,7 @@ internal fun RaftAppBottomTabBarHost(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp,
     serverTab: (@Composable (Modifier) -> Unit)? = null,
+    onLongPress: ((String) -> Unit)? = null,
 ) {
     val hostModifier = modifier.zIndex(RaftAppBottomTabBarHostZIndex)
     val nativeTabBar = raftNativeTabBarBridge()
@@ -539,6 +560,7 @@ internal fun RaftAppBottomTabBarHost(
         modifier = hostModifier,
         bottomSafeArea = bottomSafeArea,
         serverTab = serverTab,
+        onLongPress = onLongPress,
     )
 }
 
@@ -568,6 +590,7 @@ internal fun RaftSharedBottomTabBarBand(
     modifier: Modifier = Modifier,
     bottomSafeArea: Dp = 0.dp,
     serverTab: (@Composable (Modifier) -> Unit)? = null,
+    onLongPress: ((String) -> Unit)? = null,
 ) {
     val density = LocalDensity.current
     val bandHeight = raftSharedBottomTabBarHostHeight(bottomSafeArea)
@@ -597,6 +620,7 @@ internal fun RaftSharedBottomTabBarBand(
                 .fillMaxWidth()
                 .align(Alignment.TopCenter),
             serverTab = serverTab,
+            onLongPress = onLongPress,
         )
     }
 }

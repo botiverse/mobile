@@ -6701,4 +6701,14 @@
     <string name="in_app_browser_external_app_title">Открыть в другом приложении?</string>
     <string name="in_app_browser_external_app_message">Эта страница хочет открыть «%1$s» в другом приложении.</string>
     <string name="in_app_browser_external_app_open">Открыть</string>
+    <string name="server_panel_recently_used">Недавние</string>
+    <string name="mobile_nav_edit_reset">Сбросить</string>
+    <string name="mobile_nav_edit_tab_bar">Панель вкладок</string>
+    <string name="mobile_nav_edit_tab_bar_hint">До 4 · сервер всегда последний</string>
+    <string name="mobile_nav_edit_more_hint">В этом порядке · Настройки всегда последние</string>
+    <string name="mobile_nav_edit_helper">Перетаскивайте, чтобы изменить порядок на панели вкладок или в «Ещё», либо переместить раздел между ними.</string>
+    <string name="mobile_nav_edit_remove_place">Убрать %1$s с панели вкладок</string>
+    <string name="mobile_nav_edit_add_place">Добавить %1$s на панель вкладок</string>
+    <string name="mobile_nav_edit_move_left">Переместить влево</string>
+    <string name="mobile_nav_edit_move_right">Переместить вправо</string>
 </resources>

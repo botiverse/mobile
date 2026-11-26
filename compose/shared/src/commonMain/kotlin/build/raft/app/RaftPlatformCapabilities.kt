@@ -249,6 +249,9 @@ internal expect fun raftPlatformProductName(): String
 /** True only on Raft Desktop (Compose Desktop); false on Android and iOS (phones, tablets, foldables). */
 internal fun raftPlatformIsDesktop(): Boolean = raftPlatformProductName() == "Desktop"
 
+/** True only on Android hosts; false on iOS and Desktop. */
+internal fun raftPlatformIsAndroid(): Boolean = raftPlatformProductName() == "Android"
+
 // task #401 temporary char-wrap bridge. The markdown layer interleaves U+200B
 // break opportunities into long inline-code runs only on platforms whose
 // ordinary background spans do not already wrap at character boundaries.

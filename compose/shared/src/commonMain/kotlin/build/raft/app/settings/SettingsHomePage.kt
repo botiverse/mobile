@@ -5192,6 +5192,21 @@ private fun RaftAppShellReadyContent(
     // iPhone Duo's inner screen (raft-design #859): the wide layout without the top bar; the rail
     // holds the server tile, Search and the bell.
     val railWithoutTopBar = raftAppRailWithoutTopBar(navRailActive)
+    var serverMenuInitialEditMode by remember(readyServerId, navRailActive) { mutableStateOf(false) }
+    val serverMenuMobilePlacesConfig =
+        rememberRaftServerMenuMobilePlacesConfig(
+            mobilePlacesShell = mobilePlacesShell,
+            navRailActive = navRailActive,
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            readyAccountId = readySession?.user?.id,
+            readyServerId = readyServerId,
+            linkNavigator = linkNavigator,
+            scope = appShellCoroutineScope,
+            initialEditMode = serverMenuInitialEditMode,
+            onInitialEditModeConsumed = { serverMenuInitialEditMode = false },
+            log = { bridge.log(it) },
+        )
     // The server panel: over the content on the phone (above its bar), over the whole shell under
     // the wide top bar's workspace button ([topBar]), or next to the rail header's tile.
     val serverMenuOverlay: @Composable (topBar: Boolean) -> Unit = { topBar ->
@@ -5246,6 +5261,7 @@ private fun RaftAppShellReadyContent(
                         shellScope.bottomTabBarOverlaysContent -> shellScope.bottomTabBarContentInset - RaftAppSpacing.Lg
                         else -> 0.dp
                     },
+                mobilePlacesConfig = if (!topBar) serverMenuMobilePlacesConfig else null,
             )
         }
     }
@@ -5439,10 +5455,23 @@ private fun RaftAppShellReadyContent(
                         )
                     }
                 },
+            onBottomTabLongPress =
+                if (mobilePlacesShell.enabled && !mobilePlacesShell.isDesktopHost && raftPlatformIsAndroid() && serverMenuModel != null) {
+                    { key ->
+                        if (key != AppShellServerTabKey) {
+                            bridge.log("app_shell_bottom_tab_long_press_edit key=$key")
+                            serverMenuInitialEditMode = true
+                            serverMenuState.show()
+                        }
+                    }
+                } else {
+                    null
+                },
             onBottomTabSelected = { key ->
                 if (key == AppShellServerTabKey && serverMenuModel != null) {
                     // The server tab opens the server panel, not a page (also the iOS system bar's tap).
                     bridge.log("app_shell_server_menu_toggle open=${!serverMenuState.open}")
+                    serverMenuInitialEditMode = false
                     serverMenuState.toggle()
                     return@RaftAppShellSurface
                 }

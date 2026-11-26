@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Alignment
@@ -32,6 +35,7 @@ import build.raft.designsystem.components.RaftMutedCount
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftReorderableItem
 import build.raft.designsystem.components.rememberRaftReorderState
+import build.raft.designsystem.haptics.rememberRaftHaptics
 
 // Design D1a (#proj-raft-ui task #152; raft-design #712): the app's current-server tab and its
 // server popover (the "server panel"), built from the design system's RaftMobileNavServerPopover*
@@ -181,13 +185,37 @@ internal fun RaftAppServerMenuOverlay(
      * sits at 60% and its rows take no tap, hold or drag until the switch lands or fails.
      */
     switchPending: Boolean = false,
+    /**
+     * Optional `tab_bar_places_v0` phone configuration (Recently used, More header + Edit, and
+     * in-popover Edit navigation bar mode). Null when the flag is OFF, on wide screens, or on
+     * Desktop Compose — keeping legacy behavior 100% unchanged.
+     */
+    mobilePlacesConfig: RaftServerMenuMobilePlacesConfig? = null,
 ) {
     if (!state.open) return
-    // The overlay host registers Back as well; the popover names its own handler so Back closes
-    // it before it moves the page, whatever the host does.
-    RaftBackHandler(enabled = true, label = "server_menu", onBack = state::dismiss)
+    val activeMobilePlaces = mobilePlacesConfig?.takeIf { anchor == RaftServerMenuAnchor.BottomBar }
+    var editMode by remember(state.open, activeMobilePlaces != null) {
+        mutableStateOf(activeMobilePlaces?.initialEditMode == true)
+    }
+    LaunchedEffect(activeMobilePlaces?.initialEditMode) {
+        if (activeMobilePlaces?.initialEditMode == true) {
+            editMode = true
+            activeMobilePlaces.onInitialEditModeConsumed()
+        }
+    }
+    // The overlay host registers Back as well; the popover names its own handler so Back exits
+    // edit mode first (or closes the popover) before moving the underlying page.
+    RaftBackHandler(
+        enabled = true,
+        label = "server_menu",
+        onBack = {
+            if (editMode) editMode = false else state.dismiss()
+        },
+    )
     val labels = RaftHomeShellLabels.localized()
     val panelTitle = stringResource(Res.string.server_panel_title)
+    val editNavBarLabel = stringResource(Res.string.rail_places_edit)
+    val haptics = rememberRaftHaptics()
     // raft-design #712: Join Community (while not joined), Switch or Create Server, Invite Human.
     val joinCommunityActions =
         homeServerSwitcherJoinCommunityActions(
@@ -215,6 +243,12 @@ internal fun RaftAppServerMenuOverlay(
             RaftServerMenuEntry.Apps to stringResource(Res.string.tab_apps),
             RaftServerMenuEntry.Settings to stringResource(Res.string.tab_settings),
         )
+    val maxHeightFraction =
+        if (activeMobilePlaces != null) {
+            RaftMobileNavDefaults.ServerPopoverExpandedMaxHeightFraction
+        } else {
+            RaftMobileNavDefaults.ServerPopoverMaxHeightFraction
+        }
     RaftFloatingOverlayHost(
         onDismiss = state::dismiss,
         dismissActivationDelayMillis = RaftFloatingOverlayClickTriggeredDismissDelayMillis,
@@ -231,104 +265,154 @@ internal fun RaftAppServerMenuOverlay(
                         RaftServerMenuAnchor.TopBar, RaftServerMenuAnchor.RailHeader -> Alignment.TopStart
                         RaftServerMenuAnchor.BottomBar -> Alignment.BottomCenter
                     },
+                maxHeightFraction = maxHeightFraction,
             ) {
                 RaftMobileNavServerPopoverContent(
                     modifier =
                         Modifier
                             .then(if (anchor != RaftServerMenuAnchor.BottomBar) Modifier.width(RaftServerMenuTopBarWidth) else Modifier)
                             .raftFloatingContentClickTarget(),
-                    paneTitle = panelTitle,
+                    paneTitle = if (editMode) editNavBarLabel else panelTitle,
                 ) {
-                    RaftMobileNavServerPopoverList(reorderState = reorderState.takeIf { reorderable }, enabled = !switchPending) {
-                        // The rows follow the reorder state's order (the lifted row's slot while
-                        // dragging); keyed, so a row keeps its gesture as it moves.
-                        reorderState.order.forEach { serverId ->
-                            val server = serversById[serverId] ?: return@forEach
-                            key(serverId) {
-                                val current = server.id == model.currentServer.id
-                                RaftMobileNavServerPopoverRow(
-                                    modifier =
-                                        Modifier.raftReorderableItem(
-                                            state = reorderState,
-                                            key = server.id,
-                                            onOrderChange = onServerOrderChange,
-                                            moveUpLabel = moveUpLabel,
-                                            moveDownLabel = moveDownLabel,
-                                            enabled = reorderable && !switchPending,
-                                        ),
-                                    enabled = !switchPending,
-                                    label = server.name,
-                                    description = server.slug.takeIf { it.isNotBlank() }?.let { "/$it" },
-                                    onClick = { onPick(RaftServerMenuPick.Server(server.id)) },
-                                    current = current,
-                                    state = state,
-                                    key = raftServerMenuServerKey(server.id),
-                                    leading = {
-                                        ServerSwitcherAvatarTile(server, size = RaftMobileNavDefaults.ServerPopoverAvatarSize)
-                                    },
-                                    trailing =
-                                        if (current) {
-                                            { RaftGlyphIcon(RaftGlyph.Check, color = RaftColor.TextBlack) }
-                                        } else {
-                                            raftServerMenuUnreadCount(server)?.let { (count, muted) ->
-                                                { if (muted) RaftMutedCount(count) else RaftUnreadCount(count) }
-                                            }
-                                        },
+                    if (activeMobilePlaces != null && editMode) {
+                        val editState =
+                            remember(
+                                activeMobilePlaces.mobilePlaces,
+                                activeMobilePlaces.artifactsEnabled,
+                                activeMobilePlaces.isGuest,
+                            ) {
+                                MobilePlacesEditState.fromMobilePlaces(
+                                    mobilePlaces = activeMobilePlaces.mobilePlaces,
+                                    artifactsEnabled = activeMobilePlaces.artifactsEnabled,
+                                    isGuest = activeMobilePlaces.isGuest,
                                 )
                             }
+                        RaftMobilePlacesEditPopoverBody(
+                            editState = editState,
+                            pageLabels = pageLabels,
+                            onCommitEdit = { updated -> activeMobilePlaces.onSaveOrder(updated.orderedVisibleIds) },
+                            onResetToDefault = activeMobilePlaces.onResetToDefault,
+                            onDone = { editMode = false },
+                        )
+                    } else {
+                        RaftMobileNavServerPopoverList(reorderState = reorderState.takeIf { reorderable }, enabled = !switchPending) {
+                            // The rows follow the reorder state's order (the lifted row's slot while
+                            // dragging); keyed, so a row keeps its gesture as it moves.
+                            reorderState.order.forEach { serverId ->
+                                val server = serversById[serverId] ?: return@forEach
+                                key(serverId) {
+                                    val current = server.id == model.currentServer.id
+                                    RaftMobileNavServerPopoverRow(
+                                        modifier =
+                                            Modifier.raftReorderableItem(
+                                                state = reorderState,
+                                                key = server.id,
+                                                onOrderChange = onServerOrderChange,
+                                                moveUpLabel = moveUpLabel,
+                                                moveDownLabel = moveDownLabel,
+                                                enabled = reorderable && !switchPending,
+                                            ),
+                                        enabled = !switchPending,
+                                        label = server.name,
+                                        description = server.slug.takeIf { it.isNotBlank() }?.let { "/$it" },
+                                        onClick = { onPick(RaftServerMenuPick.Server(server.id)) },
+                                        current = current,
+                                        state = state,
+                                        key = raftServerMenuServerKey(server.id),
+                                        leading = {
+                                            ServerSwitcherAvatarTile(server, size = RaftMobileNavDefaults.ServerPopoverAvatarSize)
+                                        },
+                                        trailing =
+                                            if (current) {
+                                                { RaftGlyphIcon(RaftGlyph.Check, color = RaftColor.TextBlack) }
+                                            } else {
+                                                raftServerMenuUnreadCount(server)?.let { (count, muted) ->
+                                                    { if (muted) RaftMutedCount(count) else RaftUnreadCount(count) }
+                                                }
+                                            },
+                                    )
+                                }
+                            }
                         }
-                    }
-                    RaftMobileNavServerPopoverSeparator()
-                    RaftMobileNavServerPopoverGroup {
-                        // raft-design #712: Join Community (while not joined), Switch or Create
-                        // Server, Invite Human (owners and admins) — the Home switcher's footer.
-                        joinCommunityActions.forEach { action ->
+                        RaftMobileNavServerPopoverSeparator()
+                        RaftMobileNavServerPopoverGroup {
+                            // raft-design #712: Join Community (while not joined), Switch or Create
+                            // Server, Invite Human (owners and admins) — the Home switcher's footer.
+                            joinCommunityActions.forEach { action ->
+                                RaftMobileNavServerPopoverRow(
+                                    label = action.label,
+                                    onClick = {
+                                        state.dismiss()
+                                        onCreateServerClick()
+                                    },
+                                    leading = { RaftLucideIcon(RaftLucideIconName.Globe, Modifier.size(16.dp)) },
+                                )
+                            }
                             RaftMobileNavServerPopoverRow(
-                                label = action.label,
+                                label = labels.switchOrCreateServer,
                                 onClick = {
                                     state.dismiss()
                                     onCreateServerClick()
                                 },
-                                leading = { RaftLucideIcon(RaftLucideIconName.Globe, Modifier.size(16.dp)) },
+                                leading = { RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(16.dp)) },
                             )
+                            onInviteHumanClick?.let { invite ->
+                                RaftMobileNavServerPopoverRow(
+                                    label = labels.inviteHuman,
+                                    onClick = {
+                                        state.dismiss()
+                                        invite()
+                                    },
+                                    leading = { RaftLucideIcon(RaftLucideIconName.UserPlus, Modifier.size(16.dp)) },
+                                )
+                            }
                         }
-                        RaftMobileNavServerPopoverRow(
-                            label = labels.switchOrCreateServer,
-                            onClick = {
-                                state.dismiss()
-                                onCreateServerClick()
-                            },
-                            leading = { RaftLucideIcon(RaftLucideIconName.Plus, Modifier.size(16.dp)) },
-                        )
-                        onInviteHumanClick?.let { invite ->
-                            RaftMobileNavServerPopoverRow(
-                                label = labels.inviteHuman,
-                                onClick = {
-                                    state.dismiss()
-                                    invite()
-                                },
-                                leading = { RaftLucideIcon(RaftLucideIconName.UserPlus, Modifier.size(16.dp)) },
-                            )
-                        }
-                    }
-                    if (entries.isNotEmpty()) RaftMobileNavServerPopoverSeparator()
-                    if (entries.isNotEmpty()) RaftMobileNavServerPopoverDestinations {
-                        entries.forEach { entry ->
-                            RaftMobileNavServerPopoverDestination(
-                                label = pageLabels.getValue(entry),
-                                onClick = { onPick(RaftServerMenuPick.Page(entry)) },
-                                icon = {
-                                    RaftLucideIcon(
-                                        name = raftServerMenuEntryIcon(entry),
-                                        color = raftArgbHex(RaftColor.ForegroundMuted),
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                },
-                                attention = entry in model.attentionEntries,
-                                attentionDescription = attentionDescription,
+                        if (activeMobilePlaces != null) {
+                            RaftMobilePlacesRecentlyUsedSection(
+                                items = activeMobilePlaces.recentlyUsed,
                                 state = state,
-                                key = raftServerMenuEntryKey(entry),
+                                resolveAppIconUrl = activeMobilePlaces.resolveAppIconUrl,
+                                onPick = activeMobilePlaces.onPickRecent,
                             )
+                        }
+                        if (entries.isNotEmpty()) {
+                            RaftMobileNavServerPopoverSeparator()
+                            if (activeMobilePlaces != null) {
+                                RaftMobilePlacesMoreHeader(onEditClick = { editMode = true })
+                            }
+                            RaftMobileNavServerPopoverDestinations(
+                                columns = if (activeMobilePlaces != null) AppShellPhoneMaxPlaceTabs else null,
+                            ) {
+                                entries.forEach { entry ->
+                                    val canLongPressToEdit =
+                                        activeMobilePlaces != null && entry != RaftServerMenuEntry.Settings
+                                    RaftMobileNavServerPopoverDestination(
+                                        label = pageLabels.getValue(entry),
+                                        onClick = { onPick(RaftServerMenuPick.Page(entry)) },
+                                        icon = {
+                                            RaftLucideIcon(
+                                                name = raftServerMenuEntryIcon(entry),
+                                                color = raftArgbHex(RaftColor.ForegroundMuted),
+                                                modifier = Modifier.size(20.dp),
+                                            )
+                                        },
+                                        attention = entry in model.attentionEntries,
+                                        attentionDescription = attentionDescription,
+                                        state = state,
+                                        key = raftServerMenuEntryKey(entry),
+                                        onLongClick =
+                                            if (canLongPressToEdit) {
+                                                {
+                                                    haptics.longPress()
+                                                    editMode = true
+                                                }
+                                            } else {
+                                                null
+                                            },
+                                        onLongClickLabel = if (canLongPressToEdit) editNavBarLabel else null,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

@@ -6702,4 +6702,14 @@
     <string name="in_app_browser_external_app_title">是否打开外部应用？</string>
     <string name="in_app_browser_external_app_message">当前页面请求打开外部应用「%1$s」。</string>
     <string name="in_app_browser_external_app_open">打开</string>
+    <string name="server_panel_recently_used">最近使用</string>
+    <string name="mobile_nav_edit_reset">重置</string>
+    <string name="mobile_nav_edit_tab_bar">标签栏</string>
+    <string name="mobile_nav_edit_tab_bar_hint">最多 4 个 · server 固定在最后</string>
+    <string name="mobile_nav_edit_more_hint">按这个顺序 · 设置固定在最后</string>
+    <string name="mobile_nav_edit_helper">拖动排序标签栏或更多，或在两段之间移动</string>
+    <string name="mobile_nav_edit_remove_place">从标签栏移除 %1$s</string>
+    <string name="mobile_nav_edit_add_place">将 %1$s 添加到标签栏</string>
+    <string name="mobile_nav_edit_move_left">向左移动</string>
+    <string name="mobile_nav_edit_move_right">向右移动</string>
 </resources>

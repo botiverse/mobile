@@ -163,6 +163,8 @@ internal fun RaftAppShellSurface(
     shellOverlay: (@Composable () -> Unit)? = null,
     /** D1a: draws the bar's current-server tab (see [RaftBottomTabBar]). */
     bottomServerTab: (@Composable (Modifier) -> Unit)? = null,
+    /** Android `tab_bar_places_v0`: long-pressing a place tab opens the server popover in Edit mode. */
+    onBottomTabLongPress: ((String) -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val ownedModalHostState = rememberRaftUnifiedDialogHostState()
@@ -329,6 +331,7 @@ internal fun RaftAppShellSurface(
                                 modifier = Modifier.fillMaxWidth(),
                                 bottomSafeArea = shellScope.bottomSafeArea,
                                 serverTab = bottomServerTab,
+                                onLongPress = onBottomTabLongPress,
                             )
                         }
                     }

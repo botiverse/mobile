@@ -6701,4 +6701,14 @@
     <string name="in_app_browser_external_app_title">다른 앱에서 여시겠습니까?</string>
     <string name="in_app_browser_external_app_message">이 페이지가 다른 앱에서 "%1$s"을(를) 열려고 합니다.</string>
     <string name="in_app_browser_external_app_open">열기</string>
+    <string name="server_panel_recently_used">최근 사용</string>
+    <string name="mobile_nav_edit_reset">초기화</string>
+    <string name="mobile_nav_edit_tab_bar">탭 바</string>
+    <string name="mobile_nav_edit_tab_bar_hint">최대 4개 · 서버는 마지막에 고정</string>
+    <string name="mobile_nav_edit_more_hint">이 순서대로 · 설정은 마지막에 고정</string>
+    <string name="mobile_nav_edit_helper">드래그하여 탭 바 또는 더보기의 순서를 바꾸거나 두 영역 사이로 이동하세요.</string>
+    <string name="mobile_nav_edit_remove_place">탭 바에서 %1$s 제거</string>
+    <string name="mobile_nav_edit_add_place">탭 바에 %1$s 추가</string>
+    <string name="mobile_nav_edit_move_left">왼쪽으로 이동</string>
+    <string name="mobile_nav_edit_move_right">오른쪽으로 이동</string>
 </resources>
