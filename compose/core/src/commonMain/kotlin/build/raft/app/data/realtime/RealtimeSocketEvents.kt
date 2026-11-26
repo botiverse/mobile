@@ -78,6 +78,13 @@ object RealtimeSocketEvents {
      */
     const val AgentUpdated = GeneratedRealtimeContract.SocketEvent.AgentUpdated
     const val AgentDeleted = GeneratedRealtimeContract.SocketEvent.AgentDeleted
+    /**
+     * Worker v1 (`docs/contracts/worker-snapshot.md`, `AgentWorkersChangedEvent`):
+     * `{ agentId, digest, receivedAt }` to the agent's event room whenever a Computer snapshot
+     * changes that agent's Worker rows. Payload-free nudge: the open Workers panel reads
+     * `GET /api/agents/:id/workers` again when `digest` differs from its latest read.
+     */
+    const val AgentWorkersChanged = GeneratedRealtimeContract.SocketEvent.AgentWorkersChanged
     const val MachineStatus = GeneratedRealtimeContract.SocketEvent.MachineStatus
     const val MachineCapabilities = GeneratedRealtimeContract.SocketEvent.MachineCapabilities
     const val MachineUpdated = GeneratedRealtimeContract.SocketEvent.MachineUpdated

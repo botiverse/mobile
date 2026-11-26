@@ -142,6 +142,8 @@ internal fun MembersAgentActivityViewSwitch(
     modifier: Modifier = Modifier,
     showOverview: Boolean = true,
     subagentCount: Int? = null,
+    /** Worker v1 (`worker_v1` on for a Computer agent): renames the Subagents segment to Workers. */
+    workersEnabled: Boolean = false,
     /** The views' pager position ([build.raft.designsystem.components.RaftSegmentedPagerState.position]): the sticker slides with it. */
     selectionPosition: (() -> Float)? = null,
 ) {
@@ -165,7 +167,9 @@ internal fun MembersAgentActivityViewSwitch(
         )
         if (subagentCount != null) {
             RaftSegment(
-                text = stringResource(Res.string.member_activity_overview_view_subagents),
+                text = stringResource(
+                    if (workersEnabled) Res.string.member_activity_workers_title else Res.string.member_activity_overview_view_subagents
+                ),
                 selected = view == MembersAgentActivityView.Subagents,
                 onClick = { onViewChange(MembersAgentActivityView.Subagents) },
                 count = subagentCount.toString(),

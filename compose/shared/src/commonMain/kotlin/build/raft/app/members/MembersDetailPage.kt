@@ -18,6 +18,8 @@ import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.AgentAppGrantsRevokeStore
 import build.raft.app.data.AgentSubagentStopStore
 import build.raft.app.data.AgentTurnStopStore
+import build.raft.app.data.AgentWorkersIntent
+import build.raft.app.data.AgentWorkersStore
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentDetailSnapshot
@@ -292,6 +294,7 @@ private fun rememberMemberDetailRouteProvider(
             agentControlsApi = agentControlsApi,
             agentDetailCache = sharedStores.agentDetailCache,
             agentUpdatedSignals = sharedStores.agentUpdatedSignals,
+            agentWorkersChangedSignals = sharedStores.agentWorkersChangedSignals,
             accountBinding = { sharedStores.currentAccountBindingOrNull() },
             memberRemovalImpactRepository = build.raft.app.data.NetworkMemberRemovalImpactRepository(networkClient)
         )
@@ -400,6 +403,21 @@ internal fun MemberDetailPageContent(
         remember(provider, routeScope) {
             provider.agentControlsApi?.let { api -> AgentSubagentStopStore(api::interruptSubagent, routeScope) }
         }
+    val agentWorkersStore =
+        remember(provider, routeScope) {
+            provider.agentControlsApi?.let { api ->
+                AgentWorkersStore(
+                    listWorkers = api::listWorkers,
+                    stopWorker = api::stopWorker,
+                    scope = routeScope,
+                    workersChangedSignals =
+                        provider.agentWorkersChangedSignals?.events ?: kotlinx.coroutines.flow.emptyFlow(),
+                )
+            }
+        }
+    LaunchedEffect(agentWorkersStore, pageVisible) {
+        agentWorkersStore?.dispatch(AgentWorkersIntent.SetPageVisible(pageVisible))
+    }
     val agentMigrationStore =
         remember(provider, routeScope) {
             provider.agentControlsApi?.let { api ->
@@ -1181,6 +1199,24 @@ internal fun MemberDetailPageContent(
                                     provider.updateAgentProfile(current.server.id, request)
                             }
                         }
+                    val workerV1Enabled =
+                        remember(provider.serverFeatureFlags, current.server.id, serverFeatureFlagRevision) {
+                            provider.serverFeatureFlags?.isWorkerV1Enabled(current.server.id) == true
+                        }
+                    val workersPanelEnabled =
+                        workerV1Enabled &&
+                            current.accessMode.allowsPrivateAgentSurfaces &&
+                            !member.isExternal &&
+                            !build.raft.app.model.isExternalAgentRuntime(selectedAgentDetail.summary?.runtime)
+                    LaunchedEffect(agentWorkersStore, current.server.id, member.id, workersPanelEnabled) {
+                        agentWorkersStore?.dispatch(
+                            AgentWorkersIntent.Bind(
+                                serverId = current.server.id.value,
+                                agentId = member.id,
+                                enabled = workersPanelEnabled,
+                            )
+                        )
+                    }
                     MembersDetailContent(
                         member = member,
                         currentUserId = current.currentUserId,
@@ -1211,6 +1247,7 @@ internal fun MemberDetailPageContent(
                             serverRole = current.server.role,
                             turnStopStore = agentTurnStopStore,
                             subagentStopStore = agentSubagentStopStore,
+                            workersStore = if (workersPanelEnabled) agentWorkersStore else null,
                             migration =
                                 agentMigrationStore?.let { store ->
                                     val flags = provider.serverFeatureFlags

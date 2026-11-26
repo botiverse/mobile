@@ -18,6 +18,8 @@ import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.agentActivitySubagentRowPresence
 import build.raft.app.data.groupAgentActivitySubagents
 import build.raft.app.data.AgentActivityOverviewIntent
+import build.raft.app.data.AgentWorkersIntent
+import build.raft.app.data.AgentWorkersState
 import build.raft.app.data.agentMemoryLimitExit
 import build.raft.app.data.isAgentBackgroundOomActivityTitle
 import build.raft.app.data.parseAgentBackgroundOomActivityText
@@ -33,8 +35,10 @@ import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.foundation.layout.PaddingValues
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftPanelNotice
@@ -82,10 +86,14 @@ internal fun MembersAgentActivityTab(
     modifier: Modifier = Modifier,
     autoScrollToLatest: Boolean = true,
     /** Stop one running sub-agent from its page; null: the viewer may not (web `canStopSubagents`). */
-    subagentStop: MembersAgentSubagentStop? = null
+    subagentStop: MembersAgentSubagentStop? = null,
+    /** Worker v1 (`worker_v1` on for a Computer agent): renames the segment to Workers and lists live Workers first. */
+    workers: MembersAgentWorkersBinding? = null,
 ) {
     val copySucceeded =
         diagnosticActionState?.actionKey == "copy" && diagnosticActionState.successLabel != null
+    val fallbackWorkersState = remember { MutableStateFlow(AgentWorkersState()) }
+    val workersState by (workers?.state ?: fallbackWorkersState).collectAsState()
     var chosenActivityView by remember(detail?.agentId) { mutableStateOf(MembersAgentActivityView.Overview) }
     // Without the Overview (its flag off or unresolved) the Overview choice reads as the raw log.
     val activityView =
@@ -111,14 +119,25 @@ internal fun MembersAgentActivityTab(
     RaftBackHandler(enabled = activityView == MembersAgentActivityView.Subagents && openSubagent != null, label = "agent_subagent_detail") {
         openSubagentKey = null
     }
-    // Web AgentActivityLog (slock #14961): a runtime that can start sub-agents always offers the
-    // Sub-agents segment, with 0 too; any other runtime shows it once a sub-agent has appeared.
+    // Web AgentActivityLog (slock #14961 + Worker v1): always offered when worker_v1 is on for a Computer agent,
+    // or for a runtime that can start sub-agents; any other runtime shows it once a sub-agent has appeared.
+    val workersEnabled = workers != null
     val showSubagents =
         membersAgentActivityShowsSubagents(
             runtime = detail?.summary?.runtime,
             subagentCount = subagents.size,
             viewing = activityView == MembersAgentActivityView.Subagents,
+            workersEnabled = workersEnabled,
         )
+    val workersPanelOpen = workersEnabled && activityView == MembersAgentActivityView.Subagents && openSubagent == null
+    LaunchedEffect(workers, workersPanelOpen) {
+        workers?.onIntent(AgentWorkersIntent.SetPanelOpen(workersPanelOpen))
+    }
+    DisposableEffect(workers) {
+        onDispose {
+            workers?.onIntent(AgentWorkersIntent.SetPanelOpen(false))
+        }
+    }
     val changeView: (MembersAgentActivityView) -> Unit = { next ->
         chosenActivityView = next
         openSubagentKey = null
@@ -180,7 +199,13 @@ internal fun MembersAgentActivityTab(
                             view = activityView,
                             onViewChange = changeView,
                             showOverview = overview != null,
-                            subagentCount = if (showSubagents) subagents.size else null,
+                            subagentCount =
+                                if (showSubagents) {
+                                    if (workersEnabled) subagents.size + workersState.workers.size else subagents.size
+                                } else {
+                                    null
+                                },
+                            workersEnabled = workersEnabled,
                             selectionPosition = { pagerState.position },
                         )
                     }
@@ -256,6 +281,16 @@ internal fun MembersAgentActivityTab(
                         ) { _, entry, last ->
                             MembersAgentActivityRow(entry, timeContext, onOpenUrl, last = last)
                         }
+                    } else if (workers != null) {
+                        MembersAgentWorkersList(
+                            agentId = detail?.agentId ?: MemberId(""),
+                            workers = workers,
+                            groups = subagents,
+                            timeContext = timeContext,
+                            onOpenSubagent = { openSubagentKey = it },
+                            contentPadding = PaddingValues(start = MembersPageInset, end = MembersPageInset, bottom = RaftAppSpacing.Md),
+                            modifier = contentModifier,
+                        )
                     } else {
                         MembersAgentSubagentsList(
                             groups = subagents,

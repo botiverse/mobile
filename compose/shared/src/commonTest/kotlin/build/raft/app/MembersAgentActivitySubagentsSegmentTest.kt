@@ -25,4 +25,19 @@ class MembersAgentActivitySubagentsSegmentTest {
             assertTrue(membersAgentActivityShowsSubagents(runtime = runtime, subagentCount = 0, viewing = true), "$runtime")
         }
     }
+
+    @Test
+    fun workerV1AlwaysShowsTheWorkersSegmentEvenWithZeroSubagentsOnAnyRuntime() {
+        listOf("grok", "builtin", "opencode", "claude", null).forEach { runtime ->
+            assertTrue(
+                membersAgentActivityShowsSubagents(
+                    runtime = runtime,
+                    subagentCount = 0,
+                    viewing = false,
+                    workersEnabled = true,
+                ),
+                "$runtime",
+            )
+        }
+    }
 }

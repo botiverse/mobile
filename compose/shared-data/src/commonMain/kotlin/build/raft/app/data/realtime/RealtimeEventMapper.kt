@@ -115,6 +115,7 @@ import build.raft.app.model.UserProfileUpdated
 import build.raft.app.model.LinkCardChanged
 import build.raft.app.model.LinkCardOperationChanged
 import build.raft.app.model.ActorUpdated
+import build.raft.app.model.AgentWorkersChanged
 import build.raft.app.model.MessageDisplayPrefsChanged
 import build.raft.app.model.ProductFeedbackUnreadUpdated
 import build.raft.app.model.ServerId
@@ -385,6 +386,8 @@ class RealtimeEventMapper(
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentDeleted ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
+            RealtimeSocketEvents.AgentWorkersChanged ->
+                decodeOrNull(AgentWorkersChangedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.MachineStatus,
             RealtimeSocketEvents.MachineCapabilities,
             RealtimeSocketEvents.MachineUpdated,
@@ -1295,6 +1298,25 @@ private data class MessageDisplayPrefsUpdatedDto(
 
 @Serializable
 private data class MessageDisplayPrefsWireDto(val collapseLongMessages: Boolean? = null)
+
+/** `agent:workers:changed` (slock `workersSnapshot.ts` `AgentWorkersChangedEvent`). */
+@Serializable
+private data class AgentWorkersChangedDto(
+    val agentId: String? = null,
+    val digest: String? = null,
+    val receivedAt: String? = null,
+) {
+    fun toDomain(): AgentWorkersChanged? {
+        val cleanAgentId = agentId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val cleanDigest = digest?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val cleanReceivedAt = receivedAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return AgentWorkersChanged(
+            agentId = MemberId(cleanAgentId),
+            digest = cleanDigest,
+            receivedAt = cleanReceivedAt,
+        )
+    }
+}
 
 /** `actor:updated` (slock `actorUpdatedEventSchema`). Like web, only an agent is applied. */
 @Serializable

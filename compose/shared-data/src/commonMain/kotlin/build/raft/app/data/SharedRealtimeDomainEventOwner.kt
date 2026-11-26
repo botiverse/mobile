@@ -234,6 +234,14 @@ private class RealtimeGuardedSinkRegistration(
         actorUpdatedSink = sink
     }
 
+    // `agent:workers:changed` (Worker v1): a Computer snapshot changed an agent's live Worker rows.
+    // Process entry only: open Agent Detail › Workers panels listen and re-read when digest differs.
+    private var agentWorkersChangedSink: ((serverId: String, event: build.raft.app.model.AgentWorkersChanged) -> Unit)? = null
+
+    fun installAgentWorkersChangedSink(sink: (serverId: String, event: build.raft.app.model.AgentWorkersChanged) -> Unit) {
+        agentWorkersChangedSink = sink
+    }
+
     // `agent:activity:subscribed` answers this process's own subscribe on the grant's server socket.
     private var agentActivitySubscribedSink: ((serverId: String, event: AgentActivitySubscribed) -> Unit)? = null
 
@@ -438,6 +446,9 @@ private class RealtimeGuardedSinkRegistration(
             }
             if (acceptedEvent is build.raft.app.model.ActorUpdated) {
                 actorUpdatedSink?.invoke(serverId, acceptedEvent)
+            }
+            if (acceptedEvent is build.raft.app.model.AgentWorkersChanged) {
+                agentWorkersChangedSink?.invoke(serverId, acceptedEvent)
             }
             // Sent to the user room: applied only for the connection's server (the next open of another
             // server's conversation reads its preferences anyway).

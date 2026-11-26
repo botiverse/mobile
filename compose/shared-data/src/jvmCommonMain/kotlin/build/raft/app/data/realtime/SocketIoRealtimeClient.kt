@@ -945,6 +945,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is build.raft.app.model.LinkCardOperationChanged -> "link_card_operation_changed"
     is build.raft.app.model.LinkCardChanged -> "link_card_changed"
     is build.raft.app.model.ActorUpdated -> "actor_updated"
+    is build.raft.app.model.AgentWorkersChanged -> "agent_workers_changed"
     is build.raft.app.model.MessageDisplayPrefsChanged -> "message_display_prefs_updated"
     is ComputerRestartDone -> "computer_restart_done"
     is build.raft.app.model.RuntimeAuthUpdated -> "runtime_auth_updated"

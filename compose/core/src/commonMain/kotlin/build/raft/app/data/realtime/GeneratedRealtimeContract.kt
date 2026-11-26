@@ -90,6 +90,7 @@ object GeneratedRealtimeContract {
         const val AgentCreated = "agent:created"
         const val AgentUpdated = "agent:updated"
         const val AgentDeleted = "agent:deleted"
+        const val AgentWorkersChanged = "agent:workers:changed"
         const val MachineStatus = "machine:status"
         const val MachineCapabilities = "machine:capabilities"
         const val MachineUpdated = "machine:updated"
@@ -155,6 +156,7 @@ object GeneratedRealtimeContract {
             AgentCreated,
             AgentUpdated,
             AgentDeleted,
+            AgentWorkersChanged,
             MachineStatus,
             MachineCapabilities,
             MachineUpdated,

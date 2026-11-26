@@ -21,7 +21,11 @@ import build.raft.app.data.AgentSubagentStopIntent
 import build.raft.app.data.AgentSubagentStopState
 import build.raft.app.data.AgentAppGrantsRevokeStore
 import build.raft.app.data.AgentSubagentStopStore
+import build.raft.app.data.AgentWorkersIntent
+import build.raft.app.data.AgentWorkersState
+import build.raft.app.data.AgentWorkersStore
 import build.raft.app.data.canStopAgentSubagents
+import build.raft.app.data.canStopAgentWorkers
 import build.raft.app.data.AgentTurnStopIntent
 import build.raft.app.data.AgentTurnStopState
 import build.raft.app.data.AgentTurnStopStore
@@ -242,6 +246,8 @@ internal class MembersAgentRemoteControls(
     val migration: MembersAgentMigrationBinding? = null,
     /** Stop one running sub-agent from the Activity tab's Sub-agents view (web stopSubagent). */
     val subagentStopStore: AgentSubagentStopStore? = null,
+    /** Worker v1 (`worker_v1` on for a Computer agent): Activity › Workers panel store; null when flag off or external. */
+    val workersStore: AgentWorkersStore? = null,
     /** The Apps tab's Revoke access and per-grant Revoke (web AgentAppAccessTab); null offers neither. */
     val appAccess: MembersAgentAppAccessBinding? = null
 )
@@ -589,6 +595,55 @@ internal fun MembersDetailContent(
             MembersAgentSubagentStop(subagentStopState.inFlightTaskId) { taskId ->
                 subagentStopStore.dispatch(AgentSubagentStopIntent.Stop(member.id, taskId))
             }
+        } else {
+            null
+        }
+    // Worker v1 (docs/contracts/worker-snapshot.md): Activity › Workers panel + Stop feedback toasts.
+    val workersStore = remoteControls?.workersStore
+    val fallbackWorkersState = remember { MutableStateFlow(AgentWorkersState()) }
+    val workersState by (workersStore?.state ?: fallbackWorkersState).collectAsState()
+    val workerParentHandle =
+        detail?.summary?.name?.trim()?.takeIf { it.isNotEmpty() }
+            ?: member.handle.trim().removePrefix("@").ifBlank { member.displayName }
+    val pendingWorkerStopFeedback =
+        workersState.feedback?.takeIf { workersState.feedbackAgentId == member.id }
+    val pendingWorkerStopMessage =
+        if (pendingWorkerStopFeedback != null) {
+            membersAgentWorkerStopFeedbackMessage(pendingWorkerStopFeedback, workerParentHandle)
+        } else {
+            null
+        }
+    LaunchedEffect(workersState.feedback, workersState.feedbackAgentId) {
+        val feedback = workersState.feedback ?: return@LaunchedEffect
+        if (workersState.feedbackAgentId == member.id && pendingWorkerStopMessage != null) {
+            val error = feedback.serverError()
+            if (error != null && onAgentErrorToast != null) {
+                onAgentErrorToast(pendingWorkerStopMessage, error)
+            } else {
+                onUnavailableAction(pendingWorkerStopMessage)
+            }
+        }
+        workersStore?.dispatch(AgentWorkersIntent.ConsumeFeedback)
+    }
+    val activityWorkersComputerOffline =
+        (machineStatusRow(detail?.summary?.machineId) as? MembersMachineStatusRow.Machine)?.online == false
+    val activityWorkers: MembersAgentWorkersBinding? =
+        if (member.kind == MemberKind.Agent && workersStore != null && !isExternalAgent) {
+            MembersAgentWorkersBinding(
+                state = workersStore.state,
+                parentHandle = workerParentHandle,
+                canStop =
+                    canStopAgentWorkers(
+                        serverRole = remoteControls?.serverRole,
+                        isCreator = currentUserId != null && detail?.summary?.creatorId == currentUserId,
+                        isExternalAgent = isExternalAgent,
+                        deleted = deleted,
+                        assistantOwnerUserId = detail?.summary?.assistantOwnerUserId,
+                        currentUserId = currentUserId,
+                    ),
+                computerOffline = activityWorkersComputerOffline,
+                onIntent = workersStore::dispatch,
+            )
         } else {
             null
         }
@@ -1272,7 +1327,8 @@ internal fun MembersDetailContent(
                             onOpenUrl = onOpenUrl,
                             autoScrollToLatest = !stableVisualCapture,
                             modifier = Modifier.fillMaxSize(),
-                            subagentStop = activitySubagentStop
+                            subagentStop = activitySubagentStop,
+                            workers = activityWorkers,
                         )
                     } else if (pageTab == MembersAgentDetailTab.Usage) {
                         MembersAgentUsageTab(

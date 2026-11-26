@@ -346,6 +346,8 @@ internal class MemberDetailRouteProvider(
     val agentDetailCache: build.raft.app.data.RaftAgentDetailCache? = null,
     /** Realtime `agent:updated`: the open Profile re-reads its agent. */
     val agentUpdatedSignals: build.raft.app.data.RaftAgentUpdatedSignals? = null,
+    /** Realtime `agent:workers:changed`: the open Activity › Workers panel refreshes live. */
+    val agentWorkersChangedSignals: build.raft.app.data.RaftAgentWorkersChangedSignals? = null,
     /** Synchronous (environment, account) of the process auth binding, for first-frame reads. */
     val accountBinding: () -> Pair<String, String>? = { null },
     /** DM opens: Home's DM at once, else one request per server + peer for any number of taps. */
