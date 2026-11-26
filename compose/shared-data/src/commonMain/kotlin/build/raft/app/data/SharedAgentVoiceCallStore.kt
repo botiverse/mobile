@@ -653,52 +653,50 @@ class SharedAgentVoiceCallStore(
         problem: AgentVoiceCallProblem?,
         dismiss: Boolean,
     ) {
-        val shouldDisconnect: Boolean
-        val shouldNotifyServer: Boolean
-        synchronized(stateLock) {
-            if (session.done) return
-            session.done = true
-            // Do not cancel startJob: if POST /voice/calls is in flight and mints a callId, let it
-            // settle so tellServerHangUpOnce can close the server-side room cleanly (web parity).
-            session.renewTimerJob?.cancel()
-            session.renewInFlightJob?.cancel()
-            shouldDisconnect = true
-            shouldNotifyServer = endReason != AgentVoiceCallEndReason.Closed
-            if (dismiss) {
-                if (activeSession === session) {
-                    activeSession = null
-                    callState.value = null
-                }
-            } else if (activeSession === session) {
-                val current = callState.value
-                if (current != null) {
-                    val liveSince = current.connectedAtEpochMs
-                    if (liveSince != null && problem == null) {
-                        val duration = (nowEpochMillis() - liveSince).coerceAtLeast(0L)
-                        callState.value =
-                            current.copy(
-                                phase = AgentVoiceCallPhase.Ended,
-                                durationMs = duration,
-                                endReason = endReason,
-                                limitReached = isAgentVoiceCallLimitReached(endReason, duration),
-                                problem = null,
-                                micBlockedReason = null,
-                                agentSpeaking = false,
-                            )
-                    } else {
-                        callState.value =
-                            current.copy(
-                                phase = AgentVoiceCallPhase.Failed,
-                                endReason = endReason,
-                                limitReached = false,
-                                problem = problem ?: AgentVoiceCallProblem.Failed,
-                                micBlockedReason = null,
-                                agentSpeaking = false,
-                            )
+        val (shouldDisconnect, shouldNotifyServer) =
+            synchronized(stateLock) {
+                if (session.done) return
+                session.done = true
+                // Do not cancel startJob: if POST /voice/calls is in flight and mints a callId, let it
+                // settle so tellServerHangUpOnce can close the server-side room cleanly (web parity).
+                session.renewTimerJob?.cancel()
+                session.renewInFlightJob?.cancel()
+                if (dismiss) {
+                    if (activeSession === session) {
+                        activeSession = null
+                        callState.value = null
+                    }
+                } else if (activeSession === session) {
+                    val current = callState.value
+                    if (current != null) {
+                        val liveSince = current.connectedAtEpochMs
+                        if (liveSince != null && problem == null) {
+                            val duration = (nowEpochMillis() - liveSince).coerceAtLeast(0L)
+                            callState.value =
+                                current.copy(
+                                    phase = AgentVoiceCallPhase.Ended,
+                                    durationMs = duration,
+                                    endReason = endReason,
+                                    limitReached = isAgentVoiceCallLimitReached(endReason, duration),
+                                    problem = null,
+                                    micBlockedReason = null,
+                                    agentSpeaking = false,
+                                )
+                        } else {
+                            callState.value =
+                                current.copy(
+                                    phase = AgentVoiceCallPhase.Failed,
+                                    endReason = endReason,
+                                    limitReached = false,
+                                    problem = problem ?: AgentVoiceCallProblem.Failed,
+                                    micBlockedReason = null,
+                                    agentSpeaking = false,
+                                )
+                        }
                     }
                 }
+                true to (endReason != AgentVoiceCallEndReason.Closed)
             }
-        }
         if (shouldDisconnect) {
             runCatching { session.engine.disconnect() }
         }

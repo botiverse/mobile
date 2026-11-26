@@ -20,6 +20,7 @@ import build.raft.app.data.AgentSubagentStopStore
 import build.raft.app.data.AgentTurnStopStore
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.data.AgentArchiveWorkspaceChoice
+import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentIssueReportRepository
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueTicketRequest

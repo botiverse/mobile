@@ -185,9 +185,10 @@ internal fun AgentVoiceCallCard(
             announcement
         }
 
+    val blockedMicReason = call.micBlockedReason?.takeIf { it.isNotBlank() }
     val micWarningText =
-        if (inCall && !call.micBlockedReason.isNullOrBlank()) {
-            agentVoiceLiveMicWarningText(call.micBlockedReason, agentName)
+        if (inCall && blockedMicReason != null) {
+            agentVoiceLiveMicWarningText(blockedMicReason, agentName)
         } else {
             null
         }
@@ -351,7 +352,7 @@ internal fun AgentVoiceCallCard(
                     )
                 } else {
                     if (inCall) {
-                        val micBlocked = !call.micBlockedReason.isNullOrBlank()
+                        val micBlocked = blockedMicReason != null
                         RaftIconToggleButton(
                             checked = call.muted,
                             onCheckedChange = { onToggleMute() },
