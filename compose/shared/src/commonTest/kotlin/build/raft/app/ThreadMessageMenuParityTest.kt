@@ -249,8 +249,63 @@ class ThreadMessageMenuParityTest {
         )
     }
 
+    @Test
+    fun contextViewIsHiddenOnJointSurfacesAndNonEligibleMessages() {
+        val agentMessage = message(authorKind = "agent")
+        assertTrue(threadMessageSupportsContextView(agentMessage))
+        assertTrue(threadMessageSupportsContextView(agentMessage, onJointSurface = false))
+        assertFalse(
+            threadMessageSupportsContextView(agentMessage, onJointSurface = true),
+            "joint channels, reply threads, and task conversations suppress View Context (web parity)"
+        )
+        assertFalse(threadMessageSupportsContextView(message(authorKind = "human")))
+        assertFalse(threadMessageSupportsContextView(message(authorKind = "agent", messageType = "System")))
+        assertFalse(
+            threadMessageSupportsContextView(
+                message(
+                    authorKind = "agent",
+                    externalAuthor = ExternalMessageAuthor(displayName = "Bridge Bot", provider = "slack", actorKind = "bot")
+                )
+            )
+        )
+        assertFalse(
+            threadMessageSupportsContextView(
+                message(authorKind = "agent", deliveryState = ThreadMessageDeliverySending)
+            )
+        )
+
+        assertFalse(
+            resolveThreadJointSurface(
+                jointMessageSurface = false,
+                taskChannelType = "channel",
+                taskParentChannelId = null,
+                currentServerId = "s-1",
+                conversationIdentityProvider = null,
+            )
+        )
+        assertTrue(
+            resolveThreadJointSurface(
+                jointMessageSurface = true,
+                taskChannelType = null,
+                taskParentChannelId = null,
+                currentServerId = "s-1",
+                conversationIdentityProvider = null,
+            )
+        )
+        assertTrue(
+            resolveThreadJointSurface(
+                jointMessageSurface = false,
+                taskChannelType = "joint",
+                taskParentChannelId = null,
+                currentServerId = "s-1",
+                conversationIdentityProvider = null,
+            )
+        )
+    }
+
     private fun message(
         id: String = "message-1",
+        authorKind: String = "human",
         body: String = "Hello",
         messageType: String = "Chat",
         metadata: Map<String, String> = emptyMap(),
@@ -269,6 +324,7 @@ class ThreadMessageMenuParityTest {
             id = id,
             authorId = "member-1",
             authorName = "Member",
+            authorKind = authorKind,
             messageType = messageType,
             metadata = metadata,
             body = body,

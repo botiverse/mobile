@@ -348,13 +348,13 @@ internal fun rememberThreadFeatureHosts(
     val taskConversationDetailsViewModel = taskConversation.detailsViewModel
     val taskConversationDetailsState = taskConversation.detailsState
     val taskConversationJointSurface =
-        jointMessageSurface ||
-            parseConversationKindOrNull(taskConversationTask?.channelType) == ConversationKind.Joint ||
-            (taskConversationParentChannelId?.value?.let { id ->
-                currentServerId?.let(::ServerId)?.let { server ->
-                    conversationIdentityProvider?.resolveProjection(server, id)?.conversationKind == ConversationKind.Joint
-                }
-            } == true)
+        resolveThreadJointSurface(
+            jointMessageSurface = jointMessageSurface,
+            taskChannelType = taskConversationTask?.channelType,
+            taskParentChannelId = taskConversationParentChannelId,
+            currentServerId = currentServerId,
+            conversationIdentityProvider = conversationIdentityProvider,
+        )
     val effectiveMessageAvatarResolver =
         remember(messageAvatarResolver, taskConversationJointSurface) {
             messageAvatarResolver.forJointSurface(taskConversationJointSurface)
@@ -399,6 +399,21 @@ internal fun rememberThreadFeatureHosts(
         quoteReplyHost = quoteReplyHost,
     )
 }
+
+internal fun resolveThreadJointSurface(
+    jointMessageSurface: Boolean,
+    taskChannelType: String?,
+    taskParentChannelId: ChannelId?,
+    currentServerId: String?,
+    conversationIdentityProvider: SharedConversationIdentityProvider?,
+): Boolean =
+    jointMessageSurface ||
+        parseConversationKindOrNull(taskChannelType) == ConversationKind.Joint ||
+        (taskParentChannelId?.value?.let { id ->
+            currentServerId?.let(::ServerId)?.let { server ->
+                conversationIdentityProvider?.resolveProjection(server, id)?.conversationKind == ConversationKind.Joint
+            }
+        } == true)
 
 /**
  * The composition locals the thread page's feature slots provide, built from the feature hosts and

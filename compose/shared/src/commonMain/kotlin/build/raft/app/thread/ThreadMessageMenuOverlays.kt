@@ -262,7 +262,9 @@ internal fun ThreadMessageMenuOverlays(
                 inPlaceSelectionMenuHost?.contextMenuSelectionCopy = null
                 inPlaceSelectionMenuHost?.contextMenuLink = null
             }
-            val supportsContextView = threadMessageSupportsContextView(message)
+            val onJointSurface = LocalRaftJointActorSurface.current
+            val supportsContextView =
+                threadMessageSupportsContextView(message, onJointSurface = onJointSurface)
             val contextViewServerId =
                 LocalThreadViewerServerId.current?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
             val contextViewStatusStore = adaptiveSharedStores.agentContextViewStatusStore
