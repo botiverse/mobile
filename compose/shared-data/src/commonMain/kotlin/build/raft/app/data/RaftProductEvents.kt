@@ -137,8 +137,12 @@ object RaftProductEvents {
         recorder.activityActionSelected(action, surface)
     }
 
-    fun messageActionSelected(action: RaftMessageAction, inThread: Boolean) {
-        recorder.messageActionSelected(action, inThread)
+    fun messageActionSelected(
+        action: RaftMessageAction,
+        inThread: Boolean,
+        surface: RaftMessageActionSurface = RaftMessageActionSurface.LongPress,
+    ) {
+        recorder.messageActionSelected(action, inThread, surface)
     }
 
     fun activityItemOpen(itemKind: RaftActivityItemKind?) {

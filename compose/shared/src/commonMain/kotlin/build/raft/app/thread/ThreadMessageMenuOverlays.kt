@@ -560,6 +560,16 @@ internal fun ThreadMessageMenuOverlays(
                 diagnosticsLogger("thread_message_double_tap_react messageId=${message.id} emoji=$emoji")
                 onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
             },
+            onAddReaction =
+                if (request.fromHoverToolbar) {
+                    {
+                        closeQuickReactionBar()
+                        menuState.reactionPickerAnchor = request.anchor
+                        menuState.reactionPickerMessageId = message.id
+                    }
+                } else {
+                    null
+                },
             diagnosticsLogger = diagnosticsLogger
         )
     }

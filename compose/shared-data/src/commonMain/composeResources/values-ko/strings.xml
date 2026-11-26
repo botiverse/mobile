@@ -616,6 +616,11 @@
     <string name="thread_new_message_menu_more">더 보기</string>
     <string name="thread_action_reply_in_thread">스레드에서 답장</string>
     <string name="thread_action_add_reaction">반응 추가</string>
+    <string name="thread_quick_reaction_like">좋아요</string>
+    <string name="thread_quick_reaction_unlike">좋아요 취소</string>
+    <string name="thread_quick_reaction_react">%1$s(으)로 반응</string>
+    <string name="thread_quick_reaction_remove">%1$s 취소</string>
+    <string name="thread_quick_reaction_tooltip">%1$s · 마우스를 올려 다른 반응 선택</string>
     <string name="thread_message_a11y_open_thread">스레드 열기</string>
     <string name="thread_message_a11y_add_reaction">반응 추가</string>
     <string name="thread_action_remove_from_saved">저장한 메시지에서 제거</string>

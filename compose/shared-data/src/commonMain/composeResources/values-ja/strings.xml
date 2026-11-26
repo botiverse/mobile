@@ -616,6 +616,11 @@
     <string name="thread_new_message_menu_more">その他</string>
     <string name="thread_action_reply_in_thread">スレッドで返信</string>
     <string name="thread_action_add_reaction">リアクションを追加</string>
+    <string name="thread_quick_reaction_like">いいね</string>
+    <string name="thread_quick_reaction_unlike">いいねを取り消す</string>
+    <string name="thread_quick_reaction_react">%1$s でリアクション</string>
+    <string name="thread_quick_reaction_remove">%1$s を取り消す</string>
+    <string name="thread_quick_reaction_tooltip">%1$s · ホバーでほかのリアクション</string>
     <string name="thread_message_a11y_open_thread">スレッドを開く</string>
     <string name="thread_message_a11y_add_reaction">リアクションを追加</string>
     <string name="thread_action_remove_from_saved">保存済みから削除</string>

@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.app.data.HiddenHistory
 import build.raft.app.data.RaftMessageAction
+import build.raft.app.data.RaftMessageActionSurface
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStore
@@ -213,8 +214,32 @@ internal fun LazyListScope.threadMessageItems(
                                     writeActionsEnabled = writeActionsEnabled
                                 ),
                             onShowReactions = { anchor ->
+                                if (menuState.actionMessageId == origin.id) {
+                                    menuState.actionMessageId = null
+                                    menuState.classicMenuOverrideMessageId = null
+                                }
+                                RaftProductEvents.messageActionSelected(
+                                    RaftMessageAction.OpenReactionPicker,
+                                    inThread = false,
+                                    surface = RaftMessageActionSurface.HoverToolbar,
+                                )
                                 menuState.quickReactionBar =
                                     ThreadQuickReactionBarRequest(origin.id, anchor, fromHoverToolbar = true)
+                            },
+                            onQuickReact = { emoji ->
+                                if (menuState.quickReactionBar?.messageId == origin.id) {
+                                    menuState.quickReactionBar = null
+                                }
+                                if (menuState.actionMessageId == origin.id) {
+                                    menuState.actionMessageId = null
+                                    menuState.classicMenuOverrideMessageId = null
+                                }
+                                RaftProductEvents.messageActionSelected(
+                                    RaftMessageAction.ReactQuick,
+                                    inThread = false,
+                                    surface = RaftMessageActionSurface.HoverToolbar,
+                                )
+                                onThreadEventKeepingAnchor("toggleReaction", origin.id, null, emoji)
                             },
                             onForward = { onForwardMessage(origin.id) },
                             onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", origin.id, null, null) }
@@ -595,8 +620,32 @@ internal fun LazyListScope.threadMessageItems(
                                             writeActionsEnabled = writeActionsEnabled
                                         ),
                                     onShowReactions = { anchor ->
+                                        if (menuState.actionMessageId == message.id) {
+                                            menuState.actionMessageId = null
+                                            menuState.classicMenuOverrideMessageId = null
+                                        }
+                                        RaftProductEvents.messageActionSelected(
+                                            RaftMessageAction.OpenReactionPicker,
+                                            inThread = replyInThread,
+                                            surface = RaftMessageActionSurface.HoverToolbar,
+                                        )
                                         menuState.quickReactionBar =
                                             ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
+                                    },
+                                    onQuickReact = { emoji ->
+                                        if (menuState.quickReactionBar?.messageId == message.id) {
+                                            menuState.quickReactionBar = null
+                                        }
+                                        if (menuState.actionMessageId == message.id) {
+                                            menuState.actionMessageId = null
+                                            menuState.classicMenuOverrideMessageId = null
+                                        }
+                                        RaftProductEvents.messageActionSelected(
+                                            RaftMessageAction.ReactQuick,
+                                            inThread = replyInThread,
+                                            surface = RaftMessageActionSurface.HoverToolbar,
+                                        )
+                                        onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
                                     },
                                     onForward = { onForwardMessage(message.id) },
                                     onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },

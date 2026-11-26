@@ -381,10 +381,11 @@ enum class RaftActivityActionSurface(val wire: String) {
     @SerialName("row_button") RowButton("row_button"),
 }
 
-/** `MESSAGE_ACTION_SURFACES` the app has: the long-press message menu. */
+/** `MESSAGE_ACTION_SURFACES` the app has: the long-press message menu and pointer hover toolbar. */
 @Serializable
 enum class RaftMessageActionSurface(val wire: String) {
     @SerialName("long_press") LongPress("long_press"),
+    @SerialName("hover_toolbar") HoverToolbar("hover_toolbar"),
 }
 
 /**

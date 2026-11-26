@@ -616,6 +616,11 @@
     <string name="thread_new_message_menu_more">更多</string>
     <string name="thread_action_reply_in_thread">在消息列中回复</string>
     <string name="thread_action_add_reaction">添加回应</string>
+    <string name="thread_quick_reaction_like">点赞</string>
+    <string name="thread_quick_reaction_unlike">取消点赞</string>
+    <string name="thread_quick_reaction_react">用 %1$s 回应</string>
+    <string name="thread_quick_reaction_remove">取消 %1$s</string>
+    <string name="thread_quick_reaction_tooltip">%1$s · 悬停选择其他表情</string>
     <string name="thread_message_a11y_open_thread">打开消息列</string>
     <string name="thread_message_a11y_add_reaction">添加回应</string>
     <string name="thread_action_remove_from_saved">从收藏中移除</string>

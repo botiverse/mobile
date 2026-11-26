@@ -4,12 +4,14 @@ import build.raft.app.resources.*
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
+import build.raft.app.data.RaftReactionFavorites
 import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedReferenceFailure
 import build.raft.app.data.sharedReferenceFailure
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.threadMessageBodyOwnerKey
 import build.raft.app.data.isActionCardExpiredRefusal
 import build.raft.app.data.markedExpired
 import build.raft.app.data.PermissionBlocker
@@ -199,6 +201,15 @@ internal fun ThreadRouteEventHandler.handleToggleReaction(itemId: String, tab: S
                         try {
                             when (val result = dataSource.setMessageReaction(itemId, tab, selected = nextSelected)) {
                                 is DataResult.Content -> {
+                                    // Every reaction added counts toward the hover toolbar's quick reaction (slock #13955).
+                                    if (nextSelected) {
+                                        val ownerKey =
+                                            threadMessageBodyOwnerKey(
+                                                sharedStores.apiEnvironmentStore.current().apiBaseUrl,
+                                                currentSession?.user?.id,
+                                            )
+                                        RaftReactionFavorites.store.recordReactionUsage(ownerKey, tab)
+                                    }
                                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageMutation(result.data))
                                 }
                                 is DataResult.Empty,

@@ -96,7 +96,13 @@ class RaftProductEntryEventContractTest {
             }
         } +
             RaftMessageAction.entries.flatMap { action ->
-                listOf(true, false).map { RaftProductEvent.MessageActionSelected(RaftMessageActionSelectedProperties(action, RaftMessageActionSurface.LongPress, it)) }
+                RaftMessageActionSurface.entries.flatMap { surface ->
+                    listOf(true, false).map {
+                        RaftProductEvent.MessageActionSelected(
+                            RaftMessageActionSelectedProperties(action, surface, it)
+                        )
+                    }
+                }
             } +
             RaftActivityItemKind.entries.map { RaftProductEvent.ActivityItemOpen(RaftActivityItemOpenProperties(it)) } +
             RaftActivityMarkAction.entries.map { RaftProductEvent.ActivityMark(RaftActivityMarkProperties(it)) } +

@@ -2058,6 +2058,7 @@ private fun ThreadMessageCardContent(
             origin = pressRippleOrigin
         )
         if (hoverToolbar != null) {
+            val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
             ThreadMessageHoverToolbar(
                 messageId = message.id,
                 actions = hoverToolbar,
@@ -2065,6 +2066,15 @@ private fun ThreadMessageCardContent(
                 popupOpen = popupOpen,
                 onShowActions = onShowActions,
                 onReplyInThread = { onOpenThread(message.id) },
+                onToggleQuickReaction = onToggleReaction,
+                isQuickReactionSelected = { emoji ->
+                    threadMessageHasViewerReaction(
+                        messageId = message.id,
+                        reactions = message.reactions,
+                        pendingVisuals = pendingReactionVisuals,
+                        emoji = emoji,
+                    )
+                },
                 onShownChange = { hoverToolbarShown = it },
                 modifier =
                     Modifier
