@@ -151,8 +151,13 @@ sealed interface ChannelAnnouncementIntent {
     /**
      * The realtime socket of [key]'s server joined its rooms again while a page shows [key] (rule 12).
      * [afterDrop]: it came back by itself after a drop the app did not cause, so the read waits first.
+     * [onCompleted]: optional outcome callback for outcome-tracked [RaftFreshnessGate] callers.
      */
-    data class Reconnected(val key: ChannelAnnouncementKey, val afterDrop: Boolean = false) : ChannelAnnouncementIntent
+    data class Reconnected(
+        val key: ChannelAnnouncementKey,
+        val afterDrop: Boolean = false,
+        val onCompleted: ((succeeded: Boolean) -> Unit)? = null,
+    ) : ChannelAnnouncementIntent
 
     /** The in-app Artifact viewer left [artifactId] of [serverId]: the person has seen it (rules 7 and 8). */
     data class ArtifactViewed(val serverId: String, val artifactId: String) : ChannelAnnouncementIntent
@@ -208,6 +213,8 @@ sealed interface ChannelAnnouncementIntent {
     private val shown = mutableMapOf<ChannelAnnouncementKey, Int>()
     /** Reads waiting out the jitter after a drop, per channel, with the last read number from before it. */
     private val waitingReconnects = mutableMapOf<ChannelAnnouncementKey, WaitingReconnect>()
+    /** Outcome callbacks registered for an active [load] per channel (#wg-mobile-feedback:#274). */
+    private val inFlightCallbacks = mutableMapOf<ChannelAnnouncementKey, MutableList<(Boolean) -> Unit>>()
     private var nextReadId = 0L
     private var epoch = 0L
     private var nextMutationId = 0L
@@ -254,9 +261,9 @@ sealed interface ChannelAnnouncementIntent {
             // However recent the last read: what was pushed while the socket was down is lost.
             is ChannelAnnouncementIntent.Reconnected ->
                 when {
-                    !isShown(intent.key) -> Unit
-                    intent.afterDrop -> reconnectAfterJitter(intent.key)
-                    else -> load(intent.key, "reconnect")
+                    !isShown(intent.key) -> intent.onCompleted?.invoke(false)
+                    intent.afterDrop -> reconnectAfterJitter(intent.key, intent.onCompleted)
+                    else -> load(intent.key, "reconnect", onCompleted = intent.onCompleted)
                 }
             is ChannelAnnouncementIntent.ArtifactViewed ->
                 if (foreground.value) {
@@ -275,10 +282,17 @@ sealed interface ChannelAnnouncementIntent {
                     }
                 }
             ChannelAnnouncementIntent.Reset -> {
-                val cancelled =
+                val (cancelled, pendingCallbacks) =
                     synchronized(lock) {
                         val jobs = waitingReconnects.values.map { it.job }
+                        val callbacks = mutableListOf<(Boolean) -> Unit>()
+                        waitingReconnects.values.forEach {
+                            callbacks += it.callbacks
+                            it.callbacks.clear()
+                        }
                         waitingReconnects.clear()
+                        inFlightCallbacks.values.forEach { callbacks += it }
+                        inFlightCallbacks.clear()
                         epoch += 1
                         generations.clear()
                         inFlight.clear()
@@ -287,9 +301,10 @@ sealed interface ChannelAnnouncementIntent {
                         lastReadAt.clear()
                         rowNames.clear()
                         mutableState.value = ChannelAnnouncementState()
-                        jobs
+                        jobs to callbacks
                     }
                 cancelled.forEach { it.cancel() }
+                pendingCallbacks.forEach { it(false) }
             }
         }
     }
@@ -308,7 +323,7 @@ sealed interface ChannelAnnouncementIntent {
     }
 
     private fun close(key: ChannelAnnouncementKey) {
-        val cancelled =
+        val cancelledWaiting =
             synchronized(lock) {
                 val count = (shown[key] ?: return) - 1
                 if (count > 0) {
@@ -317,10 +332,14 @@ sealed interface ChannelAnnouncementIntent {
                 } else {
                     shown.remove(key)
                     // No page shows it: nothing reads it when the socket comes back.
-                    waitingReconnects.remove(key)?.job
+                    waitingReconnects.remove(key)
                 }
             }
-        cancelled?.cancel()
+        cancelledWaiting?.let { waiting ->
+            val callbacks = synchronized(lock) { waiting.callbacks.toList().also { waiting.callbacks.clear() } }
+            waiting.job.cancel()
+            callbacks.forEach { it(false) }
+        }
     }
 
     /**
@@ -329,45 +348,89 @@ sealed interface ChannelAnnouncementIntent {
      * its reconnect reload while hidden. A second drop meanwhile changes nothing; a read asked after this
      * one and answered while it waits makes it needless ([load]); so does the page closing, or a reset.
      */
-    private fun reconnectAfterJitter(key: ChannelAnnouncementKey) {
-        synchronized(lock) {
-            if ((shown[key] ?: 0) <= 0 || key in waitingReconnects) return
+    private fun reconnectAfterJitter(key: ChannelAnnouncementKey, onCompleted: ((Boolean) -> Unit)? = null) {
+        val precheck =
+            synchronized(lock) {
+                if ((shown[key] ?: 0) <= 0) {
+                    false
+                } else {
+                    val existing = waitingReconnects[key]
+                    if (existing != null) {
+                        onCompleted?.let { existing.callbacks += it }
+                        true
+                    } else {
+                        null
+                    }
+                }
+            }
+        if (precheck == false) {
+            onCompleted?.invoke(false)
+            return
         }
+        if (precheck == true) return
         val wait = reconnectJitterMillis().coerceIn(0L, CHANNEL_ANNOUNCEMENT_RECONNECT_JITTER_MILLIS)
         val job =
             scope.launch(start = CoroutineStart.LAZY) {
                 try {
                     delay(wait)
                     foreground.first { it }
-                    val expectedEpoch =
+                    val (expectedEpoch, drainedCallbacks) =
                         synchronized(lock) {
                             val waiting = waitingReconnects[key]
                             if (waiting == null || waiting.job !== coroutineContext[Job]) {
-                                null
+                                null to emptyList()
                             } else {
                                 waitingReconnects.remove(key)
-                                if ((shown[key] ?: 0) > 0 && epoch == waiting.epoch) waiting.epoch else null
+                                val callbacks = waiting.callbacks.toList()
+                                waiting.callbacks.clear()
+                                val targetEpoch = if ((shown[key] ?: 0) > 0 && epoch == waiting.epoch) waiting.epoch else null
+                                targetEpoch to callbacks
                             }
                         }
-                    if (expectedEpoch != null) load(key, "reconnect_after_drop", expectedEpoch = expectedEpoch)
-                } finally {
-                    synchronized(lock) {
-                        if (waitingReconnects[key]?.job === coroutineContext[Job]) {
-                            waitingReconnects.remove(key)
-                        }
+                    if (expectedEpoch != null) {
+                        load(key, "reconnect_after_drop", expectedEpoch = expectedEpoch, completionCallbacks = drainedCallbacks)
+                    } else {
+                        drainedCallbacks.forEach { it(false) }
                     }
+                } finally {
+                    val remaining =
+                        synchronized(lock) {
+                            val waiting = waitingReconnects[key]
+                            if (waiting != null && waiting.job === coroutineContext[Job]) {
+                                waitingReconnects.remove(key)
+                                waiting.callbacks.toList().also { waiting.callbacks.clear() }
+                            } else {
+                                emptyList()
+                            }
+                        }
+                    remaining.forEach { it(false) }
                 }
             }
         val registered =
             synchronized(lock) {
-                if ((shown[key] ?: 0) <= 0 || key in waitingReconnects) {
+                if ((shown[key] ?: 0) <= 0) {
                     false
                 } else {
-                    waitingReconnects[key] = WaitingReconnect(job, readsBefore = nextReadId, epoch = epoch)
-                    true
+                    val existing = waitingReconnects[key]
+                    if (existing != null) {
+                        onCompleted?.let { existing.callbacks += it }
+                        null
+                    } else {
+                        val callbacks = mutableListOf<(Boolean) -> Unit>()
+                        onCompleted?.let { callbacks += it }
+                        waitingReconnects[key] = WaitingReconnect(job, readsBefore = nextReadId, epoch = epoch, callbacks = callbacks)
+                        true
+                    }
                 }
             }
-        if (registered) job.start() else job.cancel()
+        when (registered) {
+            true -> job.start()
+            false -> {
+                job.cancel()
+                onCompleted?.invoke(false)
+            }
+            null -> job.cancel()
+        }
     }
 
     private fun realtime(serverId: String, event: RealtimeEvent) {
@@ -436,29 +499,51 @@ sealed interface ChannelAnnouncementIntent {
         priority: DataRequestPriority = DataRequestPriority.Background,
         again: Boolean = false,
         expectedEpoch: Long? = null,
+        onCompleted: ((Boolean) -> Unit)? = null,
+        completionCallbacks: List<(Boolean) -> Unit> = emptyList(),
     ) {
+        val allCallbacks =
+            if (onCompleted == null) completionCallbacks else completionCallbacks + onCompleted
+        var rejectedEpoch = false
         val started =
             synchronized(lock) {
-                if (expectedEpoch != null && epoch != expectedEpoch) return
-                if (key in inFlight) {
+                if (expectedEpoch != null && epoch != expectedEpoch) {
+                    rejectedEpoch = true
+                    null
+                } else if (key in inFlight) {
                     if (again) dirty += key
-                    return
+                    if (allCallbacks.isNotEmpty()) {
+                        inFlightCallbacks.getOrPut(key) { mutableListOf() } += allCallbacks
+                    }
+                    null
+                } else {
+                    nextReadId += 1
+                    inFlight[key] = nextReadId
+                    askedFor[key] = rowNames[key]
+                    if (allCallbacks.isNotEmpty()) {
+                        inFlightCallbacks.getOrPut(key) { mutableListOf() } += allCallbacks
+                    }
+                    Triple(nextReadId, nextGeneration(key), epoch)
                 }
-                nextReadId += 1
-                inFlight[key] = nextReadId
-                askedFor[key] = rowNames[key]
-                Triple(nextReadId, nextGeneration(key), epoch)
             }
-        val (readId, generation, startedEpoch) = started
+        if (rejectedEpoch) {
+            allCallbacks.forEach { it(false) }
+            return
+        }
+        val (readId, generation, startedEpoch) = started ?: return
         scope.launch {
             var followUp = false
+            var succeeded = false
+            var drainedCallbacks: List<(Boolean) -> Unit> = emptyList()
             try {
                 when (val result = repository.read(ServerId(key.serverId), ChannelId(key.channelId), priority)) {
-                    is DataResult.Content ->
+                    is DataResult.Content -> {
+                        succeeded = true
                         if (applyIfCurrent(key, generation, startedEpoch, result.data)) {
                             // Asked after the socket came back: the read waiting out its jitter is needless.
                             cancelWaitingReconnectIfSuperseded(key, readId)
                         }
+                    }
                     // A failure keeps what is shown (web: `() => {}`).
                     else -> logger("channel_announcement_load_failed channel=${key.channelId} reason=$reason result=${result::class.simpleName}")
                 }
@@ -471,8 +556,10 @@ sealed interface ChannelAnnouncementIntent {
                         inFlight.remove(key)
                         askedFor.remove(key)
                         followUp = dirty.remove(key)
+                        drainedCallbacks = inFlightCallbacks.remove(key).orEmpty()
                     }
                 }
+                drainedCallbacks.forEach { it(succeeded) }
             }
             if (followUp) load(key, "changed_meanwhile")
         }
@@ -522,21 +609,29 @@ sealed interface ChannelAnnouncementIntent {
     }
 
     private fun cancelWaitingReconnectIfSuperseded(key: ChannelAnnouncementKey, requestId: Long) {
-        val cancelled =
+        val (cancelledJob, supersededCallbacks) =
             synchronized(lock) {
                 val waiting = waitingReconnects[key]
                 if (waiting != null && requestId > waiting.readsBefore) {
                     waitingReconnects.remove(key)
-                    waiting.job
+                    val callbacks = waiting.callbacks.toList()
+                    waiting.callbacks.clear()
+                    waiting.job to callbacks
                 } else {
-                    null
+                    null to emptyList()
                 }
             }
-        cancelled?.cancel()
+        cancelledJob?.cancel()
+        supersededCallbacks.forEach { it(true) }
     }
 
     /** A read waiting out its jitter, the last read number before it, and the reset epoch it belonged to. */
-    private class WaitingReconnect(val job: Job, val readsBefore: Long, val epoch: Long)
+    private class WaitingReconnect(
+        val job: Job,
+        val readsBefore: Long,
+        val epoch: Long,
+        val callbacks: MutableList<(Boolean) -> Unit> = mutableListOf(),
+    )
 
     private data class ChangeStart(val id: Long, val requestId: Long, val generation: Long, val epoch: Long)
 

@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
@@ -13,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
@@ -294,6 +296,15 @@ sealed interface SharedTasksRouteIntent {
      * screen and joins a load already in flight.
      */
     data object CatchUp : SharedTasksRouteIntent
+
+    /**
+     * Registers or updates store-owned freshness catch-up observation for a mounted Tasks surface
+     * (#wg-mobile-feedback:#274 Phase 3). Pair with [StopObservingFreshness] on dispose.
+     */
+    data class ObserveFreshness(val token: Any, val serverId: String?, val visible: Boolean) : SharedTasksRouteIntent
+
+    /** Unregisters freshness catch-up observation when the surface disposes. */
+    data class StopObservingFreshness(val token: Any) : SharedTasksRouteIntent
     data class SelectFilter(val status: TaskStatus?) : SharedTasksRouteIntent
     /** [reason]: a move into Backlog says what would bring the task back (optional, slock #12962). */
     data class UpdateStatus(val task: TaskSummary, val status: TaskStatus, val reason: String? = null) : SharedTasksRouteIntent
@@ -394,7 +405,12 @@ sealed interface TasksPresentationIntent {
             authStore = authStore,
             repository = SharedTasksDataRepository(remoteDataSource = dataSource),
             scope = scope
-        )
+        ),
+    /** Process-wide freshness signal owned by this ViewModel when surfaces observe (#wg-mobile-feedback:#274). */
+    private val freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
+    private val freshnessNowMillis: () -> Long = ::raftForegroundGateNowMillis,
+    private val freshnessLiveConnectionToken: (serverId: String) -> Long? = RaftRealtimeConnectionCauses::liveConnectionToken,
+    private val freshnessHandlesForeground: Boolean = scope != SharedTasksScope.Server,
 ) : ViewModel(),
     SharedStateHolder<TasksUiState, SharedTasksRouteIntent, SharedTasksEvent> {
     private val runtimeScope: CoroutineScope
@@ -455,6 +471,18 @@ sealed interface TasksPresentationIntent {
     private var assignJob: Job? = null
     private var lastRefreshCompletedAt: TimeMark? = null
     private var canonicalRefetchRequested = false
+
+    private data class FreshnessObserver(val serverId: String?, val visible: Boolean)
+    private val freshnessObservers = LinkedHashMap<Any, FreshnessObserver>()
+    private val freshnessGate =
+        RaftFreshnessGate(
+            foreground = freshnessHandlesForeground,
+            nowMillis = freshnessNowMillis,
+            trackOutcome = true,
+            liveConnectionToken = freshnessLiveConnectionToken,
+        )
+    private var freshnessObserveJob: Job? = null
+    private var freshnessCatchUpInFlight = false
 
     private var createJob: Job? = null
 
@@ -726,6 +754,10 @@ sealed interface TasksPresentationIntent {
             SharedTasksRouteIntent.CatchUp,
             is SharedTasksRouteIntent.SelectFilter ->
                 load(action)
+            is SharedTasksRouteIntent.ObserveFreshness ->
+                observeFreshness(action.token, action.serverId, action.visible)
+            is SharedTasksRouteIntent.StopObservingFreshness ->
+                stopObservingFreshness(action.token)
             is SharedTasksRouteIntent.UpdateStatus -> {
                 if (rejectAgainstStandIn("status", action.task.id.value)) return
                 val skipReason = state.value.taskStatusUpdateSkipReason(action.task, action.status)
@@ -943,6 +975,7 @@ sealed interface TasksPresentationIntent {
             }
             TasksRefreshSkipReason.FreshSnapshot -> {
                 logTasksRefreshSkip(reason, skipReason, hasSnapshot, snapshotAgeMs, selectedFilter)
+                completeFreshnessCatchUp(succeeded = true)
                 return
             }
             null -> Unit
@@ -956,23 +989,100 @@ sealed interface TasksPresentationIntent {
         }
         store.accept(SharedTasksIntent.StartLoading(selectedFilter))
         loadJobPriority = request.priority
-        loadJob =
-            runtimeScope.launch {
+        lateinit var launched: Job
+        launched =
+            runtimeScope.launch(start = CoroutineStart.LAZY) {
+                var succeeded = false
+                var completedNormally = false
                 try {
                     seedStoredStandIn(selectedFilter)
-                    refreshTasks(
-                        request = request,
-                        selectedFilter = selectedFilter,
-                        reason = reason,
-                        mergeResult = forceRefresh || hasSnapshot,
-                        forceSharedRefresh = forceRefresh
-                    )
+                    succeeded =
+                        refreshTasks(
+                            request = request,
+                            selectedFilter = selectedFilter,
+                            reason = reason,
+                            mergeResult = forceRefresh || hasSnapshot,
+                            forceSharedRefresh = forceRefresh
+                        )
+                    completedNormally = true
                 } finally {
                     if (loadJobPriority == request.priority) {
                         loadJobPriority = null
                     }
+                    if (loadJob === launched) {
+                        completeFreshnessCatchUp(succeeded = completedNormally && succeeded)
+                    }
                 }
             }
+        loadJob = launched
+        launched.start()
+    }
+
+    private fun observeFreshness(token: Any, serverId: String?, visible: Boolean) {
+        val normalizedServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        val wasVisible = isFreshnessVisible()
+        val previousServerId = activeFreshnessServerId()
+        freshnessObservers[token] = FreshnessObserver(normalizedServerId, visible)
+        if (freshnessObserveJob?.isActive != true) {
+            freshnessObserveJob =
+                runtimeScope.launch {
+                    freshness.collect { event ->
+                        onFreshnessEvent(event)
+                    }
+                }
+        }
+        val nextServerId = activeFreshnessServerId()
+        if (previousServerId != null && nextServerId != previousServerId && !freshnessCatchUpInFlight) {
+            freshnessGate.reset()
+        }
+        if (!wasVisible && isFreshnessVisible() && nextServerId != null) {
+            freshnessGate.onVisibilityChanged(visible = true, serverId = nextServerId)?.let {
+                startFreshnessCatchUp()
+            }
+        }
+    }
+
+    private fun stopObservingFreshness(token: Any) {
+        freshnessObservers.remove(token)
+        if (freshnessObservers.isEmpty()) {
+            freshnessObserveJob?.cancel()
+            freshnessObserveJob = null
+            if (!freshnessCatchUpInFlight) {
+                freshnessGate.reset()
+            }
+        }
+    }
+
+    private fun activeFreshnessServerId(): String? =
+        freshnessObservers.values.lastOrNull { it.visible && !it.serverId.isNullOrBlank() }?.serverId
+            ?: freshnessObservers.values.lastOrNull { !it.serverId.isNullOrBlank() }?.serverId
+
+    private fun isFreshnessVisible(): Boolean =
+        freshnessObservers.values.any { it.visible }
+
+    private fun onFreshnessEvent(event: RaftFreshnessEvent) {
+        if (freshnessObservers.isEmpty()) return
+        val serverId = activeFreshnessServerId() ?: return
+        freshnessGate.onEvent(event, serverId, visible = isFreshnessVisible()) ?: return
+        startFreshnessCatchUp()
+    }
+
+    private fun startFreshnessCatchUp() {
+        freshnessCatchUpInFlight = true
+        dispatch(SharedTasksRouteIntent.CatchUp)
+    }
+
+    private fun completeFreshnessCatchUp(succeeded: Boolean) {
+        if (!freshnessCatchUpInFlight) return
+        freshnessCatchUpInFlight = false
+        val followUp = freshnessGate.onCatchUpCompleted(succeeded = succeeded, visible = isFreshnessVisible())
+        if (freshnessObservers.isEmpty()) {
+            freshnessGate.reset()
+            return
+        }
+        if (followUp != null) {
+            startFreshnessCatchUp()
+        }
     }
 
     private suspend fun refreshTasks(
@@ -981,7 +1091,7 @@ sealed interface TasksPresentationIntent {
         reason: String,
         mergeResult: Boolean,
         forceSharedRefresh: Boolean
-    ) {
+    ): Boolean {
         val startedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
             "tasks_refresh_start reason=$reason filter=${selectedFilter?.name.orEmpty()} " +
@@ -1095,12 +1205,14 @@ sealed interface TasksPresentationIntent {
                     }
                 )
             }
+            return result.isCompletedTasksSnapshot()
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             diagnosticsLogger("tasks_refresh_result reason=$reason result=exception code=tasks_network")
             events.emit(SharedTasksEvent.OperationFailed("tasks_network", operation = SharedTasksOperation.Load))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
+            return false
         }
     }
 
@@ -1606,6 +1718,11 @@ sealed interface TasksPresentationIntent {
     override fun onCleared() {
         loadJob?.cancel()
         observeJob?.cancel()
+        freshnessObserveJob?.cancel()
+        freshnessObserveJob = null
+        freshnessObservers.clear()
+        freshnessCatchUpInFlight = false
+        freshnessGate.reset()
         statusJob?.cancel()
         createJob?.cancel()
         loadMoreJob?.cancel()
@@ -1653,6 +1770,8 @@ private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
         SharedTasksRouteIntent.StartBackground -> "background_start"
         SharedTasksRouteIntent.Refresh -> "manual"
         SharedTasksRouteIntent.CatchUp -> "catch_up"
+        is SharedTasksRouteIntent.ObserveFreshness -> "observe_freshness"
+        is SharedTasksRouteIntent.StopObservingFreshness -> "stop_observing_freshness"
         is SharedTasksRouteIntent.SelectFilter -> "filter"
         is SharedTasksRouteIntent.UpdateStatus -> "status"
         is SharedTasksRouteIntent.AssignTask -> "assign"

@@ -1220,7 +1220,7 @@ class SharedAppLinkPreviewStore @RaftCoreInternalApi constructor(
     /** By read scope: when the last read of a message that failed went out ([monotonicMillis]). Bounded. */
     private val readFailedAt = LinkedHashMap<String, Long>()
     private var changedMarks = 0
-    private val freshnessGate = RaftFreshnessGate(nowMillis = monotonicMillis)
+    private val freshnessGate = RaftFreshnessGate(nowMillis = monotonicMillis, trackOutcome = true)
 
     /**
      * By read scope and object key ([refreshKey]): when a re-read for it last went out
@@ -1620,6 +1620,8 @@ class SharedAppLinkPreviewStore @RaftCoreInternalApi constructor(
                 // One catch-up per return, and one for every new socket connection of a Server ([RaftFreshnessGate]).
                 if (freshnessGate.onEvent(event, event.serverId, visible = true) == null) return@collect
                 onCameBack(event.serverId.takeIf { event.trigger == RaftFreshnessTrigger.Reconnect })
+                // onCameBack synchronously marks held entries dirty for visible rows to re-read; record completion.
+                freshnessGate.onCatchUpCompleted(succeeded = true, visible = true)
             }
         }
     }

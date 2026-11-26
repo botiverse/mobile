@@ -38,6 +38,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -907,9 +908,21 @@ internal fun ThreadTasksTab(
         } else {
             pendingTasksState
         }
-    // The channel's tasks follow task pushes: catch up on foreground and on socket reconnect.
-    RaftLiveCatchUpEffect(serverId = serverId, visible = active && tasksViewModel != null) {
-        onIntent(SharedTasksRouteIntent.CatchUp)
+    // #wg-mobile-feedback:#274: SharedTasksViewModel owns RaftFreshnessSignal catch-up and outcome tracking.
+    val tasksFreshnessToken = remember { Any() }
+    LaunchedEffect(tasksViewModel, tasksFreshnessToken, serverId, active) {
+        tasksViewModel?.dispatch(
+            SharedTasksRouteIntent.ObserveFreshness(
+                token = tasksFreshnessToken,
+                serverId = serverId,
+                visible = active,
+            )
+        )
+    }
+    DisposableEffect(tasksViewModel, tasksFreshnessToken) {
+        onDispose {
+            tasksViewModel?.dispatch(SharedTasksRouteIntent.StopObservingFreshness(tasksFreshnessToken))
+        }
     }
     // Every task here is this channel's: one answer for all of them.
     val canWriteTaskChannel: (ChannelId?) -> Boolean = remember(taskWritesEnabled) { { taskWritesEnabled } }

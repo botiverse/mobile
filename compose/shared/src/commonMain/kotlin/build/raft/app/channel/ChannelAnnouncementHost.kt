@@ -48,6 +48,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 /*
  * Channel announcements wired to a page: the flag, the shared store's slice, what the page tells the
@@ -181,9 +182,38 @@ private fun ChannelAnnouncementReconnectEffect(
     active: Boolean,
 ) {
     val serverId = key?.serverId
-    val gate = remember(serverId) { RaftFreshnessGate(foreground = false, nowMillis = ::raftForegroundGateNowMillis) }
+    val coroutineScope = rememberCoroutineScope()
+    val gate =
+        remember(serverId) {
+            RaftFreshnessGate(
+                foreground = false,
+                nowMillis = ::raftForegroundGateNowMillis,
+                trackOutcome = true,
+            )
+        }
     val latestKey by rememberUpdatedState(key)
     val latestActive by rememberUpdatedState(active)
+    fun dispatchReconnect(target: ChannelAnnouncementKey, afterDrop: Boolean) {
+        store.dispatch(
+            ChannelAnnouncementIntent.Reconnected(
+                key = target,
+                afterDrop = afterDrop,
+                onCompleted = { succeeded ->
+                    coroutineScope.launch {
+                        val followUp = gate.onCatchUpCompleted(succeeded = succeeded, visible = latestActive)
+                        if (followUp != null) {
+                            val current = latestKey
+                            if (current != null && current.serverId == serverId) {
+                                dispatchReconnect(current, afterDrop = false)
+                            } else {
+                                gate.onCatchUpCompleted(succeeded = false, visible = false)
+                            }
+                        }
+                    }
+                },
+            )
+        )
+    }
     LaunchedEffect(gate, store) {
         if (serverId == null) return@LaunchedEffect
         // Collected on the composition's (main) dispatcher: the gate is confined to it.
@@ -191,14 +221,14 @@ private fun ChannelAnnouncementReconnectEffect(
             val shown = latestKey ?: return@collect
             if (shown.serverId != serverId) return@collect
             gate.onEvent(event, serverId, latestActive)?.let {
-                store.dispatch(ChannelAnnouncementIntent.Reconnected(shown, afterDrop = event.afterDrop))
+                dispatchReconnect(shown, afterDrop = event.afterDrop)
             }
         }
     }
     LaunchedEffect(gate, store, active) {
         val shown = latestKey ?: return@LaunchedEffect
         if (shown.serverId != serverId) return@LaunchedEffect
-        gate.onVisibilityChanged(active)?.let { store.dispatch(ChannelAnnouncementIntent.Reconnected(shown)) }
+        gate.onVisibilityChanged(active, serverId)?.let { dispatchReconnect(shown, afterDrop = false) }
     }
 }
 

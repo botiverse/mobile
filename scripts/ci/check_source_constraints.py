@@ -1079,24 +1079,9 @@ FRESHNESS_GATE_DECL_FILE = (
 # Shrink as Phases 1-3 migrate each page into store-owned / sync/changes freshness; never add new sites.
 FRESHNESS_LIVE_CATCH_UP_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
     (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/artifact/ArtifactsHomePage.kt",
-        1,
-        "#274 Phase 3: move into ArtifactsHomeStore",
-    ),
-    (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomePage.kt",
-        1,
-        "#274 Phase 3: move Tasks home catch-up into SharedTasksStore",
-    ),
-    (
         "compose/shared/src/commonMain/kotlin/build/raft/app/settings/SettingsHomeShellNavigation.kt",
         1,
         "#274 Phase 2: fold shell reconnect catch-up into SharedForegroundReconciler",
-    ),
-    (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadPageTabs.kt",
-        1,
-        "#274 Phase 3: move channel Tasks tab catch-up into SharedTasksStore",
     ),
     (
         "compose/shared/src/commonMain/kotlin/build/raft/app/thread/ThreadViewportAnchors.kt",
@@ -1109,17 +1094,7 @@ FRESHNESS_GATE_UNTRACKED_ALLOWLIST: tuple[tuple[str, int, str], ...] = (
     (
         "compose/shared/src/commonMain/kotlin/build/raft/app/thread/RaftLiveCatchUp.kt",
         1,
-        "#274 legacy page helper (to be deleted after Phases 1-3)",
-    ),
-    (
-        "compose/shared/src/commonMain/kotlin/build/raft/app/channel/ChannelAnnouncementHost.kt",
-        1,
-        "#274 legacy announcement host gate (migrate to trackOutcome = true)",
-    ),
-    (
-        "compose/shared-data/src/commonMain/kotlin/build/raft/app/data/SharedAppLinkPreviewStore.kt",
-        1,
-        "#274 legacy link-preview gate (migrate to trackOutcome = true)",
+        "#274 legacy page helper (to be deleted after Phase 2)",
     ),
 )
 
