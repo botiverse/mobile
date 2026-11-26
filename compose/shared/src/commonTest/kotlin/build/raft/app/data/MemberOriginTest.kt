@@ -91,10 +91,18 @@ class MemberOriginTest {
         // A host admin may remove another server's people (joint authority).
         assertTrue(memberRemovableFromChannel(external.copy(canRemoveFromChannel = true), viewer))
         assertFalse(memberRemovableFromChannel(person.copy(serverId = ServerId(viewer), canRemoveFromChannel = false), viewer))
-        // Older servers: today's rule, now read through the origin.
-        assertFalse(memberRemovableFromChannel(external, viewer))
-        assertTrue(memberRemovableFromChannel(localFirstSourceElsewhere, viewer))
-        assertTrue(memberRemovableFromChannel(person, viewer))
+        // Joint participant admin: server sets channelCapabilities.removeChannelMembers = false
+        // (humans cannot be removed) while still marking the participant's own agents
+        // canRemoveFromChannel = true (#proj-mobile:#400, web ChannelMembers.tsx `??` parity).
+        val ownAgent = person.copy(id = MemberId("agent-1"), kind = MemberKind.Agent, serverId = ServerId(viewer))
+        assertTrue(memberRemovableFromChannel(ownAgent.copy(canRemoveFromChannel = true), viewer, canRemoveChannelMembers = false))
+        assertFalse(memberRemovableFromChannel(person.copy(serverId = ServerId(viewer), canRemoveFromChannel = false), viewer, canRemoveChannelMembers = false))
+        assertFalse(memberRemovableFromChannel(external.copy(canRemoveFromChannel = false), viewer, canRemoveChannelMembers = false))
+        // Older servers / non-joint channels (canRemoveFromChannel == null): channel capability gates local members.
+        assertFalse(memberRemovableFromChannel(external, viewer, canRemoveChannelMembers = true))
+        assertTrue(memberRemovableFromChannel(localFirstSourceElsewhere, viewer, canRemoveChannelMembers = true))
+        assertTrue(memberRemovableFromChannel(person, viewer, canRemoveChannelMembers = true))
+        assertFalse(memberRemovableFromChannel(person, viewer, canRemoveChannelMembers = false))
     }
 
     @Test

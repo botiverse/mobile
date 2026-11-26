@@ -1219,7 +1219,18 @@ class RealMemberRepository(
             ?.takeIf { it.channelId == channelId }
         val mutable = channel != null && !channel.archived &&
             !(channel.channelType == "channel" && channel.name.removePrefix("#") == "all")
+        val members =
+            if (mutable) {
+                result.data.members
+            } else {
+                // Archived, #all, or channel-detail-unavailable rosters never allow removal
+                // (web ChannelMembers.tsx `!isAllChannel && !isArchived && canRemoveAgent/Human`).
+                result.data.members.map { member ->
+                    if (member.canRemoveFromChannel == true) member.copy(canRemoveFromChannel = false) else member
+                }
+            }
         return DataResult.Content(result.data.copy(
+            members = members,
             canAddMembers = mutable && channel?.channelCapabilities?.addChannelMembers == true,
             canRemoveMembers = mutable && channel?.channelCapabilities?.removeChannelMembers == true,
             canChangeMemberRoles = mutable && channel?.channelCapabilities?.changeChannelMemberRoles == true,

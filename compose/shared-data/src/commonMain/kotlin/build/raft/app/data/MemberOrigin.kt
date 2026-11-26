@@ -96,12 +96,17 @@ import build.raft.app.model.MemberServerRef
 /**
  * Whether the viewer may remove [member] from the channel (web `ChannelMembers.tsx`
  * `canRemoveFromChannel ?? (canRemoveChannelMembers && isLocalMember)`): the server's per-row
- * answer when it sent one (joint authority: a host admin may remove another server's people),
- * otherwise only the viewed server's own members. The channel-wide capability is applied by the
- * caller.
+ * answer when it sent one (joint authority: a host admin may remove another server's people,
+ * and a participant server admin may remove their own server's agents even when the channel-level
+ * `removeChannelMembers` capability is false), otherwise the channel-wide capability scoped to
+ * the viewed server's own members.
  */
-@RaftCoreInternalApi fun memberRemovableFromChannel(member: MemberProfile, viewerServerId: String?): Boolean =
-    member.canRemoveFromChannel ?: !memberOrigin(member, viewerServerId).external
+@RaftCoreInternalApi fun memberRemovableFromChannel(
+    member: MemberProfile,
+    viewerServerId: String?,
+    canRemoveChannelMembers: Boolean = true,
+): Boolean =
+    member.canRemoveFromChannel ?: (canRemoveChannelMembers && !memberOrigin(member, viewerServerId).external)
 
 private fun MemberProfile.homeServerRef(): MemberServerRef? =
     serverId?.value?.trim()?.takeIf { it.isNotBlank() }?.let { id ->

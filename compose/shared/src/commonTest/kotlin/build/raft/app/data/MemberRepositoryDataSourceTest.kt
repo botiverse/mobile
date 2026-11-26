@@ -101,6 +101,46 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun perRowCanRemoveFromChannelSurvivesMutableParticipantJointChannelAndIsClearedWhenImmutable() = runBlocking {
+        // #proj-mobile:#400: on a participant joint channel, channelCapabilities.removeChannelMembers
+        // is false (humans cannot be removed) while the participant's own agents carry
+        // canRemoveFromChannel = true. Mutable channels preserve that per-row flag; archived / #all /
+        // missing channel detail force it false (web `!isAllChannel && !isArchived`).
+        val roster = HomeNetworkResponse(
+            200,
+            """{"humans":[{"id":"u-1","name":"Alex","canRemoveFromChannel":false}],"agents":[{"id":"a-1","name":"Bot","canRemoveFromChannel":true}]}""",
+        )
+        val mutableNetwork = FakeMemberNetworkClient().apply {
+            channelMembersResponse = roster
+            channelDetailResponse = HomeNetworkResponse(
+                200,
+                """{"id":"ch-joint","name":"shared","type":"joint","jointRole":"participant","channelCapabilities":{"addChannelMembers":true,"removeChannelMembers":false}}""",
+            )
+        }
+        val mutableResult = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            RealMemberRepository(sampleStore(), mutableNetwork).getChannelMembers(DataRequestPriority.Visible, ChannelId("ch-joint")),
+        )
+        assertFalse(mutableResult.data.canRemoveMembers)
+        assertEquals(true, mutableResult.data.members.single { it.id == MemberId("a-1") }.canRemoveFromChannel)
+        assertEquals(false, mutableResult.data.members.single { it.id == MemberId("u-1") }.canRemoveFromChannel)
+
+        val immutableDetails = listOf(
+            HomeNetworkResponse(503, "{}"),
+            HomeNetworkResponse(200, """{"id":"ch-joint","name":"shared","type":"joint","archivedAt":"2026-10-01T00:00:00Z","channelCapabilities":{"removeChannelMembers":false}}"""),
+        )
+        for (detail in immutableDetails) {
+            val network = FakeMemberNetworkClient().apply {
+                channelMembersResponse = roster
+                channelDetailResponse = detail
+            }
+            val result = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+                RealMemberRepository(sampleStore(), network).getChannelMembers(DataRequestPriority.Visible, ChannelId("ch-joint")),
+            )
+            assertEquals(false, result.data.members.single { it.id == MemberId("a-1") }.canRemoveFromChannel)
+        }
+    }
+
+    @Test
     fun roleCapabilityComesFromTheChannelAndOnlyOnAChannelWhoseRolesCanChange() = runBlocking {
         // botiverse/slock bb8b13a1a3: GET /channels/:id `channelCapabilities.changeChannelMemberRoles`;
         // web MemberRoleActions offers nothing on an archived channel or #all.
