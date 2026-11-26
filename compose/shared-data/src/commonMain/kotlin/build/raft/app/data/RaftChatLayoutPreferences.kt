@@ -10,10 +10,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 
-private const val CHAT_LAYOUT_PREFERENCE_EVENT = "slock.chatLayoutPreferenceChanged"
 private const val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_EVENT = "slock.chatLayoutPreferenceSnapshotChanged"
-private const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED =
-    "conversationForwardGestureEnabled"
 private const val KEY_MY_MESSAGE_ALIGNMENT = "myMessageAlignment"
 private const val KEY_DESKTOP_MODE_ON_LARGE_SCREEN = "desktopModeOnLargeScreen"
 private const val KEY_COMPACT_CONSECUTIVE_MESSAGES = "compactConsecutiveMessages"
@@ -31,7 +28,6 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
         KEY_COMPACT_CONSECUTIVE_MESSAGES,
         KEY_LONG_MESSAGE_COLLAPSE_ENABLED,
         KEY_NEW_MESSAGE_MENU_ENABLED,
-        KEY_CONVERSATION_FORWARD_GESTURE_ENABLED,
         KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED,
         KEY_COMPOSER_SEND_KEY_ENABLED,
         KEY_MULTI_SHELL_HOST_ENABLED,
@@ -42,37 +38,18 @@ private val CHAT_LAYOUT_PREFERENCE_SNAPSHOT_KEYS =
 
 /**
  * App-process propagation for chat-layout preferences whose runtime state is retained per shell.
- * Durable truth remains in [ChatLayoutPreferenceRepository]; this event only reconciles already
- * mounted AppShells so an app-scoped OFF cannot leave another window's native gate alive.
+ * Durable truth remains in [ChatLayoutPreferenceRepository].
  */
 class RaftChatLayoutPreferenceEvents(
     private val eventBus: RaftEventBus,
     private val source: String = "shared"
 ) {
-    fun addConversationForwardGestureListener(
-        onChanged: (Boolean) -> Unit
-    ): RealtimeSubscription =
-        eventBus.observe(CHAT_LAYOUT_PREFERENCE_EVENT) { data ->
-            if (data == null || !data.has(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED)) {
-                return@observe
-            }
-            onChanged(data.optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false))
-        }
-
     fun addPreferenceListener(
         onChanged: (ChatLayoutPreferenceSnapshot) -> Unit
     ): RealtimeSubscription =
         eventBus.observe(CHAT_LAYOUT_PREFERENCE_SNAPSHOT_EVENT) { data ->
             data?.toChatLayoutPreferenceSnapshotOrNull()?.let(onChanged)
         }
-
-    fun postConversationForwardGestureChanged(enabled: Boolean) {
-        eventBus.post(
-            CHAT_LAYOUT_PREFERENCE_EVENT,
-            buildJsonObject { put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, enabled) },
-            source = source
-        )
-    }
 
     fun postPreferenceChanged(snapshot: ChatLayoutPreferenceSnapshot) {
         eventBus.post(
@@ -110,14 +87,6 @@ fun raftChatLayoutPreferenceRepository(
         override suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setNewMessageMenuEnabled(enabled) }
 
-        override suspend fun setConversationForwardGestureEnabled(
-            enabled: Boolean
-        ): ChatLayoutPreferenceSnapshot {
-            val snapshot = persistAndPublish { delegate.setConversationForwardGestureEnabled(enabled) }
-            events.postConversationForwardGestureChanged(snapshot.conversationForwardGestureEnabled)
-            return snapshot
-        }
-
         override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot =
             persistAndPublish { delegate.setForegroundMessageBannersEnabled(enabled) }
 
@@ -145,7 +114,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
         put(KEY_COMPACT_CONSECUTIVE_MESSAGES, compactConsecutiveMessages)
         put(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, longMessageCollapseEnabled)
         put(KEY_NEW_MESSAGE_MENU_ENABLED, newMessageMenuEnabled)
-        put(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, conversationForwardGestureEnabled)
         put(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, foregroundMessageBannersEnabled)
         put(KEY_COMPOSER_SEND_KEY_ENABLED, composerSendKeyEnabled)
         put(KEY_MULTI_SHELL_HOST_ENABLED, multiShellHostEnabled)
@@ -162,7 +130,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
         compactConsecutiveMessages = optBoolean(KEY_COMPACT_CONSECUTIVE_MESSAGES, true),
         longMessageCollapseEnabled = optBoolean(KEY_LONG_MESSAGE_COLLAPSE_ENABLED, RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED),
         newMessageMenuEnabled = optBoolean(KEY_NEW_MESSAGE_MENU_ENABLED, false),
-        conversationForwardGestureEnabled = optBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false),
         foregroundMessageBannersEnabled = optBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false),
         composerSendKeyEnabled = optBoolean(KEY_COMPOSER_SEND_KEY_ENABLED, false),
         multiShellHostEnabled = optBoolean(KEY_MULTI_SHELL_HOST_ENABLED, false),
@@ -171,15 +138,6 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
         translationTargetLanguage =
             optString(KEY_TRANSLATION_TARGET_LANGUAGE).ifBlank { TranslationTargetLanguages.Browser },
     )
-}
-
-@RaftCoreInternalApi fun reconcileConversationForwardGesturePreference(
-    enabled: Boolean,
-    history: SharedConversationForwardHistory,
-    disableNativeGesture: () -> Unit
-) {
-    history.setEnabled(enabled)
-    if (!enabled) disableNativeGesture()
 }
 
 /** Prevents an in-flight repository seed from overwriting a newer process event. */
@@ -196,29 +154,5 @@ private fun ChatLayoutPreferenceSnapshot.toPreferenceEventData(): JsonObject =
     fun applyProcessPreferenceChange(snapshot: ChatLayoutPreferenceSnapshot) {
         observedProcessChange = true
         onEffectivePreferenceChanged(snapshot)
-    }
-}
-
-/**
- * Runtime authority for an AppShell's conversation Forward preference.
- *
- * A repository read seeds a newly mounted shell. Once this process has observed a successful
- * preference write, that process event is newer than any in-flight Settings snapshot or seed
- * that started before the write, so a late seed must not overwrite it.
- */
-@RaftCoreInternalApi class ConversationForwardGestureRuntimeAuthority(
-    private val supported: Boolean,
-    private val onEffectivePreferenceChanged: (Boolean) -> Unit
-) {
-    private var observedProcessChange: Boolean = false
-
-    fun seedFromRepository(enabled: Boolean) {
-        if (observedProcessChange) return
-        onEffectivePreferenceChanged(supported && enabled)
-    }
-
-    fun applyProcessPreferenceChange(enabled: Boolean) {
-        observedProcessChange = true
-        onEffectivePreferenceChanged(supported && enabled)
     }
 }

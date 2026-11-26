@@ -1,8 +1,5 @@
 package build.raft.app.data
 
-import build.raft.app.buildThreadLaunchConversationIdentity
-import build.raft.app.model.ChannelId
-import build.raft.app.model.ConversationKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,7 +15,7 @@ class RaftChatLayoutPreferencesTest {
         val partial =
             buildJsonObject {
                 put("myMessageAlignment", "right")
-                put("conversationForwardGestureEnabled", true)
+                put("newMessageMenuEnabled", true)
             }
 
         assertNull(partial.toChatLayoutPreferenceSnapshotOrNull())
@@ -45,7 +42,6 @@ class RaftChatLayoutPreferencesTest {
             repository.setCompactConsecutiveMessages(false)
             repository.setLongMessageCollapseEnabled(true)
             repository.setNewMessageMenuEnabled(true)
-            repository.setConversationForwardGestureEnabled(true)
             repository.setForegroundMessageBannersEnabled(true)
             repository.setComposerSendKeyEnabled(true)
             repository.setMultiShellHostEnabled(true)
@@ -53,7 +49,7 @@ class RaftChatLayoutPreferencesTest {
             repository.setTranslationMode(TranslationModePreference.Automatic)
             repository.setTranslationTargetLanguage("ja")
 
-            assertEquals(12, firstSnapshots.size)
+            assertEquals(11, firstSnapshots.size)
             assertEquals(firstSnapshots, secondSnapshots)
             firstSnapshots.last().let { snapshot ->
                 assertEquals(MyMessageAlignmentPreference.Right, snapshot.myMessageAlignment)
@@ -61,7 +57,6 @@ class RaftChatLayoutPreferencesTest {
                 assertFalse(snapshot.compactConsecutiveMessages)
                 assertTrue(snapshot.longMessageCollapseEnabled)
                 assertTrue(snapshot.newMessageMenuEnabled)
-                assertTrue(snapshot.conversationForwardGestureEnabled)
                 assertTrue(snapshot.foregroundMessageBannersEnabled)
                 assertTrue(snapshot.composerSendKeyEnabled)
                 assertTrue(snapshot.multiShellHostEnabled)
@@ -97,99 +92,4 @@ class RaftChatLayoutPreferencesTest {
 
         assertEquals(listOf(processSnapshot), applied)
     }
-
-    @Test
-    fun unsupportedHostFailsClosedForRepositorySeedAndProcessEvents() {
-        val applied = mutableListOf<Boolean>()
-        val authority =
-            ConversationForwardGestureRuntimeAuthority(
-                supported = false,
-                onEffectivePreferenceChanged = applied::add
-            )
-
-        authority.seedFromRepository(true)
-        authority.applyProcessPreferenceChange(true)
-
-        assertEquals(listOf(false, false), applied)
-    }
-
-    @Test
-    fun appScopedTransitionsReconcileEveryLiveShellAndNeverResurrectHistory() = runBlocking {
-        val events = RaftChatLayoutPreferenceEvents(RaftEventBuses.inProcess())
-        val firstHistory = SharedConversationForwardHistory()
-        val secondHistory = SharedConversationForwardHistory()
-        var firstNativeDisableCount = 0
-        var secondNativeDisableCount = 0
-        val firstSubscription =
-            events.addConversationForwardGestureListener { enabled ->
-                reconcileConversationForwardGesturePreference(
-                    enabled = enabled,
-                    history = firstHistory,
-                    disableNativeGesture = { firstNativeDisableCount += 1 }
-                )
-            }
-        val secondSubscription =
-            events.addConversationForwardGestureListener { enabled ->
-                reconcileConversationForwardGesturePreference(
-                    enabled = enabled,
-                    history = secondHistory,
-                    disableNativeGesture = { secondNativeDisableCount += 1 }
-                )
-            }
-        val persistentRepository =
-            PersistentChatLayoutPreferenceRepository(
-                KeyValueChatLayoutPreferenceStore(InMemoryRaftKeyValueStore())
-            )
-        val repository = raftChatLayoutPreferenceRepository(persistentRepository, events)
-
-        try {
-            repository.setConversationForwardGestureEnabled(true)
-
-            assertTrue(firstHistory.enabledForTest())
-            assertTrue(secondHistory.enabledForTest())
-            assertFalse(firstHistory.canForward)
-            assertFalse(secondHistory.canForward)
-
-            firstHistory.recordNewOpen(entry("server-a", "channel-a"))
-            secondHistory.recordNewOpen(entry("server-a", "channel-b"))
-            assertTrue(firstHistory.recordHomeVisible())
-            assertTrue(secondHistory.recordHomeVisible())
-            assertTrue(firstHistory.canForward)
-            assertTrue(secondHistory.canForward)
-
-            repository.setConversationForwardGestureEnabled(false)
-
-            assertFalse(firstHistory.enabledForTest())
-            assertFalse(secondHistory.enabledForTest())
-            assertFalse(firstHistory.canForward)
-            assertFalse(secondHistory.canForward)
-            assertNull(firstHistory.forwardEntryForTest())
-            assertNull(secondHistory.forwardEntryForTest())
-            assertEquals(1, firstNativeDisableCount)
-            assertEquals(1, secondNativeDisableCount)
-
-            repository.setConversationForwardGestureEnabled(true)
-
-            assertTrue(firstHistory.enabledForTest())
-            assertTrue(secondHistory.enabledForTest())
-            assertFalse(firstHistory.canForward)
-            assertFalse(secondHistory.canForward)
-            assertNull(firstHistory.forwardEntryForTest())
-            assertNull(secondHistory.forwardEntryForTest())
-            assertEquals(1, firstNativeDisableCount)
-            assertEquals(1, secondNativeDisableCount)
-        } finally {
-            firstSubscription.close()
-            secondSubscription.close()
-        }
-    }
-
-    private fun entry(
-        serverId: String,
-        channelId: String
-    ): ConversationForwardEntry =
-        buildThreadLaunchConversationIdentity(
-            kind = ConversationKind.Channel,
-            channelId = ChannelId(channelId)
-        ).toConversationForwardEntry(serverId)
 }

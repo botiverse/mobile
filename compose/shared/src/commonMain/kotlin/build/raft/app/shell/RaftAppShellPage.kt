@@ -11,7 +11,6 @@ import build.raft.app.data.RaftRatingPrompt
 internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
     private var initialAuthRestoreTick by mutableStateOf(0)
     private var adaptivePane by mutableStateOf(RaftAdaptivePaneState())
-    private var conversationForwardRequestTick by mutableStateOf(0)
     private var hostDidAppearTick by mutableStateOf(0)
     private var wideHistoryRequest by mutableStateOf<RaftWideNavRequest?>(null)
     private var searchHandoff by mutableStateOf<RaftSearchTabQueryRequest?>(null)
@@ -37,7 +36,6 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
                     initialAuthRestoreTick = initialAuthRestoreTick,
                     pageVisible = raftPageVisible,
                     adaptivePane = adaptivePane,
-                    conversationForwardRequestTick = conversationForwardRequestTick,
                     hostDidAppearTick = hostDidAppearTick,
                     wideHistoryRequest = wideHistoryRequest,
                     searchHandoff = searchHandoff,
@@ -65,9 +63,6 @@ internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {
 
     override fun onReceivePagerEvent(pagerEvent: String, eventData: JSONObject) {
         super.onReceivePagerEvent(pagerEvent, eventData)
-        if (pagerEvent == RAFT_CONVERSATION_FORWARD_PAGER_EVENT) {
-            conversationForwardRequestTick += 1
-        }
         if (pagerEvent == RAFT_APP_SHELL_HOST_DID_APPEAR_PAGER_EVENT) {
             hostDidAppearTick += 1
         }

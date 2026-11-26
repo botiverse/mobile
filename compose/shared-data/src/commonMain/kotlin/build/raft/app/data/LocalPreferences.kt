@@ -326,7 +326,6 @@ data class ChatLayoutPreferenceSnapshot(
     val compactConsecutiveMessages: Boolean = true,
     val longMessageCollapseEnabled: Boolean = RAFT_LONG_MESSAGE_COLLAPSE_DEFAULT_ENABLED,
     val newMessageMenuEnabled: Boolean = false,
-    val conversationForwardGestureEnabled: Boolean = false,
     val foregroundMessageBannersEnabled: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
     val multiShellHostEnabled: Boolean = false,
@@ -353,9 +352,6 @@ interface ChatLayoutPreferenceStore {
     fun readNewMessageMenuEnabledSync(): Boolean
     suspend fun readNewMessageMenuEnabled(): Boolean
     suspend fun saveNewMessageMenuEnabled(enabled: Boolean)
-    fun readConversationForwardGestureEnabledSync(): Boolean
-    suspend fun readConversationForwardGestureEnabled(): Boolean
-    suspend fun saveConversationForwardGestureEnabled(enabled: Boolean)
     fun readForegroundMessageBannersEnabledSync(): Boolean
     suspend fun readForegroundMessageBannersEnabled(): Boolean
     suspend fun saveForegroundMessageBannersEnabled(enabled: Boolean)
@@ -484,16 +480,6 @@ class KeyValueChatLayoutPreferenceStore(
         store.putBoolean(KEY_NEW_MESSAGE_MENU_ENABLED, enabled)
     }
 
-    override fun readConversationForwardGestureEnabledSync(): Boolean =
-        store.getBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, false)
-
-    override suspend fun readConversationForwardGestureEnabled(): Boolean =
-        readConversationForwardGestureEnabledSync()
-
-    override suspend fun saveConversationForwardGestureEnabled(enabled: Boolean) {
-        store.putBoolean(KEY_CONVERSATION_FORWARD_GESTURE_ENABLED, enabled)
-    }
-
     override fun readForegroundMessageBannersEnabledSync(): Boolean =
         store.getBoolean(KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED, false)
 
@@ -573,7 +559,6 @@ class KeyValueChatLayoutPreferenceStore(
         const val KEY_NEW_MESSAGE_MENU_ENABLED = "mobile:new_message_menu_enabled"
         const val KEY_LEGACY_INLINE_SELECTION_TOOLBAR_ENABLED =
             "mobile:inline_selection_toolbar_enabled"
-        const val KEY_CONVERSATION_FORWARD_GESTURE_ENABLED = "mobile:conversation_forward_gesture_enabled"
         const val KEY_FOREGROUND_MESSAGE_BANNERS_ENABLED = "chatLayout:foreground_message_banners_enabled"
         const val KEY_COMPOSER_SEND_KEY_ENABLED = "chatLayout:composer_send_key_enabled"
         const val KEY_MULTI_SHELL_HOST_ENABLED = "mobile:multi_shell_host_enabled"
@@ -593,7 +578,6 @@ interface ChatLayoutPreferenceRepository {
     suspend fun setCompactConsecutiveMessages(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setLongMessageCollapseEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setNewMessageMenuEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
-    suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setComposerSendKeyEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
     suspend fun setMultiShellHostEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot
@@ -612,7 +596,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
@@ -631,7 +614,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
@@ -649,7 +631,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
@@ -667,7 +648,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = enabled,
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
@@ -687,11 +667,6 @@ class PersistentChatLayoutPreferenceRepository(
         return getChatLayoutPreference()
     }
 
-    override suspend fun setConversationForwardGestureEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
-        store.saveConversationForwardGestureEnabled(enabled)
-        return getChatLayoutPreference()
-    }
-
     override suspend fun setForegroundMessageBannersEnabled(enabled: Boolean): ChatLayoutPreferenceSnapshot {
         store.saveForegroundMessageBannersEnabled(enabled)
         return ChatLayoutPreferenceSnapshot(
@@ -700,7 +675,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = enabled,
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),
@@ -733,7 +707,6 @@ class PersistentChatLayoutPreferenceRepository(
             compactConsecutiveMessages = store.readCompactConsecutiveMessages(),
             longMessageCollapseEnabled = store.readLongMessageCollapseEnabled(),
             newMessageMenuEnabled = store.readNewMessageMenuEnabled(),
-            conversationForwardGestureEnabled = store.readConversationForwardGestureEnabled(),
             foregroundMessageBannersEnabled = store.readForegroundMessageBannersEnabled(),
             composerSendKeyEnabled = store.readComposerSendKeyEnabled(),
             multiShellHostEnabled = store.readMultiShellHostEnabled(),

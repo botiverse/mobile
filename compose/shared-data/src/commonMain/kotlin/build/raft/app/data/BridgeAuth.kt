@@ -20,7 +20,6 @@ import build.raft.app.optString
 import build.raft.app.parseRaftJsonArray
 import build.raft.app.parseRaftJsonObject
 import build.raft.app.raftLogInfo
-import build.raft.app.raftPlatformSupportsConversationForwardGesture
 import build.raft.app.toRaftJsonString
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
@@ -77,9 +76,6 @@ class SettingsHandsFeedbackSubmission(
     /** True while the minimum build gate blocks the app: no new-version notice next to it. */
     private val minBuildGateBlocking: () -> Boolean = { RaftMinBuildGate.decision.value is RaftMinBuildGateDecision.Block },
 ) : SharedSettingsPlatformCapabilities {
-    override val supportsConversationForwardGesture: Boolean
-        get() = raftPlatformSupportsConversationForwardGesture()
-
     fun bridgeCopyToClipboard(content: String) {
         host.copyToPasteboard(content)
         host.toast(copiedMessage)

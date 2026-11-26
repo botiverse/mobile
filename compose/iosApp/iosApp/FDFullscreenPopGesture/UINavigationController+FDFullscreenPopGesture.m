@@ -22,71 +22,8 @@
 
 #import "UINavigationController+FDFullscreenPopGesture.h"
 #import "RaftPageViewController.h"
-#import "HRBridgeModule.h"
-#import "RaftConversationForwardGestureAdmission.h"
 #import "RaftInteractivePopGestureAdmission.h"
 #import <objc/runtime.h>
-#import <UIKit/UIGestureRecognizerSubclass.h>
-
-void RaftConversationForwardLog(NSString *message)
-{
-    RaftIosDiagnosticsRecordWithContext(@"info", @"SlockConversationForward", message, 0, YES, NO);
-}
-
-/// Per-touch / per-attach detail: Debug builds (the QA Simulator carriers) only, so release
-/// builds keep the diagnostics ring for the lines feedback tickets need.
-static void RaftConversationForwardDebugLog(NSString *message)
-{
-#if DEBUG
-    RaftConversationForwardLog(message);
-#else
-    (void)message;
-#endif
-}
-
-/// Why [navigationController] cannot take a Forward swipe now, or nil: Home (the app shell) must be
-/// the only page on the stack and have Forward on.
-static NSString *RaftConversationForwardShellRefusal(UINavigationController *navigationController)
-{
-    UIViewController *top = navigationController.topViewController;
-    if (![top isKindOfClass:RaftPageViewController.class]) return @"top_not_page";
-    RaftPageViewController *page = (RaftPageViewController *)top;
-    if (!page.raftIsAppShellPage) return @"app_shell_not_top";
-    if (navigationController.viewControllers.count != 1) return @"not_at_root";
-    if (!page.raftConversationForwardGestureEnabled) return @"not_enabled";
-    return nil;
-}
-
-static NSString *RaftGestureStateName(UIGestureRecognizerState state)
-{
-    switch (state) {
-        case UIGestureRecognizerStatePossible: return @"possible";
-        case UIGestureRecognizerStateBegan: return @"began";
-        case UIGestureRecognizerStateChanged: return @"changed";
-        case UIGestureRecognizerStateEnded: return @"ended";
-        case UIGestureRecognizerStateCancelled: return @"cancelled";
-        case UIGestureRecognizerStateFailed: return @"failed";
-    }
-    return @"unknown";
-}
-
-#if DEBUG
-/// The recognizers sharing [touch] that are not idle, as `Class@ViewClass:state` (diagnostics:
-/// which one took the edge swipe when Forward never began).
-static NSString *RaftGestureCompetitors(NSArray<UIGestureRecognizer *> *recognizers, UIGestureRecognizer *own)
-{
-    NSMutableArray<NSString *> *parts = [NSMutableArray array];
-    for (UIGestureRecognizer *recognizer in recognizers) {
-        if (recognizer == own) continue;
-        [parts addObject:[NSString stringWithFormat:@"%@@%@:%@%@",
-            NSStringFromClass(recognizer.class),
-            recognizer.view ? NSStringFromClass(recognizer.view.class) : @"nil",
-            RaftGestureStateName(recognizer.state),
-            recognizer.enabled ? @"" : @"(off)"]];
-    }
-    return [parts componentsJoinedByString:@","];
-}
-#endif
 
 @interface _FDFullscreenPopGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
 
@@ -98,70 +35,6 @@ static NSString *RaftGestureCompetitors(NSArray<UIGestureRecognizer *> *recogniz
 @property (nonatomic, assign) CGPoint touchLocationInPage;
 
 @end
-
-@interface _FDConversationForwardGestureRecognizerDelegate : NSObject <UIGestureRecognizerDelegate>
-
-@property (nonatomic, weak) UINavigationController *navigationController;
-/// Bumped by every received touch and every gestureRecognizerShouldBegin: the delayed watch
-/// after a touch logs only when nothing decided that touch (the recognizer never asked to begin).
-@property (nonatomic, assign) NSUInteger touchGeneration;
-@property (nonatomic, assign) BOOL shouldBeginAsked;
-/// The current touch started in the trailing-edge strip (set in shouldReceiveTouch).
-@property (nonatomic, assign) BOOL touchStartedAtTrailingEdge;
-
-@end
-
-@interface UINavigationController (FDConversationForwardGesturePrivate)
-
-@property (nonatomic, strong, readonly) _FDConversationForwardGestureRecognizerDelegate *fd_conversationForwardGestureRecognizerDelegate;
-- (void)fd_handleConversationForwardGesture:(UIPanGestureRecognizer *)gestureRecognizer;
-
-@end
-
-/// Forward comes from the trailing edge: the right in LTR, the left in RTL (the pop gesture's
-/// mirror, RaftInteractivePopGestureAdmission).
-static BOOL RaftConversationForwardIsLeftToRight(void)
-{
-    return [UIApplication sharedApplication].userInterfaceLayoutDirection == UIUserInterfaceLayoutDirectionLeftToRight;
-}
-
-/// Compose Multiplatform's own views (runtime class `androidx.compose.…`): its full-screen
-/// `OverlayInputView` is a `UIScrollView` subclass that every Compose touch lands on, so it is not
-/// a native child scroller (RaftIosComposeScrollEdgeEffects reads the same class names).
-static BOOL RaftConversationForwardIsComposeView(UIView *view)
-{
-    return [NSStringFromClass(view.class) containsString:@"androidx.compose."];
-}
-
-/// A touch that native content under it keeps: a focused text input (selection handles), or a
-/// native horizontal scroller that can still move towards the leading edge (content forward).
-/// Compose's own views never count: their scrolling is Compose's, and Compose's touch
-/// recognizer cannot prevent this edge pan (CMP `TouchesGestureRecognizer`).
-static BOOL RaftConversationForwardChildGestureConflict(UIView *view, UIView *rootView)
-{
-    UIView *candidate = view;
-    while (candidate && candidate != rootView) {
-        if (candidate.isFirstResponder && [candidate conformsToProtocol:@protocol(UITextInput)]) {
-            return YES;
-        }
-        if ([candidate isKindOfClass:UIScrollView.class] && !RaftConversationForwardIsComposeView(candidate)) {
-            UIScrollView *scrollView = (UIScrollView *)candidate;
-            if (scrollView.dragging || scrollView.decelerating) {
-                return YES;
-            }
-            CGFloat minimumOffset = -scrollView.adjustedContentInset.left;
-            CGFloat maximumOffset = MAX(
-                minimumOffset,
-                scrollView.contentSize.width - CGRectGetWidth(scrollView.bounds) + scrollView.adjustedContentInset.right
-            );
-            if (scrollView.scrollEnabled && maximumOffset > minimumOffset + 1.0) {
-                return YES;
-            }
-        }
-        candidate = candidate.superview;
-    }
-    return NO;
-}
 
 static BOOL RaftInteractivePopTextInputConflict(UIView *view, UIView *rootView)
 {
@@ -199,152 +72,6 @@ static BOOL RaftInteractivePopHorizontalScrollCanConsumeDirection(
     }
     return NO;
 }
-
-static BOOL RaftConversationForwardHasActiveTextInput(UIView *view)
-{
-    if (view.isFirstResponder && [view conformsToProtocol:@protocol(UITextInput)]) {
-        return YES;
-    }
-    for (UIView *subview in view.subviews) {
-        if (RaftConversationForwardHasActiveTextInput(subview)) {
-            return YES;
-        }
-    }
-    return NO;
-}
-
-@implementation RaftConversationForwardPanGestureRecognizer
-
-// Compose's touch recognizer (CMP TouchesGestureRecognizer) can prevent every recognizer outside
-// its own view hierarchy except a screen-edge pan; this pan only ever sees touches that start in
-// the trailing-edge strip, so nothing else may fail it (CMP's own UIKitBackGestureRecognizer does
-// the same). Once it begins, Compose's sequence is cancelled by Compose's own rules.
-- (BOOL)canBePreventedByGestureRecognizer:(UIGestureRecognizer *)preventingGestureRecognizer
-{
-    return NO;
-}
-
-@end
-
-@implementation _FDConversationForwardGestureRecognizerDelegate
-
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldReceiveTouch:(UITouch *)touch
-{
-    CGPoint location = [touch locationInView:gestureRecognizer.view];
-    CGFloat width = CGRectGetWidth(gestureRecognizer.view.bounds);
-    // Only touches that start in the trailing-edge strip belong to Forward; every other touch
-    // (vertical scrolling, the left-edge back swipe, taps) never reaches this recognizer. Silent:
-    // this runs for every touch on Home while Forward is armed.
-    if (gestureRecognizer.numberOfTouches == 0) {
-        self.touchStartedAtTrailingEdge = RaftConversationForwardTouchStartsInEdgeZone(
-            location.x, width, RaftConversationForwardIsLeftToRight());
-    }
-    if (!self.touchStartedAtTrailingEdge) {
-        return NO;
-    }
-    // Inert unless Home (the app shell) is the only page and has Forward on: a strip touch over a
-    // pushed page must not pass through Forward (or make scroll views wait for it).
-    NSString *shellRefusal = RaftConversationForwardShellRefusal(self.navigationController);
-    if (shellRefusal != nil) {
-        self.touchStartedAtTrailingEdge = NO;
-        RaftConversationForwardDebugLog([NSString stringWithFormat:
-            @"gesture_touch_rejected reason=%@ x=%.1f", shellRefusal, location.x]);
-        return NO;
-    }
-    if (RaftConversationForwardChildGestureConflict(touch.view, gestureRecognizer.view)) {
-        self.touchStartedAtTrailingEdge = NO;
-        RaftConversationForwardLog([NSString stringWithFormat:
-            @"gesture_touch_rejected reason=child_conflict x=%.1f width=%.1f view=%@",
-            location.x, width, touch.view ? NSStringFromClass(touch.view.class) : @"nil"]);
-        return NO;
-    }
-#if DEBUG
-    // Debug builds only (QA Simulator carriers): the touch, and 0.35 s later, if no should-begin
-    // came, the recognizers that held it.
-    RaftConversationForwardDebugLog([NSString stringWithFormat:
-        @"gesture_touch_received x=%.1f y=%.1f width=%.1f view=%@ kind=%@",
-        location.x, location.y, width, touch.view ? NSStringFromClass(touch.view.class) : @"nil",
-        NSStringFromClass(gestureRecognizer.class)]);
-    NSUInteger generation = ++self.touchGeneration;
-    self.shouldBeginAsked = NO;
-    __weak typeof(self) weakSelf = self;
-    __weak UIGestureRecognizer *weakRecognizer = gestureRecognizer;
-    __weak UITouch *weakTouch = touch;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        UIGestureRecognizer *recognizer = weakRecognizer;
-        if (!strongSelf || strongSelf.touchGeneration != generation || strongSelf.shouldBeginAsked) {
-            return;
-        }
-        UITouch *strongTouch = weakTouch;
-        NSArray<UIGestureRecognizer *> *others = strongTouch.gestureRecognizers ?: @[];
-        RaftConversationForwardDebugLog([NSString stringWithFormat:
-            @"gesture_not_asked state=%@ attached=%d enabled=%d touchPhase=%ld others=[%@]",
-            recognizer ? RaftGestureStateName(recognizer.state) : @"gone",
-            recognizer.view != nil,
-            recognizer.enabled,
-            strongTouch ? (long)strongTouch.phase : -1L,
-            RaftGestureCompetitors(others, recognizer)]);
-    });
-#endif
-    return YES;
-}
-
-- (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)gestureRecognizer
-{
-    self.shouldBeginAsked = YES;
-    UINavigationController *navigationController = self.navigationController;
-    RaftPageViewController *topViewController =
-        [navigationController.topViewController isKindOfClass:RaftPageViewController.class]
-            ? (RaftPageViewController *)navigationController.topViewController
-            : nil;
-    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
-    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
-    BOOL transitioning = [[navigationController valueForKey:@"_isTransitioning"] boolValue];
-    UIGestureRecognizerState popState = navigationController.fd_fullscreenPopGestureRecognizer.state;
-    BOOL interactivePopActive =
-        popState == UIGestureRecognizerStateBegan || popState == UIGestureRecognizerStateChanged;
-    RaftConversationForwardGestureAdmission admission = {
-        .enabled = topViewController.raftConversationForwardGestureEnabled,
-        .appShellIsTop = topViewController.raftIsAppShellPage,
-        .navigationStackAtRoot = navigationController.viewControllers.count == 1,
-        .transitioning = transitioning,
-        .modalPresented = topViewController.presentedViewController != nil || navigationController.presentedViewController != nil,
-        .interactivePopActive = interactivePopActive,
-        .childGestureConflict = NO,
-        .textInputActive = RaftConversationForwardHasActiveTextInput(navigationController.view),
-        .startedAtTrailingEdge = self.touchStartedAtTrailingEdge,
-        .translationX = translation.x,
-        .translationY = translation.y,
-        .velocityX = velocity.x,
-        .velocityY = velocity.y,
-        .isLeftToRight = RaftConversationForwardIsLeftToRight(),
-    };
-    BOOL begins = RaftConversationForwardGestureShouldBegin(admission);
-    // One line per edge swipe: which admission input refused it (artin #111: the swipe did nothing).
-    RaftConversationForwardLog([NSString stringWithFormat:
-        @"gesture_should_begin result=%d reason=%s top=%@ stack=%lu tx=%.1f vx=%.1f",
-        begins,
-        RaftConversationForwardGestureRejectReason(admission),
-        navigationController.topViewController ? NSStringFromClass(navigationController.topViewController.class) : @"nil",
-        (unsigned long)navigationController.viewControllers.count,
-        translation.x,
-        velocity.x]);
-    return begins;
-}
-
-/// A native scroll view's own pan waits for Forward to decide on a touch that started in the
-/// trailing-edge strip (Forward fails at once for a vertical or rightward move, so scrolling
-/// only waits for the pan's first movement there). Everything else keeps its arbitration.
-- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer shouldBeRequiredToFailByGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer
-{
-    if (!self.touchStartedAtTrailingEdge) return NO;
-    UIScrollView *scrollView =
-        [otherGestureRecognizer.view isKindOfClass:UIScrollView.class] ? (UIScrollView *)otherGestureRecognizer.view : nil;
-    return scrollView != nil && otherGestureRecognizer == scrollView.panGestureRecognizer;
-}
-
-@end
 
 @implementation _FDFullscreenPopGestureRecognizerDelegate
 
@@ -546,8 +273,6 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         // claim them first.
         renderViewController.fd_interactivePopAllowsFullScreen = YES;
     }
-    [self fd_setConversationForwardGestureEnabled:
-        renderViewController.raftConversationForwardGestureEnabled && renderViewController.raftIsAppShellPage];
 
     // Handle perferred navigation bar appearance.
     [self fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:viewController];
@@ -556,70 +281,6 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
     if (![self.viewControllers containsObject:viewController]) {
         [self fd_pushViewController:viewController animated:animated];
     }
-}
-
-- (void)fd_handleConversationForwardGesture:(UIPanGestureRecognizer *)gestureRecognizer
-{
-    if (gestureRecognizer.state != UIGestureRecognizerStateEnded) {
-        if (gestureRecognizer.state != UIGestureRecognizerStateChanged) {
-            RaftConversationForwardLog([NSString stringWithFormat:
-                @"gesture_state state=%@", RaftGestureStateName(gestureRecognizer.state)]);
-        }
-        return;
-    }
-    CGFloat width = MAX(1.0, CGRectGetWidth(gestureRecognizer.view.bounds));
-    CGPoint translation = [gestureRecognizer translationInView:gestureRecognizer.view];
-    CGPoint velocity = [gestureRecognizer velocityInView:gestureRecognizer.view];
-    // Distance and speed towards the leading edge (left in LTR, right in RTL).
-    CGFloat direction = RaftConversationForwardIsLeftToRight() ? -1.0 : 1.0;
-    CGFloat progress = MAX(0.0, direction * translation.x / width);
-    if (progress < 0.12 && direction * velocity.x < 300.0) {
-        RaftConversationForwardLog([NSString stringWithFormat:
-            @"gesture_ended result=too_short progress=%.3f vx=%.1f", progress, velocity.x]);
-        return;
-    }
-    RaftPageViewController *topViewController =
-        [self.topViewController isKindOfClass:RaftPageViewController.class]
-            ? (RaftPageViewController *)self.topViewController
-            : nil;
-    if (!topViewController) {
-        RaftConversationForwardLog(@"gesture_ended result=dropped reason=top_not_page");
-        return;
-    }
-    RaftConversationForwardLog([NSString stringWithFormat:
-        @"gesture_ended result=request progress=%.3f vx=%.1f", progress, velocity.x]);
-    [topViewController raftRequestConversationForward];
-}
-
-- (void)fd_setConversationForwardGestureEnabled:(BOOL)enabled
-{
-    RaftConversationForwardPanGestureRecognizer *gestureRecognizer =
-        objc_getAssociatedObject(self, @selector(fd_conversationForwardGestureRecognizer));
-    if (!enabled) {
-        if (gestureRecognizer.view != nil) {
-            RaftConversationForwardDebugLog(@"recognizer_detach");
-        }
-        gestureRecognizer.enabled = NO;
-        if (gestureRecognizer.view != nil) {
-            [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
-        }
-        return;
-    }
-
-    gestureRecognizer = self.fd_conversationForwardGestureRecognizer;
-    if (gestureRecognizer.view != self.view) {
-        if (gestureRecognizer.view != nil) {
-            [gestureRecognizer.view removeGestureRecognizer:gestureRecognizer];
-        }
-        [self.view addGestureRecognizer:gestureRecognizer];
-    }
-    gestureRecognizer.enabled = YES;
-    RaftConversationForwardDebugLog([NSString stringWithFormat:
-        @"recognizer_attach kind=pan zone=%.0f ltr=%d inWindow=%d stack=%lu",
-        RAFT_CONVERSATION_FORWARD_EDGE_ZONE,
-        RaftConversationForwardIsLeftToRight(),
-        self.view.window != nil,
-        (unsigned long)self.viewControllers.count]);
 }
 
 - (void)fd_setupViewControllerBasedNavigationBarAppearanceIfNeeded:(UIViewController *)appearingViewController
@@ -670,31 +331,6 @@ typedef void (^_FDViewControllerWillAppearInjectBlock)(UIViewController *viewCon
         objc_setAssociatedObject(self, _cmd, panGestureRecognizer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     return panGestureRecognizer;
-}
-
-- (_FDConversationForwardGestureRecognizerDelegate *)fd_conversationForwardGestureRecognizerDelegate
-{
-    _FDConversationForwardGestureRecognizerDelegate *delegate = objc_getAssociatedObject(self, _cmd);
-    if (!delegate) {
-        delegate = [[_FDConversationForwardGestureRecognizerDelegate alloc] init];
-        delegate.navigationController = self;
-        objc_setAssociatedObject(self, _cmd, delegate, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    return delegate;
-}
-
-- (RaftConversationForwardPanGestureRecognizer *)fd_conversationForwardGestureRecognizer
-{
-    RaftConversationForwardPanGestureRecognizer *gestureRecognizer = objc_getAssociatedObject(self, _cmd);
-    if (!gestureRecognizer) {
-        gestureRecognizer = [[RaftConversationForwardPanGestureRecognizer alloc] init];
-        gestureRecognizer.maximumNumberOfTouches = 1;
-        gestureRecognizer.cancelsTouchesInView = NO;
-        gestureRecognizer.delegate = self.fd_conversationForwardGestureRecognizerDelegate;
-        [gestureRecognizer addTarget:self action:@selector(fd_handleConversationForwardGesture:)];
-        objc_setAssociatedObject(self, _cmd, gestureRecognizer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    return gestureRecognizer;
 }
 
 - (BOOL)fd_viewControllerBasedNavigationBarAppearanceEnabled

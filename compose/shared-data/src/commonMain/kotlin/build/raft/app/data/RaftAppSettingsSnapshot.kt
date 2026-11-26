@@ -3,7 +3,6 @@ package build.raft.app.data
 import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.nav.RaftIosNativeNavFlag
-import build.raft.app.raftPlatformSupportsConversationForwardGesture
 import build.raft.app.raftPlatformSupportsInAppBrowser
 import build.raft.app.raftPlatformSupportsMultiShellHost
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -19,7 +18,6 @@ import kotlinx.coroutines.launch
 /** Which Settings > Mobile cards this platform shows: a hidden card's setting is absent from the snapshot. */
 @RaftCoreInternalApi data class RaftAppSettingsPlatform(
     val linkOpenMode: Boolean,
-    val conversationForwardGesture: Boolean,
     val iosNativeNav: Boolean,
     val multiShellHost: Boolean,
 )
@@ -27,7 +25,6 @@ import kotlinx.coroutines.launch
 @RaftCoreInternalApi fun currentRaftAppSettingsPlatform(): RaftAppSettingsPlatform =
     RaftAppSettingsPlatform(
         linkOpenMode = raftPlatformSupportsInAppBrowser(),
-        conversationForwardGesture = raftPlatformSupportsConversationForwardGesture(),
         iosNativeNav = RaftIosNativeNavFlag.hostSupported,
         multiShellHost = raftPlatformSupportsMultiShellHost(),
     )
@@ -71,8 +68,7 @@ import kotlinx.coroutines.launch
         compactMessages = chat.readCompactConsecutiveMessagesSync(),
         longMessageCollapse = chat.readLongMessageCollapseEnabledSync(),
         newMessageMenu = chat.readNewMessageMenuEnabledSync(),
-        conversationForwardGesture =
-            if (platform.conversationForwardGesture) chat.readConversationForwardGestureEnabledSync() else null,
+        conversationForwardGesture = null,
         iosNativeNav = if (platform.iosNativeNav) RaftIosNativeNavFlag.stored(store, supported = true) else null,
         iosNativeNavChosen = if (platform.iosNativeNav) RaftIosNativeNavFlag.localOverrideSetting(store) != null else null,
         // No longer a setting (settings cleanup, 1.27.0): Activity always shows task status, the

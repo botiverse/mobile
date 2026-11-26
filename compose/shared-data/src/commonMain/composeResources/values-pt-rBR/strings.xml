@@ -3022,9 +3022,6 @@
     <string name="settings_mobile_server_drawer_detail">Use o novo painel lateral esquerdo multisservidor no Início. Desative para manter o seletor de servidores em pop-up atual.</string>
     <string name="settings_mobile_new_message_menu">Novo menu de mensagens</string>
     <string name="settings_mobile_new_message_menu_detail">Toque e segure uma mensagem para ver reações rápidas e ações comuns em um menu compacto de duas linhas. Desative para usar o menu de mensagens clássico.</string>
-    <string name="settings_mobile_conversation_forward_gesture">Gesto de avançar na conversa</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">Depois de voltar de uma conversa para o Início, deslize para a esquerda a partir da borda direita para reabri-la.</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controla o gesto de avançar na conversa. Depois de voltar de uma conversa para o Início, deslize para a esquerda a partir da borda direita da tela para reabri-la.</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">Oculta avatares repetidos em mensagens consecutivas do mesmo remetente. Toque e segure uma linha para ver o horário da mensagem.</string>
     <string name="settings_mobile_long_message_collapse">Recolher mensagens longas</string>

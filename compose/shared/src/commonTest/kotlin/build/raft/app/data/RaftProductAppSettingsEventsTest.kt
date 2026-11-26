@@ -24,7 +24,7 @@ class RaftProductAppSettingsEventsTest {
         val properties =
             raftAppSettingsSnapshotProperties(
                 store,
-                RaftAppSettingsPlatform(linkOpenMode = true, conversationForwardGesture = false, iosNativeNav = false, multiShellHost = true),
+                RaftAppSettingsPlatform(linkOpenMode = true, iosNativeNav = false, multiShellHost = true),
             )
         val encoded =
             RaftProductEvent.AppSettingsSnapshot(properties).encodeProperties()
@@ -49,8 +49,8 @@ class RaftProductAppSettingsEventsTest {
 
     @Test
     fun anIphoneSnapshotWaitsUntilTheNativeNavFlagIsKnown() {
-        val iphone = RaftAppSettingsPlatform(linkOpenMode = true, conversationForwardGesture = true, iosNativeNav = true, multiShellHost = false)
-        val android = iphone.copy(conversationForwardGesture = false, iosNativeNav = false, multiShellHost = true)
+        val iphone = RaftAppSettingsPlatform(linkOpenMode = true, iosNativeNav = true, multiShellHost = false)
+        val android = iphone.copy(iosNativeNav = false, multiShellHost = true)
         val store = InMemoryRaftKeyValueStore()
         assertEquals(true, raftAppSettingsSnapshotReady(store, android))
         assertEquals(false, raftAppSettingsSnapshotReady(store, iphone))

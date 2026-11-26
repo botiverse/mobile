@@ -15,9 +15,6 @@ package build.raft.app
 
 @RaftCoreInternalApi expect fun raftPlatformSupportsMultiShellHost(): Boolean
 
-/** iOS is currently the only host with a native right-edge Forward recognizer. */
-@RaftCoreInternalApi expect fun raftPlatformSupportsConversationForwardGesture(): Boolean
-
 /**
  * Default of the "Enter sends" composer preference (an explicit choice in settings wins). Desktop:
  * on, like the web on a fine pointer (Enter / Cmd+Enter send, Shift+Enter inserts a newline, Enter

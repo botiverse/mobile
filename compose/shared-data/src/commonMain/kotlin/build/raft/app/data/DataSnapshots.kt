@@ -2592,13 +2592,6 @@ data class SettingsMobileSnapshot(
             statusLabel = "Off",
             detail = "Long-press a message to show quick reactions and common actions in a compact two-row menu. Turn it off to use the classic message menu."
         ),
-    val conversationForwardGesture: SettingsMobileToggleSnapshot =
-        SettingsMobileToggleSnapshot(
-            enabled = false,
-            available = true,
-            statusLabel = "Off",
-            detail = "After going back from a chat to Home, swipe left from the right edge to reopen it."
-        ),
     val foregroundMessageBanners: SettingsMobileToggleSnapshot =
         SettingsMobileToggleSnapshot(
             enabled = false,

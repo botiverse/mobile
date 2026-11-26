@@ -19,8 +19,8 @@ typedef void (^RaftBridgeCallback)(id _Nullable result);
 
 /**
  * The page this module belongs to (a RaftPageViewController): presentation anchor, navigation
- * stack, share-image capture root and the owner of page-bound native state (adaptive navigation,
- * conversation forward gesture). Weak: the page owns its bridge.
+ * stack, share-image capture root and the owner of page-bound native state (adaptive navigation).
+ * Weak: the page owns its bridge.
  */
 @property (nonatomic, weak, nullable) UIViewController *raftHostController;
 

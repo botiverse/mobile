@@ -19,8 +19,6 @@ import platform.Foundation.valueForKey
 // switch happens in place. Return to supportsMultipleScenes once the host activates a scene.
 @RaftCoreInternalApi actual fun raftPlatformSupportsMultiShellHost(): Boolean = false
 
-@RaftCoreInternalApi actual fun raftPlatformSupportsConversationForwardGesture(): Boolean = true
-
 // Read at every call, not once: the keyboard state is snapshot state, so a page reading the
 // preference (ThreadPage reads it in composition) follows a keyboard being attached or removed.
 // LocalPreferences only falls back to this while the user has not chosen in Settings.

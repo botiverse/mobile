@@ -12,15 +12,12 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.repeatWhileProcessForeground
 import androidx.compose.ui.input.key.key
 import build.raft.app.data.selectedConversationWhenShellReturns
-import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.RaftHostNetworkEvents
 import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftChatLayoutPreferenceEvents
 import build.raft.app.data.RaftRealtimeEvents
 import build.raft.app.data.MyMessageAlignmentPreference
 import build.raft.app.data.ChatLayoutPreferenceSnapshotRuntimeAuthority
-import build.raft.app.data.ConversationForwardGestureRuntimeAuthority
-import build.raft.app.data.reconcileConversationForwardGesturePreference
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedComputersIntent
@@ -911,16 +908,12 @@ internal fun AppShellChildPagePrewarmEffects(
 @NonRestartableComposable
 internal fun AppShellRuntimeAuthorityEffects(
     desktopModeOnLargeScreenState: MutableState<Boolean>,
-    bridge: build.raft.app.base.BridgeModule,
-    conversationForwardHistory: build.raft.app.data.SharedConversationForwardHistory,
-    settingsCapabilities: BridgeSettingsPlatformCapabilities,
     chatLayoutPreferenceEvents: RaftChatLayoutPreferenceEvents,
     chatLayoutPreferenceRepository: build.raft.app.data.ChatLayoutPreferenceRepository,
     myMessageAlignmentState: MutableState<MyMessageAlignmentPreference>,
     compactConsecutiveMessagesState: MutableState<Boolean>,
     foregroundMessageBannersEnabledState: MutableState<Boolean>,
     serverDrawerEnabledState: MutableState<Boolean>,
-    conversationForwardGestureEnabledState: MutableState<Boolean>,
     foregroundBannerStore: SharedForegroundBannerStore,
 ) {
     var desktopModeOnLargeScreen by desktopModeOnLargeScreenState
@@ -928,26 +921,6 @@ internal fun AppShellRuntimeAuthorityEffects(
     var compactConsecutiveMessages by compactConsecutiveMessagesState
     var foregroundMessageBannersEnabled by foregroundMessageBannersEnabledState
     var serverDrawerEnabled by serverDrawerEnabledState
-    var conversationForwardGestureEnabled by conversationForwardGestureEnabledState
-    val conversationForwardGestureRuntimeAuthority =
-        remember(
-            settingsCapabilities.supportsConversationForwardGesture,
-            conversationForwardHistory,
-            bridge
-        ) {
-            ConversationForwardGestureRuntimeAuthority(
-                supported = settingsCapabilities.supportsConversationForwardGesture
-            ) { effectiveEnabled ->
-                conversationForwardGestureEnabled = effectiveEnabled
-                reconcileConversationForwardGesturePreference(
-                    enabled = effectiveEnabled,
-                    history = conversationForwardHistory,
-                    disableNativeGesture = {
-                        bridge.setConversationForwardGestureEnabled(false)
-                    }
-                )
-            }
-        }
     val chatLayoutPreferenceSnapshotRuntimeAuthority =
         remember(foregroundBannerStore) {
             ChatLayoutPreferenceSnapshotRuntimeAuthority { chatLayout ->
@@ -964,31 +937,21 @@ internal fun AppShellRuntimeAuthorityEffects(
     DisposableEffect(
         chatLayoutPreferenceEvents,
         chatLayoutPreferenceSnapshotRuntimeAuthority,
-        conversationForwardGestureRuntimeAuthority,
     ) {
-        val forwardSubscription =
-            chatLayoutPreferenceEvents.addConversationForwardGestureListener { enabled ->
-                conversationForwardGestureRuntimeAuthority.applyProcessPreferenceChange(enabled)
-            }
         val snapshotSubscription =
             chatLayoutPreferenceEvents.addPreferenceListener { chatLayout ->
                 chatLayoutPreferenceSnapshotRuntimeAuthority.applyProcessPreferenceChange(chatLayout)
             }
         onDispose {
-            forwardSubscription.close()
             snapshotSubscription.close()
         }
     }
     LaunchedEffect(
         chatLayoutPreferenceRepository,
         chatLayoutPreferenceSnapshotRuntimeAuthority,
-        conversationForwardGestureRuntimeAuthority,
     ) {
         val chatLayout = chatLayoutPreferenceRepository.getChatLayoutPreference()
         chatLayoutPreferenceSnapshotRuntimeAuthority.seedFromRepository(chatLayout)
-        conversationForwardGestureRuntimeAuthority.seedFromRepository(
-            chatLayout.conversationForwardGestureEnabled
-        )
     }
 }
 

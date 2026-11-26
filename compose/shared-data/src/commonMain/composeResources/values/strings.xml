@@ -3026,9 +3026,6 @@
     <string name="settings_mobile_server_drawer_detail">Use the new multi-server left drawer on Home. Turn this off to keep the current server switcher popover.</string>
     <string name="settings_mobile_new_message_menu">New message menu</string>
     <string name="settings_mobile_new_message_menu_detail">Press and hold a message to show quick reactions and common actions in a compact two-row menu. Turn it off to use the classic message menu.</string>
-    <string name="settings_mobile_conversation_forward_gesture">Conversation forward gesture</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">After going back from a chat to Home, swipe left from the right edge to reopen it.</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">Beta. Controls the conversation forward gesture. After going back from a chat to Home, swipe left from the right edge of the screen to reopen it.</string>
     <string name="settings_badge_beta">Beta</string>
     <string name="settings_mobile_compact_detail">Hide repeated avatars for consecutive messages from the same sender. Press and hold a row to see its message time.</string>
     <string name="settings_mobile_long_message_collapse">Collapse long messages</string>

@@ -207,48 +207,6 @@ async function main() {
   appLoginDiagnostics();
   console.log(`home-shot: saved ${file}`);
   console.log(`home-shot: iOS ${ready.ios}; tab bar buttons: ${ready.tabBarButtons.map((b) => b.label).join(" | ")}`);
-
-  if (args["forward-probe"] === "1") {
-    // ConversationForwardGestureProbe (the test's step 5): Beta switch on, open a channel, back,
-    // right-edge drag; the channel must reopen.
-    const probe = await waitForFile("forward-probe", 900_000, "forward-probe");
-    progressShot("forward-probe-end");
-    const lines = forwardDiagnostics();
-    fs.writeFileSync(path.join(out, "forward-diagnostics.txt"), lines.join("\n") + "\n");
-    console.log(`home-shot: forward diagnostics (${lines.length} lines, last 80):`);
-    for (const line of lines.slice(-80)) console.log(`  ${line}`);
-    if (probe) fs.writeFileSync(path.join(out, "forward-probe.json"), JSON.stringify(probe, null, 2));
-    if (!probe?.ok) die(`forward probe: ${probe ? `reopened=${probe.reopened} ${probe.error ?? ""} steps=${(probe.steps ?? []).join("; ")}` : "timeout"}`);
-    console.log(`home-shot: forward probe PASS (${(probe.steps ?? []).join("; ")})`);
-  }
-}
-
-// The app's conversation-forward diagnostics lines (native SlockConversationForward and the
-// shared conversation_forward_* lines), from the diagnostics files in its data container.
-function forwardDiagnostics() {
-  let container;
-  try {
-    container = execFileSync("xcrun", ["simctl", "get_app_container", udid, bundle, "data"], { encoding: "utf8" }).trim();
-  } catch {
-    return [];
-  }
-  const lines = [];
-  const walk = (dir) => {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) walk(full);
-      else if (!entry.name.startsWith("slockAppLogin") && fs.statSync(full).size < 16_000_000) {
-        const text = fs.readFileSync(full).toString("latin1");
-        for (const line of text.split(/\r?\n/)) {
-          if (/SlockConversationForward|conversation_forward/.test(line)) lines.push(line.slice(0, 600));
-        }
-      }
-    }
-  };
-  try {
-    walk(container);
-  } catch {}
-  return lines;
 }
 
 main().catch((err) => die(`threw ${err?.message ?? err}`));

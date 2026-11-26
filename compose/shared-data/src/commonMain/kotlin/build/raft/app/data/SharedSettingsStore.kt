@@ -660,10 +660,6 @@ sealed interface SharedSettingsIntent {
         val enabled: Boolean,
         val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
     ) : SharedSettingsIntent
-    data class SetConversationForwardGestureEnabled(
-        val enabled: Boolean,
-        val surface: RaftAppSettingSurface = RaftAppSettingSurface.SettingsMobile,
-    ) : SharedSettingsIntent
     data class SetForegroundMessageBanners(val enabled: Boolean) : SharedSettingsIntent
     data class SetComposerSendKey(
         val enabled: Boolean,
@@ -733,9 +729,6 @@ sealed interface SharedSettingsEffect {
 }
 
 interface SharedSettingsPlatformCapabilities {
-    val supportsConversationForwardGesture: Boolean
-        get() = false
-
     suspend fun pickAccountAvatarFile(): DataResult<PlatformFile> =
         DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable", retryable = false))
 
@@ -1581,19 +1574,6 @@ class SharedSettingsDataSource(
         return loadMobilePreferences()
     }
 
-    suspend fun setConversationForwardGestureEnabled(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
-        if (!platformCapabilities.supportsConversationForwardGesture) {
-            return DataResult.Error(
-                ScreenError("settings_conversation_forward_gesture_unavailable", retryable = false)
-            )
-        }
-        val repository =
-            chatLayoutPreferenceRepository
-                ?: return DataResult.Error(ScreenError("settings_conversation_forward_gesture_unavailable", retryable = false))
-        repository.setConversationForwardGestureEnabled(enabled)
-        return loadMobilePreferences()
-    }
-
     suspend fun setForegroundMessageBanners(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             chatLayoutPreferenceRepository
@@ -1983,15 +1963,6 @@ class SharedSettingsDataSource(
                         available = false,
                         statusLabel = "Unsupported",
                         detail = "The compact message menu is not available on this platform."
-                    ),
-            conversationForwardGesture =
-                chatLayout?.toSettingsMobileConversationForwardGestureSnapshot(
-                    available = platformCapabilities.supportsConversationForwardGesture
-                )
-                    ?: conversationForwardGesture.copy(
-                        available = false,
-                        statusLabel = "Unsupported",
-                        detail = "Conversation Forward navigation is not available on this platform."
                     ),
             foregroundMessageBanners =
                 chatLayout?.toSettingsMobileForegroundMessageBannersSnapshot()
@@ -3161,14 +3132,6 @@ class SharedSettingsStore(
                     )
                 dataSource.setNewMessageMenuEnabled(intent.enabled)
                     .applyMobileActionResult(MOBILE_ACTION_NEW_MESSAGE_MENU)
-            }
-            is SharedSettingsIntent.SetConversationForwardGestureEnabled -> {
-                _state.value =
-                    _state.value.copy(
-                        actionState = SharedSettingsActionState(MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE, inProgress = true)
-                    )
-                dataSource.setConversationForwardGestureEnabled(intent.enabled)
-                    .applyMobileActionResult(MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE)
             }
             is SharedSettingsIntent.SetForegroundMessageBanners -> {
                 if (serverNotificationModeMutation != null) return
@@ -4941,7 +4904,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetCompactConsecutiveMessages,
             is SharedSettingsIntent.SetLongMessageCollapseEnabled,
             is SharedSettingsIntent.SetNewMessageMenuEnabled,
-            is SharedSettingsIntent.SetConversationForwardGestureEnabled,
             is SharedSettingsIntent.SetForegroundMessageBanners,
             is SharedSettingsIntent.SetComposerSendKey,
             is SharedSettingsIntent.SetMultiShellHostEnabled,
@@ -5357,7 +5319,6 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
 @RaftCoreInternalApi const val MOBILE_ACTION_COMPACT_MESSAGES = "compactMessages"
 @RaftCoreInternalApi const val MOBILE_ACTION_LONG_MESSAGE_COLLAPSE = "longMessageCollapse"
 @RaftCoreInternalApi const val MOBILE_ACTION_NEW_MESSAGE_MENU = "newMessageMenu"
-@RaftCoreInternalApi const val MOBILE_ACTION_CONVERSATION_FORWARD_GESTURE = "conversationForwardGesture"
 @RaftCoreInternalApi const val MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS = "foregroundMessageBanners"
 @RaftCoreInternalApi const val MOBILE_ACTION_COMPOSER_SEND_KEY = "composerSendKey"
 @RaftCoreInternalApi const val MOBILE_ACTION_MULTI_SHELL_HOST = "multiShellHost"
@@ -5594,26 +5555,6 @@ private fun ChatLayoutPreferenceSnapshot.toSettingsMobileNewMessageMenuSnapshot(
         detail = "Long-press a message to show quick reactions and common actions in a compact two-row menu. Turn it off to use the classic message menu."
     )
 
-private fun ChatLayoutPreferenceSnapshot.toSettingsMobileConversationForwardGestureSnapshot(
-    available: Boolean
-): SettingsMobileToggleSnapshot =
-    SettingsMobileToggleSnapshot(
-        enabled = available && conversationForwardGestureEnabled,
-        available = available,
-        statusLabel =
-            when {
-                !available -> "Unsupported"
-                conversationForwardGestureEnabled -> "Enabled"
-                else -> "Off"
-            },
-        detail =
-            if (available) {
-                "After going back from a chat to Home, swipe left from the right edge to reopen it."
-            } else {
-                "Conversation Forward navigation is available on iOS."
-            }
-    )
-
 private fun ChatLayoutPreferenceSnapshot.toSettingsMobileForegroundMessageBannersSnapshot(): SettingsMobileToggleSnapshot =
     SettingsMobileToggleSnapshot(
         enabled = foregroundMessageBannersEnabled,
@@ -5803,7 +5744,6 @@ private fun SharedSettingsIntent.appSettingChange(): Pair<RaftAppSettingKey, Raf
         is SharedSettingsIntent.SetCompactConsecutiveMessages -> RaftAppSettingKey.CompactMessages to surface
         is SharedSettingsIntent.SetLongMessageCollapseEnabled -> RaftAppSettingKey.LongMessageCollapse to surface
         is SharedSettingsIntent.SetNewMessageMenuEnabled -> RaftAppSettingKey.NewMessageMenu to surface
-        is SharedSettingsIntent.SetConversationForwardGestureEnabled -> RaftAppSettingKey.ConversationForwardGesture to surface
         is SharedSettingsIntent.SetComposerSendKey -> RaftAppSettingKey.ComposerEnterSends to surface
         is SharedSettingsIntent.SetMultiShellHostEnabled -> RaftAppSettingKey.MultiShellHost to surface
         is SharedSettingsIntent.SetDesktopModeOnLargeScreen -> RaftAppSettingKey.DesktopModeLargeScreen to surface
@@ -5825,15 +5765,17 @@ private fun SharedSettingsIntent.appSettingChange(): Pair<RaftAppSettingKey, Raf
         RaftAppSettingKey.CompactMessages -> compactConsecutiveMessages.appSettingToggleValue()
         RaftAppSettingKey.LongMessageCollapse -> longMessageCollapse.appSettingToggleValue()
         RaftAppSettingKey.NewMessageMenu -> newMessageMenu.appSettingToggleValue()
-        RaftAppSettingKey.ConversationForwardGesture -> conversationForwardGesture.appSettingToggleValue()
         RaftAppSettingKey.ComposerEnterSends -> composerSendKey.appSettingToggleValue()
         RaftAppSettingKey.MultiShellHost -> multiShellHost.appSettingToggleValue()
         RaftAppSettingKey.DesktopModeLargeScreen -> desktopModeOnLargeScreen.appSettingToggleValue()
         RaftAppSettingKey.ServerDrawer -> serverDrawer.appSettingToggleValue()
         // Not in this snapshot: the card writes RaftIosNativeNavFlag itself and reports its own change.
         RaftAppSettingKey.IosNativeNav -> null
-        // No longer settings (1.27.0): task status on Activity and the Home workspace avatar are always on.
-        RaftAppSettingKey.ActivityTaskStatusBadges, RaftAppSettingKey.HomeServerAvatar -> null
+        // No longer settings: task status on Activity and the Home workspace avatar are always on
+        // (1.27.0); the iOS conversation forward gesture Beta was removed (1.31.0).
+        RaftAppSettingKey.ActivityTaskStatusBadges,
+        RaftAppSettingKey.HomeServerAvatar,
+        RaftAppSettingKey.ConversationForwardGesture -> null
     }
 
 private fun SettingsMobileToggleSnapshot.appSettingToggleValue(): RaftAppSettingValue? =

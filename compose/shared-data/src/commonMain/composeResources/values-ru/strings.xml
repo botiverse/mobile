@@ -3022,9 +3022,6 @@
     <string name="settings_mobile_server_drawer_detail">Использовать новую левую панель со всеми серверами на «Главной». Если выключить, останется текущее всплывающее меню переключения серверов.</string>
     <string name="settings_mobile_new_message_menu">Новое меню сообщения</string>
     <string name="settings_mobile_new_message_menu_detail">При долгом нажатии на сообщение показывать быстрые реакции и частые действия в компактном меню из двух рядов. Если выключить, будет классическое меню сообщения.</string>
-    <string name="settings_mobile_conversation_forward_gesture">Жест возврата в чат</string>
-    <string name="settings_mobile_conversation_forward_gesture_detail">Вернувшись из чата на «Главную», проведите влево от правого края экрана, чтобы снова открыть его.</string>
-    <string name="settings_mobile_conversation_forward_gesture_accessibility">Бета. Управляет жестом возврата в чат. Вернувшись из чата на «Главную», проведите влево от правого края экрана, чтобы снова открыть его.</string>
     <string name="settings_badge_beta">Бета</string>
     <string name="settings_mobile_compact_detail">Скрывать повторяющиеся аватары в сообщениях подряд от одного отправителя. Чтобы увидеть время сообщения, нажмите на строку и удерживайте.</string>
     <string name="settings_mobile_long_message_collapse">Сворачивать длинные сообщения</string>
