@@ -177,6 +177,7 @@
             "causalActorType": { "type": ["string", "null"] },
             "causalActorId": { "type": ["string", "null"] },
             "systemSubtype": { "description": "null: no subtype. Absent: the event did not carry the system provenance.", "type": ["string", "null"] },
+            "countsUnread": { "description": "messages.counts_unread: false for a history-only notice (in history, nobody's unread). Absent = true (an older event).", "type": ["boolean", "null"] },
             "quietForPeople": { "description": "messages.quiet_for_people (step 2c): a task lifecycle line that is not a person's activity unless it mentions them. Absent = false (an older event).", "type": ["boolean", "null"] },
             "mentions": {
               "type": "array",
@@ -265,23 +266,38 @@
         "row": { "$ref": "#/$defs/rowState" },
         "reread": { "description": "Some step since the case started asked to re-read this one row (not which request; never the list).", "type": "boolean" },
         "removed": { "description": "sync_inbox_row only: the row is no longer held (a syncDelete applied). With true, `row` is not given.", "type": "boolean" },
-        "verdict": { "$ref": "#/$defs/verdict" }
+        "verdict": { "$ref": "#/$defs/verdict" },
+        "flagOn": {
+          "description": "Predicate cases: the verdict where a read-side flag is on for the reader's server, when it differs from `verdict` (the flag-off rule). Keyed by the flag; a loader passes that flag's answer to the shared rule as input (activityLiveUnread `rules`) and asserts this verdict, and asserts `verdict` with it off.",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "people_activity_rows_v0": {
+              "description": "#proj-raft-ui:#321: a person's thread, channel and DM rows move by the whole people predicate (shared peopleRowMessageMoves `fullRule`, rules.peopleActivityRows).",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["verdict"],
+              "properties": { "verdict": { "$ref": "#/$defs/verdict" } }
+            }
+          }
+        }
       }
     },
     "positionExpectation": {
       "type": "object",
       "required": ["reread"],
-      "properties": { "reread": true, "verdict": false, "removed": false }
+      "properties": { "reread": true, "verdict": false, "removed": false, "flagOn": false }
     },
     "syncExpectation": {
       "type": "object",
       "required": ["reread"],
-      "properties": { "reread": true, "verdict": false }
+      "properties": { "reread": true, "verdict": false, "flagOn": false }
     },
     "predicateExpectation": {
       "type": "object",
       "required": ["verdict"],
-      "properties": { "verdict": true, "row": false, "reread": false, "removed": false }
+      "properties": { "verdict": true, "flagOn": true, "row": false, "reread": false, "removed": false }
     },
     "verdict": {
       "description": "The unread predicate's answer.",

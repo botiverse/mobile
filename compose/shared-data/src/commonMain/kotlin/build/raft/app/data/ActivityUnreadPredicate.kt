@@ -105,19 +105,29 @@ import build.raft.app.RaftCoreInternalApi
  */
 @RaftCoreInternalApi data class ActivityUnreadVerdict(val counts: Boolean?, val mention: Boolean, val moves: Boolean = true)
 
+/**
+ * Flag answers the rule takes as input (the caller resolves them for the reader's server; the rule
+ * reads no flag). Absent/false: flag off. Web `ActivityUnreadRules` (slock #17095).
+ */
+@RaftCoreInternalApi data class ActivityUnreadRules(
+    /** `people_activity_rows_v0` (#proj-raft-ui:#321): thread, channel and DM rows follow the whole people predicate. */
+    val peopleActivityRows: Boolean = false,
+)
+
 /** Web `activityLiveUnread`. */
 @RaftCoreInternalApi fun activityLiveUnread(
     message: ActivityUnreadMessage,
     viewer: ActivityUnreadViewer,
     scope: ActivityUnreadScope,
+    rules: ActivityUnreadRules = ActivityUnreadRules(),
 ): ActivityUnreadVerdict {
     val own = message.senderType == viewer.type && message.senderId == viewer.id
     val isThreadRow = scope.rowKind == ActivityUnreadRowKind.Thread || scope.rowKind == ActivityUnreadRowKind.Task
     // The mute decides whether a channel or DM row moves, whoever sent it and whether it is read;
-    // on a person's row, so does peopleRowMessageMoves (step 2c, #319). Agents never read quietForPeople.
+    // on a person's row, so does peopleRowMessageMoves (step 2c, #319, #321). Agents never read quietForPeople.
     val moves =
         (isThreadRow || !scope.activityMuted) &&
-            (viewer.type != "user" || peopleRowMessageMoves(message, viewer.id, scope.rowKind))
+            (viewer.type != "user" || peopleRowMessageMoves(message, viewer.id, scope.rowKind, fullRule = rules.peopleActivityRows))
     if (own || scope.readOnArrival) return ActivityUnreadVerdict(counts = false, mention = false, moves = moves)
     // An unfollowed thread row: no count and no @, even for a mention of the viewer. Correct only because
     // a mention makes the server follow the thread for them and send the change that makes the client
@@ -184,7 +194,8 @@ private fun countsForViewer(message: ActivityUnreadMessage, viewer: ActivityUnre
     message: ActivityUnreadMessage,
     userId: String,
     rowKind: ActivityUnreadRowKind,
+    fullRule: Boolean = false,
 ): Boolean {
-    if (rowKind == ActivityUnreadRowKind.Task) return peopleActivityRowMessage(message, userId)
+    if (rowKind == ActivityUnreadRowKind.Task || fullRule) return peopleActivityRowMessage(message, userId)
     return message.quietForPeople != true || peopleActivityRowMessage(message, userId)
 }
