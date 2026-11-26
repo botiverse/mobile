@@ -4,6 +4,7 @@ import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.AgentMigrateActionCardType
+import build.raft.app.data.ExternalInviteAddressesOutcome
 import build.raft.app.data.PlanTrialActionCardType
 import build.raft.app.data.ProPricing
 import build.raft.app.data.ActionCardExecuteOutcome
@@ -38,6 +39,7 @@ import build.raft.app.data.expiredAsOf
 import build.raft.app.data.isActionCardExpiredRefusal
 import build.raft.app.data.markedExpired
 import build.raft.app.data.isFeedbackSubmitAction
+import build.raft.app.data.isInviteExternalAction
 import build.raft.app.data.seatRequestEffectiveSeatsShort
 import build.raft.app.data.seatsAddPurposeTenths
 import build.raft.app.data.stripActionCardSpec
@@ -417,6 +419,12 @@ internal sealed interface ThreadActionCardSpecError {
      * or changed (web `card_changed`, question-card spec §5.10): nothing was sent; the choices stay.
      */
     data object QuestionNotSent : ThreadActionCardSpecError
+
+    /**
+     * `GET /api/actions/:messageId/external-invite-addresses` returned 404 (slock #16530):
+     * the card was handled, declined or expired meanwhile, its flag is off, or the viewer lost access.
+     */
+    data object InviteExternalUnavailable : ThreadActionCardSpecError
 }
 
 internal fun ThreadActionCardSpecError?.traceIdOrNull(): String? =
@@ -425,6 +433,7 @@ internal fun ThreadActionCardSpecError?.traceIdOrNull(): String? =
         is ThreadActionCardSpecError.FeedbackRateLimited -> traceId
         ThreadActionCardSpecError.FormRequired,
         ThreadActionCardSpecError.QuestionNotSent,
+        ThreadActionCardSpecError.InviteExternalUnavailable,
         null -> null
     }
 
@@ -480,9 +489,21 @@ internal data class ThreadActionCardSpecSeatRequestState(
 )
 
 /**
+ * The Invite people / Connect servers dialog opened by a `channel:invite_external` card
+ * (slock #16530, #16662, #16671). [emails] are held in memory only while the dialog is open and
+ * cleared on dismiss.
+ */
+internal data class ThreadActionCardSpecInviteExternalState(
+    val messageId: String,
+    val card: ThreadActionCard,
+    val emails: List<String>,
+)
+
+/**
  * Every spec card of a thread page: which Button runs ([busy], by message), the last failure
- * under each card ([errors]), the open confirm, form or seat-request sheet, and which Button handed
- * its card to the typed path ([typedPress]) so the frame can show that one busy while it runs.
+ * under each card ([errors]), the open confirm, form, seat-request or external-invite sheet, and
+ * which Button handed its card to the typed path ([typedPress]) so the frame can show that one
+ * busy while it runs.
  */
 internal data class ThreadActionCardSpecState(
     val busy: Map<String, String> = emptyMap(),
@@ -490,6 +511,7 @@ internal data class ThreadActionCardSpecState(
     val confirm: ThreadActionCardSpecConfirmState? = null,
     val form: ThreadActionCardSpecFormState? = null,
     val seatRequest: ThreadActionCardSpecSeatRequestState? = null,
+    val inviteExternal: ThreadActionCardSpecInviteExternalState? = null,
     val typedPress: Map<String, String> = emptyMap(),
     /** A question card answered on the card (spec §5.9): its choices by message, kept while it scrolls away. */
     val inlineValues: Map<String, Map<String, ActionCardFormValue>> = emptyMap(),
@@ -523,6 +545,7 @@ internal data class ThreadActionCardSpecDialogs(
     val confirm: ThreadActionCardSpecConfirmState? = null,
     val form: ThreadActionCardSpecFormState? = null,
     val seatRequest: ThreadActionCardSpecSeatRequestState? = null,
+    val inviteExternal: ThreadActionCardSpecInviteExternalState? = null,
 )
 
 /** One card's part of [ThreadActionCardSpecState]. */
@@ -541,6 +564,11 @@ internal data class ThreadActionCardSpecCardSlice(
 
 /** Synthetic [ThreadActionCardSpecState.busy] element key while `POST /actions/:id/close` is in flight. */
 internal const val ACTION_CARD_CLOSE_ELEMENT_ID: String = "__question_close__"
+
+/** Synthetic [ThreadActionCardSpecState.busy] element keys for `channel:invite_external` frame buttons. */
+internal const val ACTION_CARD_INVITE_EXTERNAL_OPEN_ELEMENT_ID: String = "__invite_external_open__"
+internal const val ACTION_CARD_INVITE_EXTERNAL_DECLINE_ELEMENT_ID: String = "__invite_external_decline__"
+internal const val ACTION_CARD_INVITE_EXTERNAL_RECONFIRM_ELEMENT_ID: String = "__invite_external_reconfirm__"
 
 internal sealed interface ThreadActionCardSpecIntent {
     /** A Button [threadActionCardSpecPress] routed to the store, on the card as the thread holds it now. */
@@ -595,6 +623,21 @@ internal sealed interface ThreadActionCardSpecIntent {
 
     /** Continues the open seat request on the web (closes the sheet and asks the page for the message link). */
     data object OpenSeatRequestInWeb : ThreadActionCardSpecIntent
+
+    /** `channel:invite_external` "Invite people" / "Connect servers" click: fetches addresses on click and opens the dialog. */
+    data class OpenInviteExternal(val messageId: String, val card: ThreadActionCard) : ThreadActionCardSpecIntent
+
+    /** `channel:invite_external` "Decline" click: posts `POST /actions/:id/close` immediately (no Undo wait). */
+    data class DeclineInviteExternal(val messageId: String, val card: ThreadActionCard) : ThreadActionCardSpecIntent
+
+    /** `channel:invite_external` "Confirm again" click on a `reconfirm_required` card. */
+    data class ReconfirmInviteExternal(val messageId: String, val card: ThreadActionCard) : ThreadActionCardSpecIntent
+
+    /** `channel:invite_external` invite sent or server connected: marks the card executed once. */
+    data class MarkInviteExternalExecuted(val messageId: String, val card: ThreadActionCard) : ThreadActionCardSpecIntent
+
+    /** Closes the external-invite dialog and clears the fetched addresses from memory. */
+    data object DismissInviteExternal : ThreadActionCardSpecIntent
 }
 
 /** One-shot results for the page. */
@@ -645,6 +688,22 @@ internal class ThreadActionCardSpecStore(
     private val completeSeatRequest: suspend (messageId: String, card: ThreadActionCard) -> DataResult<SeatRequestCompleteOutcome> = { _, _ ->
         DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
     },
+    /** Address fetch (`GET /actions/:id/external-invite-addresses`, slock #16530) on a `channel:invite_external` card. */
+    private val readExternalInviteAddresses: suspend (messageId: String, card: ThreadActionCard) -> DataResult<ExternalInviteAddressesOutcome> = { _, _ ->
+        DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+    },
+    /** Decline (`POST /actions/:id/close`, slock #16530) on a `channel:invite_external` card. */
+    private val declineExternalInvite: suspend (messageId: String, card: ThreadActionCard) -> DataResult<ActionCardCloseOutcome> = { _, _ ->
+        DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+    },
+    /** Completion (`POST /actions/:id/mark-executed`, slock #16530, #16671) on a `channel:invite_external` card. */
+    private val markExternalInvitesExecuted: suspend (messageId: String, card: ThreadActionCard, channelId: String, addresses: Int) -> DataResult<ThreadActionCard> = { _, _, _, _ ->
+        DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+    },
+    /** Reconfirm (`POST /actions/:id/reconfirm`) on a `reconfirm_required` `channel:invite_external` card. */
+    private val reconfirmCard: suspend (messageId: String, card: ThreadActionCard) -> DataResult<ThreadActionCard> = { _, _ ->
+        DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+    },
     /** A NoPermission the route handles (session expired): true when it did. */
     private val onNoPermission: (DataResult.NoPermission) -> Boolean = { false },
     /** The Developer environment's web URL (AGENTS.md "Environment Web Link URL Rule"); null is production. */
@@ -671,6 +730,8 @@ internal class ThreadActionCardSpecStore(
     private val effectChannel = Channel<ThreadActionCardSpecEffect>(Channel.BUFFERED)
     val effects: Flow<ThreadActionCardSpecEffect> = effectChannel.receiveAsFlow()
     private var dialogToken = 0L
+    /** Message id of an open external-invite dialog whose own send/connect just called mark-executed. */
+    private var markedInviteExternalMessageId: String? = null
 
     fun dispatch(intent: ThreadActionCardSpecIntent) {
         when (intent) {
@@ -693,6 +754,14 @@ internal class ThreadActionCardSpecStore(
                 val seatRequest = _state.value.seatRequest ?: return
                 update { it.copy(seatRequest = null) }
                 effectChannel.trySend(ThreadActionCardSpecEffect.OpenSeatRequestInWeb(seatRequest.messageId))
+            }
+            is ThreadActionCardSpecIntent.OpenInviteExternal -> openInviteExternal(intent)
+            is ThreadActionCardSpecIntent.DeclineInviteExternal -> declineInviteExternal(intent)
+            is ThreadActionCardSpecIntent.ReconfirmInviteExternal -> reconfirmInviteExternal(intent)
+            is ThreadActionCardSpecIntent.MarkInviteExternalExecuted -> markInviteExternalExecuted(intent)
+            ThreadActionCardSpecIntent.DismissInviteExternal -> {
+                markedInviteExternalMessageId = null
+                update { it.copy(inviteExternal = null) }
             }
         }
     }
@@ -717,7 +786,7 @@ internal class ThreadActionCardSpecStore(
         val current = _state.value
         val card = intent.card.expiredAsOf(nowMillis())
         if (threadActionCardSpecPress(card, intent.spec, intent.elementId) != ThreadActionCardSpecPress.Store) return
-        if (intent.messageId in current.busy || current.confirm != null || current.form != null || current.seatRequest != null) return
+        if (intent.messageId in current.busy || current.confirm != null || current.form != null || current.seatRequest != null || current.inviteExternal != null) return
         val button = intent.spec.button(intent.elementId) ?: return
         when (val action = button.action) {
             is ActionCardSpecAction.Execute -> {
@@ -1027,6 +1096,190 @@ internal class ThreadActionCardSpecStore(
     }
 
     /**
+     * `channel:invite_external` "Invite people" / "Connect servers" click (web `inviteExternalCard.tsx`,
+     * slock #16530, #16671): fetches the card's email addresses on click (`GET /actions/:id/external-invite-addresses`)
+     * and opens the dialog. On 404, opens nothing and shows the unavailable banner under the card
+     * (leaving Decline usable).
+     */
+    private fun openInviteExternal(intent: ThreadActionCardSpecIntent.OpenInviteExternal) {
+        val messageId = intent.messageId
+        val current = _state.value
+        if (messageId in current.busy || current.confirm != null || current.form != null || current.seatRequest != null || current.inviteExternal != null) return
+        val card = intent.card.expiredAsOf(nowMillis())
+        if (!card.isInviteExternalAction() || card.actionCardSpecStatus() != RaftActionCardStatus.Prepared) {
+            if (card.hasEnded && !intent.card.hasEnded) applyCard(messageId, card)
+            return
+        }
+        markedInviteExternalMessageId = null
+        update { it.copy(busy = it.busy + (messageId to ACTION_CARD_INVITE_EXTERNAL_OPEN_ELEMENT_ID), errors = it.errors - messageId) }
+        scope.launch {
+            val result = readExternalInviteAddresses(messageId, card)
+            when (result) {
+                is DataResult.Content ->
+                    when (val outcome = result.data) {
+                        is ExternalInviteAddressesOutcome.Loaded -> {
+                            dialogToken++
+                            update {
+                                it.copy(
+                                    busy = it.busy - messageId,
+                                    inviteExternal =
+                                        ThreadActionCardSpecInviteExternalState(
+                                            messageId = messageId,
+                                            card = card,
+                                            emails = outcome.emails,
+                                        ),
+                                )
+                            }
+                        }
+                        ExternalInviteAddressesOutcome.Unavailable ->
+                            update {
+                                it.copy(
+                                    busy = it.busy - messageId,
+                                    errors = it.errors + (messageId to ThreadActionCardSpecError.InviteExternalUnavailable),
+                                )
+                            }
+                    }
+                is DataResult.Empty ->
+                    update { it.copy(busy = it.busy - messageId, errors = it.errors + (messageId to ThreadActionCardSpecError.Failed())) }
+                is DataResult.Error -> {
+                    val err = expiredOrError(messageId, card, result.error)
+                    update {
+                        it.copy(
+                            busy = it.busy - messageId,
+                            errors = if (err != null) it.errors + (messageId to err) else it.errors - messageId,
+                        )
+                    }
+                }
+                is DataResult.NoPermission -> {
+                    update { it.copy(busy = it.busy - messageId) }
+                    if (!onNoPermission(result)) {
+                        update {
+                            it.copy(
+                                errors =
+                                    it.errors +
+                                        (
+                                            messageId to
+                                                ThreadActionCardSpecError.Failed(
+                                                    result.blocker.serverMessage?.takeIf { s -> s.isNotBlank() },
+                                                    result.blocker.traceId,
+                                                )
+                                        ),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * `channel:invite_external` "Decline" click (web `inviteExternalCard.tsx`, slock #16530):
+     * posts `POST /actions/:id/close` immediately (no Undo grace window). 409 `ALREADY_EXECUTED`
+     * applies the handled card with no error; 409 expired marks the card expired locally.
+     */
+    private fun declineInviteExternal(intent: ThreadActionCardSpecIntent.DeclineInviteExternal) {
+        val messageId = intent.messageId
+        if (messageId in _state.value.busy) return
+        val card = intent.card.expiredAsOf(nowMillis())
+        if (!card.isInviteExternalAction() || card.actionCardSpecStatus() != RaftActionCardStatus.Prepared) {
+            if (card.hasEnded && !intent.card.hasEnded) applyCard(messageId, card)
+            return
+        }
+        update { it.copy(busy = it.busy + (messageId to ACTION_CARD_INVITE_EXTERNAL_DECLINE_ELEMENT_ID), errors = it.errors - messageId) }
+        scope.launch {
+            val result = declineExternalInvite(messageId, card)
+            update { it.copy(busy = it.busy - messageId) }
+            val error =
+                when (result) {
+                    is DataResult.Content ->
+                        when (val outcome = result.data) {
+                            is ActionCardCloseOutcome.Closed -> {
+                                outcome.card?.let { applyCard(messageId, it) }
+                                null
+                            }
+                            is ActionCardCloseOutcome.AlreadyExecuted -> {
+                                outcome.card?.let { applyCard(messageId, it) }
+                                null
+                            }
+                        }
+                    is DataResult.Empty -> ThreadActionCardSpecError.Failed()
+                    is DataResult.Error -> expiredOrError(messageId, card, result.error)
+                    is DataResult.NoPermission ->
+                        if (onNoPermission(result)) {
+                            null
+                        } else {
+                            ThreadActionCardSpecError.Failed(
+                                result.blocker.serverMessage?.takeIf { it.isNotBlank() },
+                                result.blocker.traceId,
+                            )
+                        }
+                }
+            if (error != null) update { it.copy(errors = it.errors + (messageId to error)) }
+        }
+    }
+
+    /**
+     * `channel:invite_external` "Confirm again" click on a `reconfirm_required` card: posts
+     * `POST /actions/:id/reconfirm`, bringing the card back to `prepared`.
+     */
+    private fun reconfirmInviteExternal(intent: ThreadActionCardSpecIntent.ReconfirmInviteExternal) {
+        val messageId = intent.messageId
+        if (messageId in _state.value.busy) return
+        val card = intent.card.expiredAsOf(nowMillis())
+        if (!card.isInviteExternalAction() || !card.needsReconfirmation) {
+            if (card.hasEnded && !intent.card.hasEnded) applyCard(messageId, card)
+            return
+        }
+        update { it.copy(busy = it.busy + (messageId to ACTION_CARD_INVITE_EXTERNAL_RECONFIRM_ELEMENT_ID), errors = it.errors - messageId) }
+        scope.launch {
+            val result = reconfirmCard(messageId, card)
+            update { it.copy(busy = it.busy - messageId) }
+            val error =
+                when (result) {
+                    is DataResult.Content -> {
+                        applyCard(messageId, result.data)
+                        null
+                    }
+                    is DataResult.Empty -> ThreadActionCardSpecError.Failed()
+                    is DataResult.Error -> expiredOrError(messageId, card, result.error)
+                    is DataResult.NoPermission ->
+                        if (onNoPermission(result)) {
+                            null
+                        } else {
+                            ThreadActionCardSpecError.Failed(
+                                result.blocker.serverMessage?.takeIf { it.isNotBlank() },
+                                result.blocker.traceId,
+                            )
+                        }
+                }
+            if (error != null) update { it.copy(errors = it.errors + (messageId to error)) }
+        }
+    }
+
+    /**
+     * Marks a `channel:invite_external` card executed once invites were sent or a server was
+     * connected (web `inviteExternalCard.tsx` `onDone`, slock #16530, #16671).
+     */
+    private fun markInviteExternalExecuted(intent: ThreadActionCardSpecIntent.MarkInviteExternalExecuted) {
+        val messageId = intent.messageId
+        val liveCard = _state.value.inviteExternal?.takeIf { it.messageId == messageId }?.card ?: intent.card
+        if (!liveCard.isInviteExternalAction() || liveCard.isExecuted || liveCard.hasEnded) return
+        val channelId = liveCard.channel?.trim()?.takeIf { it.isNotEmpty() } ?: return
+        val addresses = (liveCard.externalInviteAddresses ?: 0).coerceAtLeast(0)
+        markedInviteExternalMessageId = messageId
+        scope.launch {
+            when (val result = markExternalInvitesExecuted(messageId, liveCard, channelId, addresses)) {
+                is DataResult.Content -> {
+                    applyCard(messageId, result.data)
+                    if (result.data.isExecuted) onApproved()
+                }
+                is DataResult.NoPermission -> onNoPermission(result)
+                is DataResult.Empty, is DataResult.Error -> Unit
+            }
+        }
+    }
+
+    /**
      * A refusal's error under the card, or null when the server refused it as expired (409): the
      * card is then drawn expired ([markedExpired]), which says it all.
      */
@@ -1131,6 +1384,7 @@ internal class ThreadActionCardSpecStore(
         val confirmOpen = current.confirm?.takeIf { it.messageId == messageId && it.card != card }
         val formOpen = current.form?.takeIf { it.messageId == messageId && it.card != card }
         val seatRequestOpen = current.seatRequest?.takeIf { it.messageId == messageId && it.card != card }
+        val inviteExternalOpen = current.inviteExternal?.takeIf { it.messageId == messageId && it.card != card }
         var closed = false
         val next =
             current.copy(
@@ -1152,6 +1406,14 @@ internal class ThreadActionCardSpecStore(
                         handledElsewhere -> null.also { closed = true }
                         card.hasEnded -> null
                         else -> seatRequestOpen.copy(card = card)
+                    },
+                inviteExternal =
+                    when {
+                        inviteExternalOpen == null -> current.inviteExternal
+                        markedInviteExternalMessageId == messageId -> inviteExternalOpen.copy(card = card)
+                        handledElsewhere -> null.also { closed = true }
+                        card.hasEnded -> null
+                        else -> inviteExternalOpen.copy(card = card)
                     },
             )
         if (next != current) _state.value = next

@@ -562,8 +562,13 @@ internal sealed interface ExternalInvitesIntent {
     /**
      * Opens the dialog. In design v5 (`AddExternalMemberDialog`), step 1 is emails-only
      * ([loadOwnServers] defaults to false; connecting own servers uses the quiet footer link).
+     * [initialText] prefills the emails field (e.g. from a `channel:invite_external` action card).
      */
-    data class OpenDialog(val joint: Boolean = false, val loadOwnServers: Boolean = false) : ExternalInvitesIntent
+    data class OpenDialog(
+        val joint: Boolean = false,
+        val loadOwnServers: Boolean = false,
+        val initialText: String = "",
+    ) : ExternalInvitesIntent
 
     /**
      * Web `useAddExternalMemberEntry`: the entry tapped. [gated] (a Free server, a channel that
@@ -675,6 +680,7 @@ internal class ExternalInvitesStore(
     private val scope: CoroutineScope,
     private val dataSource: ExternalInvitesDataSource,
     private val onChannelMutated: (membersChanged: Boolean) -> Unit = {},
+    private val onSent: () -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow(ExternalInvitesState())
     val state: StateFlow<ExternalInvitesState> = mutableState.asStateFlow()
@@ -700,7 +706,7 @@ internal class ExternalInvitesStore(
                 ownEmail = intent.email?.trim()?.takeIf(String::isNotEmpty)
                 updateDialog { it.copy(ownEmail = ownEmail) }
             }
-            is ExternalInvitesIntent.OpenDialog -> openDialog(intent.joint, intent.loadOwnServers)
+            is ExternalInvitesIntent.OpenDialog -> openDialog(intent.joint, intent.loadOwnServers, intent.initialText)
             is ExternalInvitesIntent.RequestOpen -> requestOpen(intent.joint, intent.gated)
             ExternalInvitesIntent.CloseDialog ->
                 mutableState.update { if (it.dialog?.busy == true) it else it.copy(dialog = null) }
@@ -752,9 +758,9 @@ internal class ExternalInvitesStore(
      * ([loadOwnServers] = false) and connecting the viewer's own servers is opened via the footer's
      * quiet "Connect your servers" link instead.
      */
-    private fun openDialog(joint: Boolean, loadOwnServers: Boolean = false) {
+    private fun openDialog(joint: Boolean, loadOwnServers: Boolean = false, initialText: String = "") {
         val mine = ++dialogGeneration
-        mutableState.update { it.copy(dialog = ExternalInviteDialogState(ownEmail = ownEmail)) }
+        mutableState.update { it.copy(dialog = ExternalInviteDialogState(text = initialText, ownEmail = ownEmail)) }
         if (!loadOwnServers) return
         scope.launch {
             val own = ((dataSource.ownConnectableServers() as? DataResult.Content)?.data as? ExternalInviteAnswer.Ok)?.value?.servers
@@ -907,6 +913,9 @@ internal class ExternalInvitesStore(
             if (sent > 0 || added > 0 || anyServerConnected) {
                 prefetchedFreeLimit = null
                 onChannelMutated(added > 0 || anyServerConnected)
+            }
+            if (addresses.isNotEmpty() || anyServerConnected) {
+                onSent()
             }
             load()
         }

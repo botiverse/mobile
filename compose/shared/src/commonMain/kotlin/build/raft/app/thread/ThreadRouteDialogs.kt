@@ -239,11 +239,12 @@ internal fun ThreadRouteDialogs(
     installAppDialogState?.let { dialogState ->
         ThreadInstallAppActionDialog(state = dialogState, onIntent = installAppDialogStore::dispatch)
     }
-    // A4: a spec card's confirm / form / seat-request sheet follows the live card (its confirmation version, done elsewhere).
+    // A4: a spec card's confirm / form / seat-request / external-invite sheet follows the live card (its confirmation version, done elsewhere).
     val actionCardSpecDialogMessageId =
         actionCardSpecState.confirm?.messageId
             ?: actionCardSpecState.form?.messageId
             ?: actionCardSpecState.seatRequest?.messageId
+            ?: actionCardSpecState.inviteExternal?.messageId
     val liveActionCardSpecCard =
         actionCardSpecDialogMessageId?.let { messageId ->
             renderedTimelineSlice.threadActionMessage(messageId, linkedTasksProjection)?.threadActionCard()
@@ -272,6 +273,22 @@ internal fun ThreadRouteDialogs(
                 onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissSeatRequest) },
             )
         }
+    }
+    actionCardSpecState.inviteExternal?.let { inviteState ->
+        ThreadInviteExternalActionDialogHost(
+            dialogState = inviteState,
+            data = data,
+            currentServerId = currentServerId,
+            sharedHomeState = sharedHomeState,
+            actionCardNames = actionCardNames,
+            pager = pager,
+            onMarkExecuted = {
+                actionCardSpecStore.dispatch(
+                    ThreadActionCardSpecIntent.MarkInviteExternalExecuted(inviteState.messageId, inviteState.card)
+                )
+            },
+            onDismiss = { actionCardSpecStore.dispatch(ThreadActionCardSpecIntent.DismissInviteExternal) },
+        )
     }
     actionCardSpecState.form?.let { formState ->
         // Pickers choose from what this device already holds (spec §3.4): the server's and

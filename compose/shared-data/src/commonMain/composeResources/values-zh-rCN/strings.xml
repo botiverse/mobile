@@ -1101,6 +1101,14 @@
     <string name="thread_action_card_blocked_source_workspace">这是历史操作卡片，只能在来源工作空间执行。</string>
     <string name="thread_action_card_blocked_need_migrate_agents">只有 %1$s 的创建者或有迁移 Agent 权限的人可以操作。</string>
     <string name="thread_action_card_prepared_request_waiting">等待 %1$s 确认。</string>
+    <string name="thread_action_card_blocked_need_federate_channels">只有服务器所有者或管理员可以邀请服务器以外的人。</string>
+    <string name="thread_action_card_verb_invite_external">邀请</string>
+    <string name="thread_action_card_verb_connect_own_servers">连接服务器</string>
+    <string name="thread_action_card_verb_decline_invite">拒绝</string>
+    <string name="thread_action_card_invite_external_handled_by">由 %1$s 处理</string>
+    <string name="thread_action_card_invite_external_declined_by">由 %1$s 拒绝</string>
+    <string name="thread_action_card_invite_external_unavailable">现在无法打开这张卡片，请刷新查看它的状态。</string>
+    <string name="thread_action_card_busy_working">处理中…</string>
     <string name="thread_action_card_field_description">描述</string>
     <string name="thread_action_card_field_humans">人类</string>
     <string name="thread_action_card_field_agents">Agent</string>
@@ -4471,6 +4479,7 @@
     <string name="joint_member_connect_row_owner">你是所有者</string>
     <string name="joint_member_connect_search">搜索服务器</string>
     <string name="joint_member_connect_title">连接你的服务器</string>
+    <string name="joint_member_connect_empty">你没有能连接到 %1$s 的服务器。你拥有或管理的服务器会显示在这里。</string>
     <string name="joint_member_connect_toast_already_connected_many">%1$s 已经连接</string>
     <string name="joint_member_connect_toast_already_connected_one">%1$s 已经连接</string>
     <string name="joint_member_connect_toast_connected">已连接 %1$s</string>

@@ -207,7 +207,8 @@ internal fun ThreadActionCard.actionCardIconName(): RaftLucideIconName? =
     when (type) {
         "channel:create" -> RaftLucideIconName.Hash
         "agent:create", "agent:migrate" -> RaftLucideIconName.Bot
-        "channel:add_member" -> RaftLucideIconName.UserPlus
+        "channel:add_member",
+        build.raft.app.data.ChannelInviteExternalActionCardType -> RaftLucideIconName.UserPlus
         "integration:approve_agent_login" -> RaftLucideIconName.KeyRound
         "integration:register_app", "integration:update_app_registration" -> RaftLucideIconName.AppWindow
         "integration:install_marketplace_app" -> RaftLucideIconName.Package
@@ -666,7 +667,11 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
  */
 private fun ThreadActionCard.localizedActionCardDoneLine(executedTimeLabel: String?): String {
     val committedBy = executedByUserName?.takeIf { it.isNotBlank() }?.let {
-        stringResource(Res.string.thread_action_card_committed_by, it)
+        if (type.equals(build.raft.app.data.ChannelInviteExternalActionCardType, ignoreCase = true)) {
+            stringResource(Res.string.thread_action_card_invite_external_handled_by, it)
+        } else {
+            stringResource(Res.string.thread_action_card_committed_by, it)
+        }
     }
     val result =
         when (resultKind) {

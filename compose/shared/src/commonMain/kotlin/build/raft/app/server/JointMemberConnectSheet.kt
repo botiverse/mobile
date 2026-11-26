@@ -35,6 +35,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceListItem
+import build.raft.designsystem.components.RaftChoiceListSearch
 import build.raft.designsystem.components.RaftDialogSheet
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftField
@@ -63,6 +64,7 @@ internal const val JointMemberConnectUpgradeTag = "member-connect-upgrade"
 internal const val JointMemberConnectAskOwnerTag = "member-connect-ask-owner"
 internal const val JointMemberConnectBecomesPrivateTag = "member-connect-becomes-private"
 internal const val JointMemberConnectPublicRefusedTag = "member-connect-public-refused"
+internal const val JointMemberConnectEmptyTag = "member-connect-empty"
 
 /**
  * Web ConnectedServersMenu: the ⋯ at the end of Connected servers' heading with one item,
@@ -313,20 +315,22 @@ private fun JointMemberConnectListSheet(
                 trailingAction = limitAction,
             )
         }
+    val noServers = sheet.sayWhenEmpty && items.isEmpty()
     val commitLabel =
-        if (sheet.selected.size <= 1) {
-            stringResource(Res.string.joint_member_connect_commit_one)
-        } else {
-            stringResource(Res.string.joint_member_connect_commit_many, sheet.selected.size)
+        when {
+            noServers -> null
+            sheet.busy -> stringResource(Res.string.joint_member_connect_connecting)
+            sheet.selected.size <= 1 -> stringResource(Res.string.joint_member_connect_commit_one)
+            else -> stringResource(Res.string.joint_member_connect_commit_many, sheet.selected.size)
         }
     val dismissAction = onBack ?: onDismiss
     RaftDesignSystemTheme {
         RaftDialogSheet(
             onDismissRequest = { if (!sheet.busy) dismissAction() },
             title = stringResource(Res.string.joint_member_connect_title),
-            commitLabel = if (sheet.busy) stringResource(Res.string.joint_member_connect_connecting) else commitLabel,
+            commitLabel = commitLabel,
             onCommit = onSubmit,
-            commitEnabled = sheet.selected.isNotEmpty() && !sheet.closed && !sheet.locked && !sheet.busy,
+            commitEnabled = !noServers && sheet.selected.isNotEmpty() && !sheet.closed && !sheet.locked && !sheet.busy,
             commitLoading = sheet.busy,
             closeLabel = stringResource(Res.string.common_close),
             cancelLabel =
@@ -401,7 +405,14 @@ private fun JointMemberConnectListSheet(
                     searchPlaceholder = stringResource(Res.string.joint_member_connect_search),
                     clearSearchLabel = stringResource(Res.string.joint_member_connect_clear_search),
                     noMatchLabel = stringResource(Res.string.common_no_matches),
-                    emptyLabel = stringResource(Res.string.common_no_matches),
+                    emptyLabel =
+                        if (noServers) {
+                            stringResource(Res.string.joint_member_connect_empty, channel)
+                        } else {
+                            stringResource(Res.string.common_no_matches)
+                        },
+                    modifier = if (noServers) Modifier.testTag(JointMemberConnectEmptyTag) else Modifier,
+                    search = if (noServers) RaftChoiceListSearch.Auto else RaftChoiceListSearch.Always,
                     enabled = !sheet.busy,
                 )
                 if (sheet.selected.isNotEmpty()) {

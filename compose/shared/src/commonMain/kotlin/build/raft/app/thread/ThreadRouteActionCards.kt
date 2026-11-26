@@ -99,6 +99,12 @@ internal fun rememberThreadRouteActionCards(
                 closeQuestion = { messageId, card -> dataSource.closeQuestionActionCard(messageId, card) },
                 checkSeatRequest = { messageId, card -> dataSource.checkSeatRequest(messageId, card) },
                 completeSeatRequest = { messageId, card -> dataSource.completeSeatRequest(messageId, card) },
+                readExternalInviteAddresses = { messageId, card -> dataSource.readExternalInviteCardAddresses(messageId, card) },
+                declineExternalInvite = { messageId, card -> dataSource.declineExternalInviteActionCard(messageId, card) },
+                markExternalInvitesExecuted = { messageId, card, channelId, addresses ->
+                    dataSource.markExternalInvitesActionCardExecuted(messageId, card, channelId, addresses)
+                },
+                reconfirmCard = { messageId, card -> dataSource.reconfirmActionCard(messageId, card) },
                 stepUp = actionCardStepUp,
                 applyCard = { messageId, card -> threadViewModel.dispatch(SharedThreadIntent.ApplyActionCard(messageId, card)) },
                 onNoPermission = { result -> routeAuthRequired(result) },
@@ -115,10 +121,12 @@ internal fun rememberThreadRouteActionCards(
                 onApproved = RaftRatingPrompt::onActionCardApproved,
             )
         }
-    // The page reads only the open confirm / form / seat-request sheet; each card reads its own slice (ThreadActionCardSpecView).
+    // The page reads only the open confirm / form / seat-request / external-invite sheet; each card reads its own slice (ThreadActionCardSpecView).
     val actionCardSpecDialogsFlow =
         remember(actionCardSpecStore) {
-            actionCardSpecStore.state.map { ThreadActionCardSpecDialogs(it.confirm, it.form, it.seatRequest) }.distinctUntilChanged()
+            actionCardSpecStore.state
+                .map { ThreadActionCardSpecDialogs(it.confirm, it.form, it.seatRequest, it.inviteExternal) }
+                .distinctUntilChanged()
         }
     val actionCardSpecStateHolder = actionCardSpecDialogsFlow.collectAsState(ThreadActionCardSpecDialogs())
     val actionCardAlreadyExecutedLabel = stringResource(Res.string.thread_action_card_already_executed)
@@ -159,9 +167,11 @@ internal fun rememberThreadRouteActionCards(
     val latestActionCardDirectMessageIds by rememberUpdatedState(actionCardDirectMessageIds)
     val evaluateMigrateAgentAccess =
         rememberThreadActionCardMigrateAccess(currentSession, currentServerId, threadServerMembersEntry)
+    val evaluateInviteExternalAccess =
+        rememberThreadActionCardInviteExternalAccess(currentSession, currentServerId, sharedHomeState)
     // Not keyed on the store's state: each card selects its own slice of it.
     val actionCardSpecHost =
-        remember(feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id, evaluateMigrateAgentAccess) {
+        remember(feedbackCardEntryEnabled, actionCardSpecStore, currentSession?.user?.id, evaluateMigrateAgentAccess, evaluateInviteExternalAccess) {
             ThreadActionCardSpecHost(
                 capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
                 state = actionCardSpecStore.state,
@@ -186,6 +196,7 @@ internal fun rememberThreadRouteActionCards(
                     pager.openSettingsBillingPage(storeScope)
                 },
                 evaluateMigrateAgentAccess = evaluateMigrateAgentAccess,
+                evaluateInviteExternalAccess = evaluateInviteExternalAccess,
                 log = { line -> bridge.log(line) },
             )
         }

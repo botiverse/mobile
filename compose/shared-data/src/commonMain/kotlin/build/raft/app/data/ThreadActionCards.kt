@@ -194,6 +194,19 @@ private val threadActionCardJson = Json {
      * Counted under the card's server's pricing returned by `GET /actions/:id/seat-request`.
      */
     val seatsAddPurpose: SeatsAddPurpose? = null,
+    /**
+     * `channel:invite_external` (slock #16530, #16671): how many addresses the agent prepared on
+     * the card (wire `action.addresses`, 0..20; 0 means connect servers only). The addresses
+     * themselves never ride on the message; they are read on button click via
+     * `GET /api/actions/:messageId/external-invite-addresses`.
+     */
+    val externalInviteAddresses: Int? = null,
+    /**
+     * `external-invites` result (slock #16530, #16671): address count recorded when a
+     * `channel:invite_external` card was marked executed (wire `result.addresses`). When 0, the
+     * frame hides the result line so it never shows "0 addresses on the card".
+     */
+    val resultAddresses: Int? = null,
 ) {
     /**
      * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
@@ -218,12 +231,13 @@ private val threadActionCardJson = Json {
         get() = state.equals("reconfirm_required", ignoreCase = true)
 
     /**
-     * Wire `closed`, or wire `expired` with [closedBy] (shared `isClosedActionCard`, slock #16473):
-     * a person who could answer this question card closed it without answering.
+     * Wire `closed`, or wire `expired` with [closedBy] (shared `isClosedActionCard`, slock #16473,
+     * #16530): a person who could act on this `question:ask` or `channel:invite_external` card
+     * closed or declined it without running it.
      */
     val isClosed: Boolean
         get() =
-            type.equals(QuestionAskActionCardType, ignoreCase = true) &&
+            (type.equals(QuestionAskActionCardType, ignoreCase = true) || isInviteExternalAction()) &&
                 (state.equals("closed", ignoreCase = true) || (state.equals("expired", ignoreCase = true) && closedBy != null))
 
     /** Wire `expired`: past its deadline without running (a 30-day card, a question, a seat request). */
@@ -576,6 +590,8 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
     val ticketId: String? = null,
     /** `product-feedback` (S0.3): the Hands app the ticket was filed into (`web`, `ios`, `android`, `ohos`); absent on older cards. */
     val source: String? = null,
+    /** `external-invites` (slock #16530): number of addresses recorded on the card (0 for connect-only). */
+    val addresses: Int? = null,
 )
 
 @RaftCoreInternalApi fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
@@ -659,6 +675,14 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
             },
         seatsAddCount = (actionObject["seats"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
         seatsAddPurpose = parseSeatsAddPurpose(actionObject["purpose"] as? JsonObject),
+        externalInviteAddresses =
+            (actionObject["addresses"] as? JsonPrimitive)
+                ?.takeIf { !it.isString }
+                ?.content
+                ?.toDoubleOrNull()
+                ?.takeIf { it >= 0.0 && it % 1.0 == 0.0 && it <= Int.MAX_VALUE }
+                ?.toInt(),
+        resultAddresses = meta.result?.addresses?.takeIf { it >= 0 },
     )
 }
 
@@ -774,6 +798,8 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         seatsAddPurpose?.let {
             put("${ActionCardMetadataPrefix}seatsAddPurpose", threadActionCardJson.encodeToString(SeatsAddPurpose.serializer(), it))
         }
+        putString("externalInviteAddresses", externalInviteAddresses?.toString())
+        putString("resultAddresses", resultAddresses?.toString())
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -874,6 +900,8 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
             metadata["${ActionCardMetadataPrefix}seatsAddPurpose"]?.let { raw ->
                 runCatching { threadActionCardJson.decodeFromString(SeatsAddPurpose.serializer(), raw) }.getOrNull()
             },
+        externalInviteAddresses = metadata["${ActionCardMetadataPrefix}externalInviteAddresses"]?.toIntOrNull()?.takeIf { it >= 0 },
+        resultAddresses = metadata["${ActionCardMetadataPrefix}resultAddresses"]?.toIntOrNull()?.takeIf { it >= 0 },
     )
 }
 
@@ -924,6 +952,24 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         resultId = agentId,
         resultTargetMachineId = targetMachineId
     )
+
+@RaftCoreInternalApi fun ThreadActionCard.withExecutedExternalInvites(
+    channelId: String,
+    addresses: Int,
+    executedByUserName: String? = null,
+): ThreadActionCard =
+    copy(
+        state = "executed",
+        executedByUserName = executedByUserName ?: this.executedByUserName,
+        resultKind = "external-invites",
+        resultId = channelId,
+        resultAddresses = addresses.coerceAtLeast(0),
+    )
+
+@RaftCoreInternalApi const val ChannelInviteExternalActionCardType = "channel:invite_external"
+
+@RaftCoreInternalApi fun ThreadActionCard.isInviteExternalAction(): Boolean =
+    type.equals(ChannelInviteExternalActionCardType, ignoreCase = true)
 
 @RaftCoreInternalApi const val AgentMigrateActionCardType = "agent:migrate"
 
@@ -998,6 +1044,7 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         !isAgentMigrateAction() &&
         !type.equals("channel:create", ignoreCase = true) &&
         !type.equals("channel:add_member", ignoreCase = true) &&
+        !isInviteExternalAction() &&
         !type.equals("integration:approve_agent_login", ignoreCase = true) &&
         !type.equals("integration:update_app_registration", ignoreCase = true) &&
         !isInstallMarketplaceAppAction() &&

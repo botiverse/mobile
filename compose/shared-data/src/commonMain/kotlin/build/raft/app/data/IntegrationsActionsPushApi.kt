@@ -80,8 +80,11 @@ private val integrationsActionsPushJson = Json {
         HomeNetworkResponse(code = 501, bodyText = null)
 
     suspend fun executeAction(messageId: MessageId, body: String): HomeNetworkResponse
-    /** `POST /api/actions/:messageId/close` (botiverse/slock #16473): answerer closes a question card without answering. */
+    /** `POST /api/actions/:messageId/close` (botiverse/slock #16473, #16530): closes a question card or declines a `channel:invite_external` card. */
     suspend fun closeQuestionAction(messageId: MessageId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+    /** `GET /api/actions/:messageId/external-invite-addresses` (botiverse/slock #16530): reads an open `channel:invite_external` card's email list on click. */
+    suspend fun externalInviteCardAddresses(messageId: MessageId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
     /** `GET /api/actions/:messageId/seat-request` (botiverse/slock #16449, #16453): check seats short & server pricing. */
     suspend fun checkSeatRequest(messageId: MessageId, serverIdOverride: ServerId? = null): HomeNetworkResponse =
@@ -143,6 +146,9 @@ private val integrationsActionsPushJson = Json {
 
     override suspend fun closeQuestionAction(messageId: MessageId): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/close", method = "POST")
+
+    override suspend fun externalInviteCardAddresses(messageId: MessageId): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "actions/${messageId.value}/external-invite-addresses")
 
     override suspend fun checkSeatRequest(messageId: MessageId, serverIdOverride: ServerId?): HomeNetworkResponse =
         networkClient.request(
@@ -308,6 +314,26 @@ private val integrationsActionsPushJson = Json {
             is DataResult.Empty -> result
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
+        }
+    }
+
+    /**
+     * GET /api/actions/:messageId/external-invite-addresses (botiverse/slock #16530, #16671):
+     * reads the open `channel:invite_external` card's addresses only on button click (`Cache-Control:
+     * private, no-store`). 200 carries `{ emails }`; 404 means the card can no longer be opened
+     * (handled, declined, expired, flag off, or unauthorized — unified anti-probe refusal); 401
+     * yields `NoPermission` (`auth_required`); other failures carry the server's message/trace id.
+     */
+    suspend fun externalInviteCardAddresses(messageId: MessageId): DataResult<ExternalInviteAddressesOutcome> {
+        val response = transport.externalInviteCardAddresses(messageId)
+        if (!response.isSuccessful) {
+            if (response.code == 404) {
+                return DataResult.Content(ExternalInviteAddressesOutcome.Unavailable)
+            }
+            return response.mapActionError("action_external_invite_addresses_contract_mismatch")
+        }
+        return response.mapApiBody("action_external_invite_addresses_contract_mismatch", ExternalInviteAddressesResponseDto.serializer()) { wire ->
+            ExternalInviteAddressesOutcome.Loaded(wire.emails.map(String::trim).filter(String::isNotEmpty))
         }
     }
 
@@ -509,6 +535,15 @@ sealed interface AgentAppGrantRevokeFailure {
 
     /** 409 `ALREADY_EXECUTED`: answered first; [card] is the answered card returned by the server. */
     data class AlreadyExecuted(val card: ThreadActionCard?, val serverMessage: String?) : ActionCardCloseOutcome
+}
+
+/** What `GET /api/actions/:messageId/external-invite-addresses` came to (slock #16530, #16671). */
+@RaftCoreInternalApi sealed interface ExternalInviteAddressesOutcome {
+    /** 200: the card's email list (empty when `addresses == 0` / connect-only). */
+    data class Loaded(val emails: List<String>) : ExternalInviteAddressesOutcome
+
+    /** 404: the card can no longer be opened (handled, declined, expired, flag off, or unauthorized). */
+    data object Unavailable : ExternalInviteAddressesOutcome
 }
 
 /** What `GET /api/actions/:messageId/seat-request` came to ([RaftIntegrationsActionsPushApiClient.checkSeatRequest], slock #16449, #16453). */
@@ -924,6 +959,11 @@ private data class ActionCardResponseDto(
 )
 
 @Serializable
+private data class ExternalInviteAddressesResponseDto(
+    val emails: List<String> = emptyList(),
+)
+
+@Serializable
 private data class SeatRequestCheckResponseDto(
     val requesterAllowed: Boolean,
     val seatsShort: Int,
@@ -1100,6 +1140,33 @@ private data class PushTestResponseDto(
     integrationsActionsPushJson.encodeToString(
         MarkAgentMigrationActionExecutedBody(
             result = AgentMigrationActionCardResultBody(agentId = agentId, targetMachineId = targetMachineId),
+            expectedConfirmationVersion = expectedConfirmationVersion,
+        )
+    )
+
+/** Body of POST /api/actions/:messageId/mark-executed for `channel:invite_external` (`kind: "external-invites"`). */
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@RaftCoreInternalApi data class MarkExternalInvitesActionExecutedBody(
+    val result: ExternalInvitesActionCardResultBody,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val expectedConfirmationVersion: Int? = null,
+)
+
+@Serializable
+@RaftCoreInternalApi data class ExternalInvitesActionCardResultBody(
+    val kind: String = "external-invites",
+    val channelId: String,
+    val addresses: Int,
+)
+
+@RaftCoreInternalApi fun buildMarkExternalInvitesActionExecutedBody(
+    channelId: String,
+    addresses: Int,
+    expectedConfirmationVersion: Int? = null,
+): String =
+    integrationsActionsPushJson.encodeToString(
+        MarkExternalInvitesActionExecutedBody(
+            result = ExternalInvitesActionCardResultBody(channelId = channelId, addresses = addresses.coerceAtLeast(0)),
             expectedConfirmationVersion = expectedConfirmationVersion,
         )
     )

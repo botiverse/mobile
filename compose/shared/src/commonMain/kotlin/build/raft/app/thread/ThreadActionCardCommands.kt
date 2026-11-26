@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.ActionCardExecuteOutcome
+import build.raft.app.data.ExternalInviteAddressesOutcome
 import build.raft.app.data.SeatRequestCheckOutcome
 import build.raft.app.data.SeatRequestCompleteOutcome
 import build.raft.app.data.AddChannelMembersBatchRequest
@@ -29,16 +30,19 @@ import build.raft.app.data.buildMarkAgentActionExecutedBody
 import build.raft.app.data.buildMarkAgentMigrationActionExecutedBody
 import build.raft.app.data.buildMarkChannelActionExecutedBody
 import build.raft.app.data.buildMarkChannelMembersActionExecutedBody
+import build.raft.app.data.buildMarkExternalInvitesActionExecutedBody
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.installSetBound
 import build.raft.app.data.isAgentMigrateAction
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.data.isGenericInlineCommitAction
 import build.raft.app.data.isInstallMarketplaceAppAction
+import build.raft.app.data.isInviteExternalAction
 import build.raft.app.data.withExecutedAgent
 import build.raft.app.data.withExecutedAgentMigration
 import build.raft.app.data.withExecutedChannel
 import build.raft.app.data.withExecutedChannelMembers
+import build.raft.app.data.withExecutedExternalInvites
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
@@ -290,6 +294,101 @@ internal class ThreadActionCardCommands(
             is DataResult.NoPermission -> result
         }
     }
+
+    /**
+     * Reads an open `channel:invite_external` card's email list on click
+     * (`GET /api/actions/:messageId/external-invite-addresses`, slock #16530, #16671).
+     */
+    suspend fun readExternalInviteCardAddresses(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<ExternalInviteAddressesOutcome> {
+        if (!card.isInviteExternalAction()) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        if (card.isFrozen) return DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+        return actionsApi.externalInviteCardAddresses(MessageId(messageId))
+    }
+
+    /**
+     * Declines an open `channel:invite_external` card (`POST /api/actions/:messageId/close`,
+     * slock #16530).
+     */
+    suspend fun declineExternalInviteActionCard(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<ActionCardCloseOutcome> {
+        if (!card.isInviteExternalAction()) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        if (card.isFrozen) return DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+        return when (val result = actionsApi.closeQuestionActionCard(MessageId(messageId))) {
+            is DataResult.Content -> {
+                val outcome = result.data
+                if (outcome is ActionCardCloseOutcome.Closed && outcome.card == null) {
+                    DataResult.Content(ActionCardCloseOutcome.Closed(card.copy(state = "closed")))
+                } else {
+                    result
+                }
+            }
+            is DataResult.Empty -> DataResult.Error(ScreenError(code = "action_card_close_empty", retryable = true))
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    /**
+     * Marks a `channel:invite_external` card executed once invites were sent or a server was
+     * connected (`POST /api/actions/:messageId/mark-executed`, `{ result: { kind: "external-invites",
+     * channelId, addresses } }`, slock #16530, #16671).
+     */
+    suspend fun markExternalInvitesActionCardExecuted(
+        messageId: String,
+        card: ThreadActionCard,
+        channelId: String,
+        addresses: Int,
+    ): DataResult<ThreadActionCard> {
+        if (!card.isInviteExternalAction()) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val actionsApi =
+            actionCardsApiClient
+                ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        val count = addresses.coerceAtLeast(0)
+        val executedCard = card.withExecutedExternalInvites(channelId = channelId, addresses = count)
+        return markThreadActionCardExecuted(
+            actionsApi = actionsApi,
+            messageId = messageId,
+            body =
+                buildMarkExternalInvitesActionExecutedBody(
+                    channelId = channelId,
+                    addresses = count,
+                    expectedConfirmationVersion = card.confirmationVersion,
+                ),
+            executedCard = executedCard,
+        ).also(::noteActionCardApproved)
+    }
+
+    /**
+     * Reconfirms a `reconfirm_required` card (`POST /api/actions/:messageId/reconfirm`), bringing
+     * it back to `prepared` under a new confirmation version.
+     */
+    suspend fun reconfirmActionCard(
+        messageId: String,
+        card: ThreadActionCard,
+    ): DataResult<ThreadActionCard> =
+        when {
+            card.isFrozen -> DataResult.Error(ScreenError(code = "action_card_frozen", retryable = false))
+            threadActionCardCommitBlockedByEnd(card, defaultNowMillis()) ->
+                DataResult.Error(ScreenError(code = ActionCardEndedErrorCode, retryable = false))
+            else -> reconfirmThreadActionCard(messageId, card)
+        }
 
     /**
      * Checks a `seats:add` card before paying (`GET /api/actions/:messageId/seat-request`, slock

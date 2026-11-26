@@ -585,6 +585,12 @@ internal data class MemberConnectSheet(
     /** Opened from Invite people outside on a public channel (slock #16661). */
     val publicChannel: PublicChannelConnect? = null,
     /**
+     * When true (slock #16671, connect-only `channel:invite_external` card with `addresses == 0`),
+     * the sheet opens even with no connectable servers, explains why where the list would be, and
+     * hides the Connect commit button.
+     */
+    val sayWhenEmpty: Boolean = false,
+    /**
      * When [hostConnect] is true, the host's own connectable direct server ids from
      * `GET channels/external-connect-servers` once loaded; null before loaded or empty answer.
      */

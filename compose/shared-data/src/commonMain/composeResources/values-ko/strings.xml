@@ -1101,6 +1101,14 @@
     <string name="thread_action_card_blocked_source_workspace">이 카드는 기록용 사본이에요. 원래 워크스페이스에서만 이 액션을 실행할 수 있어요.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">%1$s을(를) 만든 사람이나 에이전트 마이그레이션 권한이 있는 사람만 할 수 있어요.</string>
     <string name="thread_action_card_prepared_request_waiting">%1$s 님의 확인을 기다리는 중이에요.</string>
+    <string name="thread_action_card_blocked_need_federate_channels">서버 소유자나 관리자만 서버 외부 사람을 초대할 수 있어요.</string>
+    <string name="thread_action_card_verb_invite_external">사람 초대</string>
+    <string name="thread_action_card_verb_connect_own_servers">서버 연결</string>
+    <string name="thread_action_card_verb_decline_invite">거절</string>
+    <string name="thread_action_card_invite_external_handled_by">%1$s 님이 처리함</string>
+    <string name="thread_action_card_invite_external_declined_by">%1$s 님이 거절함</string>
+    <string name="thread_action_card_invite_external_unavailable">지금은 이 카드를 열 수 없어요. 새로고침해서 현재 상태를 확인하세요.</string>
+    <string name="thread_action_card_busy_working">처리 중…</string>
     <string name="thread_action_card_field_description">설명</string>
     <string name="thread_action_card_field_humans">사람</string>
     <string name="thread_action_card_field_agents">에이전트</string>
@@ -4292,6 +4300,7 @@
     <string name="joint_member_connect_row_owner">소유자예요</string>
     <string name="joint_member_connect_search">서버 검색</string>
     <string name="joint_member_connect_title">내 서버 연결</string>
+    <string name="joint_member_connect_empty">%1$s 채널에 연결할 수 있는 서버가 없어요. 내가 소유하거나 관리하는 서버가 여기에 표시돼요.</string>
     <string name="joint_member_connect_toast_already_connected_many">%1$s은(는) 이미 연결되어 있어요</string>
     <string name="joint_member_connect_toast_already_connected_one">%1$s은(는) 이미 연결되어 있어요</string>
     <string name="joint_member_connect_toast_connected">%1$s을(를) 연결했어요</string>
