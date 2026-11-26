@@ -403,23 +403,33 @@ private fun bulkTask(
         createdById = creatorId,
         createdByName = "Alex",
         conversationChannelId = "conv-$number",
+        createdAt = "2026-11-19T09:00:00Z",
         updatedAt = "2026-11-20T10:00:00Z",
         activityAt = "2026-11-20T10:00:00Z",
-    ).toTaskSummary()
+    ).toTaskSummary(diagnostics = {}) ?: error("fixture task #$number must map")
 
 private fun bulkAllScopeQueryState(rows: List<TaskSummary>): TasksQueryState {
     val query = TasksPageQuery(scope = TasksPageScope.All)
-    val lanes = tasksQueryLanes(query, doneSince = "2026-11-19T12:00:00Z")
+    val doneSince = "2026-11-19T12:00:00Z"
+    val lanes = tasksQueryLanes(query, doneSince = doneSince)
     val lane = lanes.single()
-    val counts = ServerTaskCounts(total = rows.size, byStatus = rows.groupingBy { it.status }.eachCount())
+    val counts = ServerTaskCounts(statuses = rows.groupingBy { it.status }.eachCount(), relations = emptyMap())
     return TasksQueryState(
         query = query,
         started = true,
         viewerId = "user-viewer",
-        doneSince = "2026-11-19T12:00:00Z",
+        doneSince = doneSince,
         lanes = lanes,
-        laneStates = mapOf(lane.key to TasksLaneState(ids = rows.map { it.id.value }, loaded = true)),
+        laneStates =
+            mapOf(
+                lane.key to
+                    TasksLaneState(
+                        ids = rows.map { it.id.value },
+                        keys = rows.associate { it.id.value to (it.activityAt ?: it.updatedAtLabel) },
+                        loaded = true,
+                    ),
+            ),
         tasks = rows.associateBy { it.id.value },
-        counts = mapOf(tasksCountsKey(tasksQueryScopeFilters("2026-11-19T12:00:00Z")) to counts),
+        counts = mapOf(tasksCountsKey(tasksQueryScopeFilters(doneSince)) to counts),
     )
 }
