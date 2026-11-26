@@ -1100,6 +1100,7 @@
     <string name="thread_action_card_blocked_target_server">このカードを使えるのは %1$s のメンバーだけです。</string>
     <string name="thread_action_card_blocked_source_workspace">これは履歴として残されたコピーです。この操作は元のワークスペースでのみ実行できます。</string>
     <string name="thread_action_card_blocked_need_migrate_agents">この操作を実行できるのは、%1$s の作成者か、エージェントを移行する権限を持つメンバーのみです。</string>
+    <string name="thread_action_card_prepared_request_waiting">%1$s の確認を待っています。</string>
     <string name="thread_action_card_field_description">説明</string>
     <string name="thread_action_card_field_humans">人間</string>
     <string name="thread_action_card_field_agents">エージェント</string>

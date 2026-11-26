@@ -1100,6 +1100,7 @@
     <string name="thread_action_card_blocked_target_server">只有 %1$s 的成員可以使用這張卡片。</string>
     <string name="thread_action_card_blocked_source_workspace">這是歷史副本，只有來源工作區能執行這個操作。</string>
     <string name="thread_action_card_blocked_need_migrate_agents">只有 %1$s 的建立者，或具有遷移 Agent 權限的人，才能執行這項操作。</string>
+    <string name="thread_action_card_prepared_request_waiting">等待 %1$s 確認。</string>
     <string name="thread_action_card_field_description">說明</string>
     <string name="thread_action_card_field_humans">真人</string>
     <string name="thread_action_card_field_agents">Agent</string>

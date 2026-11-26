@@ -1100,6 +1100,7 @@
     <string name="thread_action_card_blocked_target_server">%1$s 서버의 멤버만 이 카드를 사용할 수 있어요.</string>
     <string name="thread_action_card_blocked_source_workspace">이 카드는 기록용 사본이에요. 원래 워크스페이스에서만 이 액션을 실행할 수 있어요.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">%1$s을(를) 만든 사람이나 에이전트 마이그레이션 권한이 있는 사람만 할 수 있어요.</string>
+    <string name="thread_action_card_prepared_request_waiting">%1$s 님의 확인을 기다리는 중이에요.</string>
     <string name="thread_action_card_field_description">설명</string>
     <string name="thread_action_card_field_humans">사람</string>
     <string name="thread_action_card_field_agents">에이전트</string>

@@ -230,9 +230,11 @@ private val threadActionCardJson = Json {
     val isExpired: Boolean
         get() = state.equals("expired", ignoreCase = true) && !isClosed
 
-    /** Wire `withdrawn`, a state only question cards reach (web `ActionCardSpecCard`): its agent took it back. */
+    /** Wire `withdrawn`, a state question and prepared-request cards reach (`raft action withdraw`): its agent took it back. */
     val isWithdrawn: Boolean
-        get() = state.equals("withdrawn", ignoreCase = true) && type.equals(QuestionAskActionCardType, ignoreCase = true)
+        get() =
+            state.equals("withdrawn", ignoreCase = true) &&
+                (type.equals(QuestionAskActionCardType, ignoreCase = true) || isPreparedRequestAction)
 
     /** Any wire state this build does not know: treated as ended and view-only (never open/Prepared). */
     val isUnknownState: Boolean
@@ -251,6 +253,12 @@ private val threadActionCardJson = Json {
 )
 
 @RaftCoreInternalApi const val QuestionAskActionCardType = "question:ask"
+
+/** An agent-prepared request card (RFC 085, wire `action.type`): only the named addressee decides it. */
+@RaftCoreInternalApi const val PreparedRequestActionCardType = "request:prepare"
+
+@RaftCoreInternalApi val ThreadActionCard.isPreparedRequestAction: Boolean
+    get() = type.equals(PreparedRequestActionCardType, ignoreCase = true)
 
 /** A seat request (web person card `seats:add`): no owner answered within its 7 days once expired. */
 @RaftCoreInternalApi const val SeatsAddActionCardType = "seats:add"
