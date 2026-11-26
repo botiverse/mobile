@@ -467,7 +467,7 @@ private fun ThreadMessagesListContent(
         }
     }
     if (timelineSlice.messages.isEmpty() && timelineSlice.originStatus == "none") {
-        LaunchedEffect(threadInstanceKey, timelineSlice.status) {
+        ThreadAfterMotionEffect(threadInstanceKey, timelineSlice.status) {
             onThreadContentReady()
         }
         val emptyHiddenHistory = rememberThreadHiddenHistory(timelineSlice.historyChannelId)
@@ -999,15 +999,7 @@ private fun ThreadMessagesListContent(
     val viewportPixelProbeBounds = remember(threadInstanceKey) { ThreadViewportPixelProbeBounds() }
     val firstViewportProbeActiveState = remember(threadInstanceKey) { mutableStateOf(true) }
     var firstViewportProbeActive by firstViewportProbeActiveState
-    var postFirstFrameBeyondBoundsEnabled by remember(threadInstanceKey) { mutableStateOf(false) }
-    val activeListBeyondBoundsItems =
-        if (shareSelectionCaptureActive) {
-            0
-        } else if (postFirstFrameBeyondBoundsEnabled) {
-            threadLazyWindowConsumerCounts.listBeyondBoundsItems
-        } else {
-            0
-        }
+    val postFirstFrameBeyondBoundsEnabledRef = remember(threadInstanceKey) { ThreadMutableBooleanRef(false) }
     val menuState = remember(threadInstanceKey) { ThreadMessageMenuState() }
     // Only the user's own scroll closes the author popover: a programmatic scroll such as the
     // reading-anchor correction (ThreadReadingAnchorKeeper.kt) after a Save or a reaction must not.
@@ -1169,7 +1161,10 @@ private fun ThreadMessagesListContent(
     // owner of that case; it runs after each layout pass, before the frame is drawn.
     val readingAnchorOwner = remember(listState) { ThreadReadingAnchorOwner(listState, coroutineScope) }
     val readingAnchorPayloadState = rememberUpdatedState(renderPayload)
-    val readingAnchorPageLeavingState = rememberUpdatedState(LocalRaftStackPageLeaving.current)
+    // Isolate LocalRaftStackPageLeaving inside a leaf composable so starting a pop slide never
+    // recomposes the full ThreadMessagesListContent scope.
+    val stackPageLeavingRef = remember(threadInstanceKey) { ThreadMutableBooleanRef(false) }
+    ThreadPageLeavingTracker(stackPageLeavingRef)
     val readingAnchorPlacementSettledState =
         rememberUpdatedState(initialBottomAnchorReady && !shareSelectionCaptureActive && !adaptiveAnchorRestoreInFlight)
     val keepReadingAnchorAfterLayout: () -> Unit =
@@ -1181,7 +1176,7 @@ private fun ThreadMessagesListContent(
                             reverseLayout = listState.reverse,
                             followingLatest = viewportControllerState.intent == LazyViewportIntent.FollowingLatest,
                             scrollInProgress = listState.isScrollInProgress,
-                            ownerLive = !listState.isRetired && !readingAnchorPageLeavingState.value,
+                            ownerLive = !listState.isRetired && !stackPageLeavingRef.value,
                             placementSettled = readingAnchorPlacementSettledState.value,
                         )
                     },
@@ -1350,7 +1345,7 @@ private fun ThreadMessagesListContent(
                     owns = {
                         !listState.isScrollInProgress &&
                             !listState.isRetired &&
-                            !readingAnchorPageLeavingState.value &&
+                            !stackPageLeavingRef.value &&
                             !threadImeOpenSuppressesProgrammaticViewport(
                                 keyboardInsetDp = liveComposerKeyboardInsetDp,
                                 policy = imeProgrammaticViewportPolicy,
@@ -1800,7 +1795,15 @@ private fun ThreadMessagesListContent(
             )
         }
     }
-    LaunchedEffect(threadInstanceKey, latestItemIndex, initialBottomAnchorReady, revealLatestLocalSendBeforeInitialAnchor) {
+    // Wait until the initial push slide settles before signaling FirstContentReady so background
+    // member hydration, secondary summary apply, and SharedForegroundLoadGate release do not
+    // contend with the ~300ms push animation. Cached content still paints immediately on Frame 1.
+    ThreadAfterMotionEffect(
+        threadInstanceKey,
+        latestItemIndex,
+        initialBottomAnchorReady,
+        revealLatestLocalSendBeforeInitialAnchor
+    ) {
         if (initialBottomAnchorReady || latestItemIndex < 0 || revealLatestLocalSendBeforeInitialAnchor) {
             onThreadContentReady()
         }
@@ -1843,7 +1846,6 @@ private fun ThreadMessagesListContent(
     // focused message scrolled a list whose LazyColumn was already leaving, and crashed in
     // prefetch cleanup. ThreadListScrollOwnerEffect restarts the effect (which then does nothing)
     // when the page starts leaving the stack, and retires the list before cancelling its job.
-    val currentStackPageLeavingState = rememberUpdatedState(LocalRaftStackPageLeaving.current)
     // The only production owner allowed to mutate listState.
     ThreadListScrollOwnerEffect(listState, threadInstanceKey, viewportControllerState.pendingCommand?.id) {
         val command = viewportControllerState.pendingCommand ?: return@ThreadListScrollOwnerEffect
@@ -2331,11 +2333,19 @@ private fun ThreadMessagesListContent(
         }
         repeat(ThreadBottomAnchorMinimumAttempts + 1) { attempt ->
             listState.awaitThreadMessagesLayoutFrame()
+            val currentBeyondBoundsItems =
+                if (shareSelectionCaptureActive) {
+                    0
+                } else if (postFirstFrameBeyondBoundsEnabledRef.value) {
+                    threadLazyWindowConsumerCounts.listBeyondBoundsItems
+                } else {
+                    0
+                }
             val stats =
                 listState.threadLazyWindowStats(
                     timelineSlice = renderPayload,
                     lazyItemCount = lazyItemCount,
-                    beyondBoundsItems = activeListBeyondBoundsItems
+                    beyondBoundsItems = currentBeyondBoundsItems
                 )
             if (stats.visibleItems > 0) {
                 diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
@@ -2541,7 +2551,7 @@ private fun ThreadMessagesListContent(
             // Owner lifetime (Hands 712d8386): the older page can land after Back, while the page
             // slides out; its list must not be scrolled then.
             val restoreOwnerLive =
-                listState.scrollOwnerLive(coroutineContext, pageLeaving = currentStackPageLeavingState.value)
+                listState.scrollOwnerLive(coroutineContext, pageLeaving = stackPageLeavingRef.value)
             if (
                 anchor != null &&
                 restoreOwnerLive &&
@@ -3297,35 +3307,17 @@ private fun ThreadMessagesListContent(
         }
     }
     // #171: content now shows while the page is still sliding in, so the scroll-ahead window also
-    // waits for the slide to settle: during the push only the visible rows are composed.
-    val listPageInMotion = build.raft.app.nav.LocalRaftStackPageInMotion.current
-    LaunchedEffect(
-        threadInstanceKey,
-        initialBottomAnchorReady,
-        viewportMeasurementReady,
-        listPageInMotion
-    ) {
-        if (
-            !threadScrollAheadWindowMayOpen(
-                initialBottomAnchorReady = initialBottomAnchorReady,
-                viewportMeasurementReady = viewportMeasurementReady,
-                pageInMotion = listPageInMotion
-            ) ||
-            postFirstFrameBeyondBoundsEnabled
-        ) {
-            return@LaunchedEffect
-        }
-        // The first frame only needs visible rows. Let that committed viewport
-        // draw before enabling the normal scroll-ahead window, so expensive
-        // card/Markdown composition does not compete with first paint.
-        withFrameNanos { }
-        withFrameNanos { }
-        postFirstFrameBeyondBoundsEnabled = true
-        diagnosticsLogger(
-            "thread_initial_beyond_bounds result=enabled_after_first_frame " +
-                "items=${threadLazyWindowConsumerCounts.listBeyondBoundsItems}"
-        )
-    }
+    // waits for the slide to settle: during the push only the visible rows are composed. Isolate
+    // LocalRaftStackPageInMotion inside a leaf so push/pop motion transitions never recompose
+    // ThreadMessagesListContent.
+    ThreadScrollAheadWindowEffect(
+        threadInstanceKey = threadInstanceKey,
+        initialBottomAnchorReady = initialBottomAnchorReady,
+        viewportMeasurementReady = viewportMeasurementReady,
+        listBeyondBoundsItems = threadLazyWindowConsumerCounts.listBeyondBoundsItems,
+        enabledRef = postFirstFrameBeyondBoundsEnabledRef,
+        diagnosticsLogger = diagnosticsLogger,
+    )
     LaunchedEffect(
         threadInstanceKey,
         pendingComposerLayoutBottomAnchor,
@@ -4588,3 +4580,65 @@ internal fun threadScrollAheadWindowMayOpen(
     viewportMeasurementReady: Boolean,
     pageInMotion: Boolean
 ): Boolean = initialBottomAnchorReady && viewportMeasurementReady && !pageInMotion
+
+internal class ThreadMutableBooleanRef(
+    var value: Boolean = false,
+)
+
+/**
+ * Mirrors [LocalRaftStackPageLeaving] into [ref] inside a leaf composable so starting a pop-out
+ * transition does not invalidate the enclosing [ThreadMessagesListContent] scope.
+ */
+@Composable
+internal fun ThreadPageLeavingTracker(
+    ref: ThreadMutableBooleanRef,
+) {
+    val leaving = LocalRaftStackPageLeaving.current
+    SideEffect { ref.value = leaving }
+}
+
+/**
+ * Opens the post-first-frame scroll-ahead window inside a leaf composable so reading
+ * [build.raft.app.nav.LocalRaftStackPageInMotion] and latching [enabledRef] never invalidate the
+ * enclosing [ThreadMessagesListContent] scope.
+ */
+@Composable
+internal fun ThreadScrollAheadWindowEffect(
+    threadInstanceKey: String,
+    initialBottomAnchorReady: Boolean,
+    viewportMeasurementReady: Boolean,
+    listBeyondBoundsItems: Int,
+    enabledRef: ThreadMutableBooleanRef,
+    diagnosticsLogger: (String) -> Unit,
+) {
+    val listPageInMotion = build.raft.app.nav.LocalRaftStackPageInMotion.current
+    val currentListBeyondBoundsItems by rememberUpdatedState(listBeyondBoundsItems)
+    val currentDiagnosticsLogger by rememberUpdatedState(diagnosticsLogger)
+    LaunchedEffect(
+        threadInstanceKey,
+        initialBottomAnchorReady,
+        viewportMeasurementReady,
+        listPageInMotion,
+    ) {
+        if (
+            !threadScrollAheadWindowMayOpen(
+                initialBottomAnchorReady = initialBottomAnchorReady,
+                viewportMeasurementReady = viewportMeasurementReady,
+                pageInMotion = listPageInMotion,
+            ) ||
+            enabledRef.value
+        ) {
+            return@LaunchedEffect
+        }
+        // The first frame only needs visible rows. Let that committed viewport
+        // draw before enabling the normal scroll-ahead window, so expensive
+        // card/Markdown composition does not compete with first paint.
+        withFrameNanos { }
+        withFrameNanos { }
+        enabledRef.value = true
+        currentDiagnosticsLogger(
+            "thread_initial_beyond_bounds result=enabled_after_first_frame " +
+                "items=$currentListBeyondBoundsItems"
+        )
+    }
+}

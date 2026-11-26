@@ -182,10 +182,13 @@ import com.tencent.kuiklybase.markdown.compose.components.MarkdownComponentModel
 import com.tencent.kuiklybase.markdown.model.MarkdownDimens
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import com.tencent.kuiklybase.markdown.model.prepareMarkdownContent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import org.intellij.markdown.MarkdownElementTypes
@@ -2248,45 +2251,61 @@ internal data class RaftMarkdownPreparseResult(
 internal suspend fun prepareRaftMarkdownFullRendererBodies(
     bodies: List<String>,
     maxBodies: Int = RaftMarkdownDefaultPreparseLimit
-): RaftMarkdownPreparseResult = coroutineScope {
+): RaftMarkdownPreparseResult {
     if (bodies.isEmpty() || maxBodies <= 0) {
-        return@coroutineScope RaftMarkdownPreparseResult(
+        return RaftMarkdownPreparseResult(
             requestedCount = 0,
             parsedCount = 0,
             cacheHitCount = 0,
             scheduledCount = 0
         )
     }
+    // Offload pure markdown normalization and HTML-literal escaping (both backed by lock-guarded
+    // caches) onto Dispatchers.Default, while keeping MarkdownParseResultCache access inside
+    // prepareMarkdownContent on the caller/Compose dispatcher (prepareMarkdownContent already
+    // offloads parsing itself onto RaftMarkdownParseDispatcher).
     val contents =
-        bodies
-            .asSequence()
-            .mapNotNull { body -> body.preparedRaftMarkdownFullRendererContentOrNull() }
-            .distinct()
-            .take(maxBodies)
-            .toList()
+        withContext(Dispatchers.Default) {
+            bodies
+                .asSequence()
+                .mapNotNull { body ->
+                    ensureActive()
+                    body.preparedRaftMarkdownFullRendererContentOrNull()
+                }
+                .distinct()
+                .take(maxBodies)
+                .toList()
+        }
     val claim = RaftMarkdownPreparseWarmCache.claim(contents)
+    val pendingRelease = claim.contents.toMutableSet()
     val scheduledCacheHitCount =
         try {
-            claim.contents
-                .map { content ->
-                    async {
-                        try {
-                            prepareMarkdownContent(content).also {
-                                RaftMarkdownPreparseWarmCache.complete(content)
+            coroutineScope {
+                claim.contents
+                    .map { content ->
+                        async {
+                            try {
+                                prepareMarkdownContent(content).also {
+                                    pendingRelease.remove(content)
+                                    RaftMarkdownPreparseWarmCache.complete(content)
+                                }
+                            } catch (error: Throwable) {
+                                if (pendingRelease.remove(content)) {
+                                    RaftMarkdownPreparseWarmCache.release(content)
+                                }
+                                throw error
                             }
-                        } catch (error: Throwable) {
-                            RaftMarkdownPreparseWarmCache.release(content)
-                            throw error
                         }
                     }
-                }
-                .awaitAll()
-                .count { cacheHit -> cacheHit }
+                    .awaitAll()
+                    .count { cacheHit -> cacheHit }
+            }
         } catch (error: Throwable) {
-            claim.contents.forEach(RaftMarkdownPreparseWarmCache::release)
+            pendingRelease.forEach(RaftMarkdownPreparseWarmCache::release)
+            pendingRelease.clear()
             throw error
         }
-    RaftMarkdownPreparseResult(
+    return RaftMarkdownPreparseResult(
         requestedCount = contents.size,
         parsedCount = claim.contents.size - scheduledCacheHitCount,
         cacheHitCount = claim.coveredCount + scheduledCacheHitCount,

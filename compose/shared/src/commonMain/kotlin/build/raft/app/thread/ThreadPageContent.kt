@@ -624,7 +624,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
     val renderAccessRetry = accessResolution.shouldRenderThreadAccessRetry()
     val accessErrorLabels = threadUserFacingErrorLabels()
     val shareExportScope = rememberCoroutineScope()
-    LaunchedEffect(threadInstanceKey, selectedTab, timelineSlice.status, timelineSlice.messages.size) {
+    ThreadAfterMotionEffect(threadInstanceKey, selectedTab, timelineSlice.status, timelineSlice.messages.size) {
         if (
             selectedTab != RaftThreadTab.Chat &&
             payload.isReadyForThreadPerformanceGate()
