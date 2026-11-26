@@ -586,18 +586,23 @@ private fun parseMobilePlaceAppElement(element: JsonElement): RaftRailPlaceApp? 
         val epoch = accountEpoch
         val gen = (saveGenerationByServer[serverId] ?: 0L) + 1L
         saveGenerationByServer[serverId] = gen
-        if (canonicalKeys != null) {
-            val optimistic =
+        val optimistic =
+            if (canonicalKeys != null) {
                 raftMobilePlacesForKeys(
                     keys = canonicalKeys,
                     knownPlaces = beforeEntry.snapshot.mobilePlaces,
                     placeableApps = beforeEntry.snapshot.placeableApps,
                 )
-            updateServerEntry(
-                serverId,
-                beforeEntry.copy(snapshot = beforeEntry.snapshot.copy(mobilePlaces = optimistic)),
-            )
-        }
+            } else {
+                RaftMobileBuiltInPlaceIds.map(RaftRailPlace::builtIn) +
+                    beforeEntry.snapshot.placeableApps
+                        .sortedWith(compareBy<RaftRailPlaceApp> { it.name.lowercase() }.thenBy { it.clientId })
+                        .map(RaftRailPlace::app)
+            }
+        updateServerEntry(
+            serverId,
+            beforeEntry.copy(snapshot = beforeEntry.snapshot.copy(mobilePlaces = optimistic)),
+        )
         val mutex = saveMutexByServer.getOrPut(serverId) { Mutex() }
         return mutex.withLock {
             if (epoch != accountEpoch) return@withLock RailPlacesSaveOutcome.Skipped

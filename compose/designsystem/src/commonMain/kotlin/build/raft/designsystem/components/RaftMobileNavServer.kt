@@ -1,9 +1,11 @@
 package build.raft.designsystem.components
 
 import build.raft.designsystem.haptics.rememberRaftHaptics
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -177,6 +179,12 @@ object RaftMobileNavDefaults {
     /** The server popover is at most this share of the screen tall. */
     const val ServerPopoverMaxHeightFraction: Float = 0.6f
 
+    /**
+     * Relaxed server popover height cap when `tab_bar_places_v0` adds Recently used, the More
+     * grid, and in-popover Edit navigation bar mode on phone (`BottomBar` anchor; Kirby #415 §7).
+     */
+    const val ServerPopoverExpandedMaxHeightFraction: Float = 0.78f
+
     /** The server list while a switch is pending (`opacity-dimmed`). */
     const val ServerPopoverPendingAlpha: Float = RaftOpacity.Dimmed
 
@@ -285,13 +293,30 @@ fun RaftMobileNavItem(
     attentionDescription: String? = null,
     enabled: Boolean = true,
     badge: (@Composable BoxScope.() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
 ) {
     val source = remember { MutableInteractionSource() }
     val pressed = raftIsPressed(source) && enabled
     val colors = RaftTheme.colors
+    val clickModifier =
+        if (onLongClick == null) {
+            Modifier.clickable(source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
+        } else {
+            @OptIn(ExperimentalFoundationApi::class)
+            Modifier.combinedClickable(
+                interactionSource = source,
+                indication = null,
+                enabled = enabled,
+                role = Role.Tab,
+                onLongClickLabel = onLongClickLabel,
+                onLongClick = onLongClick,
+                onClick = onClick,
+            )
+        }
     Column(
         modifier.raftSlot("mobile-nav-item")
-            .clickable(source, indication = null, enabled = enabled, role = Role.Tab, onClick = onClick)
+            .then(clickModifier)
             .semantics { this.selected = selected },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -517,20 +542,22 @@ fun RaftMobileNavServerPopover(
     topInset: Dp = 0.dp,
     screenHeight: Dp? = null,
     alignment: Alignment = Alignment.BottomCenter,
+    maxHeightFraction: Float = RaftMobileNavDefaults.ServerPopoverMaxHeightFraction,
     content: @Composable BoxScope.() -> Unit,
 ) {
     if (!state.open) return
     val gap = RaftMobileNavDefaults.ServerPopoverGap
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // raft-ui: max-h-[min(60dvh, available height - safe-area-inset-top)].
+        // raft-ui: max-h-[min(60dvh, available height - safe-area-inset-top)] (or ~78dvh when
+        // expanded for `tab_bar_places_v0`).
         val available = maxHeight - topInset - bottomInset - gap * 2
-        val cap = minOf((screenHeight ?: maxHeight) * RaftMobileNavDefaults.ServerPopoverMaxHeightFraction, available)
+        val cap = minOf((screenHeight ?: maxHeight) * maxHeightFraction.coerceIn(0.1f, 1f), available)
         Box(
             Modifier.fillMaxSize().padding(start = gap, end = gap, top = topInset + gap, bottom = bottomInset + gap),
             contentAlignment = alignment,
         ) {
-            // 60% is the height it keeps to; RaftMobileNavServerPopoverContent goes past it, up to the
-            // room there is, only as far as one whole server row needs.
+            // 60% (or caller-provided cap) is the height it keeps to; RaftMobileNavServerPopoverContent
+            // goes past it, up to the room there is, only as far as one whole server row needs.
             CompositionLocalProvider(LocalRaftMobileNavServerPopoverCap provides cap.coerceAtLeast(0.dp)) {
                 Box(Modifier.heightIn(max = available.coerceAtLeast(0.dp)), content = content)
             }
@@ -798,6 +825,7 @@ fun raftMobileNavServerPopoverDestinationColumns(count: Int): Int =
 @Composable
 fun RaftMobileNavServerPopoverDestinations(
     modifier: Modifier = Modifier,
+    columns: Int? = null,
     content: @Composable RaftMobileNavServerPopoverDestinationsScope.() -> Unit,
 ) {
     Layout(
@@ -806,16 +834,16 @@ fun RaftMobileNavServerPopoverDestinations(
     ) { measurables, constraints ->
         if (measurables.isEmpty()) return@Layout layout(constraints.minWidth, constraints.minHeight) {}
         val gap = 4.dp.roundToPx()
-        val columns = raftMobileNavServerPopoverDestinationColumns(measurables.size)
+        val resolvedColumns = columns?.coerceAtLeast(1) ?: raftMobileNavServerPopoverDestinationColumns(measurables.size)
         val width = constraints.maxWidth
-        val free = (width - gap * (columns - 1)).coerceAtLeast(0)
+        val free = (width - gap * (resolvedColumns - 1)).coerceAtLeast(0)
         // Equal cells; a leftover pixel goes to the first columns, as a Row's weights give it.
-        val widths = List(columns) { free / columns + if (it < free % columns) 1 else 0 }
+        val widths = List(resolvedColumns) { free / resolvedColumns + if (it < free % resolvedColumns) 1 else 0 }
         val lefts = widths.runningFold(0) { left, cell -> left + cell + gap }
         val placeables = measurables.mapIndexed { index, measurable ->
-            measurable.measure(Constraints.fixedWidth(widths[index % columns]))
+            measurable.measure(Constraints.fixedWidth(widths[index % resolvedColumns]))
         }
-        val rows = placeables.chunked(columns)
+        val rows = placeables.chunked(resolvedColumns)
         val rowHeights = rows.map { row -> row.maxOf { it.height } }
         val height = (rowHeights.sum() + gap * (rows.size - 1)).coerceIn(constraints.minHeight, constraints.maxHeight)
         layout(width, height) {
@@ -845,18 +873,34 @@ fun RaftMobileNavServerPopoverDestinationsScope.RaftMobileNavServerPopoverDestin
     attentionDescription: String? = null,
     state: RaftMobileNavServerPopoverState? = null,
     key: String? = null,
+    onLongClick: (() -> Unit)? = null,
+    onLongClickLabel: String? = null,
 ) {
     val colors = RaftTheme.colors
     val source = remember { MutableInteractionSource() }
     val held = state != null && key != null && state.highlightedKey == key
     // `hover:bg-brand-soft`, and while pressed or held over.
     val overlay = rememberRaftStateOverlay(source, RaftHoverTier.Highlight, highlighted = held)
+    val clickModifier =
+        if (onLongClick == null) {
+            Modifier.clickable(source, indication = null, role = Role.Button, onClick = onClick)
+        } else {
+            @OptIn(ExperimentalFoundationApi::class)
+            Modifier.combinedClickable(
+                interactionSource = source,
+                indication = null,
+                role = Role.Button,
+                onLongClickLabel = onLongClickLabel,
+                onLongClick = onLongClick,
+                onClick = onClick,
+            )
+        }
     Box(
         modifier
             .then(if (state != null && key != null) Modifier.raftMobileNavServerPopoverTarget(state, key) else Modifier)
             .raftStateOverlay(overlay, RaftRadius.Chip)
             .raftPointerHover(source)
-            .clickable(source, indication = null, role = Role.Button, onClick = onClick)
+            .then(clickModifier)
             .semantics(mergeDescendants = true) {
                 contentDescription = if (attention && attentionDescription != null) "$label, $attentionDescription" else label
             }
