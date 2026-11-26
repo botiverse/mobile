@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -131,7 +131,7 @@ class RaftCmpToastWindow internal constructor(val state: RaftToastHostState) {
     }
 }
 
-private val LocalRaftCmpToastWindow = staticCompositionLocalOf<RaftCmpToastWindow?> { null }
+private val LocalRaftCmpToastWindow = compositionLocalOf<RaftCmpToastWindow?> { null }
 
 /**
  * The window's one toast host ([RaftToastHost]) over [content], provided to it as
@@ -139,6 +139,12 @@ private val LocalRaftCmpToastWindow = staticCompositionLocalOf<RaftCmpToastWindo
  * (`LocalLifecycleOwner`). Inside another layer — or when the host supplies a window-level
  * [externalWindow] (iOS's scene-level transparent overlay window) — it adds no per-page
  * [RaftToastHost]: [content] shares the outer/external window's state and registers [origin] on it.
+ *
+ * When [externalWindow] transitions from null to non-null after the first frame (for example on
+ * iOS cold start under SwiftUI `WindowGroup`, where the scene's overlay window attaches lazily on
+ * `viewWillAppear`), [content] stays at the same structural Compose slot so the page subtree
+ * (`RaftPagerHost`, its `Pager`, and its host-delivered adaptive-pane state) is never torn down
+ * and recreated (Hands `9e0a70ff`).
  */
 @Composable
 fun RaftCmpToastLayer(
@@ -146,42 +152,46 @@ fun RaftCmpToastLayer(
     externalWindow: RaftCmpToastWindow? = null,
     content: @Composable () -> Unit,
 ) {
-    val outer = externalWindow ?: LocalRaftCmpToastWindow.current
-    if (outer != null) {
-        if (origin != null) DisposableEffect(outer, origin) { onDispose(outer.addOrigin(origin)) }
-        if (externalWindow != null) {
-            CompositionLocalProvider(
-                LocalRaftCmpToastWindow provides outer,
-                LocalRaftToastHostState provides outer.state,
-                content = content,
-            )
-        } else {
-            content()
-        }
+    val inherited = LocalRaftCmpToastWindow.current
+    if (inherited != null && externalWindow == null) {
+        if (origin != null) DisposableEffect(inherited, origin) { onDispose(inherited.addOrigin(origin)) }
+        content()
         return
     }
-    val state = remember { RaftToastHostState() }
-    val window = remember(state) { RaftCmpToasts.attach(state) }
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(window, lifecycleOwner) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                window.setLifecycle(
-                    visible = event.targetState.isAtLeast(Lifecycle.State.STARTED),
-                    resumed = event == Lifecycle.Event.ON_RESUME,
-                )
+    val fallbackWindow =
+        if (externalWindow == null) {
+            val state = remember { RaftToastHostState() }
+            val window = remember(state) { RaftCmpToasts.attach(state) }
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(window, lifecycleOwner) {
+                val observer =
+                    LifecycleEventObserver { _, event ->
+                        window.setLifecycle(
+                            visible = event.targetState.isAtLeast(Lifecycle.State.STARTED),
+                            resumed = event == Lifecycle.Event.ON_RESUME,
+                        )
+                    }
+                // Replays the events up to the current state.
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
-        // Replays the events up to the current state.
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-    DisposableEffect(window) { onDispose { window.detach() } }
-    if (origin != null) DisposableEffect(window, origin) { onDispose(window.addOrigin(origin)) }
-    CompositionLocalProvider(LocalRaftCmpToastWindow provides window, LocalRaftToastHostState provides state) {
+            DisposableEffect(window) { onDispose { window.detach() } }
+            window
+        } else {
+            null
+        }
+    val activeWindow = externalWindow ?: checkNotNull(fallbackWindow)
+    if (origin != null) DisposableEffect(activeWindow, origin) { onDispose(activeWindow.addOrigin(origin)) }
+    CompositionLocalProvider(
+        LocalRaftCmpToastWindow provides activeWindow,
+        LocalRaftToastHostState provides activeWindow.state,
+    ) {
         Box(Modifier.fillMaxSize()) {
             content()
-            // Over everything the window's pages draw in-tree (dialogs and their scrims too).
-            RaftTheme { RaftToastHost(state) }
+            if (fallbackWindow != null) {
+                // Over everything the window's pages draw in-tree (dialogs and their scrims too).
+                RaftTheme { RaftToastHost(fallbackWindow.state) }
+            }
         }
     }
 }

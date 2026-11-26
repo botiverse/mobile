@@ -253,7 +253,13 @@ class RaftIosPage internal constructor(
 
     private fun deliver(event: String, data: JsonObject) {
         if (event in stickyEvents) sticky[event] = data
-        events.send(event, data)
+        if (event in preCompositionStickyEvents) {
+            // Also seed RaftHostEvents so any RaftPagerHost attaching now or later receives the
+            // latest window facts synchronously via host.events.replaySticky before Frame 1.
+            events.sendSticky(event, data)
+        } else {
+            events.send(event, data)
+        }
     }
 
     /** Main thread: re-sends the latest sticky snapshots (after the first composition). */
@@ -263,6 +269,7 @@ class RaftIosPage internal constructor(
 
     private companion object {
         val stickyEvents = setOf("slockAdaptivePaneChanged", "slockWindowInsetsChanged")
+        val preCompositionStickyEvents = setOf("slockAdaptivePaneChanged")
     }
 }
 

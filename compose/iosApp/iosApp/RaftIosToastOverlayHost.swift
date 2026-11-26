@@ -318,4 +318,28 @@ final class RaftIosToastOverlayRegistry {
         }
         return hostsBySessionId.values.first?.overlay
     }
+
+    /// Returns the toast overlay for [scene], or lazily creates one for the active/inactive
+    /// foreground `UIWindowScene` when SwiftUI's `WindowGroup` already created a main window
+    /// before the first `RaftPageViewController` mounted (avoiding a Frame-0 fallback layer).
+    static func overlayOrEnsure(for scene: UIWindowScene?) -> RaftIosToastOverlay? {
+        if let existing = overlay(for: scene) {
+            return existing
+        }
+        if let scene {
+            return ensureOverlay(for: scene, mainWindow: nil)
+        }
+        for state in [UIScene.ActivationState.foregroundActive, .foregroundInactive] {
+            for connected in UIApplication.shared.connectedScenes {
+                guard let windowScene = connected as? UIWindowScene,
+                      windowScene.activationState == state,
+                      let ensured = ensureOverlay(for: windowScene, mainWindow: nil)
+                else {
+                    continue
+                }
+                return ensured
+            }
+        }
+        return nil
+    }
 }
