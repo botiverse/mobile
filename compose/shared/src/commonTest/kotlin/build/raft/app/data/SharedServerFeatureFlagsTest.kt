@@ -922,4 +922,22 @@ class SharedServerFeatureFlagsTest {
         overridden.prefetch(server)
         assertFalse(overridden.isDmMainTimelineLabEnabled(server))
     }
+
+    @Test
+    fun peopleActivityRowsFlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
+        assertEquals("people_activity_rows_v0", PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY)
+        assertTrue(PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}"""))
+            )
+        assertFalse(enabled.isPeopleActivityRowsEnabled(null))
+        assertFalse(enabled.isPeopleActivityRowsEnabled(server), "unresolved defaults OFF")
+        enabled.prefetch(server)
+        assertTrue(enabled.isPeopleActivityRowsEnabled(server))
+        assertFalse(enabled.isPeopleActivityRowsEnabled(ServerId("s2")))
+    }
 }

@@ -338,6 +338,15 @@ const val AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY: String = "agent_context_view_v0"
  */
 const val DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY: String = "dm_main_timeline_lab_v0"
 
+/**
+ * People Activity rows full rule (`botiverse/slock` #17095 / #17123, `PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY`):
+ * per server, default OFF (unresolved or missing evaluates false). When ON, a person's thread,
+ * channel, and DM rows follow the full people predicate (`peopleRowMessageMoves(fullRule = true)`,
+ * `ActivityUnreadRules(peopleActivityRows = true)`), so history-only, agent-only, and noise lines
+ * leave those rows untouched.
+ */
+@RaftCoreInternalApi const val PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY: String = "people_activity_rows_v0"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -419,6 +428,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     WORKER_V1_FEATURE_FLAG_KEY,
     // DMs without threads Lab (#wg-mobile-sync:#305, botiverse/slock #16664, default OFF).
     DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY,
+    // People Activity rows full rule (botiverse/slock #17095 / #17123, default OFF).
+    PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -707,6 +718,13 @@ class SharedServerFeatureFlags(
      */
     fun isDmMainTimelineLabEnabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY)
+
+    /**
+     * People Activity rows full rule (`botiverse/slock` #17123, `PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY`):
+     * per server, default OFF (unresolved or missing evaluates false).
+     */
+    @RaftCoreInternalApi fun isPeopleActivityRowsEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, PEOPLE_ACTIVITY_ROWS_FEATURE_FLAG_KEY)
 
     /**
      * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):

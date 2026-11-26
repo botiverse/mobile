@@ -64,6 +64,7 @@ class SharedActivityStoreRowPositionTest {
     private fun TestScope.loadedStore(
         lists: List<InboxSnapshot>,
         rowPosition: Boolean = true,
+        peopleActivityRows: Boolean = false,
         versions: PerReceiverStateVersionStore = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
     ): Fixture {
         val inbox = RecordingInbox(lists)
@@ -75,7 +76,8 @@ class SharedActivityStoreRowPositionTest {
                 realtimeBackgroundRefreshIntervalMillis = ActivityRealtimeBackgroundRefreshIntervalMillis,
                 nowMillis = { testScheduler.currentTime },
                 inboxInPlaceEnabled = { true },
-                inboxRowPositionEnabled = { rowPosition }
+                inboxRowPositionEnabled = { rowPosition },
+                peopleActivityRowsEnabled = { peopleActivityRows },
             )
         store.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
@@ -640,6 +642,88 @@ class SharedActivityStoreRowPositionTest {
             assertEquals("52", f.row(threadRow.key).latestActivitySeq, label)
             assertEquals(true, f.row(threadRow.key).hasMention, label)
             assertEquals(1, f.row(threadRow.key).unreadCount, label)
+        }
+    }
+
+    @Test
+    fun peopleActivityRowsFlagGatesHistoryOnlyLinesOnChannelAndThreadRowsAcrossBothPaths() = runTest {
+        val newerRow =
+            activityItem("c-newer").copy(
+                latestActivitySeq = "200",
+                readStateLatestActivitySeq = "200",
+                unreadCount = 0,
+            )
+        val targetChannelRow =
+            activityItem("c-1").copy(
+                lastMessagePreview = "original channel message",
+                latestActivitySeq = "100",
+                readStateLatestActivitySeq = "100",
+                unreadCount = 1,
+            )
+        val threadRow =
+            threadItem("th-1", unreadCount = 1).copy(
+                latestActivityPreview = "original thread reply",
+                latestActivitySeq = "50",
+                readStateLatestActivitySeq = "50",
+                replyCount = 1,
+            )
+
+        fun historyOnly(id: String, channelId: String, seq: Long, mentions: List<MessageMention> = emptyList()) =
+            SharedActivityIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(id, channelId = channelId, authorId = "system", body = "History-only notice", seq = seq).copy(
+                        messageType = MessageType.System,
+                        mentions = mentions,
+                        countsUnread = false,
+                    ),
+                    systemProvenance =
+                        MessageSystemProvenance(
+                            systemSubtype = "channel.history_notice",
+                            causalActorType = "agent",
+                            causalActorId = "agent-1",
+                            countsUnread = false,
+                        ),
+                )
+            )
+
+        for (rowPosition in listOf(false, true)) {
+            // Flag ON: history-only line without mention leaves channel and thread rows untouched, no re-read.
+            val on =
+                loadedStore(
+                    listOf(snapshot(listOf(newerRow, targetChannelRow, threadRow))),
+                    rowPosition = rowPosition,
+                    peopleActivityRows = true,
+                )
+            on.store.dispatch(historyOnly("m-101", "c-1", seq = 101L))
+            on.store.dispatch(historyOnly("m-51", "th-1", seq = 51L))
+            on.store.dispatch(historyOnly("m-301", "c-done", seq = 301L))
+            runCurrent()
+            advanceTimeBy(maxOf(ActivityRealtimeBackgroundRefreshIntervalMillis, ActivityRowRereadDelayMillis) + 1L)
+            runCurrent()
+            assertEquals(1, on.store.state.value.items.indexOfFirst { it.key == targetChannelRow.key })
+            assertEquals("100", on.row(targetChannelRow.key).latestActivitySeq)
+            assertEquals(2, on.store.state.value.items.indexOfFirst { it.key == threadRow.key })
+            assertEquals("50", on.row(threadRow.key).latestActivitySeq)
+            assertEquals(emptyList(), on.inbox.rowReads)
+            assertEquals(1, on.inbox.listReadCount)
+
+            // Flag ON + personal mention: still moves to index 0 and lights @.
+            on.store.dispatch(historyOnly("m-102", "c-1", seq = 102L, mentions = listOf(MessageMention("user", "user-1"))))
+            runCurrent()
+            assertEquals(0, on.store.state.value.items.indexOfFirst { it.key == targetChannelRow.key })
+            assertEquals("102", on.row(targetChannelRow.key).latestActivitySeq)
+            assertEquals(true, on.row(targetChannelRow.key).hasMention)
+
+            // Flag OFF: history-only line still moves channel row as before (#17075 rule).
+            val off =
+                loadedStore(
+                    listOf(snapshot(listOf(newerRow, targetChannelRow, threadRow))),
+                    rowPosition = rowPosition,
+                    peopleActivityRows = false,
+                )
+            off.store.dispatch(historyOnly("m-101", "c-1", seq = 101L))
+            runCurrent()
+            assertEquals("101", off.row(targetChannelRow.key).latestActivitySeq)
         }
     }
 

@@ -3787,6 +3787,7 @@ internal class RaftSharedStoreProvider private constructor(
                 listRowLoweredSink = RaftClientTraceEvents::emitListRowLowered,
                 activityDoneTraceSink = RaftClientTraceEvents::emitActivityDoneTrace,
                 inboxRowPositionEnabled = ::inboxRowPositionEnabled,
+                peopleActivityRowsEnabled = { serverId -> serverFeatureFlags.isPeopleActivityRowsEnabled(ServerId(serverId)) },
                 onSyncPullHint = ::requestRealtimeSyncPull,
                 syncInboxRowsEnabled = ::syncInboxRowsEnabled,
                 knownThreadContext = { serverId, threadChannelId, parentMessageId, parentChannelId ->

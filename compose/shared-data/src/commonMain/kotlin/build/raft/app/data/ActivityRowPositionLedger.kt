@@ -278,18 +278,20 @@ import kotlinx.atomicfu.locks.synchronized
 
 /**
  * One quiet-line rule for every person's Activity row (step 2c, raft-design #1440; every row kind
- * since #proj-raft-ui:#319 / slock #17075+#17080 `quietLineLeavesRow`): true when [message] does
- * not move this person's row of [rowKind] (place, time, preview, reply count, read/Done state).
- * Null/blank [viewerId] (no session): never quiet.
+ * since #proj-raft-ui:#319 / slock #17075+#17080 `quietLineLeavesRow`; full people predicate behind
+ * `people_activity_rows_v0` since slock #17123): true when [message] does not move this person's
+ * row of [rowKind] (place, time, preview, reply count, read/Done state). Null/blank [viewerId] (no
+ * session): never quiet.
  */
 @RaftCoreInternalApi fun quietLineLeavesRow(
     message: Message,
     provenance: MessageSystemProvenance?,
     viewerId: String?,
     rowKind: ActivityUnreadRowKind,
+    fullRule: Boolean = false,
 ): Boolean {
     val cleanViewerId = viewerId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
-    return !peopleRowMessageMoves(message.toActivityUnreadMessage(provenance), cleanViewerId, rowKind)
+    return !peopleRowMessageMoves(message.toActivityUnreadMessage(provenance), cleanViewerId, rowKind, fullRule)
 }
 
 /** Backwards-compatible alias for task rows. */
@@ -330,6 +332,7 @@ import kotlinx.atomicfu.locks.synchronized
     principalId: String,
     activityMuted: Boolean,
     readOnArrival: Boolean,
+    peopleActivityRows: Boolean = false,
 ): ActivityUnreadVerdict {
     val rowKind = row.activityUnreadRowKind()
     val threadRow = rowKind == ActivityUnreadRowKind.Thread || rowKind == ActivityUnreadRowKind.Task
@@ -342,6 +345,7 @@ import kotlinx.atomicfu.locks.synchronized
             activityMuted = activityMuted && !threadRow,
             readOnArrival = readOnArrival,
         ),
+        rules = ActivityUnreadRules(peopleActivityRows = peopleActivityRows),
     )
 }
 
