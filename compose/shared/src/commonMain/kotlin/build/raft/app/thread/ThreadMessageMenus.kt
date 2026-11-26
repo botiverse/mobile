@@ -47,10 +47,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftGlyphIcon
+import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMessageItemToolbar
 import build.raft.designsystem.components.RaftMessageItemToolbarButton
 import build.raft.designsystem.components.RaftMessageItemToolbarDefaults
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.raftPointerHoverPosition
+import build.raft.app.data.AgentContextViewMenuEntryState
+import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.theme.RaftPointerInput
 import androidx.compose.ui.input.pointer.pointerInput
 import build.raft.app.compat.pager.LocalActivity
@@ -119,12 +124,21 @@ internal fun ThreadNewMessageMenu(
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
-    link: ThreadMessageLinkMenuSection? = null
+    link: ThreadMessageLinkMenuSection? = null,
+    viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
+    onViewContext: () -> Unit = {},
+    onRetryViewContext: () -> Unit = {},
 ) {
     val density = LocalDensity.current
     val secondaryRowCount = if (availability.secondaryTools().isEmpty()) 0 else 1
     val linkSectionHeight =
         if (link == null) 0.dp else ThreadMessageLinkMenuUrlRowHeight + ThreadNewMessageMenuToolRowHeight + RaftAppStroke.Thin
+    val viewContextSectionHeight =
+        when (viewContextState) {
+            AgentContextViewMenuEntryState.Hidden -> 0.dp
+            AgentContextViewMenuEntryState.ShowOpen -> 40.dp + RaftAppStroke.Thin
+            is AgentContextViewMenuEntryState.ShowRetry -> 58.dp + RaftAppStroke.Thin
+        }
     val contentSize =
         with(density) {
             Size(
@@ -134,6 +148,7 @@ internal fun ThreadNewMessageMenu(
                         ThreadNewMessageMenuReactionRowHeight +
                             RaftAppStroke.Thin +
                             ThreadNewMessageMenuToolRowHeight * (1 + secondaryRowCount) +
+                            viewContextSectionHeight +
                             ThreadNewMessageMenuMoreOverlayHeight +
                             ThreadNewMessageMenuVerticalPadding * 2 +
                             linkSectionHeight
@@ -171,7 +186,10 @@ internal fun ThreadNewMessageMenu(
             onSelectText = onSelectText,
             onMarkThreadUnread = onMarkThreadUnread,
             onCopySelection = onCopySelection,
-            link = link
+            link = link,
+            viewContextState = viewContextState,
+            onViewContext = onViewContext,
+            onRetryViewContext = onRetryViewContext,
         )
     }
 }
@@ -198,7 +216,10 @@ internal fun ThreadNewMessageMenuChrome(
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
-    link: ThreadMessageLinkMenuSection? = null
+    link: ThreadMessageLinkMenuSection? = null,
+    viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
+    onViewContext: () -> Unit = {},
+    onRetryViewContext: () -> Unit = {},
 ) {
     val callbacks =
         ThreadNewMessageMenuToolCallbacks(
@@ -264,6 +285,44 @@ internal fun ThreadNewMessageMenuChrome(
                     callbacks = callbacks,
                     availability = menuAvailability
                 )
+            }
+            // Trailing View Context group for agent messages (botiverse/slock #12980, #14072, #14560).
+            if (!menuAvailability.selectionContext && viewContextState != AgentContextViewMenuEntryState.Hidden) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp)
+                            .height(RaftAppStroke.Thin)
+                            .background(RaftColor.BorderHairline)
+                )
+                when (viewContextState) {
+                    AgentContextViewMenuEntryState.ShowOpen -> {
+                        RaftMenuItem(
+                            text = stringResource(Res.string.thread_action_view_context),
+                            onClick = onViewContext,
+                            modifier = Modifier.testTag(THREAD_MESSAGE_MENU_VIEW_CONTEXT_TAG),
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.FileScan) },
+                        )
+                    }
+                    is AgentContextViewMenuEntryState.ShowRetry -> {
+                        RaftMenuItem(
+                            text = stringResource(Res.string.thread_action_view_context_retry),
+                            description = stringResource(Res.string.thread_action_view_context_check_failed),
+                            onClick = onRetryViewContext,
+                            modifier = Modifier.testTag(THREAD_MESSAGE_MENU_VIEW_CONTEXT_RETRY_TAG),
+                            enabled = !viewContextState.retrying,
+                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.RefreshCw) },
+                            trailingIcon =
+                                if (viewContextState.retrying) {
+                                    { RaftSpinner(size = RaftSpinnerSize.Xs) }
+                                } else {
+                                    null
+                                },
+                        )
+                    }
+                    AgentContextViewMenuEntryState.Hidden -> Unit
+                }
             }
             // A selection menu has no "More": its message actions are all on the two rows.
             if (!menuAvailability.selectionContext) {
@@ -537,6 +596,9 @@ internal fun ThreadMessageActionMenu(
     onQuoteChosen: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
     link: ThreadMessageLinkMenuSection? = null,
+    viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
+    onViewContext: () -> Unit = {},
+    onRetryViewContext: () -> Unit = {},
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val reactionAtlasImage = LocalThreadReactionAtlasImage.current
@@ -592,7 +654,10 @@ internal fun ThreadMessageActionMenu(
             insertQuoteIntoComposer,
             quoteIntoComposer,
             onQuoteChosen,
-            onDismiss
+            onDismiss,
+            viewContextState,
+            onViewContext,
+            onRetryViewContext,
         ) {
             threadMessageMenuActions(
                 message = message,
@@ -645,7 +710,10 @@ internal fun ThreadMessageActionMenu(
                             threadMessageMenuQuote(message)?.let { quoteIntoComposer?.invoke(it) }
                         }
                     }
-                }
+                },
+                viewContextState = viewContextState,
+                onViewContext = onViewContext,
+                onRetryViewContext = onRetryViewContext,
             )
         }
     // web `reaction-add-any`: the reaction header's trailing Add Reaction (full emoji picker).
@@ -660,7 +728,8 @@ internal fun ThreadMessageActionMenu(
             threadMessageMenuContentHeightDp(
                 actionGroups = actions.map { it.group },
                 showReactionActions = showReactionActions,
-                linkActionCount = link?.items?.size ?: 0
+                linkActionCount = link?.items?.size ?: 0,
+                extraTwoLineRowCount = actions.count { it.description != null },
             ).dp.toPx()
         }
     val viewportGapPx = with(density) { ThreadMessageMenuViewportGap.toPx() }
@@ -683,10 +752,10 @@ internal fun ThreadMessageActionMenu(
         viewportGapPx = viewportGapPx,
         onDismiss = onDismiss,
         shellRequestId = { pageRootAnchor ->
-            "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}"
+            "thread-message-${message.id}-${pageRootAnchor?.hashCode() ?: 0}-${actions.size}-${viewContextState.hashCode()}"
         },
         shellItems = shellItems,
-        shellContentKey = Triple(showReactionActions, showAddReaction, link?.url),
+        shellContentKey = listOf(showReactionActions, showAddReaction, link?.url, viewContextState),
         keepsHostKeyboard = true,
         shellContent = { onSelected ->
             // The shell host composes this in its own page. Decode the reaction atlas

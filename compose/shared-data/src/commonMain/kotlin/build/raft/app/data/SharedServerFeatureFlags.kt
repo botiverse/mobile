@@ -298,6 +298,14 @@ const val RAIL_PLACES_V0_FEATURE_FLAG_KEY: String = "rail_places_v0"
  */
 const val AGENT_VOICE_FEATURE_FLAG_KEY: String = "agent_voice_v1"
 
+/**
+ * Agent View Context v0 & Context Access grants (botiverse/slock `packages/shared/src/featureFlags.ts`
+ * `AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY`, #12980 / #13548): per server, default OFF (unresolved or
+ * missing evaluates false). When ON, server endpoints serve context status, context view, viewed-by
+ * records, and owner/admin context access grants.
+ */
+const val AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY: String = "agent_context_view_v0"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -371,6 +379,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     RAIL_PLACES_V0_FEATURE_FLAG_KEY,
     // Raft Agent Voice settings and live voice calls (#wg-mobile-sync:#95, default OFF).
     AGENT_VOICE_FEATURE_FLAG_KEY,
+    // Agent View Context v0 & Context Access grants (botiverse/slock #12980 / #13548, default OFF).
+    AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,

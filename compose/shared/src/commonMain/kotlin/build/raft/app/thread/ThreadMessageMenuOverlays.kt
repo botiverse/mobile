@@ -1,22 +1,29 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import build.raft.app.data.AgentContextViewMenuEntryState
 import build.raft.app.data.RaftMessageAction
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
+import build.raft.app.data.agentContextViewMenuEntryState
 import build.raft.app.data.taskStatusChoices
 import build.raft.app.data.taskStatusPickAsksBacklogReason
 import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.model.MemberProfile
+import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 /**
  * The thread list's message menus and popovers, over the list in [ThreadMessagesListContent]: the
@@ -255,6 +262,40 @@ internal fun ThreadMessageMenuOverlays(
                 inPlaceSelectionMenuHost?.contextMenuSelectionCopy = null
                 inPlaceSelectionMenuHost?.contextMenuLink = null
             }
+            val supportsContextView = threadMessageSupportsContextView(message)
+            val contextViewServerId =
+                LocalThreadViewerServerId.current?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
+            val contextViewStatusStore = adaptiveSharedStores.agentContextViewStatusStore
+            LaunchedEffect(supportsContextView, contextViewStatusStore, message.authorId, contextViewServerId) {
+                if (supportsContextView) {
+                    contextViewStatusStore.loadStatus(
+                        agentId = message.authorId,
+                        serverId = contextViewServerId,
+                    )
+                }
+            }
+            val contextViewStatusEntries by contextViewStatusStore.entries.collectAsState()
+            val viewContextState =
+                if (supportsContextView) {
+                    agentContextViewMenuEntryState(
+                        contextViewStatusEntries[contextViewStatusStore.cacheKey(message.authorId, contextViewServerId)]
+                    )
+                } else {
+                    AgentContextViewMenuEntryState.Hidden
+                }
+            val onViewContext: () -> Unit = {
+                closeActionMenu()
+                onThreadEvent("openViewContext", message.id, null, null)
+            }
+            val onRetryViewContext: () -> Unit = {
+                coroutineScope.launch {
+                    contextViewStatusStore.loadStatus(
+                        agentId = message.authorId,
+                        serverId = contextViewServerId,
+                        force = true,
+                    )
+                }
+            }
             // A long press on a link in this message (artin, 1.24): the link's section leads the
             // menu, whichever menu shows (ThreadMessageLinkMenu.kt). Open is the link's own tap.
             val linkMenuWebPanelHost = LocalRaftMobileWebPanelHost.current
@@ -379,7 +420,10 @@ internal fun ThreadMessageMenuOverlays(
                     onSelectText = actions.tools.onSelectText,
                     onMarkThreadUnread = actions.tools.onMarkThreadUnread,
                     onCopySelection = onCopySelection ?: {},
-                    link = linkSection
+                    link = linkSection,
+                    viewContextState = viewContextState,
+                    onViewContext = onViewContext,
+                    onRetryViewContext = onRetryViewContext,
                 )
             } else {
                 ThreadMessageActionMenu(
@@ -485,6 +529,9 @@ internal fun ThreadMessageMenuOverlays(
                     // botiverse/slock #16252: web MessageItem counts its menu's Quote too.
                     onQuoteChosen = { trackLongPressMenuAction(message, RaftMessageAction.Quote) },
                     link = linkSection,
+                    viewContextState = viewContextState,
+                    onViewContext = onViewContext,
+                    onRetryViewContext = onRetryViewContext,
                     diagnosticsLogger = diagnosticsLogger
                 )
             }

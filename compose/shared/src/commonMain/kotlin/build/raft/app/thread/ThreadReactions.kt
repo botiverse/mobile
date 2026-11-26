@@ -333,7 +333,11 @@ internal fun ThreadMessageMenuChrome(
             label = action.label.localized(),
             icon = action.icon,
             enabled = action.enabled,
-            dividerBefore = index > 0 && actions.getOrNull(index - 1)?.group != action.group
+            dividerBefore = index > 0 && actions.getOrNull(index - 1)?.group != action.group,
+            description = action.description?.localized(),
+            trailingLoading = action.trailingLoading,
+            dismissOnSelect = action.dismissOnSelect,
+            testTag = action.testTag,
         )
     }
     RaftUiMenuSurface(

@@ -2703,6 +2703,7 @@ private fun SharedThreadRouteContentContent(
         }
     val markdownReferencePending by markdownRefOpenStore.state.collectAsState()
     val textSelectionMessageState = remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
+    val viewContextMessageState = remember(threadInstanceKey) { mutableStateOf<RaftThreadMessageItem?>(null) }
     val createAgentDialogStateHolder = remember(threadInstanceKey) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     val migrateAgentDialogStateHolder = remember(threadInstanceKey) { mutableStateOf<ThreadMigrateAgentActionDialogState?>(null) }
     val markdownTaskOpenRequestGate = remember(threadInstanceKey) {
@@ -4140,6 +4141,7 @@ private fun SharedThreadRouteContentContent(
     val threadRouteDialogStates =
         ThreadRouteDialogStates(
             textSelectionMessage = textSelectionMessageState,
+            viewContextMessage = viewContextMessageState,
             attachmentCommentsDialogState = attachmentCommentsDialogStateHolder,
             installAppDialogState = installAppDialogStateHolder,
             createAgentDialogState = createAgentDialogStateHolder,
@@ -4198,6 +4200,7 @@ private fun SharedThreadRouteContentContent(
             pendingThreadFollowMessageIdsState = pendingThreadFollowMessageIdsState,
             markdownRefOpenStore = markdownRefOpenStore,
             textSelectionMessageState = textSelectionMessageState,
+            viewContextMessageState = viewContextMessageState,
             createAgentDialogStateHolder = createAgentDialogStateHolder,
             migrateAgentDialogStateHolder = migrateAgentDialogStateHolder,
             markdownTaskOpenRequestGate = markdownTaskOpenRequestGate,

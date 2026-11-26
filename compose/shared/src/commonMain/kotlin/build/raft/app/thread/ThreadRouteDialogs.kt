@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
  */
 internal class ThreadRouteDialogStates(
     val textSelectionMessage: MutableState<RaftThreadMessageItem?>,
+    val viewContextMessage: MutableState<RaftThreadMessageItem?>,
     val attachmentCommentsDialogState: MutableState<ThreadAttachmentCommentsDialogState?>,
     val installAppDialogState: State<ThreadInstallAppActionDialogState?>,
     val createAgentDialogState: MutableState<ThreadCreateAgentActionDialogState?>,
@@ -104,6 +105,7 @@ internal fun ThreadRouteDialogs(
     val actionCardSuccessLabels = labels.actionCardSuccessLabels
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel
     var textSelectionMessage by states.textSelectionMessage
+    var viewContextMessage by states.viewContextMessage
     var attachmentCommentsDialogState by states.attachmentCommentsDialogState
     val installAppDialogState by states.installAppDialogState
     var createAgentDialogState by states.createAgentDialogState
@@ -163,6 +165,35 @@ internal fun ThreadRouteDialogs(
                     },
                 // A sent message's quote points at it (web MessageSelectTextDrawer `messageId`).
                 quoteMessageId = message.id.takeIf { message.canQuoteReply() }
+            )
+        }
+    }
+    viewContextMessage?.let { message ->
+        val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+        val repository = remember(sharedStores, storeScope) { sharedStores.agentContextViewRepository(storeScope) }
+        val agentName = message.localizedAuthorName()
+        val createdAtLabel = raftLocalizedShortDateTime(message.timestampLabel)
+        val channelName =
+            payload.title
+                .trim()
+                .removePrefix("#")
+                .takeIf { it.isNotBlank() && payload.surfaceKind != RaftThreadSurfaceKind.DirectMessage }
+        key(message.id) {
+            AgentContextViewOverlay(
+                request =
+                    AgentContextViewRequest(
+                        agentId = message.authorId,
+                        messageId = message.id,
+                        agentName = agentName,
+                        agentAvatarWireValue = message.avatarWireValue,
+                        messageBody = message.body,
+                        createdAtLabel = createdAtLabel,
+                        channelName = channelName,
+                        serverId = currentServerId,
+                        viewerUserId = states.viewerUserId,
+                    ),
+                repository = repository,
+                onDismiss = { viewContextMessage = null },
             )
         }
     }
