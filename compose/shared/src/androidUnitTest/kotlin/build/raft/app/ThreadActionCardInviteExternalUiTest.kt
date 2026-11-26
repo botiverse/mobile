@@ -515,7 +515,10 @@ class ThreadActionCardInviteExternalUiTest {
             FakeJointConnectionsDataSource(connections).apply {
                 memberConnectResult =
                     DataResult.Content(
-                        MemberConnectResponse.Answered(listOf(ServerConnectOutcome.Connected("srv-partner"))),
+                        MemberConnectResponse.Answered(
+                            servers = listOf(ServerConnectOutcome.Connected("srv-partner", "ch-1")),
+                            traceId = null,
+                        ),
                     )
             }
         var markedCount = 0

@@ -1,7 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.ActionCardCloseOutcome
-import build.raft.app.data.ChannelCapabilities
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.data.ChannelInviteExternalActionCardType
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
