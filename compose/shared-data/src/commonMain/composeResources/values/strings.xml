@@ -1101,6 +1101,7 @@
     <string name="thread_action_card_blocked_target_server">Only members of %1$s can use this card.</string>
     <string name="thread_action_card_blocked_source_workspace">This is a history copy. Only the source workspace can run this action.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">Only %1$s's creator or someone with permission to migrate agents can do this.</string>
+    <string name="thread_action_card_prepared_request_waiting">Waiting for %1$s to confirm.</string>
     <string name="thread_action_card_field_description">Description</string>
     <string name="thread_action_card_field_humans">Humans</string>
     <string name="thread_action_card_field_agents">Agents</string>

@@ -26,6 +26,7 @@ class ThreadActionCardTypedIconTest {
             "feedback:submit" to RaftLucideIconName.Message,
             "plan:upgrade" to RaftLucideIconName.CreditCard,
             "question:ask" to RaftLucideIconName.Message,
+            "request:prepare" to RaftLucideIconName.ShieldAlert,
         )
 
     @Test

@@ -1100,6 +1100,7 @@
     <string name="thread_action_card_blocked_target_server">Этой карточкой могут пользоваться только участники сервера %1$s.</string>
     <string name="thread_action_card_blocked_source_workspace">Это копия из истории. Выполнить это действие можно только в исходном рабочем пространстве.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">Это может сделать только создатель агента %1$s или тот, у кого есть разрешение на перенос агентов.</string>
+    <string name="thread_action_card_prepared_request_waiting">Ожидается подтверждение: %1$s.</string>
     <string name="thread_action_card_field_description">Описание</string>
     <string name="thread_action_card_field_humans">Люди</string>
     <string name="thread_action_card_field_agents">Агенты</string>

@@ -15,6 +15,7 @@ import androidx.compose.ui.text.TextStyle
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.DataResult
 import build.raft.app.data.QuestionAskActionCardType
+import build.raft.app.data.isPreparedRequestAction
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpIntent
@@ -290,6 +291,7 @@ internal fun ThreadRouteDialogs(
                 )
             }
         val isQuestion = formState.card.type.equals(QuestionAskActionCardType, ignoreCase = true)
+        val isPreparedRequest = formState.card.isPreparedRequestAction
         val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
         val effectiveCard = formState.card.expiredAsOf(nowMillis)
         val canSubmit =
@@ -297,7 +299,8 @@ internal fun ThreadRouteDialogs(
                 !effectiveCard.isFrozen &&
                 !effectiveCard.hasEnded &&
                 !effectiveCard.needsReconfirmation &&
-                (!isQuestion || effectiveCard.questionAsksViewer(states.viewerUserId))
+                (!isQuestion || effectiveCard.questionAsksViewer(states.viewerUserId)) &&
+                (!isPreparedRequest || effectiveCard.preparedRequestAddressedToViewer(states.viewerUserId))
         // A paged form and a question card's keep a local draft until submitted or the card ends (web ActionCardSpecCard).
         val draftKey =
             if (formState.form.steps != null || isQuestion) {

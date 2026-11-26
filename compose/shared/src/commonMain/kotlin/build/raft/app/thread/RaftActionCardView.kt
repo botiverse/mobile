@@ -251,7 +251,7 @@ internal fun RaftActionCardView(
             headerTrailing = headerTrailing,
         ) {
             RaftCardTree(card.spec.root, card.spec.elements, context)
-            if (executed && slim == null) card.result?.let { result -> RaftCardTree(result.root, result.elements, context(inSpecOfExecutedCard = false)) }
+            if ((executed || ended) && slim == null) card.result?.let { result -> RaftCardTree(result.root, result.elements, context(inSpecOfExecutedCard = false)) }
             slim?.statusLine?.takeIf { (executed || ended) && it.isNotBlank() }?.let { line -> QuestionStatusLine(line, check = slim.statusCheck) }
             footer?.invoke()
             state.error?.takeIf { it.isNotBlank() }?.let { error ->

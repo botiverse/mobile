@@ -1100,6 +1100,7 @@
     <string name="thread_action_card_blocked_target_server">Solo los miembros de %1$s pueden usar esta tarjeta.</string>
     <string name="thread_action_card_blocked_source_workspace">Esta es una copia del historial. Solo el espacio de trabajo de origen puede ejecutar esta acción.</string>
     <string name="thread_action_card_blocked_need_migrate_agents">Solo quien creó a %1$s o alguien con permiso para migrar agentes puede hacer esto.</string>
+    <string name="thread_action_card_prepared_request_waiting">Esperando a que %1$s lo confirme.</string>
     <string name="thread_action_card_field_description">Descripción</string>
     <string name="thread_action_card_field_humans">Personas</string>
     <string name="thread_action_card_field_agents">Agentes</string>

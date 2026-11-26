@@ -135,6 +135,17 @@ internal fun ThreadActionCard.questionAsksViewer(viewerUserId: String?): Boolean
 }
 
 /**
+ * Whether [viewerUserId] is the named person who decides [this] `request:prepare` card
+ * (RFC 085 §4.2, web `questionAddresseeId` / `requestCardNamesSomeoneElse`, slock #14874, #14875).
+ * Fail-closed: missing addressee or viewer id returns false; the server's 403 `NOT_ADDRESSEE` stays final.
+ */
+internal fun ThreadActionCard.preparedRequestAddressedToViewer(viewerUserId: String?): Boolean {
+    val addressee = questionAddresseeUserId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val viewer = viewerUserId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    return addressee.equals(viewer, ignoreCase = true)
+}
+
+/**
  * Whether this viewer is shown the answerer close (`×`) control on [this] card (web
  * `useQuestionCardClose`, slock #16473): a `question:ask` card whose server serves
  * `answererCanClose`, while still `prepared` and not past its `expiresAt`, and this viewer may

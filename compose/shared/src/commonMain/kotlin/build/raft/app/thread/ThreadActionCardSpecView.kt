@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.ActionCardSpecAction
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecCard
 import build.raft.app.data.ActionCardSpecEntityKind
@@ -46,6 +47,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.expiresAtEpochMillis
 import build.raft.app.data.isAgentMigrateAction
+import build.raft.app.data.isPreparedRequestAction
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.designsystem.components.RaftBanner
@@ -277,6 +279,9 @@ internal fun ThreadActionCardSpecView(
         } else {
             null
         }
+    val isPreparedRequest = effectiveCard.isPreparedRequestAction
+    val preparedRequestForOther = isPreparedRequest && !effectiveCard.preparedRequestAddressedToViewer(host.viewerUserId)
+    val preparedRequestAddresseeName = if (preparedRequestForOther) effectiveCard.localizedAddresseeName() else null
     val blockedReason =
         when {
             effectiveCard.isExecuted || effectiveCard.hasEnded -> null
@@ -288,6 +293,8 @@ internal fun ThreadActionCardSpecView(
                     Res.string.thread_action_card_blocked_need_migrate_agents,
                     migrateAgentAccess.agentName ?: stringResource(Res.string.thread_agent_typing_agent_fallback)
                 )
+            preparedRequestForOther ->
+                stringResource(Res.string.thread_action_card_prepared_request_waiting, preparedRequestAddresseeName.orEmpty())
             else -> null
         }
     val endedLine = effectiveCard.actionCardEndedLine()
@@ -314,18 +321,25 @@ internal fun ThreadActionCardSpecView(
     val questionLayout = remember(rendered, effectiveCard) { effectiveCard.questionCardLayout(rendered) }
     val question = questionLayout?.let { rememberQuestionCardWords(effectiveCard, rendered, askerName, displayLocale, record) }
     val singleQuestion = question?.single == true
-    val shown =
-        remember(rendered, inline, questionLayout, singleQuestion) {
-            val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
-            rendered.copy(spec = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body)
-        }
     val requesterUserId = effectiveCard.requesterUserId
     val isOwnRequest =
         requesterUserId != null &&
             host.viewerUserId != null &&
             requesterUserId.trim().equals(host.viewerUserId.trim(), ignoreCase = true)
-    // Only the person asked (or anyone, on a card for anyone) may answer: the server refuses the rest (403 NOT_ADDRESSEE).
-    val canOperate = commitEnabled && blockedReason == null && !isOwnRequest && (question?.asked ?: true)
+    // Only the person asked (or anyone, on a card for anyone) may answer; only the named person may decide a request card (RFC 085 §4.2).
+    val canOperate =
+        commitEnabled &&
+            blockedReason == null &&
+            !isOwnRequest &&
+            (question?.asked ?: true) &&
+            !preparedRequestForOther
+    val stripPreparedRequestButtons = isPreparedRequest && !canOperate
+    val shown =
+        remember(rendered, inline, questionLayout, singleQuestion, stripPreparedRequestButtons) {
+            val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
+            val layoutBody = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body
+            rendered.copy(spec = if (stripPreparedRequestButtons) layoutBody.withoutAddressedCardActionButtons() else layoutBody)
+        }
     val currentCard by rememberUpdatedState(effectiveCard)
     val error = threadActionCardSpecErrorText(slice.error)
     val mayAnswer = canOperate && effectiveCard.actionCardSpecStatus() == RaftActionCardStatus.Prepared
@@ -461,6 +475,30 @@ internal data class QuestionCardWords(
 )
 
 /**
+ * Drops `open_form` and `execute` buttons from an addressed card (`question:ask`, `request:prepare`)
+ * when this viewer cannot operate it (web `ActionCardSpecCard` `withoutButtons`, slock #14875).
+ * Navigation links stay untouched; any Stack emptied by the removal is dropped.
+ */
+internal fun ActionCardSpecTree.withoutAddressedCardActionButtons(): ActionCardSpecTree =
+    withoutElements { _, node ->
+        node is ActionCardSpecButton &&
+            (node.action is ActionCardSpecAction.OpenForm || node.action is ActionCardSpecAction.Execute)
+    }
+
+/**
+ * The display name of the person [this] addressed card (`question:ask`, `request:prepare`) names:
+ * from this server's member directory by id, else the handle without `@`, else "Someone".
+ */
+@Composable
+private fun ThreadActionCard.localizedAddresseeName(): String {
+    val names = LocalThreadActionCardNames.current
+    val someone = stringResource(Res.string.action_card_question_someone)
+    return questionAddresseeUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }?.takeIf { it.isNotBlank() }
+        ?: questionAddresseeHandle?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
+        ?: someone
+}
+
+/**
  * [QuestionCardWords] for [card]: the person asked by their name in this server's member list (by
  * id), else the handle the server stored; the asker is the message's sender ([askerName]), else
  * the agent the form names; the time left from the card's `expiresAt` on the live clock; who
@@ -482,10 +520,7 @@ private fun rememberQuestionCardWords(
     val count = card.questionCount(spec)
     val single = count <= 1
     val text = spec.singleQuestionText(displayLocale)
-    val addressee =
-        card.questionAddresseeUserId?.let { names.name(ThreadActionCardEntityKind.Human, it) }?.takeIf { it.isNotBlank() }
-            ?: card.questionAddresseeHandle?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
-            ?: someone
+    val addressee = card.localizedAddresseeName()
     val asker =
         askerName?.takeIf { it.isNotBlank() }
             ?: spec.questionAskerRef()?.let { ref -> names.actionCardSpecEntityName(ref, ref.serverIdOr(card.sourceServerId), viewerServerId) ?: ref.fallback }
