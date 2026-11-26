@@ -6562,6 +6562,19 @@ private fun RaftAppShellReadyContent(
                                     else -> null
                                 },
                             canWriteTaskChannel = tasksChannelWriteCheck,
+                            viewerUserId = readySession?.user?.id,
+                            serverRole = appPermissionUpdatesRole,
+                            onBatchAction = { action, batchTasks, viewer ->
+                                prewarmAdmissionGate.invalidate("tasks_batch:${action::class.simpleName}")
+                                tasksViewModel.runBatchAction(action, batchTasks, viewer)
+                            },
+                            selectionBarBottomSafeArea =
+                                if (!showAppShellBottomTabs || shellScope.bottomTabBarOverlaysContent) {
+                                    shellScope.bottomSafeArea
+                                } else {
+                                    0.dp
+                                },
+                            selectionHostActive = active && pageVisible,
                             query =
                                 // A server without the board query (before slock v1.21.63): the app's own list.
                                 if (tasksQueryStore != null && tasksQueryState != null && !tasksQueryState.unsupported) {

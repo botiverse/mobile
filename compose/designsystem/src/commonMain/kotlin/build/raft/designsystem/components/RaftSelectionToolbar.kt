@@ -151,6 +151,8 @@ class RaftSelectionToolbarActionSpec(
     val onClick: () -> Unit,
     val enabled: Boolean = true,
     val secondary: Boolean = false,
+    val open: Boolean = false,
+    val modifier: Modifier = Modifier,
     val icon: @Composable () -> Unit,
 )
 
@@ -338,7 +340,9 @@ fun RaftSelectionToolbar(
                             RaftSelectionToolbarAction(
                                 label = action.label,
                                 onClick = action.onClick,
+                                modifier = action.modifier,
                                 enabled = action.enabled,
+                                open = action.open,
                                 icon = action.icon,
                             )
                         }

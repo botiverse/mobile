@@ -325,13 +325,29 @@ class SharedTasksDataSource(
      * projection, else the canonical one). 409 `task_v2_not_enabled` / `task_without_conversation`
      * means the task has no conversation to open.
      */
-    suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): DataResult<TaskConversationOpenResult> =
+    override suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): DataResult<TaskConversationOpenResult> =
         try {
             api.openTaskConversation(serverId, taskId).toTaskConversationOpenResult(diagnosticsLogger)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
             DataResult.Error(ScreenError(code = "tasks_conversation_network", retryable = true))
+        }
+
+    /**
+     * Task v2: follow a task's conversation (`POST /api/channels/threads/follow {threadChannelId}`,
+     * web `tasksBatch.ts` `followTask`).
+     */
+    override suspend fun followTaskConversation(
+        serverId: ServerId,
+        conversationChannelId: ChannelId,
+    ): DataResult<Unit> =
+        try {
+            api.followTaskConversation(serverId, conversationChannelId).toTaskFollowResult()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            DataResult.Error(ScreenError(code = "tasks_follow_network", retryable = true))
         }
 
     suspend fun convertMessageToTask(serverId: ServerId, messageId: MessageId): DataResult<TaskConvertResult> {
@@ -642,6 +658,18 @@ private suspend fun RaftNetworkClient.updateTaskStatus(
             serverIdOverride = serverId
         )
 
+    override suspend fun followTaskConversation(
+        serverId: ServerId,
+        conversationChannelId: ChannelId,
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "channels/threads/follow",
+            method = "POST",
+            bodyText = buildSharedTaskFollowBody(conversationChannelId),
+            serverIdOverride = serverId
+        )
+
     override suspend fun unclaimTask(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
         networkClient.request(
             DataRequestPriority.Foreground,
@@ -802,6 +830,8 @@ interface RaftTasksApi {
         HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+    suspend fun followTaskConversation(serverId: ServerId, conversationChannelId: ChannelId): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
     suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
@@ -941,6 +971,17 @@ fun buildSharedTasksCreateBody(drafts: List<TaskCreateDraft>, status: TaskStatus
 
 fun buildSharedTaskConvertBody(messageId: MessageId): String =
     tasksJson.encodeToString(TaskConvertRequestBody(messageId.value))
+
+/** `POST /api/channels/threads/follow` body for following a task's conversation (web `tasksBatch.ts`). */
+@RaftCoreInternalApi fun buildSharedTaskFollowBody(conversationChannelId: ChannelId): String =
+    buildJsonObject { put("threadChannelId", conversationChannelId.value) }.toString()
+
+@RaftCoreInternalApi fun HomeNetworkResponse.toTaskFollowResult(): DataResult<Unit> =
+    if (isSuccessful) {
+        DataResult.Content(Unit)
+    } else {
+        toTasksHttpFailure(codePrefix = "tasks_follow", retryable = code >= 500)
+    }
 
 /** Wire value for [MemberKind] in the assignee PATCH body; System members are not assignable. */
 @RaftCoreInternalApi fun MemberProfile.taskAssigneeTypeValueOrNull(): String? =

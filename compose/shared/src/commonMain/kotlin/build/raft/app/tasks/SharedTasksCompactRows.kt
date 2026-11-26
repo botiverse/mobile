@@ -61,6 +61,7 @@ import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftHoverTier
@@ -183,10 +184,13 @@ internal fun SharedTasksCompactRow(
     serverId: String? = null,
     captureLongPressAnchor: Boolean = true,
     onLongPress: ((RaftPopoverAnchor) -> Unit)? = null,
+    selecting: Boolean = false,
+    selected: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val current = LocalSharedTasksOpenTaskId.current == task.id.value
+    val highlighted = current || selected
     val rootAnchor =
         remember(task.id.value) { RaftLiveRootAnchorRef(identity = tasksStatusMenuOwnerIdentity(task.id.value)) }
     val rowInset = if (variant == SharedTasksCompactRowVariant.Page) SharedTasksCompactRowPageInset else surfaceInset
@@ -205,7 +209,7 @@ internal fun SharedTasksCompactRow(
         }
     val rowFill =
         when {
-            current -> colors.fillCellSelected
+            highlighted -> colors.fillCellSelected
             variant == SharedTasksCompactRowVariant.Page -> colors.layerCard
             else -> Color.Transparent
         }
@@ -228,7 +232,7 @@ internal fun SharedTasksCompactRow(
     val iconOnlyStatus = showStatus && showChannel && narrow
     val showChevron = variant == SharedTasksCompactRowVariant.Plain
     val hasMeta = channelTag != null || assignee != null || showUnassignedText || showStatus || timeLabel != null || showChevron
-    val avatarCutout = if (current) colors.fillCellSelected else if (variant == SharedTasksCompactRowVariant.Page) colors.layerCard else colors.layerCanvas
+    val avatarCutout = if (highlighted) colors.fillCellSelected else if (variant == SharedTasksCompactRowVariant.Page) colors.layerCard else colors.layerCanvas
     val density = LocalDensity.current
     val calloutLineHeightPx = with(density) { typography.callout.lineHeight.roundToPx() }
     val minHeightPx = with(density) { RaftTheme.sizes.controlHeight.roundToPx() }
@@ -249,10 +253,10 @@ internal fun SharedTasksCompactRow(
             .background(rowFill, rowShape)
             .raftClickable(
                 onClick = onClick,
-                role = Role.Button,
+                role = if (selecting) Role.Checkbox else Role.Button,
                 shape = rowShape,
                 tier = RaftHoverTier.Subtle,
-                selected = current,
+                selected = highlighted,
                 onLongClick = longPressAction,
             )
             .sharedTasksCompactRowBorders(
@@ -273,7 +277,7 @@ internal fun SharedTasksCompactRow(
         modifier =
             modifier
                 .fillMaxWidth()
-                .then(if (current) Modifier.semantics { selected = true } else Modifier)
+                .then(if (highlighted) Modifier.semantics { this.selected = true } else Modifier)
                 .then(if (captureLongPressAnchor && onLongPress != null) Modifier.raftCaptureLiveRootAnchor(rootAnchor) else Modifier)
                 .raftSlot("task-compact-row"),
     ) {
@@ -281,10 +285,20 @@ internal fun SharedTasksCompactRow(
             modifier = rowModifier,
             narrow = narrow,
             wrapTitle = wrapTitle,
+            hasCheck = selecting,
             hasLeadingRef = leadingRef.isNotEmpty(),
             hasMeta = hasMeta,
             minHeightPx = minHeightPx,
             calloutLineHeightPx = calloutLineHeightPx,
+            leadingCheck = {
+                if (selecting) {
+                    RaftCheckboxIndicator(
+                        checked = selected,
+                        enabled = !task.isLegacy,
+                        modifier = Modifier.testTag(SharedTasksBulkTags.RowCheckbox),
+                    )
+                }
+            },
             leadingRef = {
                 if (leadingRef.isNotEmpty()) {
                     RaftText(
@@ -700,10 +714,12 @@ private fun SharedTasksCompactRowLayout(
     modifier: Modifier,
     narrow: Boolean,
     wrapTitle: Boolean,
+    hasCheck: Boolean,
     hasLeadingRef: Boolean,
     hasMeta: Boolean,
     minHeightPx: Int,
     calloutLineHeightPx: Int,
+    leadingCheck: @Composable () -> Unit,
     leadingRef: @Composable () -> Unit,
     titleGroup: @Composable () -> Unit,
     metaGroup: @Composable () -> Unit,
@@ -711,20 +727,27 @@ private fun SharedTasksCompactRowLayout(
     Layout(
         modifier = modifier,
         content = {
+            Box(Modifier.layoutId(CompactSlotCheck)) { leadingCheck() }
             Box(Modifier.layoutId(CompactSlotRef)) { leadingRef() }
             Box(Modifier.layoutId(CompactSlotTitle)) { titleGroup() }
             Box(Modifier.layoutId(CompactSlotMeta)) { metaGroup() }
         },
     ) { measurables, constraints ->
         val gapX = 8.dp.roundToPx()
+        val checkGapX = 10.dp.roundToPx()
         val gapY = 4.dp.roundToPx()
         val padY = SharedTasksCompactRowVerticalPadding.roundToPx()
         val titleBasis = SharedTasksCompactRowTitleBasis.roundToPx()
+        val checkM = measurables.first { it.layoutId == CompactSlotCheck }
         val refM = measurables.first { it.layoutId == CompactSlotRef }
         val titleM = measurables.first { it.layoutId == CompactSlotTitle }
         val metaM = measurables.first { it.layoutId == CompactSlotMeta }
 
         val loose = Constraints()
+        val check = checkM.measure(loose)
+        val checkW = if (hasCheck) check.width else 0
+        val checkGap = if (checkW > 0) checkGapX else 0
+        val checkOffset = checkW + checkGap
         val ref = refM.measure(loose)
         val refW = if (hasLeadingRef) ref.width else 0
         val refGap = if (refW > 0) gapX else 0
@@ -734,16 +757,16 @@ private fun SharedTasksCompactRowLayout(
             if (constraints.hasBoundedWidth) {
                 constraints.maxWidth
             } else {
-                refW + refGap + titleNatural + if (hasMeta) gapX + metaNatural else 0
+                checkOffset + refW + refGap + titleNatural + if (hasMeta) gapX + metaNatural else 0
             }
-        val afterRef = max(0, width - refW - refGap)
+        val afterRef = max(0, width - checkOffset - refW - refGap)
         val roomForTitleOnOneLine = max(0, afterRef - gapX - metaNatural)
         val fitsBothOnOneLine = !hasMeta || roomForTitleOnOneLine >= titleNatural
         val fitsWideWrappedOnOneLine = !narrow && wrapTitle && roomForTitleOnOneLine >= titleBasis
         val fitsPlainCompactOnOneLine = !wrapTitle && roomForTitleOnOneLine >= min(titleNatural, titleBasis)
         val oneLine = fitsBothOnOneLine || fitsWideWrappedOnOneLine || fitsPlainCompactOnOneLine
 
-        val meta = metaM.measure(Constraints(maxWidth = width))
+        val meta = metaM.measure(Constraints(maxWidth = max(0, width - checkOffset)))
         val titleMaxWidth =
             if (oneLine && hasMeta) {
                 max(0, afterRef - gapX - meta.width)
@@ -752,12 +775,13 @@ private fun SharedTasksCompactRowLayout(
             }
         val title = titleM.measure(Constraints(maxWidth = titleMaxWidth))
 
-        val firstLineRefBox = min(title.height, calloutLineHeightPx).coerceAtLeast(ref.height)
+        val leadingBox = max(ref.height, if (hasCheck) check.height else 0)
+        val firstLineRefBox = min(title.height, calloutLineHeightPx).coerceAtLeast(leadingBox)
         val line1Height =
             if (oneLine && hasMeta) {
-                max(max(ref.height, title.height), meta.height)
+                max(max(leadingBox, title.height), meta.height)
             } else {
-                max(ref.height, title.height)
+                max(leadingBox, title.height)
             }
         val contentHeight = line1Height + if (!oneLine && hasMeta) gapY + meta.height else 0
         val height = max(minHeightPx, contentHeight + padY * 2).coerceIn(constraints.minHeight, constraints.maxHeight)
@@ -771,16 +795,25 @@ private fun SharedTasksCompactRowLayout(
                 } else {
                     top
                 }
+            val checkY =
+                if (oneLine && singleLineTitle) {
+                    top + (line1Height - check.height) / 2
+                } else {
+                    top + max(0, (firstLineRefBox - check.height) / 2)
+                }
             val refY =
                 if (oneLine && singleLineTitle) {
                     top + (line1Height - ref.height) / 2
                 } else {
                     top + max(0, (firstLineRefBox - ref.height) / 2)
                 }
-            if (hasLeadingRef) {
-                ref.placeRelative(0, refY)
+            if (hasCheck) {
+                check.placeRelative(0, checkY)
             }
-            title.placeRelative(refW + refGap, titleY)
+            if (hasLeadingRef) {
+                ref.placeRelative(checkOffset, refY)
+            }
+            title.placeRelative(checkOffset + refW + refGap, titleY)
             if (hasMeta) {
                 if (oneLine) {
                     val metaY =
@@ -912,6 +945,7 @@ private fun SharedTasksCompactMetaRow(
     )
 }
 
+private const val CompactSlotCheck = "check"
 private const val CompactSlotRef = "ref"
 private const val CompactSlotTitle = "title"
 private const val CompactSlotMeta = "meta"

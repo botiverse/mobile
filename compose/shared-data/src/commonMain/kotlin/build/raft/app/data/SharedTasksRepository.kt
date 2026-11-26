@@ -100,6 +100,20 @@ interface SharedTasksRepository {
     suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
         DataResult.Error(ScreenError(code = "tasks_delete_unsupported", retryable = false))
 
+    /**
+     * Ensure a task's conversation exists and return this server's local conversation channel id
+     * (`POST /tasks/:taskId/conversation`). The default (fakes) refuses.
+     */
+    suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): DataResult<TaskConversationOpenResult> =
+        DataResult.Error(ScreenError(code = "tasks_conversation_unsupported", retryable = false))
+
+    /**
+     * Follow a task's conversation (`POST /channels/threads/follow {threadChannelId}`).
+     * The default (fakes) refuses.
+     */
+    suspend fun followTaskConversation(serverId: ServerId, conversationChannelId: ChannelId): DataResult<Unit> =
+        DataResult.Error(ScreenError(code = "tasks_follow_unsupported", retryable = false))
+
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 
     /** Task v2: every task starts in [status] (slock #12963); the default (fakes) drops the status. */
@@ -211,6 +225,12 @@ class SharedTasksDataRepository(
     override suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
         remoteDataSource.deleteTask(serverId, taskId)
 
+    override suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): DataResult<TaskConversationOpenResult> =
+        remoteDataSource.openTaskConversation(serverId, taskId)
+
+    override suspend fun followTaskConversation(serverId: ServerId, conversationChannelId: ChannelId): DataResult<Unit> =
+        remoteDataSource.followTaskConversation(serverId, conversationChannelId)
+
     override suspend fun createTasks(
         serverId: ServerId,
         channelId: ChannelId,
@@ -318,6 +338,20 @@ interface SharedTasksRemoteDataSource {
      */
     suspend fun deleteTask(serverId: ServerId, taskId: TaskId): DataResult<Unit> =
         DataResult.Error(ScreenError(code = "tasks_delete_unsupported", retryable = false))
+
+    /**
+     * Ensure a task's conversation exists and return this server's local conversation channel id
+     * (`POST /tasks/:taskId/conversation`). The default (fakes) refuses.
+     */
+    suspend fun openTaskConversation(serverId: ServerId, taskId: TaskId): DataResult<TaskConversationOpenResult> =
+        DataResult.Error(ScreenError(code = "tasks_conversation_unsupported", retryable = false))
+
+    /**
+     * Follow a task's conversation (`POST /channels/threads/follow {threadChannelId}`).
+     * The default (fakes) refuses.
+     */
+    suspend fun followTaskConversation(serverId: ServerId, conversationChannelId: ChannelId): DataResult<Unit> =
+        DataResult.Error(ScreenError(code = "tasks_follow_unsupported", retryable = false))
 
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 
