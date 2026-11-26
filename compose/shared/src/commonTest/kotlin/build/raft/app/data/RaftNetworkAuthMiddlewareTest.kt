@@ -201,6 +201,38 @@ class RaftNetworkAuthMiddlewareTest {
     }
 
     @Test
+    fun preservesSessionAndDoesNotReportAuthLossWhenRefreshReturns403() = runBlocking {
+        val originalSession = sampleSession(accessToken = "keep-access", refreshToken = "keep-refresh")
+        val store = InMemoryRaftAuthSessionStore(originalSession)
+        val reported = mutableListOf<String>()
+        val forbiddenBody = """{"error":"Account access is restricted.","code":"account_restricted"}"""
+        val middleware =
+            RaftNetworkAuthMiddleware(
+                store,
+                FakeAuthApi(
+                    refreshTokenAssertion = "keep-refresh",
+                    refreshResult =
+                        AuthApiResult.Failure(
+                            code = 403,
+                            errorBodyText = forbiddenBody
+                        )
+                ),
+                terminalAuthLossReporter = { _, caller -> reported += caller }
+            )
+
+        val response =
+            middleware.request(caller = "test_forbidden_refresh") {
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(403, response.code)
+        assertEquals(forbiddenBody, response.errorBodyText)
+        assertEquals("keep-access", store.readSession()?.accessToken)
+        assertEquals("keep-refresh", store.readSession()?.refreshToken)
+        assertEquals(emptyList(), reported)
+    }
+
+    @Test
     fun terminalAuthLossEntersFunnelAndClearsUnauthenticatedSession() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(

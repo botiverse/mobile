@@ -101,11 +101,13 @@ sealed interface ServerJoinAnswer<out T> {
             runCatching { serverJoinJson.decodeFromString(WireServerJoinErrorBody.serializer(), text) }.getOrNull()
         }
     val error = body?.error?.trim()?.takeIf(String::isNotBlank)
-    val agreement = body?.agreement?.takeIf { error == "agreement_required" || error == "agreement_changed" }
+    val explicitCode = looseRefusalCode(code = body?.code, errorCode = body?.errorCode)
+    val refusalCode = looseRefusalCode(code = body?.code, errorCode = body?.errorCode, error = error)
+    val agreement = body?.agreement?.takeIf { refusalCode == "agreement_required" || refusalCode == "agreement_changed" }
     return ServerJoinRefusal(
         status = status,
         error = error,
-        code = body?.code?.trim()?.takeIf(String::isNotBlank) ?: body?.errorCode?.trim()?.takeIf(String::isNotBlank),
+        code = explicitCode,
         agreement = agreement,
         traceId = traceId,
     )

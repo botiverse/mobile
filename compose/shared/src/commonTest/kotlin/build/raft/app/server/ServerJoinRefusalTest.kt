@@ -189,4 +189,32 @@ class ServerJoinRefusalTest {
             resolveServerJoinAcceptRefusal(sampleInfo, refusal),
         )
     }
+
+    @Test
+    fun parseSharedServerJoinRefusalExtractsAgreementFromCodedRefusalEnvelope() {
+        val changed =
+            parseSharedServerJoinRefusal(
+                status = 409,
+                bodyText =
+                    """{"code":"agreement_changed","error":"Server rules were updated. Please review and accept.","agreement":{"id":"agr-3","title":"House Rules","bodyMarkdown":"Be kind","version":3}}""",
+                traceId = sampleTraceId,
+            )
+        assertEquals("agreement_changed", changed.code)
+        val expectedAgreement = ServerJoinAgreement(id = "agr-3", title = "House Rules", bodyMarkdown = "Be kind", version = 3)
+        assertEquals(expectedAgreement, changed.agreement)
+        assertEquals(
+            ServerJoinView.Ready(sampleInfo.copy(agreement = expectedAgreement), joining = false),
+            resolveServerJoinAcceptRefusal(sampleInfo, changed),
+        )
+
+        val requiredViaErrorCode =
+            parseSharedServerJoinRefusal(
+                status = 422,
+                bodyText =
+                    """{"errorCode":"agreement_required","error":"Accept the server rules before joining.","agreement":{"id":"agr-4","title":"Welcome","bodyMarkdown":"Read first","version":1}}""",
+                traceId = sampleTraceId,
+            )
+        assertEquals("agreement_required", requiredViaErrorCode.code)
+        assertEquals("agr-4", requiredViaErrorCode.agreement?.id)
+    }
 }

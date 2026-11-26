@@ -76,8 +76,26 @@ class SharedThreadStoreGapAccessLostTest {
                             serverMessage = "You do not have access to this channel",
                         )
                     ),
+                "403 coded channel_access_lost" to
+                    DataResult.NoPermission(
+                        PermissionBlocker(
+                            code = "server_forbidden",
+                            requiredCapability = "server_access",
+                            serverMessage = "Membership was revoked.",
+                            serverCode = "channel_access_lost",
+                        )
+                    ),
                 "404 Channel not found" to
                     DataResult.Error(ScreenError(code = "http_404", retryable = false, serverMessage = "Channel not found")),
+                "404 coded channel_not_found" to
+                    DataResult.Error(
+                        ScreenError(
+                            code = "http_404",
+                            retryable = false,
+                            serverMessage = "This channel no longer exists.",
+                            serverCode = "channel_not_found",
+                        )
+                    ),
             )
         answers.forEach { (label, answer) ->
             runTest {

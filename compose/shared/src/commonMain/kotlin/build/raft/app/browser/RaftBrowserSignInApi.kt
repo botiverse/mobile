@@ -533,7 +533,8 @@ internal fun parseRaftBrowserSignInLookupResponse(
         )
     }
     val errorBody = parseSignInErrorBody(response)
-    if (response.code == 404 || (response.code == 403 && errorBody?.code == "app_not_available")) {
+    val refusalCode = errorBody?.code?.trim()?.takeIf { it.isNotEmpty() } ?: errorBody?.errorCode?.trim()?.takeIf { it.isNotEmpty() }
+    if (response.code == 404 || (response.code == 403 && refusalCode == "app_not_available")) {
         return RaftBrowserSignInLookupResult.NotAvailable
     }
     return RaftBrowserSignInLookupResult.Failed(response.traceId)
@@ -562,27 +563,34 @@ internal fun parseRaftBrowserSignInApproveResponse(
         }
     }
     val error = parseSignInErrorBody(response)
+    val refusalCode = error?.code?.trim()?.takeIf { it.isNotEmpty() } ?: error?.errorCode?.trim()?.takeIf { it.isNotEmpty() }
     val outcome =
         when {
-            response.code == 404 || (response.code == 403 && error?.code == "app_not_available") ->
+            response.code == 404 || (response.code == 403 && refusalCode == "app_not_available") ->
                 RaftBrowserSignInApproveOutcome.AppNotAvailable(response.traceId)
-            response.code == 409 && error?.code == "login_mode_changed" ->
+            response.code == 409 && refusalCode == "login_mode_changed" ->
                 RaftBrowserSignInApproveOutcome.LoginModeChanged
-            response.code == 409 && error?.code == "consent_required" ->
+            response.code == 409 && refusalCode == "consent_required" ->
                 RaftBrowserSignInApproveOutcome.ConsentRequired(response.traceId)
             response.code == 403 &&
-                (error?.errorCode == "OAUTH_INSTALLATION_SUSPENDED" || error?.error == "installation_suspended") ->
+                (refusalCode == "OAUTH_INSTALLATION_SUSPENDED" ||
+                    refusalCode == "installation_suspended" ||
+                    (refusalCode == null && error?.error == "installation_suspended")) ->
                 RaftBrowserSignInApproveOutcome.InstallationSuspended(
-                    description = error.errorDescription?.trim()?.takeIf { it.isNotEmpty() },
+                    description =
+                        error?.errorDescription?.trim()?.takeIf { it.isNotEmpty() }
+                            ?: error?.error?.trim()?.takeIf { it.isNotEmpty() && it != "installation_suspended" },
                     traceId = response.traceId,
                 )
-            response.code == 400 && error?.error == "invalid_scope" && error.errorCode == "OAUTH_SCOPE_NOT_APPROVED" ->
+            response.code == 400 &&
+                refusalCode == "OAUTH_SCOPE_NOT_APPROVED" &&
+                (error?.error == "invalid_scope" || error?.code == "OAUTH_SCOPE_NOT_APPROVED") ->
                 RaftBrowserSignInApproveOutcome.ScopeNotApproved(
-                    returnUrl = error.returnUrl?.trim()?.takeIf { it.isNotEmpty() },
-                    description = error.errorDescription?.trim()?.takeIf { it.isNotEmpty() },
+                    returnUrl = error?.returnUrl?.trim()?.takeIf { it.isNotEmpty() },
+                    description = error?.errorDescription?.trim()?.takeIf { it.isNotEmpty() },
                     traceId = response.traceId,
                 )
-            response.code == 400 && error?.code == "root_issuer_required" ->
+            response.code == 400 && refusalCode == "root_issuer_required" ->
                 RaftBrowserSignInApproveOutcome.RootIssuerRequired(response.traceId)
             else ->
                 RaftBrowserSignInApproveOutcome.Failed(

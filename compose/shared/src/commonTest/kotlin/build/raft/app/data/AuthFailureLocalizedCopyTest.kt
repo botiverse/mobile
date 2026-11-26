@@ -62,4 +62,44 @@ class AuthFailureLocalizedCopyTest {
             AuthApiResult.Failure(code = 429, errorBodyText = """{"error":"Slow down","code":429}""").toSharedAuthFailure().userMessage
         )
     }
+
+    @Test
+    fun refusalEnvelopeReadsLegalAndCredentialCodesFromCodeErrorCodeAndLegacyError() {
+        val legalByCode =
+            AuthApiResult.Failure(
+                code = 422,
+                errorBodyText = """{"code":"LEGAL_ACCEPTANCE_REQUIRED","error":"Please accept the updated Terms."}"""
+            ).toSharedAuthFailure()
+        assertEquals(SharedAuthErrorCode.LegalAcceptanceRequired, legalByCode.code)
+        assertEquals(Res.string.auth_error_legal_acceptance_required.desc(), legalByCode.userMessage)
+
+        val termsByErrorCode =
+            AuthApiResult.Failure(
+                code = 409,
+                errorBodyText = """{"errorCode":"TERMS_CHANGED","error":"Terms of Service changed."}"""
+            ).toSharedAuthFailure()
+        assertEquals(SharedAuthErrorCode.LegalAcceptanceRequired, termsByErrorCode.code)
+        assertEquals(Res.string.auth_error_legal_acceptance_required.desc(), termsByErrorCode.userMessage)
+
+        val legalLowercase =
+            AuthApiResult.Failure(
+                code = 422,
+                errorBodyText = """{"code":"legal_acceptance_required","error":"Please accept terms."}"""
+            ).toSharedAuthFailure()
+        assertEquals(SharedAuthErrorCode.LegalAcceptanceRequired, legalLowercase.code)
+
+        assertEquals(
+            Res.string.auth_error_incorrect_credentials.desc(),
+            AuthApiResult.Failure(code = 403, errorBodyText = """{"error":"Nope","errorCode":"AUTH_INVALID_CREDENTIALS"}""")
+                .toSharedAuthFailure().userMessage
+        )
+
+        val unknownForbidden =
+            AuthApiResult.Failure(
+                code = 403,
+                errorBodyText = """{"code":"account_restricted","error":"Your organization paused access for this account."}"""
+            ).toSharedAuthFailure()
+        assertNull(unknownForbidden.display)
+        assertEquals("Your organization paused access for this account.".desc(), unknownForbidden.userMessage)
+    }
 }

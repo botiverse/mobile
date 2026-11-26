@@ -133,7 +133,7 @@ class SharedInboxPanelTest {
     fun openingAnUnreadActivityRowMarksThatRowReadLikeWeb() {
         val opened = activityItem(key = "thread:opened").copy(unreadCount = 2)
 
-        assertEquals(build.raft.app.data.SharedActivityIntent.MarkRead(opened), opened.activityOpenReadIntent())
+        assertEquals(build.raft.app.data.SharedActivityIntent.MarkRead(opened, fromOpen = true), opened.activityOpenReadIntent())
         assertEquals(null, activityItem(key = "thread:read").activityOpenReadIntent())
         assertEquals(null, opened.copy(kind = InboxItemKind.Thread, isFollowing = false).activityOpenReadIntent())
     }

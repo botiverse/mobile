@@ -291,6 +291,47 @@ class RaftBrowserSignInApiTest {
                 ),
             ).data,
         )
+
+        // Refusal P3/P4 (#16898): loose code/errorCode decoding for installation_suspended, app_not_available, login_mode_changed.
+        val suspendedCoded =
+            assertIs<RaftBrowserSignInApproveOutcome.InstallationSuspended>(
+                assertIs<DataResult.Content<RaftBrowserSignInApproveOutcome>>(
+                    parseRaftBrowserSignInApproveResponse(
+                        HomeNetworkResponse(
+                            code = 403,
+                            bodyText = null,
+                            errorBodyText = """{"code":"installation_suspended","error":"Suspended by an admin."}""",
+                            responseHeaders = mapOf("X-Trace-Id" to listOf(traceId)),
+                        ),
+                    ),
+                ).data,
+            )
+        assertEquals("Suspended by an admin.", suspendedCoded.description)
+        assertEquals(traceId, suspendedCoded.traceId)
+
+        assertEquals(
+            RaftBrowserSignInLookupResult.NotAvailable,
+            parseRaftBrowserSignInLookupResponse(
+                "srv-5",
+                HomeNetworkResponse(
+                    code = 403,
+                    bodyText = null,
+                    errorBodyText = """{"errorCode":"app_not_available","error":"Not available"}""",
+                ),
+            ),
+        )
+        assertEquals(
+            RaftBrowserSignInApproveOutcome.LoginModeChanged,
+            assertIs<DataResult.Content<RaftBrowserSignInApproveOutcome>>(
+                parseRaftBrowserSignInApproveResponse(
+                    HomeNetworkResponse(
+                        code = 409,
+                        bodyText = null,
+                        errorBodyText = """{"errorCode":"login_mode_changed","error":"Switched mode"}""",
+                    ),
+                ),
+            ).data,
+        )
     }
 
     @Test

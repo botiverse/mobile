@@ -3719,6 +3719,7 @@ internal class RaftSharedStoreProvider private constructor(
                 knownThreadContext = { serverId, threadChannelId, parentMessageId, parentChannelId ->
                     knownThreadContextForActivity(scope, serverId, threadChannelId, parentMessageId, parentChannelId)
                 },
+                unreadFlipSink = RaftClientTraceEvents::emitActivityUnreadStateFlipped,
                 scope =
                     homeActivityStoreScopes.getOrPut(scope) {
                         if (scope == RaftShellStoreScope.Legacy) homeActivityStoreScope else RaftStoreThreading.newScope()

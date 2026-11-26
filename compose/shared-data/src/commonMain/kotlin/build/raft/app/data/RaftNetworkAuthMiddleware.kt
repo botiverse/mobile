@@ -72,7 +72,9 @@ import build.raft.app.model.ServerId
             ) {
                 is SharedAuthRefreshResult.Success -> result.session
                 is SharedAuthRefreshResult.Failure -> {
-                    if (result.response.code == 401 || result.response.code == 403) {
+                    // Refusal P3 B2 (slock #16902): only 401 is terminal session loss; a 403
+                    // keeps the session and surfaces the refusal response to the caller.
+                    if (result.response.code == 401) {
                         terminalAuthLossReporter(session, caller)
                     } else {
                         return result.response.toNetworkResponse()

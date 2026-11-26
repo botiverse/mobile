@@ -508,6 +508,11 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
     private val awaitBackgroundProjectionWindow: suspend (wakeWhen: StateFlow<Boolean>) -> Unit = { wake ->
         RaftScrollFrameSignal.awaitHomeScrollSettled(cancelWhen = wake)
     },
+    /**
+     * #proj-o11y:#53 (slock #16951): where each `slock.activity.unread_state_flipped` event goes
+     * ([RaftClientTraceEvents.emitActivityUnreadStateFlipped] in the app). Must only queue and never throw.
+     */
+    private val unreadFlipSink: (serverId: String, event: ActivityUnreadStateFlipped) -> Unit = { _, _ -> },
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -553,6 +558,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         )
     /** `inbox_row_position_v1`: one report per lowering per 90 s (web #15560); under the realtime lock. */
     private val listRowLoweredDedupe = ActivityListRowLoweredDedupe()
+    private val unreadFlipTrace = ActivityUnreadFlipTrace(nowMillis)
+    private var scopedMarkReadPredictionSource: Pair<ChannelId, ActivityUnreadFlipSource>? = null
     private val doneOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private var lastResetLoadStartedAtMillis: Long? = null
     /** Wall time the shown rows were last read from the server (any refresh, background too). */
@@ -906,7 +913,11 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             is SharedActivityIntent.UnfollowThread -> unfollowThread(intent)
             is SharedActivityIntent.FollowThread -> followThread(intent.item)
             is SharedActivityIntent.MarkRead ->
-                if (intent.item.kind == InboxItemKind.Object) markObjectRead(intent.item) else markRead(intent.item)
+                if (intent.item.kind == InboxItemKind.Object) {
+                    markObjectRead(intent.item)
+                } else {
+                    markRead(intent.item, fromOpen = intent.fromOpen)
+                }
             // An object row has no Mark as unread (the contract has no such route).
             is SharedActivityIntent.MarkUnread -> if (intent.item.kind != InboxItemKind.Object) markUnread(intent.item)
             is SharedActivityIntent.UndoObjectDone -> undoObjectDone(intent.item)
@@ -998,6 +1009,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
     }
 
     private fun onRowOpened(intent: SharedActivityIntent.RowOpened) {
+        if (!intent.automatic) {
+            unreadFlipTrace.noteOpened(intent.item)
+        }
         synchronized(realtimeOwnerLock) {
             retainReadRowLocked(intent, intent.item)
         }
@@ -1172,6 +1186,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         synchronized(realtimeOwnerLock) {
             readOverlay.clear()
             doneOverlay.clear()
+            unreadFlipTrace.reset()
+            scopedMarkReadPredictionSource = null
             lastResetLoadStartedAtMillis = null
             lastRowsReadAtEpochMillis = null
             readPredictionRevisions = emptyMap()
@@ -2159,7 +2175,14 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         if (patched == existing) return false
         advanceReplyThreadContent(existing, patched, realtimeMessageId = event.latestReply?.messageId)
         if (rememberHighWater) rememberRealtimeHighWater(patched)
-        applyPatchedActivityItem(patched, existingIndex, current, snapshot, intent)
+        applyPatchedActivityItem(
+            patched,
+            existingIndex,
+            current,
+            snapshot,
+            intent,
+            unreadFlipSource = ActivityUnreadFlipSource.RealtimeEvent,
+        )
         return true
     }
 
@@ -2184,7 +2207,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         existingIndex: Int,
         current: SharedActivityState,
         snapshot: InboxSnapshot,
-        intent: SharedActivityIntent.ApplyRealtimeEvent
+        intent: SharedActivityIntent.ApplyRealtimeEvent,
+        unreadFlipSource: ActivityUnreadFlipSource = ActivityUnreadFlipSource.InPlacePatch,
     ) {
         val previous = snapshot.items[existingIndex]
         val projected = patched.withActivityFollowStateProjection()
@@ -2199,7 +2223,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             maxOf(0, snapshot.totalUnreadCount + projected.unreadCount - previous.unreadCount)
                     ),
                 errorCode = null
-            )
+            ),
+            unreadFlipSource = unreadFlipSource,
         )
     }
 
@@ -3406,6 +3431,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 ),
                 summarySource = "activity_row_reread",
                 invalidateOtherFilters = insertedCount > 0,
+                unreadFlipSource = ActivityUnreadFlipSource.BackgroundReread,
             )
         }
         asked.forEach { (scopeId, entry) ->
@@ -5064,7 +5090,13 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 } else {
                     null
                 },
-            summarySource = "activity_canonical:${current.selectedFilter.wireValue}"
+            summarySource = "activity_canonical:${current.selectedFilter.wireValue}",
+            unreadFlipSource =
+                if (backgroundRefresh) {
+                    ActivityUnreadFlipSource.BackgroundReread
+                } else {
+                    ActivityUnreadFlipSource.ListRefresh
+                },
         )
         if (!append && settle) {
             settleStaleRecovery(nextState, result)
@@ -6315,9 +6347,13 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         }
     }
 
-    private fun markRead(item: InboxItem) {
+    private fun markRead(item: InboxItem, fromOpen: Boolean = false) {
         // A row marked unread with no count is read like any unread row: the read clears the mark.
         if (item.isUnfollowedActivityThread || !item.showsUnread) return
+        val flipSource = if (fromOpen) ActivityUnreadFlipSource.OpenRead else ActivityUnreadFlipSource.UserAction
+        if (fromOpen) {
+            unreadFlipTrace.noteOpened(item)
+        }
         val previous = _state.value
         if (previous.snapshot == null) return
         val targetChannelId = item.readReceiptChannelId()
@@ -6333,11 +6369,24 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             }
         // Reading a row (opened or marked read) in Unread keeps it listed, read, until the user
         // moves on; rows read earlier in this visit stay too.
-        synchronized(realtimeOwnerLock) { retainReadRowLocked(SharedActivityIntent.MarkRead(item), item) }
+        synchronized(realtimeOwnerLock) { retainReadRowLocked(SharedActivityIntent.MarkRead(item, fromOpen = fromOpen), item) }
         val coordinator = readReceiptCoordinator
         if (owner != null && coordinator != null) {
             val knownSeq = item.readStateLatestActivitySeq?.toLongOrNull()
-            applyReadReceiptPrediction(coordinator.markReadAll(owner, targetChannelId, knownSeq))
+            val prediction =
+                try {
+                    synchronized(realtimeOwnerLock) {
+                        scopedMarkReadPredictionSource = targetChannelId to flipSource
+                    }
+                    coordinator.markReadAll(owner, targetChannelId, knownSeq)
+                } finally {
+                    synchronized(realtimeOwnerLock) {
+                        if (scopedMarkReadPredictionSource?.first == targetChannelId) {
+                            scopedMarkReadPredictionSource = null
+                        }
+                    }
+                }
+            applyReadReceiptPrediction(prediction, unreadFlipSource = flipSource)
             return
         }
         val key = item.key
@@ -6359,7 +6408,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 retainedSnapshot.items.filterNot { it.key == key }
             }
         reduceState(
-            SharedActivityIntent.MarkRead(item),
+            SharedActivityIntent.MarkRead(item, fromOpen = fromOpen),
             retainedState.copy(
                 snapshot =
                     retainedSnapshot.copy(
@@ -6374,7 +6423,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         totalUnreadCount = maxOf(0, retainedSnapshot.totalUnreadCount - item.unreadCount)
                     ),
                 errorCode = null
-            )
+            ),
+            unreadFlipSource = flipSource,
         )
         scope.launch {
             withOverlaySettlement(readOverlay, overlayOwner, readGenerations) {
@@ -6399,9 +6449,18 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         }
     }
 
-    @RaftCoreInternalApi fun applyReadReceiptPrediction(prediction: ReadReceiptPrediction) {
+    @RaftCoreInternalApi fun applyReadReceiptPrediction(
+        prediction: ReadReceiptPrediction,
+        unreadFlipSource: ActivityUnreadFlipSource? = null,
+    ) {
         synchronized(realtimeOwnerLock) {
             onReadReceiptPredictionOwnerEntered()
+            val effectiveFlipSource =
+                unreadFlipSource
+                    ?: scopedMarkReadPredictionSource
+                        ?.takeIf { it.first == prediction.channelId }
+                        ?.second
+                    ?: ActivityUnreadFlipSource.LocalRead
             val current = _state.value
             if (!current.matchesReadReceiptOwner(prediction.owner)) return@synchronized
             val previousRevision = readPredictionRevisions[prediction.channelId]
@@ -6457,7 +6516,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             totalUnreadCount = maxOf(0, snapshot.totalUnreadCount - removedUnreadCount)
                         ),
                     errorCode = null
-                )
+                ),
+                unreadFlipSource = effectiveFlipSource,
             )
         }
     }
@@ -6883,7 +6943,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             retainedReadRowKeys = current.retainedReadRowKeys - removedKeys,
                             pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey in removedKeys }
                         ),
-                        summarySource = "activity_sync_inbox_rows"
+                        summarySource = "activity_sync_inbox_rows",
+                        unreadFlipSource = ActivityUnreadFlipSource.BackgroundReread,
                     )
                 }
                 // A row this list cannot apply by the rule: the list is read again, as before the capability.
@@ -7138,7 +7199,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         summaryAuthoritative: Boolean = false,
         summaryFactCounts: Pair<Int, Int>? = null,
         summarySource: String = "activity:${intent.activitySummarySource()}",
-        invalidateOtherFilters: Boolean = false
+        invalidateOtherFilters: Boolean = false,
+        unreadFlipSource: ActivityUnreadFlipSource = intent.defaultUnreadFlipSource(),
     ): Boolean {
         val previousState = _state.value
         val stateWithFilterCache =
@@ -7168,6 +7230,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             }
         if (finalState == previousState) return false
         _state.value = finalState
+        unreadFlipTrace.observeTransition(
+            previous = previousState,
+            next = finalState,
+            source = unreadFlipSource,
+            sink = unreadFlipSink,
+        )
         persistSlices.forEach { slice ->
             slice.onTransition(previous = previousState, intent = intent, next = finalState)
         }
@@ -7878,7 +7946,7 @@ sealed interface SharedActivityIntent {
         val listOwnerServerId: String? = null,
     ) : SharedActivityIntent
     data class FollowThread(val item: InboxItem) : SharedActivityIntent
-    data class MarkRead(val item: InboxItem) : SharedActivityIntent
+    data class MarkRead(val item: InboxItem, val fromOpen: Boolean = false) : SharedActivityIntent
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
     data class ApplyReadReceiptPrediction(val prediction: ReadReceiptPrediction) : SharedActivityIntent
     data class ApplyReadReceiptFailure(val request: ReadReceiptRequest) : SharedActivityIntent
@@ -7919,7 +7987,7 @@ sealed interface SharedActivityIntent {
      * filter that drops read rows, an unread [item] joins the rows retained for this visit, so
      * reading it keeps it in place; rows retained earlier stay.
      */
-    data class RowOpened(val item: InboxItem) : SharedActivityIntent
+    data class RowOpened(val item: InboxItem, val automatic: Boolean = false) : SharedActivityIntent
     /**
      * The user lost access to [channelIds] (left or deleted through the app; an archived channel is still readable).
      * Retained rows of those channels, their threads, or threads under them leave at once.
@@ -8019,6 +8087,46 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         is SharedActivityIntent.ApplyRealtimeEvent -> "realtime"
         is SharedActivityIntent.ApplyRealtimeSummaryEvent -> "realtime_summary"
         is SharedActivityIntent.ApplyRemoteDone -> "remote_done"
+    }
+
+private fun SharedActivityIntent.defaultUnreadFlipSource(): ActivityUnreadFlipSource =
+    when (this) {
+        is SharedActivityIntent.MarkRead ->
+            if (fromOpen) ActivityUnreadFlipSource.OpenRead else ActivityUnreadFlipSource.UserAction
+        SharedActivityIntent.MarkAllRead,
+        is SharedActivityIntent.MarkUnread,
+        is SharedActivityIntent.MarkDone,
+        is SharedActivityIntent.UnfollowThread,
+        is SharedActivityIntent.FollowThread,
+        is SharedActivityIntent.UndoObjectDone,
+        is SharedActivityIntent.UnfollowObject,
+        is SharedActivityIntent.ProjectThreadUnfollow,
+        is SharedActivityIntent.ProjectPendingDeferredHide -> ActivityUnreadFlipSource.UserAction
+        is SharedActivityIntent.ApplyReadReceiptPrediction -> ActivityUnreadFlipSource.LocalRead
+        is SharedActivityIntent.ApplyRealtimeEvent ->
+            when (event) {
+                is MessageNew,
+                is MessageUpdated,
+                is ThreadUpdated -> ActivityUnreadFlipSource.InPlacePatch
+                else -> ActivityUnreadFlipSource.RealtimeEvent
+            }
+        is SharedActivityIntent.ApplyRealtimeSummaryEvent,
+        is SharedActivityIntent.ApplyRemoteDone,
+        is SharedActivityIntent.ChannelAccessLost -> ActivityUnreadFlipSource.RealtimeEvent
+        SharedActivityIntent.LoadInitial,
+        SharedActivityIntent.Refresh,
+        SharedActivityIntent.PullRefresh,
+        SharedActivityIntent.LoadMore,
+        is SharedActivityIntent.SetFilter,
+        is SharedActivityIntent.ServerSelected -> ActivityUnreadFlipSource.ListRefresh
+        is SharedActivityIntent.ApplyReadReceiptFailure,
+        is SharedActivityIntent.ApplyReadReceiptResult,
+        is SharedActivityIntent.PrewarmVisibleReplyThreads,
+        is SharedActivityIntent.PrewarmActivityTail,
+        SharedActivityIntent.DetachPrewarmViewport,
+        SharedActivityIntent.SurfaceHidden,
+        is SharedActivityIntent.SurfaceActive,
+        is SharedActivityIntent.RowOpened -> ActivityUnreadFlipSource.Unknown
     }
 
 /** The realtime event behind a summary invalidation (#13126); null (`other`) for the person's own actions. */

@@ -21,6 +21,7 @@ import kotlinx.serialization.json.Json
 @RaftCoreInternalApi data class AccountDeletionPendingErrorBody(
     val error: String? = null,
     val code: String? = null,
+    val errorCode: String? = null,
     val scheduledFor: String? = null,
 )
 
@@ -33,7 +34,7 @@ private val accountDeletionPendingJson = Json { ignoreUnknownKeys = true }
     val body =
         runCatching { accountDeletionPendingJson.decodeFromString(AccountDeletionPendingErrorBody.serializer(), text) }
             .getOrNull() ?: return null
-    return body.takeIf { it.code == ACCOUNT_DELETION_PENDING_ERROR_CODE }
+    return body.takeIf { looseRefusalCode(code = it.code, errorCode = it.errorCode) == ACCOUNT_DELETION_PENDING_ERROR_CODE }
 }
 
 /**

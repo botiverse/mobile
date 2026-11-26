@@ -132,7 +132,8 @@ internal fun activityStore(
         parentChannelId: String?,
     ) -> ActivityUnlistedThreadContext = { _, _, _, _ -> ActivityUnlistedThreadContext() },
     isBackgroundProjectionDeferred: () -> Boolean = { false },
-    awaitBackgroundProjectionWindow: suspend (kotlinx.coroutines.flow.StateFlow<Boolean>) -> Unit = {}
+    awaitBackgroundProjectionWindow: suspend (kotlinx.coroutines.flow.StateFlow<Boolean>) -> Unit = {},
+    unreadFlipSink: (serverId: String, event: ActivityUnreadStateFlipped) -> Unit = { _, _ -> },
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -184,7 +185,8 @@ internal fun activityStore(
         syncInboxRowsEnabled = syncInboxRowsEnabled,
         knownThreadContext = knownThreadContext,
         isBackgroundProjectionDeferred = isBackgroundProjectionDeferred,
-        awaitBackgroundProjectionWindow = awaitBackgroundProjectionWindow
+        awaitBackgroundProjectionWindow = awaitBackgroundProjectionWindow,
+        unreadFlipSink = unreadFlipSink,
     )
 
 internal class FakeInboxRepository(
