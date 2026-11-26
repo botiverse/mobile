@@ -426,33 +426,35 @@ class ThreadActionCardMcpConnectTest {
         assertEquals("Bob", authRes.data.account?.ownerDisplayName)
 
         // Unsafe authorizationUrl fails closed with mcp_oauth_unsafe_url + traceId.
+        val unsafeTraceId = "4bf92f3577b34da6a3ce929d0e0e4736"
         fakeTransport.oauthStartResponse =
             HomeNetworkResponse(
                 code = 200,
                 bodyText = """{"authorizationUrl":"javascript:alert(1)","attemptId":"att-1","connectionId":"c-1"}""",
-                responseHeaders = mapOf("X-Trace-Id" to listOf("trace-unsafe-1")),
+                responseHeaders = mapOf("X-Trace-Id" to listOf(unsafeTraceId)),
             )
         val unsafeRes = assertIs<DataResult.Error>(
             client.startConnectionOAuth("app-notion", McpOAuthStartRequest(McpAccountKind.Personal, "Notion"))
         )
         assertEquals(MCP_OAUTH_UNSAFE_URL_ERROR_CODE, unsafeRes.error.serverCode)
         assertEquals(McpAppErrorCode.OAuthUnsafeUrl, unsafeRes.error.mcpAppErrorCode())
-        assertEquals("trace-unsafe-1", unsafeRes.error.traceId)
+        assertEquals(unsafeTraceId, unsafeRes.error.traceId)
 
         // DCR rejection carries oauthError and traceId.
+        val dcrTraceId = "0af7651916cd43dd8448eb211c80319c"
         fakeTransport.oauthStartResponse =
             HomeNetworkResponse(
                 code = 422,
                 bodyText = null,
                 errorBodyText = """{"error":"DCR rejected","code":"mcp_oauth_dcr_rejected","oauthError":"invalid_client_metadata"}""",
-                responseHeaders = mapOf("X-Trace-Id" to listOf("trace-dcr-2")),
+                responseHeaders = mapOf("X-Trace-Id" to listOf(dcrTraceId)),
             )
         val dcrRes = assertIs<DataResult.Error>(
             client.startConnectionOAuth("app-notion", McpOAuthStartRequest(McpAccountKind.Shared, "Notion"))
         )
         assertEquals(McpAppErrorCode.OAuthRegistrationRejected, dcrRes.error.mcpAppErrorCode())
         assertEquals("invalid_client_metadata", dcrRes.error.mcpOAuthProviderError())
-        assertEquals("trace-dcr-2", dcrRes.error.traceId)
+        assertEquals(dcrTraceId, dcrRes.error.traceId)
 
         // 401 yields NoPermission.
         fakeTransport.pollResponse = HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"Expired"}""")
