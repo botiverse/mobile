@@ -34,7 +34,7 @@ final class RaftIosServerSwitcherHost: NSObject, RaftNativeServerSwitcherListene
     }
 
     func onNativeServerSwitcherStateChanged(state: RaftNativeServerSwitcherState) {
-        let applyBlock = { [weak self] in
+        let applyBlock: () -> Void = { [weak self] in
             self?.applyOnMain(state)
         }
         if Thread.isMainThread {
