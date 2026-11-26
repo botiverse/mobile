@@ -2,9 +2,13 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.RuntimeConfig
+import build.raft.app.model.RuntimeModeConfig
 import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.data.normalizeAgentServiceTier
+import build.raft.app.data.parseAgentServiceTier
 import build.raft.app.data.runtimeform.v2.CLAUDE_V3_EDIT_JSON
 import build.raft.app.data.runtimeform.v2.CODEX_V2_FALLBACK_SOURCE_JSON
 import build.raft.app.data.runtimeform.v2.CODEX_V3_EDIT_JSON
@@ -22,6 +26,7 @@ import build.raft.app.data.runtimeform.v2.runtimeFormV2Submission
 import build.raft.app.data.runtimeform.v2.text
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
@@ -30,6 +35,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class MembersRuntimeConfigTest {
@@ -145,6 +151,80 @@ class MembersRuntimeConfigTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun fastModeFallbackReflectsLiveServiceTierAndIgnoresOfflineOrInvalidTiers() {
+        assertEquals("default", parseAgentServiceTier(JsonPrimitive("default")))
+        assertEquals("priority", parseAgentServiceTier(JsonPrimitive("priority")))
+        assertEquals("ultrafast", parseAgentServiceTier(JsonPrimitive("ultrafast")))
+        assertEquals("flex", parseAgentServiceTier(JsonPrimitive("flex")))
+        assertEquals("a", normalizeAgentServiceTier("a"))
+        assertEquals("a" + "1".repeat(31), normalizeAgentServiceTier("a" + "1".repeat(31)))
+        assertNull(normalizeAgentServiceTier("a" + "1".repeat(32)))
+        assertNull(parseAgentServiceTier(JsonPrimitive("")))
+        assertNull(parseAgentServiceTier(JsonPrimitive("INVALID TIER!")))
+        assertNull(parseAgentServiceTier(JsonPrimitive(" default")))
+        assertNull(parseAgentServiceTier(JsonPrimitive(1)))
+        assertNull(parseAgentServiceTier(JsonPrimitive(true)))
+        assertNull(parseAgentServiceTier(JsonNull))
+        assertNull(parseAgentServiceTier(JsonObject(emptyMap())))
+
+        val codexFast =
+            RuntimeConfig(
+                runtime = "codex",
+                provider = null,
+                model = RuntimeModelConfig.Preset("gpt-6.2-sol"),
+                mode = RuntimeModeConfig.Fast,
+                reasoningEffort = null,
+                envVars = null,
+            )
+        val codexDefault = codexFast.copy(mode = RuntimeModeConfig.Default)
+        val unsupportedFast =
+            RuntimeConfig(
+                runtime = "claude",
+                provider = null,
+                model = RuntimeModelConfig.Preset("claude-opus-4-8"),
+                mode = RuntimeModeConfig.Fast,
+                reasoningEffort = null,
+                envVars = null,
+            )
+
+        // Configured fast + live non-fast serviceTier -> Default + fallback hint.
+        assertFalse(membersResolveDisplayedFastMode(codexFast, AgentStatus.Online, "default"))
+        assertTrue(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Online, "default"))
+        assertFalse(membersResolveDisplayedFastMode(codexFast, AgentStatus.Working, "flex"))
+        assertTrue(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Working, "flex"))
+
+        // Configured fast + live fast serviceTier -> Fast, no fallback hint.
+        assertTrue(membersResolveDisplayedFastMode(codexFast, AgentStatus.Online, "priority"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Online, "priority"))
+        assertTrue(membersResolveDisplayedFastMode(codexFast, AgentStatus.Thinking, "fast"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Thinking, "fast"))
+        assertTrue(membersResolveDisplayedFastMode(codexFast, AgentStatus.Idle, "ultrafast"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Idle, "ultrafast"))
+
+        // Offline, disconnected, unknown status, or absent/invalid tier -> configured mode, no fallback hint.
+        assertTrue(membersResolveDisplayedFastMode(codexFast, AgentStatus.Offline, "default"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Offline, "default"))
+        assertTrue(membersResolveDisplayedFastMode(codexFast, AgentStatus.Disconnected, "default"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Disconnected, "default"))
+        assertTrue(membersResolveDisplayedFastMode(codexFast, null, "default"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, null, "default"))
+        assertTrue(membersResolveDisplayedFastMode(codexFast, AgentStatus.Online, null))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Online, null))
+        assertTrue(membersResolveDisplayedFastMode(codexFast, AgentStatus.Online, "INVALID"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexFast, AgentStatus.Online, "INVALID"))
+
+        // Default-configured agent never shows fallback hint (even when live serviceTier is default).
+        assertFalse(membersResolveDisplayedFastMode(codexDefault, AgentStatus.Online, "default"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexDefault, AgentStatus.Online, "default"))
+        assertTrue(membersResolveDisplayedFastMode(codexDefault, AgentStatus.Online, "priority"))
+        assertFalse(membersIsDisplayedFastModeFallback(codexDefault, AgentStatus.Online, "priority"))
+
+        // Saved fast on a model that does not run fast never shows a fallback hint.
+        assertFalse(membersResolveDisplayedFastMode(unsupportedFast, AgentStatus.Online, "default"))
+        assertFalse(membersIsDisplayedFastModeFallback(unsupportedFast, AgentStatus.Online, "default"))
     }
 
     private data class SavedModeCase(

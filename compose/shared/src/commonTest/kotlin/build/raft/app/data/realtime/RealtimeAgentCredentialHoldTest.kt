@@ -293,4 +293,78 @@ class RealtimeAgentCredentialHoldTest {
             )
         assertNull(fractional.runningWorkers)
     }
+
+    @Test
+    fun agentActivityAndCoarseStateParseAndDropInvalidServiceTier() {
+        val detailed =
+            map(
+                """
+                {
+                  "agentId": "agent-tier",
+                  "activity": "online",
+                  "detail": "",
+                  "detailKind": "idle",
+                  "timestamp": 1782367200000,
+                  "serverSeq": 30,
+                  "serviceTier": "default"
+                }
+                """.trimIndent()
+            )
+        assertEquals(AgentStatus.Online, detailed.agentStatus)
+        assertEquals("default", detailed.serviceTier)
+
+        val coarse =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-tier",
+                      "state": "online",
+                      "activity": "online",
+                      "timestamp": 1782367201000,
+                      "serverSeq": 31,
+                      "serviceTier": "priority"
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertEquals(true, coarse.coarseState)
+        assertEquals("priority", coarse.serviceTier)
+
+        val cleared =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-tier",
+                      "state": "online",
+                      "activity": "online",
+                      "timestamp": 1782367202000,
+                      "serverSeq": 32
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertNull(cleared.serviceTier)
+
+        val invalid =
+            assertIs<MemberPresenceUpdated>(
+                RealtimeEventMapper().map(
+                    RealtimeSocketEvents.AgentActivityState,
+                    """
+                    {
+                      "agentId": "agent-tier",
+                      "state": "online",
+                      "activity": "online",
+                      "timestamp": 1782367203000,
+                      "serverSeq": 33,
+                      "serviceTier": "INVALID TIER!"
+                    }
+                    """.trimIndent()
+                )
+            )
+        assertNull(invalid.serviceTier)
+    }
 }

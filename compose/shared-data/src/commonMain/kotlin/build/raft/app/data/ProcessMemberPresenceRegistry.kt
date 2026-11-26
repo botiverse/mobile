@@ -629,6 +629,7 @@ private data class ProcessPresenceCurrentProjectionStamp(
                         credentialHold = if (event.statusLabel != null) event.credentialHold else previous.credentialHold,
                         deliveryHold = if (event.statusLabel != null) event.deliveryHold else previous.deliveryHold,
                         runningWorkers = if (event.statusLabel != null) event.runningWorkers else previous.runningWorkers,
+                        serviceTier = if (event.statusLabel != null) event.serviceTier else previous.serviceTier,
                         errorCode = if (event.statusLabel != null) event.errorCode else previous.errorCode,
                         // agent:seen is not an activity frame; only an activity frame without
                         // `toolStuck` means "not stuck".
@@ -1337,6 +1338,7 @@ private fun <T> Map<ProcessServerMembersOwner, Map<String, T>>.withoutPresenceMe
         credentialHold == previous.credentialHold &&
         sameAgentDeliveryHold(deliveryHold, previous.deliveryHold) &&
         normalizeAgentRunningWorkers(runningWorkers) == normalizeAgentRunningWorkers(previous.runningWorkers) &&
+        normalizeAgentServiceTier(serviceTier) == normalizeAgentServiceTier(previous.serviceTier) &&
         errorCode == previous.errorCode &&
         toolStuck == previous.toolStuck &&
         kind == previous.kind &&

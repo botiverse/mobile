@@ -100,6 +100,8 @@ internal data class RaftAgentStatusIndicatorState(
     val runningWorkers: Int? = null,
     /** Another server's agent (joint channel): only presence is known, never the count. */
     val runningWorkersPresenceOnly: Boolean = false,
+    /** Live service tier reported by the agent's active session (`serviceTier`, botiverse/slock #16868). */
+    val serviceTier: String? = null,
     /** Human creator user id from the roster, for edit-permission checks on retired-runtime notices. */
     val creatorUserId: String? = null,
 )
@@ -292,6 +294,7 @@ internal fun SharedServerMemberStatus.toRaftAgentStatusIndicatorState(
             deliveryHold = deliveryHold,
             runningWorkers = runningWorkers,
             runningWorkersPresenceOnly = runningWorkersPresenceOnly,
+            serviceTier = serviceTier,
             creatorUserId = creatorUserId,
         )
     // Web AgentActivityDot (botiverse/slock #16333, #16819): a held agent paints the error light on

@@ -447,6 +447,7 @@ internal fun MembersDetailContent(
                         deliveryHold = detail?.summary?.deliveryHold,
                         runningWorkers = detail?.summary?.runningWorkers,
                         runningWorkersPresenceOnly = remoteProfile,
+                        serviceTier = detail?.summary?.serviceTier,
                     )
                 } else {
                     null

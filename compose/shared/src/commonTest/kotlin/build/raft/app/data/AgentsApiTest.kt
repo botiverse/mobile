@@ -973,4 +973,35 @@ class AgentsApiTest {
         assertEquals(null to null, readWorkers("1.5"))
         assertEquals(null to null, readWorkers(""""2""""))
     }
+
+    @Test
+    fun agentSummaryDetailAndRosterParseServiceTierDefensively() = runPortableCoroutineTest {
+        suspend fun readTier(rawField: String?): Pair<String?, String?> {
+            val extra = rawField?.let { ""","serviceTier":$it""" }.orEmpty()
+            val body = """{"id":"agent-1","name":"otter","status":"active","activity":"online"$extra}"""
+            val summary =
+                assertIs<DataResult.Content<AgentSummary>>(
+                    RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-1"))
+                ).data
+            return summary.serviceTier to summary.toAgentDetailSummary().serviceTier
+        }
+        assertEquals("default" to "default", readTier(""""default""""))
+        assertEquals("priority" to "priority", readTier(""""priority""""))
+        assertEquals("flex" to "flex", readTier(""""flex""""))
+        assertEquals(null to null, readTier(null))
+        assertEquals(null to null, readTier(""""""""))
+        assertEquals(null to null, readTier(""""INVALID TIER!""""))
+        assertEquals(null to null, readTier("123"))
+
+        val roster =
+            parseSharedAgentProfile(
+                """{"id":"agent-1","name":"otter","runtime":"codex","model":"gpt-6.2-sol","status":"active","activity":"online","serviceTier":"default"}"""
+            )
+        assertEquals("default", roster?.agentServiceTier)
+        val rosterInvalid =
+            parseSharedAgentProfile(
+                """{"id":"agent-1","name":"otter","runtime":"codex","model":"gpt-6.2-sol","status":"active","activity":"online","serviceTier":"BAD TIER"}"""
+            )
+        assertEquals(null, rosterInvalid?.agentServiceTier)
+    }
 }

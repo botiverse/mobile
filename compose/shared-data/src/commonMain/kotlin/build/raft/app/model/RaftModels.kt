@@ -535,6 +535,12 @@ data class MemberProfile(
      */
     val agentRunningWorkers: Int? = null,
     /**
+     * Live session service tier reported by the daemon (`GET /agents`, `GET /channels/:id/members`
+     * `serviceTier`, botiverse/slock #16868, e.g. `default`, `priority`, `fast`, `flex`). Cleared
+     * by `withoutVolatileStatus()` / durable caches so disk caches never flash stale live tiers.
+     */
+    val agentServiceTier: String? = null,
+    /**
      * External agents (runtime `external`) have no managed liveness. Web keeps
      * `agent.external === true || runtime === "external"` as parallel sources
      * (agentStore.ts resolveAgentDisplayState); producers fold both via
@@ -1415,6 +1421,12 @@ data class MemberPresenceUpdated(
      * carries 1 or absent). Positive integer when some are running; null means none.
      */
     val runningWorkers: Int? = null,
+    /**
+     * Live service tier reported by this agent's active session (carried on both `agent:activity`
+     * and `agent:activity_state`, botiverse/slock #16868, e.g. `default`, `priority`, `fast`,
+     * `flex`); null when unknown or absent.
+     */
+    val serviceTier: String? = null,
     /**
      * The code of the runtime error this frame shows (the `errorCode` carrier of `agent:activity`,
      * web #13985), only with [agentStatus] Error; null otherwise or for an unknown code.

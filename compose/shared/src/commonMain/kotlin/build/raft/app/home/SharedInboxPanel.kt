@@ -653,6 +653,7 @@ internal fun SharedHomeActivityScreen(
                         !externalSelectedArtifactId.isNullOrBlank(),
                 items = arrivalItems.orEmpty(),
                 lastOpenedKey = lastOpenedStore.read(activitySummaryServerId.value),
+                liveItems = activityStore.state.value.snapshot?.items,
             ) ?: return@ActivityArrivalReopenEffect
         bridge.log("shared_activity_arrival_reopen kind=${item.kind.name} unread=${item.unreadCount}")
         openActivityItemWithMode(item, true)
@@ -763,7 +764,9 @@ internal fun activityExternalSelectedItemKey(
     }
     val threadId = externalSelectedThreadId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     return items.firstOrNull { item ->
-        item.kind != InboxItemKind.Object && item.toConversationSummary().threadId.value == threadId
+        item.kind != InboxItemKind.Object &&
+            ((item.isTaskConversation && item.threadChannelId?.value == threadId) ||
+                item.toConversationSummary().threadId.value == threadId)
     }?.key
 }
 

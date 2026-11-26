@@ -1728,6 +1728,7 @@
     <string name="member_label_command">Comando</string>
     <string name="member_label_default">Predeterminado</string>
     <string name="member_label_fast">Rápido</string>
+    <string name="member_runtime_fast_mode_fallback_hint">El modo rápido no estuvo disponible para esta sesión</string>
     <string name="member_label_connected">En línea</string>
     <string name="member_label_offline">Sin conexión</string>
     <string name="member_label_activity_only">Solo actividad</string>

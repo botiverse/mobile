@@ -977,9 +977,37 @@ class SharedServerMembersStoreTest {
         assertEquals(2, localStatus?.runningWorkers)
         assertEquals(false, localStatus?.runningWorkersPresenceOnly)
 
-        // Durable roster stripping never persists volatile runningWorkers.
-        val durable = agent("workers", "Kirby").copy(agentRunningWorkers = 3).forDurableRoster()
+        // Durable roster stripping never persists volatile runningWorkers or serviceTier.
+        val durable = agent("workers", "Kirby").copy(agentRunningWorkers = 3, agentServiceTier = "default").forDurableRoster()
         assertNull(durable.agentRunningWorkers)
+        assertNull(durable.agentServiceTier)
+
+        // Live serviceTier propagates through presence -> memberStatusFlow and clears when absent.
+        store.applyPresence(
+            ServerId("server-1"),
+            MemberPresenceUpdated(
+                memberId = MemberId("workers"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Online,
+                serviceTier = "default",
+                serverSeq = 2L,
+            ),
+        )
+        assertEquals("default", store.memberStatusFlow(ServerId("server-1"), "workers").first()?.serviceTier)
+        store.applyPresence(
+            ServerId("server-1"),
+            MemberPresenceUpdated(
+                memberId = MemberId("workers"),
+                presence = Presence.Active,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Online,
+                serviceTier = null,
+                serverSeq = 3L,
+                coarseState = true,
+            ),
+        )
+        assertNull(store.memberStatusFlow(ServerId("server-1"), "workers").first()?.serviceTier)
     }
 
     @Test

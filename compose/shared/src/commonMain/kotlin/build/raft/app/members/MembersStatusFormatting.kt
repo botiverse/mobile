@@ -81,6 +81,7 @@ internal fun membersRemoteProfileAgentStatusIndicatorStateOrNull(
     deliveryHold: AgentDeliveryHold? = null,
     runningWorkers: Int? = null,
     runningWorkersPresenceOnly: Boolean = false,
+    serviceTier: String? = null,
 ): RaftAgentStatusIndicatorState? {
     val status =
         normalizedAgentRuntimeStatus(
@@ -105,6 +106,7 @@ internal fun membersRemoteProfileAgentStatusIndicatorStateOrNull(
             deliveryHold = deliveryHold,
             runningWorkers = resolvedWorkers,
             runningWorkersPresenceOnly = resolvedWorkers != null && runningWorkersPresenceOnly,
+            serviceTier = build.raft.app.data.normalizeAgentServiceTier(serviceTier),
         )
     val nowMs = defaultNowMillis()
     return when {

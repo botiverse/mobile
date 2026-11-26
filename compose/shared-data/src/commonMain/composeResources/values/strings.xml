@@ -1732,6 +1732,7 @@
     <string name="member_label_command">Command</string>
     <string name="member_label_default">Default</string>
     <string name="member_label_fast">Fast</string>
+    <string name="member_runtime_fast_mode_fallback_hint">Fast mode wasn't available for this session</string>
     <string name="member_label_connected">Online</string>
     <string name="member_label_offline">Offline</string>
     <string name="member_label_activity_only">Activity only</string>
