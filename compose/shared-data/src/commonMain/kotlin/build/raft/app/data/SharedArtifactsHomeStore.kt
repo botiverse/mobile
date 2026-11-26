@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
+import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -8,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -139,6 +141,10 @@ import kotlinx.coroutines.launch
     /** Optional initial server/reader known synchronously on Frame 1 to seed from [snapshotCache]. */
     initialServerId: String? = null,
     initialReaderId: String? = null,
+    /** Process-wide freshness signal (#wg-mobile-feedback:#274 Phase 3). */
+    private val freshness: Flow<RaftFreshnessEvent> = RaftFreshnessSignal.events,
+    private val nowMillis: () -> Long = ::raftForegroundGateNowMillis,
+    private val liveConnectionToken: (serverId: String) -> Long? = RaftRealtimeConnectionCauses::liveConnectionToken,
 ) {
     private val initialSeed =
         seedArtifactsHomeState(
@@ -164,6 +170,15 @@ import kotlinx.coroutines.launch
     private var searchJob: Job? = null
     private var legacyAuthorJob: Job? = null
     private var ownFollowObserveJob: Job? = null
+    private var freshnessObserveJob: Job? = null
+    private var pageVisible = true
+    private val freshnessGate =
+        RaftFreshnessGate(
+            nowMillis = nowMillis,
+            trackOutcome = true,
+            liveConnectionToken = liveConnectionToken,
+        )
+    private var freshnessCatchUpInFlight = false
 
     /** What the rows on screen were read with: their cursor continues only that. */
     private var shownQuery: ArtifactsHomeQuery? = initialSeed.shownQuery
@@ -201,11 +216,18 @@ import kotlinx.coroutines.launch
                     }
                 }
         }
+        freshnessObserveJob =
+            scope.launch {
+                freshness.collect { event ->
+                    onFreshnessEvent(event)
+                }
+            }
     }
 
     fun dispatch(intent: ArtifactsHomeIntent) {
         when (intent) {
             is ArtifactsHomeIntent.Start -> start(intent.serverId, intent.readerId)
+            is ArtifactsHomeIntent.SetPageVisible -> setPageVisible(intent.visible)
             is ArtifactsHomeIntent.Search -> search(intent.text)
             is ArtifactsHomeIntent.SetPlace -> {
                 applyQuery { it.copy(place = intent.place) }
@@ -272,6 +294,9 @@ import kotlinx.coroutines.launch
         searchJob?.cancel()
         legacyAuthorJob?.cancel()
         ownFollowObserveJob?.cancel()
+        freshnessObserveJob?.cancel()
+        freshnessCatchUpInFlight = false
+        freshnessGate.reset()
         choiceJobs.values.forEach { it.cancel() }
         choiceJobs.clear()
         val pendingSettle = settleJobs.values.toList()
@@ -280,6 +305,52 @@ import kotlinx.coroutines.launch
         val pendingFollow = followJobs.values.toList()
         followJobs.clear()
         pendingFollow.forEach { it.cancel() }
+    }
+
+    private fun eligibleFreshnessServerId(): String? {
+        val current = mutableState.value
+        val serverId = current.serverId ?: return null
+        if (current.viewerOpen || current.extended) return null
+        if (current.status == ArtifactsHomeStatus.Off || current.status == ArtifactsHomeStatus.Idle) return null
+        return serverId
+    }
+
+    private fun setPageVisible(visible: Boolean) {
+        val previous = pageVisible
+        pageVisible = visible
+        if (visible && !previous) {
+            val serverId = eligibleFreshnessServerId() ?: return
+            freshnessGate.onVisibilityChanged(visible = true, serverId = serverId)?.let {
+                startFreshnessCatchUp(serverId)
+            }
+        }
+    }
+
+    private fun onFreshnessEvent(event: RaftFreshnessEvent) {
+        val serverId = eligibleFreshnessServerId() ?: return
+        freshnessGate.onEvent(event, serverId, visible = pageVisible) ?: return
+        startFreshnessCatchUp(serverId)
+    }
+
+    private fun startFreshnessCatchUp(serverId: String) {
+        val eligible = eligibleFreshnessServerId()
+        if (eligible == null || eligible != serverId) {
+            freshnessCatchUpInFlight = false
+            freshnessGate.onCatchUpCompleted(succeeded = false, visible = false)
+            return
+        }
+        freshnessCatchUpInFlight = true
+        onActivity(serverId)
+    }
+
+    private fun completeFreshnessCatchUp(succeeded: Boolean) {
+        if (!freshnessCatchUpInFlight) return
+        freshnessCatchUpInFlight = false
+        val eligible = eligibleFreshnessServerId()
+        val followUp = freshnessGate.onCatchUpCompleted(succeeded = succeeded, visible = pageVisible && eligible != null)
+        if (followUp != null && eligible != null) {
+            startFreshnessCatchUp(eligible)
+        }
     }
 
     private fun start(serverId: String?, readerId: String?) {
@@ -305,6 +376,8 @@ import kotlinx.coroutines.launch
             readJob?.cancel()
             pageJob?.cancel()
             activityRead = ActivityRead.Idle
+            freshnessCatchUpInFlight = false
+            freshnessGate.reset()
             answeredSort = current.query.sort
             searchJob?.cancel()
             legacyAuthorJob?.cancel()
@@ -522,64 +595,71 @@ import kotlinx.coroutines.launch
                 val load = api.page(serverId, query, cursor = null, priority = priority)
                 if (readGeneration != generation) return@launch
                 val latest = mutableState.value
-                when (load) {
-                    is ArtifactsHomeLoad.Ok -> {
-                        shownQuery = query
-                        shownGeneration = readGeneration
-                        answeredSort = query.sort
-                        val page = load.value
-                        val mergedRows =
-                            if (latest.reloadGeneration == expectedReloadGeneration) {
-                                val withRetained =
-                                    if (query.relevant && retainedUnfollowed.isNotEmpty()) {
-                                        mergeRetainedUnfollowed(page.rows, retainedUnfollowed, ownFollows, latest.unfollowedIds)
-                                    } else {
-                                        page.rows
-                                    }
-                                withOwnFollows(withRetained, ownFollows)
-                            } else {
-                                page.rows
+                val outcomeSucceeded =
+                    when (load) {
+                        is ArtifactsHomeLoad.Ok -> {
+                            shownQuery = query
+                            shownGeneration = readGeneration
+                            answeredSort = query.sort
+                            val page = load.value
+                            val mergedRows =
+                                if (latest.reloadGeneration == expectedReloadGeneration) {
+                                    val withRetained =
+                                        if (query.relevant && retainedUnfollowed.isNotEmpty()) {
+                                            mergeRetainedUnfollowed(page.rows, retainedUnfollowed, ownFollows, latest.unfollowedIds)
+                                        } else {
+                                            page.rows
+                                        }
+                                    withOwnFollows(withRetained, ownFollows)
+                                } else {
+                                    page.rows
+                                }
+                            val rowsLoaded = mergedRows.isNotEmpty()
+                            val rowHasSettled = rowsLoaded && mergedRows.any { it.summary.settledShown }
+                            val nextSettledEnabled =
+                                settledSeenRepository?.observe(latest.readerId, serverId, rowHasSettled, rowsLoaded)
+                                    ?: if (rowsLoaded) rowHasSettled else latest.settledEnabled
+                            val mergedKnown = mergeKnownAuthors(latest.knownAuthors, mergedRows.map { it.author })
+                            val nextState =
+                                latest.copy(
+                                    status = ArtifactsHomeStatus.Ok,
+                                    rows = mergedRows,
+                                    nextCursor = page.nextCursor,
+                                    counts = page.counts ?: latest.counts,
+                                    countsNarrowed = if (page.counts != null) query.narrowed else latest.countsNarrowed,
+                                    rowsByOpened = !query.relevant && query.sort == ArtifactsHomeSort.Opened,
+                                    settledEnabled = nextSettledEnabled,
+                                    knownAuthors = mergedKnown,
+                                    extended = false,
+                                    error = null,
+                                )
+                            mutableState.value = nextState
+                            persistSnapshotToCache(nextState, query)
+                            true
+                        }
+                        ArtifactsHomeLoad.Off -> {
+                            snapshotCache?.dropServer(serverId)
+                            mutableState.value = latest.copy(status = ArtifactsHomeStatus.Off, error = null)
+                            true
+                        }
+                        is ArtifactsHomeLoad.Missing, is ArtifactsHomeLoad.Failed -> {
+                            val error = load.errorOrNull() ?: ScreenError("artifacts_home_failed")
+                            mutableState.value = latest.copy(status = ArtifactsHomeStatus.Failed, error = error)
+                            // The sort control goes back with the rows, which that sort never replaced.
+                            if (sortOnly && answeredSort != query.sort) {
+                                mutableEvents.tryEmit(ArtifactsHomeEvent.SortFailed(error))
+                                val back = answeredSort
+                                onSortChosen(back)
+                                mutableState.value = mutableState.value.copy(query = mutableState.value.query.copy(sort = back))
+                                readFor = filterKey(serverId, mutableState.value.query)
                             }
-                        val rowsLoaded = mergedRows.isNotEmpty()
-                        val rowHasSettled = rowsLoaded && mergedRows.any { it.summary.settledShown }
-                        val nextSettledEnabled =
-                            settledSeenRepository?.observe(latest.readerId, serverId, rowHasSettled, rowsLoaded)
-                                ?: if (rowsLoaded) rowHasSettled else latest.settledEnabled
-                        val mergedKnown = mergeKnownAuthors(latest.knownAuthors, mergedRows.map { it.author })
-                        val nextState =
-                            latest.copy(
-                                status = ArtifactsHomeStatus.Ok,
-                                rows = mergedRows,
-                                nextCursor = page.nextCursor,
-                                counts = page.counts ?: latest.counts,
-                                countsNarrowed = if (page.counts != null) query.narrowed else latest.countsNarrowed,
-                                rowsByOpened = !query.relevant && query.sort == ArtifactsHomeSort.Opened,
-                                settledEnabled = nextSettledEnabled,
-                                knownAuthors = mergedKnown,
-                                extended = false,
-                                error = null,
-                            )
-                        mutableState.value = nextState
-                        persistSnapshotToCache(nextState, query)
-                    }
-                    ArtifactsHomeLoad.Off -> {
-                        snapshotCache?.dropServer(serverId)
-                        mutableState.value = latest.copy(status = ArtifactsHomeStatus.Off, error = null)
-                    }
-                    is ArtifactsHomeLoad.Missing, is ArtifactsHomeLoad.Failed -> {
-                        val error = load.errorOrNull() ?: ScreenError("artifacts_home_failed")
-                        mutableState.value = latest.copy(status = ArtifactsHomeStatus.Failed, error = error)
-                        // The sort control goes back with the rows, which that sort never replaced.
-                        if (sortOnly && answeredSort != query.sort) {
-                            mutableEvents.tryEmit(ArtifactsHomeEvent.SortFailed(error))
-                            val back = answeredSort
-                            onSortChosen(back)
-                            mutableState.value = mutableState.value.copy(query = mutableState.value.query.copy(sort = back))
-                            readFor = filterKey(serverId, mutableState.value.query)
+                            false
                         }
                     }
-                }
                 logger?.invoke("artifacts_home_result generation=$readGeneration status=${mutableState.value.status} rows=${mutableState.value.rows?.size ?: -1}")
+                if (activityRead != ActivityRead.Queued) {
+                    completeFreshnessCatchUp(succeeded = outcomeSucceeded)
+                }
             }
         readJob = job
         return job
@@ -760,12 +840,22 @@ import kotlinx.coroutines.launch
         val job = read(keepRows = true)
         if (job == null) {
             activityRead = ActivityRead.Idle
+            completeFreshnessCatchUp(succeeded = false)
             return
         }
         job.invokeOnCompletion {
             val again = activityRead == ActivityRead.Queued
             activityRead = ActivityRead.Idle
-            if (again) scope.launch { onActivity(mutableState.value.serverId ?: return@launch) }
+            if (again) {
+                scope.launch {
+                    val serverId = eligibleFreshnessServerId()
+                    if (serverId != null) {
+                        onActivity(serverId)
+                    } else {
+                        completeFreshnessCatchUp(succeeded = false)
+                    }
+                }
+            }
         }
     }
 
@@ -1151,6 +1241,9 @@ private fun ArtifactsHomeActor.matches(words: String): Boolean =
 @RaftCoreInternalApi sealed interface ArtifactsHomeIntent {
     /** The page's server (with the flag on) and signed-in reader; null server leaves the list unread. */
     data class Start(val serverId: String?, val readerId: String? = null) : ArtifactsHomeIntent
+
+    /** Whether the Artifacts home page is currently visible on screen (#wg-mobile-feedback:#274). */
+    data class SetPageVisible(val visible: Boolean) : ArtifactsHomeIntent
 
     /** The one freshness signal (#198): re-read what the page shows, silently. */
     data class CatchUp(val serverId: String) : ArtifactsHomeIntent

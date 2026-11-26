@@ -657,4 +657,32 @@ class SharedChannelAnnouncementStoreTest {
             assertEquals("channel_announcement_peer_cannot_open", failed.error.serverCode)
             assertEquals("The other participant in this DM can't open that Artifact, so nothing was changed.", failed.error.serverMessage)
         }
+
+    @Test
+    fun reconnectedReportsOutcomeForSuccessFailureSupersedeAndClose() =
+        runTest {
+            val api = FakeApi()
+            val store = store(api, jitter = { 5_000L })
+            open(store)
+
+            val outcomes = mutableListOf<Boolean>()
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, onCompleted = { outcomes += it }))
+            assertEquals(listOf(true), outcomes, "200 reconnect reports true")
+
+            api.failing = true
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, onCompleted = { outcomes += it }))
+            assertEquals(listOf(true, false), outcomes, "500 reconnect reports false")
+
+            // After-drop waiting reconnect superseded by a fresh successful read reports true once.
+            api.failing = false
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true, onCompleted = { outcomes += it }))
+            assertEquals(2, outcomes.size, "waiting jitter has not resolved yet")
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key))
+            assertEquals(listOf(true, false, true), outcomes, "superseded waiting reconnect resolves true")
+
+            // After-drop waiting reconnect cancelled by Close reports false once.
+            trigger(store, ChannelAnnouncementIntent.Reconnected(key, afterDrop = true, onCompleted = { outcomes += it }))
+            trigger(store, ChannelAnnouncementIntent.Close(key))
+            assertEquals(listOf(true, false, true, false), outcomes, "closed page resolves waiting reconnect false")
+        }
 }

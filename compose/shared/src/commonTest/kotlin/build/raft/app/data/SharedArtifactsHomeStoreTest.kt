@@ -197,6 +197,58 @@ class SharedArtifactsHomeStoreTest {
     }
 
     @Test
+    fun storeOwnedFreshnessDefersWhileHiddenAndRetriesAfterFailure() = runTest {
+        val api = FakeDashboardApi()
+        val freshness = MutableSharedFlow<RaftFreshnessEvent>(extraBufferCapacity = 16)
+        var clock = 1_000L
+        api.answer = { _, _ -> ok(rows("a")) }
+        val store =
+            SharedArtifactsHomeStore(
+                api = api,
+                scope = CoroutineScope(StandardTestDispatcher(testScheduler)),
+                freshness = freshness,
+                nowMillis = { clock },
+                liveConnectionToken = { null },
+            )
+        store.dispatch(ArtifactsHomeIntent.Start("s-1"))
+        advanceUntilIdle()
+        assertEquals(1, api.calls.size)
+
+        // Failed Foreground catch-up must NOT consume the 10 s coalescing window before NetworkRestored.
+        api.answer = { _, _ -> ArtifactsHomeLoad.Failed(ScreenError("offline")) }
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(2, api.calls.size)
+        assertEquals(listOf("a"), store.state.value.rows?.map { it.summary.id }, "rows stay on failed catch-up")
+
+        clock += 1_000L
+        api.answer = { _, _ -> ok(rows("b", "a")) }
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.NetworkRestored))
+        advanceUntilIdle()
+        assertEquals(3, api.calls.size, "failed foreground must not suppress immediate NetworkRestored retry")
+        assertEquals(listOf("b", "a"), store.state.value.rows?.map { it.summary.id })
+
+        // While hidden, a reconnect is held until the page becomes visible again.
+        store.dispatch(ArtifactsHomeIntent.SetPageVisible(false))
+        api.answer = { _, _ -> ok(rows("c", "b", "a")) }
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Reconnect, serverId = "s-1", transportEpoch = 2L))
+        advanceUntilIdle()
+        assertEquals(3, api.calls.size, "hidden page defers reconnect catch-up")
+
+        store.dispatch(ArtifactsHomeIntent.SetPageVisible(true))
+        advanceUntilIdle()
+        assertEquals(4, api.calls.size, "returning visible flushes held reconnect catch-up")
+        assertEquals(listOf("c", "b", "a"), store.state.value.rows?.map { it.summary.id })
+
+        // Clearing the store stops freshness collection.
+        store.clear()
+        clock += 60_000L
+        freshness.tryEmit(RaftFreshnessEvent(RaftFreshnessTrigger.Foreground))
+        advanceUntilIdle()
+        assertEquals(4, api.calls.size)
+    }
+
+    @Test
     fun offIsTheOffStateAndFiltersReadNothing() = runTest {
         val api = FakeDashboardApi()
         api.answer = { _, _ -> ArtifactsHomeLoad.Off }

@@ -6250,9 +6250,24 @@ private fun RaftAppShellReadyContent(
                         val tasksUpdateFailedLabel = stringResource(Res.string.thread_error_update_task)
                         val tasksAssignFailedLabel = stringResource(Res.string.thread_error_update_assignee)
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
-                        // Foreground is the shell's visible-route refresh; a socket reconnect re-reads missed task pushes.
-                        RaftLiveCatchUpEffect(serverId = selectedServerId, visible = active, foreground = false) {
-                            tasksViewModel.dispatch(SharedTasksRouteIntent.CatchUp)
+                        // #wg-mobile-feedback:#274: store owns RaftFreshnessSignal reconnect/network catch-up
+                        // (foreground stays on the shell's visible-route refresh for Server scope).
+                        val tasksFreshnessToken = remember { Any() }
+                        LaunchedEffect(tasksViewModel, tasksFreshnessToken, selectedServerId, active) {
+                            tasksViewModel.dispatch(
+                                SharedTasksRouteIntent.ObserveFreshness(
+                                    token = tasksFreshnessToken,
+                                    serverId = selectedServerId,
+                                    visible = active,
+                                )
+                            )
+                        }
+                        DisposableEffect(tasksViewModel, tasksFreshnessToken) {
+                            onDispose {
+                                tasksViewModel.dispatch(
+                                    SharedTasksRouteIntent.StopObservingFreshness(tasksFreshnessToken)
+                                )
+                            }
                         }
                         /**
                          * [animated] false: the conversation takes the pending task page's place (its
