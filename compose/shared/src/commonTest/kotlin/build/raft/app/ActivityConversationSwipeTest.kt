@@ -190,8 +190,14 @@ class ActivityConversationSwipeTest {
 
     @Test
     fun endSwipeEligibilityMatchesWebInboxContextMenu() {
-        // Joined channels with a reachable Activity mute, as [activityMuteByChannelId] lists them.
-        val mutes = mapOf("general" to false, "random" to true)
+        // Joined channels and App-bot DMs with a reachable Activity mute, as [activityMuteByChannelId] lists them.
+        val mutes =
+            mapOf(
+                "general" to false,
+                "random" to true,
+                "dm-app-bot" to false,
+                "dm-app-bot-muted" to true,
+            )
         data class Case(val name: String, val item: InboxItem, val expected: ActivitySwipeEndAction?)
         listOf(
             Case("followed thread", thread("a", following = true), ActivitySwipeEndAction.UnfollowThread),
@@ -200,7 +206,9 @@ class ActivityConversationSwipeTest {
             Case("joined unmuted channel", row("general").copy(channelId = ChannelId("general")), ActivitySwipeEndAction.MuteActivity),
             Case("already muted channel", row("random").copy(channelId = ChannelId("random")), null),
             Case("unknown or unjoined channel", row("browse").copy(channelId = ChannelId("browse")), null),
-            Case("DM", row("dm").copy(kind = InboxItemKind.DirectMessage, channelId = ChannelId("general")), null),
+            Case("ordinary DM", row("dm").copy(kind = InboxItemKind.DirectMessage, channelId = ChannelId("dm-human")), null),
+            Case("unmuted App-bot DM", row("dm-app-bot").copy(kind = InboxItemKind.DirectMessage, channelId = ChannelId("dm-app-bot")), ActivitySwipeEndAction.MuteActivity),
+            Case("already muted App-bot DM", row("dm-app-bot-muted").copy(kind = InboxItemKind.DirectMessage, channelId = ChannelId("dm-app-bot-muted")), null),
             Case("mention", row("m").copy(kind = InboxItemKind.MentionAction, channelId = ChannelId("general")), null),
             Case("system", row("s").copy(kind = InboxItemKind.System, channelId = ChannelId("general")), null),
         ).forEach { case ->
@@ -225,6 +233,9 @@ class ActivityConversationSwipeTest {
         val channel = row("general").copy(channelId = ChannelId("general"))
         assertEquals(ActivitySwipeEndCommand.ChannelMute("general", muted = true), activitySwipeEndApplyCommand(channel, ActivitySwipeEndAction.MuteActivity))
         assertEquals(ActivitySwipeEndCommand.ChannelMute("general", muted = false), activitySwipeEndUndoCommand(channel, ActivitySwipeEndAction.MuteActivity))
+        val appBotDm = row("dm-app-bot").copy(kind = InboxItemKind.DirectMessage, channelId = ChannelId("dm-app-bot"), channelName = "github-bot")
+        assertEquals(ActivitySwipeEndCommand.ChannelMute("dm-app-bot", muted = true), activitySwipeEndApplyCommand(appBotDm, ActivitySwipeEndAction.MuteActivity))
+        assertEquals(ActivitySwipeEndCommand.ChannelMute("dm-app-bot", muted = false), activitySwipeEndUndoCommand(appBotDm, ActivitySwipeEndAction.MuteActivity))
     }
 
     @Test
@@ -233,6 +244,10 @@ class ActivityConversationSwipeTest {
         assertEquals("#launch-week", row("x").copy(channelName = "#launch-week").activitySwipeConversationLabel())
         val dmThread = thread("d", following = true).copy(parentChannelName = "Lagoon", parentChannelKind = ConversationKind.DirectMessage)
         assertEquals("@Lagoon", dmThread.activitySwipeConversationLabel())
+        val dmRow = row("dm-bot").copy(kind = InboxItemKind.DirectMessage, channelKind = null, channelName = "github-bot")
+        assertEquals("@github-bot", dmRow.activitySwipeConversationLabel())
+        assertEquals("@GitHub Bot", dmRow.activitySwipeConversationLabel(resolvedDmPeerName = "GitHub Bot"))
+        assertEquals("@Lagoon Bot", dmThread.activitySwipeConversationLabel(resolvedDmPeerName = "Lagoon Bot"))
     }
 }
 

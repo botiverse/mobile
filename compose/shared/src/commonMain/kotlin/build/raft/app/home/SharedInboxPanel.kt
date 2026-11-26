@@ -2769,7 +2769,16 @@ internal fun SharedActivityList(
         }
         swipeEndUndo.pending?.let { pending ->
             // raft-design responsive.md › Touch screens: the toast says what the button did, naming the conversation.
-            val conversation = pending.item.activitySwipeConversationLabel()
+            val dmChannelId =
+                if (pending.item.kind == InboxItemKind.Thread) {
+                    pending.item.parentChannelId?.value ?: pending.item.channelId.value
+                } else {
+                    pending.item.channelId.value
+                }
+            val resolvedDmPeerName =
+                conversationList.context.dmPeersByChannelId[dmChannelId]?.displayName?.takeIf { it.isNotBlank() }
+                    ?: dmPeerNames[dmChannelId]?.takeIf { it.isNotBlank() }
+            val conversation = pending.item.activitySwipeConversationLabel(resolvedDmPeerName = resolvedDmPeerName)
             RaftToast(
                 title =
                     when (pending.action) {
@@ -2878,16 +2887,22 @@ internal data class ActivityChannelMuteControl(
 )
 
 /**
- * Web `canToggleActivityMute`: only joined channels whose type has a user-reachable Activity mute
- * (`activityMuteSupported`; DMs are not channels here) are listed, so the menu's Mute / Unmute
- * Activity and the end swipe never offer a write the Home store would refuse.
+ * Web `canToggleActivityMute`: only joined channels and App-bot DMs whose type has a user-reachable
+ * Activity mute (`activityMuteSupported`, or already `activityMuted` so a mute can never get stuck
+ * after a bot is removed) are listed, so the menu's Mute / Unmute Activity and the end swipe never
+ * offer a write the Home store would refuse.
  */
 internal fun SharedHomeContentState?.activityMuteByChannelId(activityServerId: String): Map<String, Boolean> {
     val content = this as? SharedHomeContentState.Content ?: return emptyMap()
     if (activityServerId.isBlank() || content.snapshot.server.id.value != activityServerId) return emptyMap()
-    return content.snapshot.channels
-        .filter { channel -> channel.joined && (channel.activityMuteSupported || channel.activityMuted) }
-        .associate { channel -> channel.channelId.value to channel.activityMuted }
+    return buildMap {
+        content.snapshot.channels
+            .filter { channel -> channel.joined && (channel.activityMuteSupported || channel.activityMuted) }
+            .forEach { channel -> put(channel.channelId.value, channel.activityMuted) }
+        content.snapshot.directMessages
+            .filter { dm -> dm.activityMuteSupported || dm.activityMuted }
+            .forEach { dm -> put(dm.channelId.value, dm.activityMuted) }
+    }
 }
 
 internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map<String, Boolean> = emptyMap()): List<String> =
@@ -2909,8 +2924,9 @@ internal fun activityContextMenuActionIds(item: InboxItem, mutedByChannelId: Map
         add("toggle-read")
         add("done")
         if (item.isFollowedActivityThread) add("unfollow-thread")
-        // Channel rows only (not DMs, threads or mentions), and only a joined channel.
-        if (item.kind == InboxItemKind.Channel) {
+        // Joined channels and mute-eligible DMs (App-bot DMs per server `activityMuteSupported`,
+        // matching web `InboxContextMenu.tsx`); never threads, mentions, or uneligible DMs.
+        if (item.kind == InboxItemKind.Channel || item.kind == InboxItemKind.DirectMessage) {
             when (mutedByChannelId[item.channelId.value]) {
                 true -> add("unmute-activity")
                 false -> add("mute-activity")

@@ -500,7 +500,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityContextMenuMutesOnlyJoinedChannelRows() {
+    fun activityContextMenuMutesJoinedChannelsAndEligibleDirectMessages() {
         val channel =
             InboxItem(
                 key = "channel:general",
@@ -509,6 +509,7 @@ class SharedInboxPanelTest {
                 channelName = "general",
             )
         val dm = channel.copy(key = "dm:peer", kind = InboxItemKind.DirectMessage, channelId = ChannelId("dm-peer"))
+        val appBotDm = channel.copy(key = "dm:app-bot", kind = InboxItemKind.DirectMessage, channelId = ChannelId("dm-app-bot"))
 
         assertEquals(
             listOf("toggle-read", "done", "mute-activity"),
@@ -520,8 +521,17 @@ class SharedInboxPanelTest {
         )
         // Not a joined channel of this server (no Home row): no mute, like web `canToggleActivityMute`.
         assertEquals(listOf("toggle-read", "done"), activityContextMenuActionIds(channel, emptyMap()))
-        // DMs mute from their own settings, not from Activity.
-        assertEquals(listOf("toggle-read", "done"), activityContextMenuActionIds(dm, mapOf("dm-peer" to false)))
+        // Ordinary human/agent DMs are absent from `activityMuteByChannelId`: no mute item.
+        assertEquals(listOf("toggle-read", "done"), activityContextMenuActionIds(dm, mapOf("general" to false)))
+        // App-bot DMs (present in `activityMuteByChannelId` via server `activityMuteSupported`) mirror channels.
+        assertEquals(
+            listOf("toggle-read", "done", "mute-activity"),
+            activityContextMenuActionIds(appBotDm, mapOf("dm-app-bot" to false)),
+        )
+        assertEquals(
+            listOf("toggle-read", "done", "unmute-activity"),
+            activityContextMenuActionIds(appBotDm, mapOf("dm-app-bot" to true)),
+        )
 
         // Menu order v4 (botiverse/slock #16225): Mute / Unmute Activity sits in its own group.
         assertEquals(
@@ -531,6 +541,10 @@ class SharedInboxPanelTest {
         assertEquals(
             listOf("toggle-read" to false, "done" to false, "unmute-activity" to true),
             activityContextMenuItems(channel, mapOf("general" to true)) { it }.map { it.id to it.dividerBefore },
+        )
+        assertEquals(
+            listOf("toggle-read" to false, "done" to false, "mute-activity" to true),
+            activityContextMenuItems(appBotDm, mapOf("dm-app-bot" to false)) { it }.map { it.id to it.dividerBefore },
         )
         assertEquals(
             listOf("toggle-read" to false, "done" to false),
