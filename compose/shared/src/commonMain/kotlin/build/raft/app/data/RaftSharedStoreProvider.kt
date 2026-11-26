@@ -4983,6 +4983,19 @@ internal class RaftSharedStoreProvider private constructor(
                             revokeOwner = provider::revokeProcessReadReceiptOwner,
                         ),
                 )
+                // #proj-desktop:#54 (Condition #4): foreground-only non-blocking token-age rotation
+                // keeps ~13m refresh-token rotation cadence under both 15m and 24h access-token TTLs.
+                val tokenAgeRotator =
+                    SharedAccessTokenAgeRotator(
+                        sessionStore = authStore,
+                        authDataSource = authDataSource,
+                        authSessionEvents = authStore.authSessionEvents,
+                        foreground = RaftProcessForegroundGate.foreground,
+                        logger = sharedInfoLogger(SHARED_AUTH_LOG_TAG, "token_age_rotation"),
+                    )
+                pushLifecycleScope.launch(Dispatchers.Default) {
+                    tokenAgeRotator.run()
+                }
             }
         }
     }

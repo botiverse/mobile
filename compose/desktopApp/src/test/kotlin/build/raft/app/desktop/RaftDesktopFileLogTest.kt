@@ -33,17 +33,20 @@ class RaftDesktopFileLogTest {
     }
 
     @Test fun `lines are redacted, single-line and bounded`() {
+        val sampleJwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyLTEifQ.desktopSig9876"
         val line =
             RaftDesktopFileLog.formatLine(
                 "warn",
                 "SlockAuth",
-                "refresh Authorization: Bearer abc.def-123 key=sk_agent_SECRET123 url=/x?access_token=tok123&y=1\r",
+                "refresh Authorization: Bearer abc.def-123 key=sk_agent_SECRET123 url=/x?access_token=tok123&y=1 jwt=$sampleJwt\r",
             )
         assertTrue(line.contains(" W ["), line)
         assertTrue(line.contains("SlockAuth: refresh"), line)
         assertFalse(line.contains("abc.def-123"), line)
         assertFalse(line.contains("SECRET123"), line)
         assertFalse(line.contains("tok123"), line)
+        assertFalse(line.contains("desktopSig9876"), line)
+        assertTrue(line.contains("jwt=<jwt-redacted>"), line)
         assertFalse(line.contains("\r"))
         val long = RaftDesktopFileLog.formatLine("info", "T", "z".repeat(10_000))
         assertTrue(long.length < 4_300, "line not cut: ${long.length}")
