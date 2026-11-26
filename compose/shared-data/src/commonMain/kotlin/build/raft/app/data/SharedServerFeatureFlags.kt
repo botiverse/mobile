@@ -14,6 +14,9 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -496,6 +499,12 @@ data class ServerFeatureFlagSnapshot(
     }
 }
 
+/**
+ * Server `POST /api/feature-flags/evaluate` enforces 1..50 keys per request
+ * (`botiverse/slock/packages/server/src/routes/featureFlags.ts`).
+ */
+const val FEATURE_FLAG_EVALUATE_MAX_BATCH_SIZE: Int = 50
+
 interface RaftFeatureFlagsApi {
     suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse
 }
@@ -505,8 +514,45 @@ interface RaftFeatureFlagsApi {
     private val clientContext: () -> FeatureFlagClientContext = ::currentFeatureFlagClientContext,
 ) : RaftFeatureFlagsApi {
     override suspend fun evaluate(serverId: ServerId, keys: List<String>): HomeNetworkResponse {
+        val distinctKeys = keys.distinct()
+        if (distinctKeys.isEmpty()) {
+            return HomeNetworkResponse(code = 200, bodyText = """{"evaluations":[]}""")
+        }
         val client = clientContext()
-        return networkClient.request(
+        if (distinctKeys.size <= FEATURE_FLAG_EVALUATE_MAX_BATCH_SIZE) {
+            return evaluateBatch(serverId, distinctKeys, client)
+        }
+        val chunks = distinctKeys.chunked(FEATURE_FLAG_EVALUATE_MAX_BATCH_SIZE)
+        val responses = coroutineScope {
+            chunks.map { chunk ->
+                async { evaluateBatch(serverId, chunk, client) }
+            }.awaitAll()
+        }
+        val merged = mutableListOf<FeatureFlagEvaluation>()
+        for (response in responses) {
+            val body = response.bodyText
+            if (!response.isSuccessful || body == null) {
+                return response
+            }
+            val decoded = try {
+                featureFlagsJson.decodeFromString<FeatureFlagEvaluateResponseBody>(body)
+            } catch (_: SerializationException) {
+                return response
+            }
+            merged += decoded.evaluations
+        }
+        return HomeNetworkResponse(
+            code = 200,
+            bodyText = featureFlagsJson.encodeToString(FeatureFlagEvaluateResponseBody(merged)),
+        )
+    }
+
+    private suspend fun evaluateBatch(
+        serverId: ServerId,
+        keys: List<String>,
+        client: FeatureFlagClientContext,
+    ): HomeNetworkResponse =
+        networkClient.request(
             priority = DataRequestPriority.Background,
             path = "feature-flags/evaluate",
             method = "POST",
@@ -522,7 +568,6 @@ interface RaftFeatureFlagsApi {
                 ),
             ),
         )
-    }
 }
 
 /**

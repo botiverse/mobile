@@ -3,8 +3,11 @@ package build.raft.app.data
 import build.raft.app.model.ServerId
 import build.raft.app.network.RaftAppIdentity
 import build.raft.app.network.RaftAppIdentityRegistry
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.CompletableDeferred
@@ -574,6 +577,140 @@ class SharedServerFeatureFlagsTest {
         assertEquals("ios", body["os"]?.jsonPrimitive?.content)
         assertEquals(JsonNull, body["buildNumber"])
         assertEquals(JsonNull, body["appVersion"])
+    }
+
+    @Test
+    fun networkApiSendsSingleRequestWhenWithinServerBatchLimit() = runBlocking {
+        val capturedKeys = mutableListOf<List<String>>()
+        val client =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?
+                ): HomeNetworkResponse {
+                    val obj = Json.parseToJsonElement(bodyText ?: error("missing body")).jsonObject
+                    capturedKeys += obj["keys"]!!.jsonArray.map { it.jsonPrimitive.content }
+                    return ok("""{"evaluations":[]}""")
+                }
+            }
+        val exactLimitKeys = (1..FEATURE_FLAG_EVALUATE_MAX_BATCH_SIZE).map { "flag_$it" }
+        val response = RaftFeatureFlagsNetworkApi(client).evaluate(server, exactLimitKeys)
+        assertEquals(200, response.code)
+        assertEquals(1, capturedKeys.size)
+        assertEquals(exactLimitKeys, capturedKeys.single())
+    }
+
+    @Test
+    fun networkApiChunksRequestsAtServerBatchLimitAndMergesEvaluations() = runBlocking {
+        val lock = SynchronizedObject()
+        val capturedBatches = mutableListOf<List<String>>()
+        val capturedBodies = mutableListOf<String>()
+        val client =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?
+                ): HomeNetworkResponse {
+                    val raw = bodyText ?: error("missing body")
+                    val obj = Json.parseToJsonElement(raw).jsonObject
+                    val batchKeys = obj["keys"]!!.jsonArray.map { it.jsonPrimitive.content }
+                    synchronized(lock) {
+                        capturedBodies += raw
+                        capturedBatches += batchKeys
+                    }
+                    assertTrue(batchKeys.size in 1..FEATURE_FLAG_EVALUATE_MAX_BATCH_SIZE, "batch exceeded 50 keys: ${batchKeys.size}")
+                    val evals = batchKeys.joinToString(",") { key ->
+                        val enabled = key == "flag_1" || key == "flag_75"
+                        val variant = if (key == "flag_75") ""","variant":"v75"""" else ""
+                        """{"key":"$key","enabled":$enabled,"reason":"server_rule"$variant}"""
+                    }
+                    return ok("""{"evaluations":[$evals]}""")
+                }
+            }
+        val manyKeys = (1..75).map { "flag_$it" } + listOf("flag_1", "flag_75")
+        val api =
+            RaftFeatureFlagsNetworkApi(client) {
+                FeatureFlagClientContext(os = "android", appVersion = "1.31.0", buildNumber = "13100002", buildType = "alpha")
+            }
+        val flags = SharedServerFeatureFlags(api = api, keys = manyKeys)
+        val snapshot = flags.prefetch(server)
+
+        assertTrue(snapshot.resolved)
+        assertEquals(2, capturedBatches.size)
+        assertEquals(listOf(25, 50), capturedBatches.map { it.size }.sorted())
+        assertEquals(75, capturedBatches.flatten().size)
+        assertEquals((1..75).map { "flag_$it" }.toSet(), capturedBatches.flatten().toSet())
+        for (raw in capturedBodies) {
+            val obj = Json.parseToJsonElement(raw).jsonObject
+            assertEquals("mobile", obj["platform"]?.jsonPrimitive?.content)
+            assertEquals("s1", obj["serverId"]?.jsonPrimitive?.content)
+            assertEquals("android", obj["os"]?.jsonPrimitive?.content)
+            assertEquals("1.31.0", obj["appVersion"]?.jsonPrimitive?.content)
+            assertEquals("13100002", obj["buildNumber"]?.jsonPrimitive?.content)
+            assertEquals("alpha", obj["buildType"]?.jsonPrimitive?.content)
+        }
+        assertTrue(flags.isEnabled(server, "flag_1"))
+        assertFalse(flags.isEnabled(server, "flag_50"))
+        assertTrue(flags.isEnabled(server, "flag_75"))
+        assertEquals("v75", snapshot.variant("flag_75"))
+    }
+
+    @Test
+    fun networkApiFailsClosedWhenAnyChunkFailsHttp() = runBlocking {
+        val client =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?
+                ): HomeNetworkResponse =
+                    if (bodyText?.contains("\"flag_51\"") == true) {
+                        HomeNetworkResponse(code = 500, bodyText = null)
+                    } else {
+                        ok("""{"evaluations":[{"key":"flag_1","enabled":true}]}""")
+                    }
+            }
+        val keys = (1..60).map { "flag_$it" }
+        val flags = SharedServerFeatureFlags(api = RaftFeatureFlagsNetworkApi(client), keys = keys)
+        val snapshot = flags.prefetch(server)
+        assertFalse(snapshot.resolved)
+        assertFalse(flags.isEnabled(server, "flag_1"))
+    }
+
+    @Test
+    fun networkApiFailsClosedWhenAnyChunkIsMalformedJson() = runBlocking {
+        val client =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?
+                ): HomeNetworkResponse =
+                    if (bodyText?.contains("\"flag_51\"") == true) {
+                        ok("not-json")
+                    } else {
+                        ok("""{"evaluations":[{"key":"flag_1","enabled":true}]}""")
+                    }
+            }
+        val keys = (1..60).map { "flag_$it" }
+        val flags = SharedServerFeatureFlags(api = RaftFeatureFlagsNetworkApi(client), keys = keys)
+        val snapshot = flags.prefetch(server)
+        assertFalse(snapshot.resolved)
+        assertFalse(flags.isEnabled(server, "flag_1"))
     }
 
     @Test
