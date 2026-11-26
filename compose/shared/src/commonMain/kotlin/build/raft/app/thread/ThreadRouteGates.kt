@@ -626,12 +626,43 @@ internal fun ThreadTimelineSlice.withThreadWriteActionsEnabled(enabled: Boolean)
  */
 internal fun ThreadTimelineSlice.withThreadViewerMessageActions(
     viewerIsGuest: Boolean,
-    forwardSourceAvailable: Boolean
+    forwardSourceAvailable: Boolean,
+    hideThreadReplyStart: Boolean = false,
 ): ThreadTimelineSlice {
     val forward = !viewerIsGuest && forwardSourceAvailable
     // Keep the instance stable when nothing changes so slice-keyed remembers do not churn.
-    if (this.viewerIsGuest == viewerIsGuest && showForwardAction == forward) return this
-    return copy(viewerIsGuest = viewerIsGuest, showForwardAction = forward)
+    if (
+        this.viewerIsGuest == viewerIsGuest &&
+        showForwardAction == forward &&
+        this.hideThreadReplyStart == hideThreadReplyStart
+    ) {
+        return this
+    }
+    return copy(
+        viewerIsGuest = viewerIsGuest,
+        showForwardAction = forward,
+        hideThreadReplyStart = hideThreadReplyStart,
+    )
+}
+
+/**
+ * DMs without threads, a Lab (botiverse/slock #16664, `dm_main_timeline_lab_v0`):
+ * when enabled for the current server and this conversation is a DM with an agent, hide/disable
+ * every entry that starts a new thread reply (hover toolbar, classic/context/More menu, row tap,
+ * and the Compact menu's Reply tool). Existing threads still open from their replies badge /
+ * inline replies; human DMs and channels are unaffected.
+ */
+internal fun threadDmMainTimelineLabHidesReplyStart(
+    flagEnabled: Boolean,
+    surfaceKind: String,
+    channelKind: String?,
+    dmPeerKind: MemberKind?,
+): Boolean {
+    if (!flagEnabled || !RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)) return false
+    val isDmConversation =
+        surfaceKind == RaftThreadSurfaceKind.DirectMessage ||
+            channelKind.normalizedThreadChannelKind() == "dm"
+    return isDmConversation && dmPeerKind == MemberKind.Agent
 }
 
 internal fun StoredAuthSession?.threadViewerIsGuest(serverId: String?): Boolean {

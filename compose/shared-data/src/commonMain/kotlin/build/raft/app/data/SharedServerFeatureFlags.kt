@@ -313,6 +313,18 @@ const val AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY: String = "agent_context_view_v0"
  */
 @RaftCoreInternalApi const val WORKER_V1_FEATURE_FLAG_KEY: String = "worker_v1"
 
+/**
+ * DMs without threads, a Lab (botiverse/slock #16664 `packages/shared/src/featureFlags.ts`
+ * `DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY`, web `serverFeatureFlags.ts` `dmMainTimelineLab`,
+ * `#wg-mobile-sync:#305`): per server, default OFF (unresolved or missing evaluates false).
+ * When ON, DMs with an agent hide/disable every entry that starts a new thread reply (hover
+ * toolbar, long-press / context / More menu, single-tap on a message row, and the Compact menu's
+ * Reply tool — disabled in its fixed 6-slot primary row and hidden in partial text selection);
+ * existing threads still open from their replies badge or inline replies, and human DMs and
+ * channels are unaffected.
+ */
+const val DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY: String = "dm_main_timeline_lab_v0"
+
 /** Effective Early access policy across a signed-in account's joined servers. */
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
@@ -390,6 +402,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     AGENT_CONTEXT_VIEW_FEATURE_FLAG_KEY,
     // Workers v1 (#wg-mobile-sync:#284, default OFF).
     WORKER_V1_FEATURE_FLAG_KEY,
+    // DMs without threads Lab (#wg-mobile-sync:#305, botiverse/slock #16664, default OFF).
+    DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
     MOBILE_MIN_BUILD_ANDROID_V1_FEATURE_FLAG_KEY,
     MOBILE_MIN_BUILD_IOS_V1_FEATURE_FLAG_KEY,
@@ -628,6 +642,14 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isWorkerV1Enabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, WORKER_V1_FEATURE_FLAG_KEY)
+
+    /**
+     * DMs without threads Lab gate (`#wg-mobile-sync:#305`, botiverse/slock #16664
+     * `DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY`): per server, default OFF (unresolved or missing
+     * evaluates false).
+     */
+    fun isDmMainTimelineLabEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, DM_MAIN_TIMELINE_LAB_FEATURE_FLAG_KEY)
 
     /**
      * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):

@@ -3142,12 +3142,20 @@ private fun SharedThreadRouteContentContent(
     val linkNavigator = rememberThreadLinkNavigator(pager, bridge, renderedThread, currentServerId)
     val threadViewerIsGuest = currentSession.threadViewerIsGuest(headerProjectionServerId?.value)
     val threadForwardSourceAvailable = renderedPayload.threadForwardSourceChannelId() != null
+    val hideThreadReplyStart =
+        rememberDmMainTimelineLabHidden(
+            serverFeatureFlags = sharedStores.serverFeatureFlags,
+            serverId = headerProjectionServerId,
+            payload = renderedPayload,
+            headerDmPeerIdentity = headerDisplayModel.dmPeerIdentity,
+        )
     val renderedTimelineSlice =
         timelineSlice
             .withThreadWriteActionsEnabled(renderSlice.writeActionsEnabled && !threadLimitLocked)
             .withThreadViewerMessageActions(
                 viewerIsGuest = threadViewerIsGuest,
-                forwardSourceAvailable = threadForwardSourceAvailable
+                forwardSourceAvailable = threadForwardSourceAvailable,
+                hideThreadReplyStart = hideThreadReplyStart,
             )
     val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
     val memberSuggestionsFlow =
@@ -5092,5 +5100,31 @@ internal fun ThreadAfterMotionEffect(
         LaunchedEffect(*keys) {
             currentBlock()
         }
+    }
+}
+
+@Composable
+private fun rememberDmMainTimelineLabHidden(
+    serverFeatureFlags: build.raft.app.data.SharedServerFeatureFlags,
+    serverId: ServerId?,
+    payload: RaftThreadScreenPayload,
+    headerDmPeerIdentity: MemberDetailIdentity?,
+): Boolean {
+    val flagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
+    return remember(
+        serverFeatureFlags,
+        serverId,
+        flagRevision,
+        payload.surfaceKind,
+        payload.channelKind,
+        payload.dmPeerIdentity?.kind,
+        headerDmPeerIdentity?.kind,
+    ) {
+        threadDmMainTimelineLabHidesReplyStart(
+            flagEnabled = serverFeatureFlags.isDmMainTimelineLabEnabled(serverId),
+            surfaceKind = payload.surfaceKind,
+            channelKind = payload.channelKind,
+            dmPeerKind = headerDmPeerIdentity?.kind ?: payload.dmPeerIdentity?.kind,
+        )
     }
 }

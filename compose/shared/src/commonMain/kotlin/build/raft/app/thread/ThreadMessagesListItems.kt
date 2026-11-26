@@ -620,6 +620,7 @@ internal fun LazyListScope.threadMessageItems(
                             compactConsecutiveMessages = renderPayload.compactConsecutiveMessages,
                             suppressRepeatedAuthor = rowSuppressesRepeatedAuthor,
                             showReplyAction = renderPayload.showReplyActions,
+                            allowStartThreadReply = renderPayload.allowStartThreadReply,
                             quickReactionsEnabled = threadMessageCanQuickReact(message, renderPayload, writeActionsEnabled),
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
                             resolveMarkdownTagLabel = resolveMarkdownTagLabel,

@@ -514,7 +514,7 @@ internal fun threadMessageMenuCapabilities(
         copyLink = !localSend,
         selectMessage = !localSend && !system && !slice.viewerIsGuest && !cutBody,
         translate = if (localSend || cutBody) ThreadMessageMenuTranslateState.Hidden else translate,
-        reply = slice.showReplyActions && !localSend,
+        reply = slice.allowStartThreadReply && !localSend,
         forward =
             writeActionsEnabled &&
                 slice.showForwardAction &&

@@ -316,6 +316,8 @@ private data class ThreadMessageCardData(
     val compactConsecutiveMessages: Boolean,
     val suppressRepeatedAuthor: Boolean,
     val showReplyAction: Boolean,
+    /** Whether single-tapping the row may start a new thread reply (false when `dm_main_timeline_lab_v0` hides thread-reply start in agent DMs). */
+    val allowStartThreadReply: Boolean = showReplyAction,
     /** The message can be reacted to (the menu's quick reaction gate): its double tap shows the bar. */
     val quickReactionsEnabled: Boolean = false,
     val resolvedTaskAssigneeName: String?,
@@ -418,6 +420,7 @@ fun ThreadMessageCard(
     compactConsecutiveMessages: Boolean = false,
     suppressRepeatedAuthor: Boolean = false,
     showReplyAction: Boolean = true,
+    allowStartThreadReply: Boolean = showReplyAction,
     quickReactionsEnabled: Boolean = false,
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
@@ -507,6 +510,7 @@ fun ThreadMessageCard(
                 compactConsecutiveMessages = compactConsecutiveMessages,
                 suppressRepeatedAuthor = suppressRepeatedAuthor,
                 showReplyAction = showReplyAction,
+                allowStartThreadReply = allowStartThreadReply,
                 quickReactionsEnabled = quickReactionsEnabled && !retracted,
                 resolvedTaskAssigneeName = resolvedTaskAssigneeName,
                 markdownTagContextSignature = markdownTagContextSignature,
@@ -603,6 +607,7 @@ private fun ThreadMessageCardContent(
     val compactConsecutiveMessages = data.compactConsecutiveMessages
     val suppressRepeatedAuthor = data.suppressRepeatedAuthor
     val showReplyAction = data.showReplyAction
+    val allowStartThreadReply = data.allowStartThreadReply
     val quickReactionsEnabled = data.quickReactionsEnabled
     val resolvedTaskAssigneeName = data.resolvedTaskAssigneeName
     val resolveMarkdownTagLabel = callbacks.resolveMarkdownTagLabel
@@ -1016,7 +1021,7 @@ private fun ThreadMessageCardContent(
     val rowTapAction: (() -> Unit)? =
         if (
             threadMessageTapOpensThread(
-                showReplyAction = showReplyAction,
+                showReplyAction = allowStartThreadReply,
                 shareSelectionActive = shareSelectionActive,
                 hasLocalSendState = message.hasLocalSendState()
             )
