@@ -3183,6 +3183,7 @@
     <string name="settings_computers_detail_unavailable">Computadora no disponible</string>
     <string name="settings_computers_detail_no_access">Sin acceso a la computadora</string>
     <string name="settings_computers_detail_error_load">No se pudo cargar la computadora</string>
+    <string name="settings_computers_detail_same_machine_as">Misma computadora que %1$s</string>
     <string name="settings_computers_section_agents">Agentes en esta computadora</string>
     <string name="settings_computers_action_create_agent">Crear agente</string>
     <string name="settings_computers_bulk_select">Seleccionar</string>

@@ -2000,6 +2000,12 @@ data class SettingsComputerSnapshot(
     /** Server `deviceClass` ("laptop", "server", "desktop", ...); null when unknown or an older server. */
     val deviceClass: String? = null,
     /**
+     * Server `sameMachineGroup` (slock #10082, `computer_host_identity_v0`): opaque per-response
+     * label shared by Computers running on the same physical machine ("machine-1"); null when alone
+     * or while the flag is off / on older servers. Compare only, never display.
+     */
+    val sameMachineGroup: String? = null,
+    /**
      * Server `installerRepairHint.reason` (`unrecovered_operation`): advisory, the installer state
      * needs a repair run on the machine; the install command is recommended beside Upgrade.
      */
@@ -2311,8 +2317,37 @@ data class SettingsComputerDetailSnapshot(
     /** Make it mine: a Public Computer, for whoever connected it (the attacher; a raw daemon's registrant). */
     val canClaimOwner: Boolean = false,
     /** The viewer's user id: Make it mine sends it, and the transfer list marks "(you)". */
-    val currentUserId: String? = null
+    val currentUserId: String? = null,
+    /**
+     * Names of other Computers on this server sharing [computer]'s [SettingsComputerSnapshot.sameMachineGroup]
+     * (botiverse/slock #10082 / #10304 `sameMachinePeers`), in list order. Empty when alone or when
+     * `computer_host_identity_v0` omits `sameMachineGroup`.
+     */
+    val sameMachinePeerNames: List<String> = emptyList()
 )
+
+/**
+ * Other Computers in [computers] on the same physical machine as [computer] (matching non-blank
+ * [SettingsComputerSnapshot.sameMachineGroup]), in list order (botiverse/slock
+ * `packages/web/src/utils/machinePlatformLine.ts` `sameMachinePeers`, #10082 / #10304). Empty when
+ * [SettingsComputerSnapshot.sameMachineGroup] is null / blank (alone, or `computer_host_identity_v0` off).
+ */
+fun sameMachinePeers(
+    computer: SettingsComputerSnapshot,
+    computers: List<SettingsComputerSnapshot>,
+): List<SettingsComputerSnapshot> {
+    val group = computer.sameMachineGroup?.trim()?.takeIf { it.isNotBlank() } ?: return emptyList()
+    return computers.filter { other ->
+        other.id != computer.id && other.sameMachineGroup?.trim() == group
+    }
+}
+
+/** Display names of [sameMachinePeers] in list order (blank names fall back to id). */
+fun sameMachinePeerNames(
+    computer: SettingsComputerSnapshot,
+    computers: List<SettingsComputerSnapshot>,
+): List<String> =
+    sameMachinePeers(computer, computers).map { peer -> peer.name.trim().ifBlank { peer.id } }
 
 data class SettingsSectionErrorSnapshot(
     val code: String,

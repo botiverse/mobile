@@ -304,6 +304,52 @@ class ComputersApiTest {
     }
 
     @Test
+    fun sameMachineGroupMapsFromMachineListSyncRowAndSettingsParser() = runPortableCoroutineTest {
+        // botiverse/slock #10082 (`computer_host_identity_v0`): opaque per-response label shared
+        // by Computers on the same physical machine; null when alone, absent when the flag is off.
+        val body =
+            """
+            {"machines":[
+              {"id":"c-1","name":"Alpha","status":"online","isComputer":true,"sameMachineGroup":"machine-1"},
+              {"id":"c-2","name":"Beta","status":"online","isComputer":true,"sameMachineGroup":"machine-1"},
+              {"id":"c-3","name":"Alone","status":"online","isComputer":true,"sameMachineGroup":null},
+              {"id":"c-4","name":"FlagOff","status":"offline","isComputer":true},
+              {"id":"c-5","name":"Blank","status":"online","isComputer":true,"sameMachineGroup":"   "}
+            ]}
+            """.trimIndent()
+        val machines =
+            assertIs<DataResult.Content<ComputerListSummary>>(
+                RaftComputersApiClient(RecordingComputersApi(machinesBody = body)).machines(ServerId("server-1"), DataRequestPriority.Visible)
+            ).data.machines.associateBy { it.id }
+        val expected = mapOf("c-1" to "machine-1", "c-2" to "machine-1", "c-3" to null, "c-4" to null, "c-5" to null)
+        expected.forEach { (id, group) ->
+            assertEquals(group, machines.getValue(id).sameMachineGroup, id)
+            assertEquals(group, machines.getValue(id).toSettingsComputerSnapshot().sameMachineGroup, id)
+        }
+
+        val syncGrouped =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"c-6","name":"Gamma","status":"online","isComputer":true,"sameMachineGroup":"machine-2"}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )
+        assertEquals("machine-2", syncGrouped?.sameMachineGroup)
+        val syncAlone =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"c-7","name":"Solo","status":"online","isComputer":true,"sameMachineGroup":null}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )
+        assertNull(syncAlone?.sameMachineGroup)
+
+        val parsed = parseSharedSettingsComputers(body)
+        assertEquals(
+            expected,
+            parsed?.computers?.associate { it.id to it.sameMachineGroup }
+        )
+    }
+
+    @Test
     fun installerRepairAndUpgradeFailureHintsMapFromTheMachineList() = runPortableCoroutineTest {
         // botiverse/slock 11504c9eae82d84887b9bc49b1289e9f9317590f (#15061):
         // routes/servers.ts GET /:id/machines `installerRepairHint` and

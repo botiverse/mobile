@@ -10,6 +10,8 @@ import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SettingsSectionErrorSnapshot
+import build.raft.app.data.sameMachinePeerNames
+import build.raft.app.data.sameMachinePeers
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.data.SharedSettingsRoute
@@ -322,5 +324,45 @@ class RaftSettingsComputersModelTest {
             RaftComputerRuntimeAvailability.UpdateComputer,
             raftComputerRuntimeChips(emptyList(), build.raft.app.data.BundledRuntimeCatalog).first { it.id == "builtin" }.availability,
         )
+    }
+
+    @Test
+    fun sameMachinePeersMatchGroupInListOrderAndHideWhenAloneOrFlagOff() {
+        val alpha = computer("a", "Alpha").copy(sameMachineGroup = "machine-1")
+        val beta = computer("b", "Beta").copy(sameMachineGroup = "machine-1")
+        val alone = computer("c", "Alone").copy(sameMachineGroup = null)
+        val flagOff = computer("d", "FlagOff")
+        val delta = computer("e", "Delta").copy(sameMachineGroup = "machine-1")
+        val otherGroup = computer("f", "Other").copy(sameMachineGroup = "machine-2")
+        val blankGroup = computer("g", "Blank").copy(sameMachineGroup = "   ")
+        val blankNamePeer = computer("h", "  ").copy(sameMachineGroup = "machine-1")
+        val machines = listOf(alpha, beta, alone, flagOff, delta, otherGroup, blankGroup, blankNamePeer)
+
+        assertEquals(listOf("b", "e", "h"), sameMachinePeers(alpha, machines).map { it.id })
+        assertEquals(listOf("Beta", "Delta", "h"), sameMachinePeerNames(alpha, machines))
+        assertEquals(emptyList(), sameMachinePeers(alone, machines))
+        assertEquals(emptyList(), sameMachinePeers(flagOff, machines))
+        assertEquals(emptyList(), sameMachinePeers(otherGroup, machines))
+        assertEquals(emptyList(), sameMachinePeers(blankGroup, machines))
+
+        assertEquals("machine-1", alpha.toRaftComputerRow().sameMachineGroup)
+        assertNull(alone.toRaftComputerRow().sameMachineGroup)
+        assertNull(blankGroup.toRaftComputerRow().sameMachineGroup)
+
+        val detailSnapshot =
+            detail("a").copy(
+                computer = alpha,
+                sameMachinePeerNames = sameMachinePeerNames(alpha, listOf(alpha, beta, delta)),
+            )
+        val detailModel =
+            assertIs<RaftComputerDetailModel.Content>(
+                raftComputerDetailModel(
+                    ScreenLoadState.Content(detailSnapshot),
+                    machineId = "a",
+                    targetServerId = "server-1",
+                    currentServerId = "server-1",
+                )
+            )
+        assertEquals(listOf("Beta", "Delta"), detailModel.sameMachinePeerNames)
     }
 }

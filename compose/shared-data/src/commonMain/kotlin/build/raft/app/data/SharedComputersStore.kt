@@ -141,6 +141,9 @@ interface SharedSettingsComputersSource {
     /** Synchronous latest in-memory machine snapshot for [machineId] on [serverId], or null. */
     fun currentSettingsComputerSnapshot(serverId: String, machineId: String): SettingsComputerSnapshot? = null
 
+    /** Synchronous latest in-memory machine list for [serverId], or empty when not loaded. */
+    fun currentSettingsComputersForServer(serverId: String): List<SettingsComputerSnapshot> = emptyList()
+
     /** Remembers the Add Computer gate so the next first frame starts with the right action. */
     fun recordAddComputerGate(serverId: String, canAddComputer: Boolean) = Unit
 
@@ -296,6 +299,9 @@ class SharedComputersStore @RaftCoreInternalApi constructor(
             ?.toSettingsComputerSnapshotResult(normalizedMachineId) as? DataResult.Content)
             ?.data
     }
+
+    override fun currentSettingsComputersForServer(serverId: String): List<SettingsComputerSnapshot> =
+        currentSettingsComputers(serverId)?.computers.orEmpty()
 
     @RaftCoreInternalApi fun hasActiveObservers(serverId: String): Boolean {
         val key = serverId.normalizedComputerServerId() ?: return false
@@ -855,10 +861,14 @@ class SharedComputersStore @RaftCoreInternalApi constructor(
 
     override fun cachedSettingsComputerDetail(serverId: String, machineId: String): SettingsComputerDetailSnapshot? {
         val key = detailKey(serverId, machineId) ?: return null
-        return synchronizedDetail {
-            if (detailCacheOwner == null || detailCacheOwner != _state.value.owner) return@synchronizedDetail null
-            detailCache.remove(key)?.also { detailCache[key] = it }
-        }
+        val cached =
+            synchronizedDetail {
+                if (detailCacheOwner == null || detailCacheOwner != _state.value.owner) return@synchronizedDetail null
+                detailCache.remove(key)?.also { detailCache[key] = it }
+            } ?: return null
+        val serverComputers = currentSettingsComputersForServer(key.first)
+        val liveForGroup = serverComputers.firstOrNull { it.id == cached.computer.id } ?: return cached
+        return cached.copy(sameMachinePeerNames = sameMachinePeerNames(liveForGroup, serverComputers))
     }
 
     override fun recordSettingsComputerDetail(serverId: String, machineId: String, detail: SettingsComputerDetailSnapshot?) {
@@ -1057,6 +1067,8 @@ private fun SharedComputersOwner.durableKey(serverId: String): RaftDurableSnapsh
     val hostProvider: String? = null,
     /** Server `deviceClass` ("laptop", "server", ...), so a cold start draws the right device icon. */
     val deviceClass: String? = null,
+    /** Server `sameMachineGroup` (slock #10082), so a cold start keeps same-physical-machine peer hints. */
+    val sameMachineGroup: String? = null,
     val runtimeVersions: Map<String, String> = emptyMap(),
     val description: String? = null,
     val lastHeartbeat: String? = null,
@@ -1149,6 +1161,7 @@ private fun SharedComputersServerSlice.toDurableRecord(): RaftComputersDurableRe
                     osRelease = machine.osRelease,
                     hostProvider = machine.hostProvider,
                     deviceClass = machine.deviceClass,
+                    sameMachineGroup = machine.sameMachineGroup,
                     runtimeVersions = machine.runtimeVersions,
                     description = machine.description,
                     lastHeartbeat = machine.lastHeartbeat,
@@ -1198,6 +1211,7 @@ private fun RaftComputersDurableRecord.toServerSlice(): SharedComputersServerSli
                     osRelease = machine.osRelease,
                     hostProvider = machine.hostProvider,
                     deviceClass = machine.deviceClass,
+                    sameMachineGroup = machine.sameMachineGroup?.trim()?.takeIf { it.isNotBlank() },
                     runtimeVersions = machine.runtimeVersions,
                     description = machine.description,
                     lastHeartbeat = machine.lastHeartbeat,

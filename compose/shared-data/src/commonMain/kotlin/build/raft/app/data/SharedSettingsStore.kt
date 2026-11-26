@@ -1070,7 +1070,15 @@ class SharedSettingsDataSource(
         val serverId = session?.currentServerId ?: return null
         val source = computersSource ?: return null
         val detail = source.cachedSettingsComputerDetail(serverId, machineId) ?: return null
-        return DataResult.Content(detail)
+        val serverComputers = source.currentSettingsComputersForServer(serverId)
+        val liveForGroup = serverComputers.firstOrNull { it.id == detail.computer.id }
+        val hydrated =
+            if (liveForGroup != null) {
+                detail.copy(sameMachinePeerNames = sameMachinePeerNames(liveForGroup, serverComputers))
+            } else {
+                detail
+            }
+        return DataResult.Content(hydrated)
     }
 
     /** Reactive canonical computer snapshots for [serverId] from [SharedComputersStore]. */
@@ -1100,11 +1108,18 @@ class SharedSettingsDataSource(
         serverId: String,
         current: SettingsComputerDetailSnapshot,
         computer: SettingsComputerSnapshot,
+        computers: List<SettingsComputerSnapshot> = emptyList(),
     ): SettingsComputerDetailSnapshot? {
         val session = sessionStore.readSession() ?: return null
         if (session.currentServerId?.trim() != serverId.trim()) return null
+        val nextPeerNames =
+            if (computers.isNotEmpty()) {
+                sameMachinePeerNames(computer, computers)
+            } else {
+                current.sameMachinePeerNames
+            }
         val decorated =
-            DataResult.Content(current.copy(computer = computer))
+            DataResult.Content(current.copy(computer = computer, sameMachinePeerNames = nextPeerNames))
                 .withComputerManageGate(session)
                 .withComputerCommandContext(computerCommandContext(session))
         val updated = (decorated as? DataResult.Content)?.data ?: return null
@@ -1147,11 +1162,24 @@ class SharedSettingsDataSource(
                 null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
             }
         // Overlay the latest computer snapshot from SharedComputersStore in case a realtime/sync
-        // update arrived while getComputerDetailForComputer was suspended fetching agents.
+        // update arrived while getComputerDetailForComputer was suspended fetching agents, and
+        // resolve same-physical-machine peers from the current server's machine list.
         val overlaidResult =
             if (rawResult is DataResult.Content && serverId != null && computersSource != null) {
-                val latestComputer = computersSource.currentSettingsComputerSnapshot(serverId, machineId)
-                if (latestComputer != null) DataResult.Content(rawResult.data.copy(computer = latestComputer)) else rawResult
+                val latestComputer = computersSource.currentSettingsComputerSnapshot(serverId, machineId) ?: rawResult.data.computer
+                val serverComputers = computersSource.currentSettingsComputersForServer(serverId)
+                val peerNames =
+                    if (serverComputers.isNotEmpty()) {
+                        sameMachinePeerNames(latestComputer, serverComputers)
+                    } else {
+                        rawResult.data.sameMachinePeerNames
+                    }
+                DataResult.Content(
+                    rawResult.data.copy(
+                        computer = latestComputer,
+                        sameMachinePeerNames = peerNames
+                    )
+                )
             } else {
                 rawResult
             }
@@ -2499,7 +2527,8 @@ class SharedSettingsStore(
                                     dataSource.decorateLiveComputerDetailSnapshot(
                                         serverId,
                                         currentDetail.data,
-                                        liveComputer.preservingPendingWorkerRuntimeToggles(openMachineId)
+                                        liveComputer.preservingPendingWorkerRuntimeToggles(openMachineId),
+                                        decorated.computers
                                     )
                                         ?: return
                                 if (

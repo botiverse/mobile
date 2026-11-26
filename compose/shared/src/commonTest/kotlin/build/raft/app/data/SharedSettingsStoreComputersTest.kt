@@ -467,6 +467,80 @@ class SharedSettingsStoreComputersTest {
         )
     }
 
+    @Test
+    fun computerDetailResolvesSameMachinePeersAndUpdatesLiveWhenPeersChangeOrDelete() = runTest {
+        val computersApi =
+            object : RaftComputersApi {
+                override suspend fun machines(serverId: ServerId): HomeNetworkResponse =
+                    HomeNetworkResponse(
+                        code = 200,
+                        bodyText =
+                            """{"machines":[""" +
+                                """{"id":"m-1","name":"Alpha","status":"online","isComputer":true,"sameMachineGroup":"machine-1"},""" +
+                                """{"id":"m-2","name":"Beta","status":"online","isComputer":true,"sameMachineGroup":"machine-1"},""" +
+                                """{"id":"m-3","name":"Gamma","status":"online","isComputer":true,"sameMachineGroup":"machine-2"}""" +
+                                """]}"""
+                    )
+
+                override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
+                override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
+                override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+                override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+                override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+                override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse = error("unused")
+                override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
+            }
+        val computersStore =
+            SharedComputersStore(
+                computersApiClient = RaftComputersApiClient(computersApi),
+                scope = backgroundScope,
+                ownerProvider = { SharedComputersOwner("https://api.example", "user-1", "login-1") }
+            )
+        val detailStore =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(settingsStoreSampleSession()),
+                        computersSource = computersStore
+                    ),
+                scope = backgroundScope,
+                standaloneNavigation = true
+            )
+
+        detailStore.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.ComputerDetail, "m-1"))
+        runCurrent()
+
+        val initial = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detailStore.state.value.computerDetail).data
+        assertEquals("machine-1", initial.computer.sameMachineGroup)
+        assertEquals(listOf("Beta"), initial.sameMachinePeerNames)
+
+        // Peer renamed and another joins the same host via incremental sync: live detail updates.
+        val betaRenamed =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"m-2","name":"Beta Two","status":"online","isComputer":true,"sameMachineGroup":"machine-1"}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )!!
+        val gammaJoined =
+            parseSyncedComputerRow(
+                kotlinx.serialization.json.Json.parseToJsonElement(
+                    """{"id":"m-3","name":"Gamma","status":"online","isComputer":true,"sameMachineGroup":"machine-1"}"""
+                ) as kotlinx.serialization.json.JsonObject
+            )!!
+        computersStore.applySyncedMachineRows("server-1", upserts = listOf(betaRenamed, gammaJoined), deletes = emptySet())
+        runCurrent()
+
+        val afterSync = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detailStore.state.value.computerDetail).data
+        assertEquals(listOf("Beta Two", "Gamma"), afterSync.sameMachinePeerNames)
+
+        // All peers deleted: live detail clears sameMachinePeerNames cleanly.
+        computersStore.applySyncedMachineRows("server-1", upserts = emptyList(), deletes = setOf("m-2", "m-3"))
+        runCurrent()
+
+        val afterDelete = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(detailStore.state.value.computerDetail).data
+        assertEquals(emptyList(), afterDelete.sameMachinePeerNames)
+    }
+
     private fun detailRepository() =
         FakeSettingsRepository(
             computerDetailResult =
