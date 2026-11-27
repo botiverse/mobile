@@ -39,6 +39,7 @@ import build.raft.app.members.localized
 import build.raft.app.membersAgentModelLimitsWarningInEditor
 import build.raft.app.model.MemberId
 import build.raft.app.rememberRuntimeFormV2SourceRefresh
+import build.raft.app.rememberRuntimeModelUpgradeTarget
 import build.raft.app.rememberSameComputerEnvVarCopySource
 import build.raft.app.data.BundledRuntimeCatalog
 import build.raft.app.data.RaftRuntimeCatalogNames
@@ -163,7 +164,15 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     val unavailable = load == MembersRuntimeFormV2EditLoad.Unavailable
 
     // Read here: dialog content is hosted at the page root, outside the route's usage access.
-    val quotaMachine = machineId?.let { RuntimeQuotaMachine(it, access = LocalMembersRuntimeAccountUsageAccess.current) }
+    val runtimeUsageAccess = LocalMembersRuntimeAccountUsageAccess.current
+    val quotaMachine = machineId?.let { RuntimeQuotaMachine(it, access = runtimeUsageAccess) }
+    val modelUpgradeTarget =
+        rememberRuntimeModelUpgradeTarget(
+            access = runtimeUsageAccess,
+            serverId = access.serverId.value,
+            machineId = machineId,
+            runtimeId = (current ?: form)?.form?.runtimeId?.takeIf { it.isNotBlank() } ?: selectedRuntimeId,
+        )
     val envVarsCopy =
         envVarsCopyOverride
             ?: rememberSameComputerEnvVarCopySource(
@@ -292,7 +301,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                                 onAdvancedOpenChange = { advancedOpen = it },
                                 enabled = !saving,
                                 sourceRefresh = sourceRefresh,
-                                envVarsCopy = envVarsCopy
+                                envVarsCopy = envVarsCopy,
+                                upgradeTarget = modelUpgradeTarget,
                             )
                         }
                     }
