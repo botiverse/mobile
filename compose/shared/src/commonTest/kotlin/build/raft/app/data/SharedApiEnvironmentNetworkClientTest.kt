@@ -203,24 +203,26 @@ class SharedApiEnvironmentNetworkClientTest {
                 }
             }
         val executor =
-            ScriptedHttpExecutor { url, headers ->
-                when {
-                    url.endsWith("/auth/refresh") ->
-                        RaftHttpExecutorResponse(
-                            code = 200,
-                            bodyText = """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
-                            errorBodyText = null,
-                        )
-                    headers[HEADER_AUTHORIZATION] == "Bearer access-token" ->
-                        RaftHttpExecutorResponse(
-                            code = 401,
-                            bodyText = null,
-                            errorBodyText = """{"error":"expiredToken"}""",
-                        )
-                    else ->
-                        RaftHttpExecutorResponse(code = 200, bodyText = """{"ok":true}""", errorBodyText = null)
+            ScriptedHttpExecutor(
+                onExecute = { url, headers ->
+                    when {
+                        url.endsWith("/auth/refresh") ->
+                            RaftHttpExecutorResponse(
+                                code = 200,
+                                bodyText = """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                                errorBodyText = null,
+                            )
+                        headers[HEADER_AUTHORIZATION] == "Bearer access-token" ->
+                            RaftHttpExecutorResponse(
+                                code = 401,
+                                bodyText = null,
+                                errorBodyText = """{"error":"expiredToken"}""",
+                            )
+                        else ->
+                            RaftHttpExecutorResponse(code = 200, bodyText = """{"ok":true}""", errorBodyText = null)
+                    }
                 }
-            }
+            )
         val client =
             SharedRaftNetworkClient(
                 sessionStore = switchingStore,
@@ -245,26 +247,28 @@ class SharedApiEnvironmentNetworkClientTest {
         val initial = multiServerSession(selectedServerId = "server-1")
         val store = InMemoryRaftAuthSessionStore(initial)
         val executor =
-            ScriptedHttpExecutor { url, headers ->
-                when {
-                    url.endsWith("/auth/refresh") -> {
-                        store.updateSelectedServer(serverId = "server-2", serverSlug = null)
-                        RaftHttpExecutorResponse(
-                            code = 200,
-                            bodyText = """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
-                            errorBodyText = null,
-                        )
+            ScriptedHttpExecutor(
+                onExecute = { url, headers ->
+                    when {
+                        url.endsWith("/auth/refresh") -> {
+                            store.updateSelectedServer(serverId = "server-2", serverSlug = null)
+                            RaftHttpExecutorResponse(
+                                code = 200,
+                                bodyText = """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                                errorBodyText = null,
+                            )
+                        }
+                        headers[HEADER_AUTHORIZATION] == "Bearer access-token" ->
+                            RaftHttpExecutorResponse(
+                                code = 401,
+                                bodyText = null,
+                                errorBodyText = """{"error":"expiredToken"}""",
+                            )
+                        else ->
+                            RaftHttpExecutorResponse(code = 200, bodyText = """{"ok":true}""", errorBodyText = null)
                     }
-                    headers[HEADER_AUTHORIZATION] == "Bearer access-token" ->
-                        RaftHttpExecutorResponse(
-                            code = 401,
-                            bodyText = null,
-                            errorBodyText = """{"error":"expiredToken"}""",
-                        )
-                    else ->
-                        RaftHttpExecutorResponse(code = 200, bodyText = """{"ok":true}""", errorBodyText = null)
                 }
-            }
+            )
         val client =
             SharedRaftNetworkClient(
                 sessionStore = store,
