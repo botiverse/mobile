@@ -946,6 +946,20 @@ internal class RaftSharedStoreProvider private constructor(
     internal val artifactsHomeFilterRepository = ArtifactsHomeFilterRepository(sharedPreferenceStore)
     internal val artifactsHomeSettledSeenRepository = ArtifactsHomeSettledSeenRepository(sharedPreferenceStore)
 
+    /**
+     * Per-account × per-server recently opened Artifacts and installed Raft Apps (up to 4 entries)
+     * for the mobile Server Tab Popover (`#proj-mobile:#329`), persisted across restarts.
+     */
+    val mobileRecentlyUsedStore =
+        build.raft.app.MobileRecentlyUsedStore(preferenceStore = sharedPreferenceStore)
+
+    /**
+     * Local per-account × per-server phone bottom-bar place tab count (defaults to 4 + Server = 5;
+     * Android users may manually add a 5th place -> 6 total, persisted locally across restarts).
+     */
+    internal val mobilePhoneTabCountStore =
+        build.raft.app.MobilePhoneTabCountStore(preferenceStore = sharedPreferenceStore)
+
     /** Owner/server/agent-scoped LRU snapshot cache for Agent Activity Overview Frame-1 warm renders (#proj-mobile:#386). */
     internal val agentActivityOverviewCache = AgentActivityOverviewSnapshotCache()
 
@@ -998,6 +1012,8 @@ internal class RaftSharedStoreProvider private constructor(
             besideMemory = besideMemoryRepository,
             artifactsHomeFilters = artifactsHomeFilterRepository,
             artifactsHomeSettledSeen = artifactsHomeSettledSeenRepository,
+            mobileRecentlyUsed = mobileRecentlyUsedStore,
+            mobilePhoneTabCount = mobilePhoneTabCountStore,
         )
 
     /**
@@ -2194,14 +2210,6 @@ internal class RaftSharedStoreProvider private constructor(
                     serverFeatureFlags.isEnabled(ServerId(serverId), TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY)
             },
         )
-    }
-
-    /**
-     * Per-account × per-server recently opened Artifacts and installed Raft Apps (up to 4 entries)
-     * for the mobile Server Tab Popover (`#proj-mobile:#329`).
-     */
-    val mobileRecentlyUsedStore: build.raft.app.MobileRecentlyUsedStore by lazy {
-        build.raft.app.MobileRecentlyUsedStore()
     }
 
     /**

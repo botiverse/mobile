@@ -12,6 +12,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -146,6 +148,7 @@ class MobilePlacesServerPopoverUiTest {
     fun editModeHandlesMinusPlusResetDoneAndKeepsSettingsStatic() =
         runRobolectricComposeUiTest {
             var places by mutableStateOf(RaftMobileBuiltInPlaceIds.map(RaftRailPlace::builtIn))
+            var placeTabCount by mutableStateOf(AppShellPhoneDefaultPlaceTabs)
             val savedOrders = mutableListOf<List<String>>()
             var resetCount = 0
             val state = RaftMobileNavServerPopoverState().apply { show() }
@@ -158,7 +161,7 @@ class MobilePlacesServerPopoverUiTest {
                         mobilePlaces = places,
                         artifactsEnabled = true,
                         isGuest = false,
-                        maxPlaceTabs = appShellPhoneMaxPlaceTabs(),
+                        maxPlaceTabs = placeTabCount,
                     )
                 val entries = appShellMobileServerMenuEntries(places, tabKeys, wide = false, guest = false, artifacts = true)
                 CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
@@ -181,13 +184,18 @@ class MobilePlacesServerPopoverUiTest {
                                         isGuest = false,
                                         recentlyUsed = emptyList(),
                                         resolveAppIconUrl = { it },
+                                        tabBarPlaceCount = placeTabCount,
                                         onPickRecent = {},
                                         onSaveOrder = { next ->
                                             savedOrders += next
                                             places = next.map(RaftRailPlace::builtIn)
                                         },
+                                        onSaveTabCount = { nextCount ->
+                                            placeTabCount = nextCount
+                                        },
                                         onResetToDefault = {
                                             resetCount += 1
+                                            placeTabCount = AppShellPhoneDefaultPlaceTabs
                                             places = RaftMobileBuiltInPlaceIds.map(RaftRailPlace::builtIn)
                                         },
                                     ),
@@ -198,39 +206,57 @@ class MobilePlacesServerPopoverUiTest {
             }
 
             waitForIdle()
-            // Enter Edit mode via More header Edit button.
+            // Enter Edit mode via More header Edit button: defaults to 4 places (+ Server = 5 tabs) on Android too.
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_BUTTON).performClick()
             waitForIdle()
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE, useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SETTINGS_TILE).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
             assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.removeBadge("settings")).fetchSemanticsNodes().size)
             assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.addBadge("settings")).fetchSemanticsNodes().size)
 
-            // Tap − on Home ("chat"): on Android (5+1=6), moves chat to More[0], promotes members to Tab bar slot 5.
+            // Tap − on Home ("chat") at default 4 tabs: moves chat to More[0], promotes artifacts into slot 4.
             onNodeWithTag(RaftMobilePlacesPopoverTags.removeBadge("chat")).assertIsEnabled().performClick()
             waitForIdle()
+            assertEquals(4, placeTabCount)
             assertEquals(
-                listOf("activity", "tasks", "search", "artifacts", "members", "chat", "computers", "apps"),
+                listOf("activity", "tasks", "search", "artifacts", "chat", "members", "computers", "apps"),
                 savedOrders.last(),
             )
-            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("members"), useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("chat"), useUnmergedTree = true).assertIsDisplayed()
 
-            // Tap + on Computers: moves computers to slot 5, bumps members to More[0].
+            // Tap + on Computers on Android: manually expands Tab bar from 4 -> 5 places (+ Server = 6 total).
             onNodeWithTag(RaftMobilePlacesPopoverTags.addBadge("computers")).performClick()
             waitForIdle()
+            assertEquals(5, placeTabCount)
             assertEquals(
-                listOf("activity", "tasks", "search", "artifacts", "computers", "members", "chat", "apps"),
+                listOf("activity", "tasks", "search", "artifacts", "computers", "chat", "members", "apps"),
                 savedOrders.last(),
             )
             onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("computers"), useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("members"), useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
 
-            // Tap Reset: restores default order.
+            // Tap − on Computers while at 5 tabs: shrinks Tab bar back from 5 -> 4 places (+ Server = 5 total).
+            onNodeWithTag(RaftMobilePlacesPopoverTags.removeBadge("computers")).assertIsEnabled().performClick()
+            waitForIdle()
+            assertEquals(4, placeTabCount)
+            assertEquals(
+                listOf("activity", "tasks", "search", "artifacts", "computers", "chat", "members", "apps"),
+                savedOrders.last(),
+            )
+            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("computers"), useUnmergedTree = true).assertIsDisplayed()
+
+            // Expand again, then tap Reset: restores both default order and default 4 place tabs.
+            onNodeWithTag(RaftMobilePlacesPopoverTags.addBadge("computers")).performClick()
+            waitForIdle()
+            assertEquals(5, placeTabCount)
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_RESET_BUTTON).performClick()
             waitForIdle()
             assertEquals(1, resetCount)
+            assertEquals(4, placeTabCount)
             onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("chat"), useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
 
             // Tap Done: returns to normal popover view while keeping popover open.
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_DONE_BUTTON).performClick()
@@ -242,6 +268,84 @@ class MobilePlacesServerPopoverUiTest {
                     .fetchSemanticsNodes()
                     .size,
             )
+            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
+        }
+
+    @Test
+    fun serverListCapsAtFiveRowsLeavingRoomForRecentlyUsedAndMore() =
+        runRobolectricComposeUiTest {
+            val manyServers =
+                (1..12).map { index ->
+                    RaftServerSwitcherItem(
+                        id = "s$index",
+                        name = "Server $index",
+                        slug = "server-$index",
+                        activityUnreadCount = if (index == 2) 3L else 0L,
+                    )
+                }
+            val manyModel =
+                RaftServerMenuModel(
+                    servers = manyServers,
+                    currentServer = manyServers.first(),
+                    attentionEntries = emptySet(),
+                )
+            val places = RaftMobileBuiltInPlaceIds.map(RaftRailPlace::builtIn)
+            val tabKeys =
+                appShellDynamicPhoneTabKeys(
+                    enabled = true,
+                    mobilePlaces = places,
+                    artifactsEnabled = true,
+                    isGuest = false,
+                    maxPlaceTabs = AppShellPhoneDefaultPlaceTabs,
+                )
+            val entries = appShellMobileServerMenuEntries(places, tabKeys, wide = false, guest = false, artifacts = true)
+            val state = RaftMobileNavServerPopoverState().apply { show() }
+
+            setContent {
+                val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                    RaftDesignSystemTheme {
+                        Box(Modifier.fillMaxSize()) {
+                            RaftAppServerMenuOverlay(
+                                model = manyModel,
+                                state = state,
+                                anchor = RaftServerMenuAnchor.BottomBar,
+                                onPick = {},
+                                prefersChineseCommunity = false,
+                                onCreateServerClick = {},
+                                onInviteHumanClick = null,
+                                screenHeight = 844.dp,
+                                entries = entries,
+                                mobilePlacesConfig =
+                                    RaftServerMenuMobilePlacesConfig(
+                                        mobilePlaces = places,
+                                        artifactsEnabled = true,
+                                        isGuest = false,
+                                        recentlyUsed =
+                                            listOf(
+                                                MobileRecentlyUsedEntry.Artifact(id = "art-1", title = "Release Notes"),
+                                            ),
+                                        resolveAppIconUrl = { it },
+                                        onPickRecent = {},
+                                        onSaveOrder = {},
+                                        onResetToDefault = {},
+                                    ),
+                            )
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            val listHeight =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.SERVER_LIST, useUnmergedTree = true)
+                    .getUnclippedBoundsInRoot()
+                    .height
+            assertTrue(
+                listHeight <= 310.dp,
+                "Expected server switcher list to cap around 5 rows instead of stretching full-screen, got $listHeight",
+            )
+            onNodeWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
         }
 

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -15,8 +16,11 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
@@ -132,6 +136,9 @@ internal fun RaftAppServerTab(
 
 /** The server panel's width under the wide top bar (web AppTopBar's server menu, `w-64`). */
 internal val RaftServerMenuTopBarWidth = 256.dp
+
+/** Maximum server rows shown without scrolling in the phone server popover when `tab_bar_places_v0` is active. */
+internal const val RaftServerMenuMaxVisibleServers: Int = 5
 
 /** Where the server popover rises from. */
 internal enum class RaftServerMenuAnchor {
@@ -280,23 +287,48 @@ internal fun RaftAppServerMenuOverlay(
                                 activeMobilePlaces.mobilePlaces,
                                 activeMobilePlaces.artifactsEnabled,
                                 activeMobilePlaces.isGuest,
+                                activeMobilePlaces.tabBarPlaceCount,
                             ) {
                                 MobilePlacesEditState.fromMobilePlaces(
                                     mobilePlaces = activeMobilePlaces.mobilePlaces,
                                     artifactsEnabled = activeMobilePlaces.artifactsEnabled,
                                     isGuest = activeMobilePlaces.isGuest,
                                     maxTabBarCount = appShellPhoneMaxPlaceTabs(),
+                                    tabBarCount = activeMobilePlaces.tabBarPlaceCount,
                                 )
                             }
                         RaftMobilePlacesEditPopoverBody(
                             editState = editState,
                             pageLabels = pageLabels,
-                            onCommitEdit = { updated -> activeMobilePlaces.onSaveOrder(updated.orderedVisibleIds) },
+                            onCommitEdit = { updated ->
+                                activeMobilePlaces.onSaveTabCount(updated.tabBarIds.size)
+                                activeMobilePlaces.onSaveOrder(updated.orderedVisibleIds)
+                            },
                             onResetToDefault = activeMobilePlaces.onResetToDefault,
                             onDone = { editMode = false },
                         )
                     } else {
-                        RaftMobileNavServerPopoverList(reorderState = reorderState.takeIf { reorderable }, enabled = !switchPending) {
+                        val serverListModifier =
+                            if (activeMobilePlaces != null) {
+                                val density = LocalDensity.current
+                                val nameStyle = RaftTheme.typography.callout
+                                val slugStyle = RaftTheme.typography.monoMeta
+                                val twoLineRowHeight =
+                                    maxOf(
+                                        36.dp,
+                                        with(density) { nameStyle.lineHeight.toDp() + slugStyle.lineHeight.toDp() } + 16.dp,
+                                    )
+                                Modifier
+                                    .testTag(RaftMobilePlacesPopoverTags.SERVER_LIST)
+                                    .heightIn(max = twoLineRowHeight * RaftServerMenuMaxVisibleServers + 8.dp)
+                            } else {
+                                Modifier
+                            }
+                        RaftMobileNavServerPopoverList(
+                            modifier = serverListModifier,
+                            reorderState = reorderState.takeIf { reorderable },
+                            enabled = !switchPending,
+                        ) {
                             // The rows follow the reorder state's order (the lifted row's slot while
                             // dragging); keyed, so a row keeps its gesture as it moves.
                             reorderState.order.forEach { serverId ->

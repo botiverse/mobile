@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import build.raft.app.MobilePhoneTabCountStore
+import build.raft.app.MobileRecentlyUsedStore
 import build.raft.app.RaftBesideMemoryRepository
 import build.raft.app.RaftBesideState
 import build.raft.app.SharedThreadPayloadStore
@@ -78,6 +80,20 @@ class AccountLocalDataTest {
     )
 
     @Test
+    fun signOutKeepsMobileRecentlyUsedForItsAccountOnly() = signOutKeeps(
+        write = { mobileRecentlyUsed.recordArtifact(USER_A, S1, "art-1", "Spec") },
+        read = { user -> mobileRecentlyUsed.recentItems(user, S1).map { it.placeKey }.takeIf { it.isNotEmpty() } },
+        expected = listOf("artifact:art-1"),
+    )
+
+    @Test
+    fun signOutKeepsMobilePhoneTabCountForItsAccountOnly() = signOutKeeps(
+        write = { mobilePhoneTabCount.setTabCount(USER_A, S1, count = 5, maxCount = 5) },
+        read = { user -> mobilePhoneTabCount.tabCount(user, S1, maxCount = 5).takeIf { it != 4 } },
+        expected = 5,
+    )
+
+    @Test
     fun signOutFencesTheOldSessionsInFlightWrites() = withDevice { device, _ ->
         // A request of A's session minted its key before the sign-out ...
         val key = device.saved.key(USER_A, S1, Unit)!!
@@ -129,6 +145,18 @@ class AccountLocalDataTest {
         read = { server -> besideMemory.read(USER_A, server, "channel-1") },
     )
 
+    @Test
+    fun losingAServerDropsMobileRecentlyUsed() = serverLossDrops(
+        write = { server -> mobileRecentlyUsed.recordArtifact(USER_A, server, "art-$server", "Spec $server") },
+        read = { server -> mobileRecentlyUsed.recentItems(USER_A, server).map { it.placeKey }.takeIf { it.isNotEmpty() } },
+    )
+
+    @Test
+    fun losingAServerDropsMobilePhoneTabCount() = serverLossDrops(
+        write = { server -> mobilePhoneTabCount.setTabCount(USER_A, server, count = 5, maxCount = 5) },
+        read = { server -> mobilePhoneTabCount.tabCount(USER_A, server, maxCount = 5).takeIf { it != 4 } },
+    )
+
     /** A has the copy for S1 and S2; access to S1 is lost: S1's copy is gone on disk, S2's stays. */
     private fun serverLossDrops(
         write: suspend Device.(serverId: String) -> Unit,
@@ -173,6 +201,8 @@ class AccountLocalDataTest {
         val activityPages = SharedActivityPersistStorage(preferences)
         val replyWindowStorage = SqlDelightRaftThreadReplyWindowStorage(database, now = { 1L })
         val besideMemory = RaftBesideMemoryRepository(preferences, nowMillis = { 1L })
+        val mobileRecentlyUsed = MobileRecentlyUsedStore(preferenceStore = preferences, nowMillis = { 1L })
+        val mobilePhoneTabCount = MobilePhoneTabCountStore(preferenceStore = preferences, nowMillis = { 1L })
         private val engine =
             CanonicalMessageV2GenerationEngine(
                 coordinator = CanonicalMessageV2BaselineCoordinator(),
@@ -199,6 +229,8 @@ class AccountLocalDataTest {
                 threadPayloadStore = SharedThreadPayloadStore(scope),
                 clearViewerMemoryCaches = {},
                 besideMemory = besideMemory,
+                mobileRecentlyUsed = mobileRecentlyUsed,
+                mobilePhoneTabCount = mobilePhoneTabCount,
             )
 
         suspend fun writeSaved(userId: String, serverId: String, messageId: String) {
