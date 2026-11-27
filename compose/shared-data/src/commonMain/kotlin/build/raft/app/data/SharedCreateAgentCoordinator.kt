@@ -114,7 +114,8 @@ import build.raft.app.model.canonicalizeRuntimeModelPresentation
                         attachedByCurrentUser = m.attachedByCurrentUser,
                         creatorId = m.creator?.id,
                         usageFactsKnown = true,
-                        description = m.description
+                        description = m.description,
+                        runtimeVersions = m.runtimeVersions,
                     )
                 }
                 DataResult.Content(opts)

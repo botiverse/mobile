@@ -3,10 +3,20 @@ package build.raft.app
 import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftCombobox
+import build.raft.designsystem.components.RaftComboboxListAction
 import build.raft.designsystem.components.RaftComboboxOption
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import build.raft.app.data.BundledRuntimeCatalog
+import build.raft.app.data.RuntimeAuthCall
+import build.raft.app.data.RuntimeAuthRuntime
+import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeUpgradeResult
 import build.raft.app.data.ServerRuntimeCatalog
 import build.raft.app.data.SharedCreateAgentRuntimeOption
 import androidx.compose.runtime.key
@@ -19,11 +29,14 @@ import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftFieldState
 import build.raft.designsystem.components.LocalRaftFieldState
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.app.components.RaftSlotIcon
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.unit.sp
 import build.raft.designsystem.components.RaftTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -79,8 +92,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.text.style.TextAlign
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.designsystem.components.RaftTextLink
-import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -114,7 +125,9 @@ internal fun RuntimeFormV2Fields(
     enabled: Boolean,
     sourceRefresh: RuntimeFormV2SourceRefresh? = null,
     /** #16606: same-Computer agents whose Advanced env vars can be copied into the `envVars` field. */
-    envVarsCopy: RuntimeEnvVarsCopySource? = null
+    envVarsCopy: RuntimeEnvVarsCopySource? = null,
+    /** #17086: selected Computer & runtime context for unified model-field CLI upgrade hints. */
+    upgradeTarget: RuntimeModelUpgradeTarget? = null,
 ) {
     val focusManager = LocalFocusManager.current
     val visible = loaded.form.fields.filter {
@@ -146,7 +159,7 @@ internal fun RuntimeFormV2Fields(
         }
         primary.forEach { field ->
             key(field.key) {
-                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint, envVarsCopy) {
+                RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint, envVarsCopy, upgradeTarget) {
                     focusManager.clearFocus(force = true)
                 }
             }
@@ -182,7 +195,7 @@ internal fun RuntimeFormV2Fields(
                 ) {
                 advanced.forEach { field ->
                     key(field.key) {
-                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint, envVarsCopy) {
+                        RuntimeFormV2FieldRow(field, loaded, values, onChange, runtimeFormV2ErrorText(field, loaded, values, errors, serverErrorKeys, serverMessage), runtimeFormV2FieldEditing(field, errors, editing), enabled, sourceRefresh, managedHint, envVarsCopy, upgradeTarget) {
                             focusManager.clearFocus(force = true)
                         }
                     }
@@ -267,46 +280,6 @@ internal fun runtimeFormV2ShowsSavedValueNotInList(
 /** The option source a field can ask for again: its own (a derived select follows its parent's), when refresh is wired. */
 internal fun runtimeFormV2RefreshableSource(field: RuntimeFormV2Field, sourceRefresh: RuntimeFormV2SourceRefresh?): String? =
     field.optionSourceId?.takeIf { field.kind != RuntimeFormV2FieldKind.DerivedSelect && sourceRefresh != null }
-
-/**
- * Web RuntimeFormV2FieldControl `showRefresh`: the label-row refresh shows unless the source's status line
- * already offers Retry (a retryable non-live source), so the two never repeat each other; a source whose
- * retry cannot help (missing_config, unsupported) still has the refresh.
- */
-internal fun runtimeFormV2ShowsRefreshAction(refreshableSource: String?, status: RuntimeFormV2SourceStatus?): Boolean =
-    refreshableSource != null && status?.retryable != true
-
-private fun runtimeFormV2RefreshAction(
-    refreshableSource: String?,
-    status: RuntimeFormV2SourceStatus?,
-    sourceRefresh: RuntimeFormV2SourceRefresh?,
-    enabled: Boolean,
-    clearFocus: () -> Unit
-): (@Composable () -> Unit)? {
-    if (refreshableSource == null || sourceRefresh == null || !runtimeFormV2ShowsRefreshAction(refreshableSource, status)) return null
-    return {
-        // Web FieldAction `tone="icon"`: raft-ui's ghost 32px icon button with RefreshCw at 14px, in the label
-        // row (RaftField draws it 7dp past the label line, as StableField's `-my-[7px]`).
-        val refreshing = refreshableSource in sourceRefresh.refreshing
-        RaftIconButton(
-            onClick = {
-                clearFocus()
-                sourceRefresh.onRefresh(refreshableSource)
-            },
-            tooltip = stringResource(Res.string.runtime_form_v2_refresh_source_title),
-            contentDescription = stringResource(Res.string.runtime_form_v2_refresh_source_label),
-            variant = RaftButtonVariant.Ghost,
-            size = RaftIconButtonSize.Md,
-            enabled = enabled && !refreshing,
-            loading = refreshing
-        ) {
-            RaftSlotIcon(RaftLucideIconName.RefreshCw, size = RuntimeFormV2RefreshGlyph)
-        }
-    }
-}
-
-/** Web `<RefreshCw size={14} />` in the label-row refresh. */
-private val RuntimeFormV2RefreshGlyph = 14.dp
 
 /**
  * Web `runtimeChoiceMatches`: a choice is found by its label, value, group or description. The label
@@ -400,6 +373,7 @@ private fun RuntimeFormV2FieldRow(
     sourceRefresh: RuntimeFormV2SourceRefresh?,
     managedHint: String?,
     envVarsCopy: RuntimeEnvVarsCopySource?,
+    upgradeTarget: RuntimeModelUpgradeTarget?,
     clearFocus: () -> Unit
 ) {
     val current = values.text(field.key)
@@ -518,7 +492,6 @@ private fun RuntimeFormV2FieldRow(
         RuntimeFormV2FieldKind.DerivedSelect ->
             when (val choices = runtimeFormV2Choices(field, loaded.sources, values)) {
                 RuntimeFormV2Choices.FreeText ->
-                    // Web: a source-bound field typed into keeps the label-row refresh, without a status line.
                     RuntimeFormV2TextInput(
                         label = field.label,
                         value = current,
@@ -527,15 +500,7 @@ private fun RuntimeFormV2FieldRow(
                         required = required,
                         hint = hint,
                         error = error,
-                        enabled = fieldEnabled,
-                        labelTrailing =
-                            runtimeFormV2RefreshAction(
-                                runtimeFormV2RefreshableSource(field, sourceRefresh),
-                                runtimeFormV2SourceStatus(field, loaded.sources),
-                                sourceRefresh,
-                                fieldEnabled,
-                                clearFocus
-                            )
+                        enabled = fieldEnabled
                     )
                 is RuntimeFormV2Choices.Select -> {
                     val defaultLabel = stringResource(Res.string.runtime_form_v2_option_default)
@@ -546,6 +511,8 @@ private fun RuntimeFormV2FieldRow(
                     val searchLabel = stringResource(Res.string.search_filter_search)
                     val useCustomLabel = stringResource(Res.string.runtime_form_v2_use_custom, "%1\$s")
                     val customValueLabel = stringResource(Res.string.runtime_form_v2_custom_value)
+                    val refreshListLabel = stringResource(Res.string.runtime_form_v2_refresh_list)
+                    val refreshingListLabel = stringResource(Res.string.runtime_form_v2_refreshing_list)
                     // `provider.saved_connection`: headings only when the list mixes saved and direct choices.
                     val grouped = choices.options.mapNotNull { it.group }.distinct().size > 1
                     val unlisted = current.isNotEmpty() && choices.options.none { it.value == current }
@@ -556,6 +523,12 @@ private fun RuntimeFormV2FieldRow(
                     // selected by its own label and reason, never rewritten; validation blocks the save.
                     val unavailableSelected =
                         if (unlisted) unavailableChoices.firstOrNull { it.value == current.trim() } else null
+                    val effectiveRuntimeId = loaded.form.runtimeId.ifBlank { upgradeTarget?.runtimeId.orEmpty() }
+                    val runtimeName = effectiveRuntimeId.takeIf { it.isNotBlank() }?.let { observeAgentRuntimeDisplayName(it) }.orEmpty()
+                    val unavailableReasons =
+                        unavailableChoices.associate { entry ->
+                            entry.value to runtimeFormV2UnavailableReasonText(entry, runtimeName)
+                        }
                     // Web draws a searchable list (RuntimeChoiceCombobox) for these, each row with its id under the name.
                     val showsIdentifiers = runtimeFormV2ShowsChoiceIdentifiers(field, choices)
                     // One option list for both pickers; "" is the runtime default.
@@ -577,7 +550,7 @@ private fun RuntimeFormV2FieldRow(
                                     RaftComboboxOption(
                                         value = entry.value,
                                         label = entry.label,
-                                        description = entry.reason,
+                                        description = unavailableReasons[entry.value],
                                         group = when (entry.group) {
                                             "saved" -> savedGroupLabel
                                             "direct" -> directGroupLabel
@@ -592,19 +565,47 @@ private fun RuntimeFormV2FieldRow(
                     }
                     // `option_source.status`: a source that is not live says why.
                     val sourceStatus = runtimeFormV2SourceStatus(field, loaded.sources)
-                    // Re-probe: selects that read a machine option source can ask for it again. Derived selects
-                    // follow their parent's source. The label-row action and the status line's Retry never both
-                    // show (web RuntimeFormV2FieldControl `showRefresh`).
+                    val modelUpgradeHint =
+                        if (field.key == "model" && field.kind != RuntimeFormV2FieldKind.DerivedSelect) {
+                            resolveModelUpgradeHint(
+                                runtimeId = effectiveRuntimeId.ifBlank { null },
+                                installedVersion = upgradeTarget?.runtimeVersion,
+                                sourceStatus = sourceStatus,
+                                unavailableOptions = unavailableChoices,
+                            )
+                        } else {
+                            null
+                        }
+                    val hasBelowStatusLine = (sourceStatus != null || modelUpgradeHint != null) && field.optionSourceId != null
+                    // Re-probe: selects that read a machine option source pin "Refresh list" at the bottom of
+                    // the combobox dropdown (v5 unified refresh UX, botiverse/slock #17086).
                     val refreshableSource = runtimeFormV2RefreshableSource(field, sourceRefresh)
-                    // Web StableField: the label row (with the refresh action), the control, the status line
-                    // (`belowControl`), then one message row where an error replaces the hint.
+                    val sourceRefreshing = refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.refreshing
+                    val refreshListAction =
+                        if (refreshableSource != null && sourceRefresh != null && fieldEnabled) {
+                            RaftComboboxListAction(
+                                label = if (sourceRefreshing) refreshingListLabel else refreshListLabel,
+                                onClick = {
+                                    if (!sourceRefreshing) {
+                                        clearFocus()
+                                        sourceRefresh.onRefresh(refreshableSource)
+                                    }
+                                },
+                            )
+                        } else {
+                            null
+                        }
+                    // Suppress generic `field.hint` when a below-control status/upgrade line is active, while
+                    // keeping `connectionOwned`, Antigravity `modelHint`, and validation `error` precedence.
+                    val selectDescription =
+                        if (hasBelowStatusLine && !connectionOwned && modelHint == null) null else hint?.takeIf { it.isNotBlank() }
                     RuntimeFormV2FieldFrame(
                         label = field.label,
-                        description = hint?.takeIf { it.isNotBlank() },
+                        description = selectDescription,
                         error = error?.takeIf { it.isNotBlank() },
                         enabled = fieldEnabled,
                         required = required,
-                        labelTrailing = runtimeFormV2RefreshAction(refreshableSource, sourceStatus, sourceRefresh, fieldEnabled, clearFocus)
+                        reserveMessage = !hasBelowStatusLine
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             // Required shows no mark: the picker says it to screen readers ("Model, Required"); the
@@ -636,6 +637,7 @@ private fun RuntimeFormV2FieldRow(
                                     placeholder = field.placeholder ?: field.label,
                                     title = field.label,
                                     searchPlaceholder = searchLabel,
+                                    listAction = refreshListAction,
                                     create = { typed ->
                                         clearFocus()
                                         onChange(field.key, JsonPrimitive(typed))
@@ -658,7 +660,7 @@ private fun RuntimeFormV2FieldRow(
                                                 RaftComboboxOption(
                                                     value = current,
                                                     label = unavailableSelected.label,
-                                                    description = unavailableSelected.reason,
+                                                    description = unavailableReasons[unavailableSelected.value] ?: unavailableSelected.reason,
                                                     enabled = false
                                                 )
                                             ) + options
@@ -675,6 +677,7 @@ private fun RuntimeFormV2FieldRow(
                                     placeholder = field.placeholder ?: field.label,
                                     title = field.label,
                                     searchPlaceholder = searchLabel,
+                                    listAction = refreshListAction,
                                     enabled = fieldEnabled,
                                     // Web RuntimeChoiceCombobox draws its own field edge, which a field error leaves ink (the
                                     // message row says it); a plain select's edge turns red (RuntimeSelectControl).
@@ -695,10 +698,14 @@ private fun RuntimeFormV2FieldRow(
                             }
                             // `choice.labels` descriptions are the list rows' second line only: web shows none under
                             // the closed field.
-                            sourceStatus?.let { status ->
+                            if (hasBelowStatusLine) {
                                 RuntimeFormV2SourceStatusLine(
-                                    status = status,
-                                    retrying = refreshableSource != null && sourceRefresh != null && refreshableSource in sourceRefresh.refreshing,
+                                    fieldKey = field.key,
+                                    status = sourceStatus,
+                                    upgradeHint = modelUpgradeHint,
+                                    runtimeName = runtimeName,
+                                    upgradeTarget = upgradeTarget,
+                                    retrying = sourceRefreshing,
                                     onRetry = if (refreshableSource != null && sourceRefresh != null && enabled) {
                                         {
                                             clearFocus()
@@ -806,45 +813,369 @@ internal fun runtimeFormV2SourceReasonText(reason: String?): StringResource =
         else -> Res.string.runtime_form_v2_source_status_unknown
     }
 
+@Composable
+private fun runtimeFormV2UnavailableReasonText(
+    entry: RuntimeFormV2UnavailableChoice,
+    runtimeName: String,
+): String? {
+    if (entry.connectionId != null) return entry.reason
+    return when (val classified = classifyUnavailableModelReason(entry.reason)) {
+        is UnavailableModelReasonDisplay.UpgradeVersion ->
+            if (runtimeName.isNotEmpty()) {
+                stringResource(Res.string.runtime_form_v2_upgrade_hint_unavailable_reason_version, runtimeName, classified.version)
+            } else {
+                entry.reason
+            }
+        UnavailableModelReasonDisplay.UpgradeGeneric ->
+            if (runtimeName.isNotEmpty()) {
+                stringResource(Res.string.runtime_form_v2_upgrade_hint_unavailable_reason, runtimeName)
+            } else {
+                entry.reason
+            }
+        is UnavailableModelReasonDisplay.Raw -> classified.text
+        null -> null
+    }
+}
+
 /**
- * Why a source is not live (`option_source.status`); an unknown reason gets the generic line. Web
- * RuntimeFormV2SourceStatusLine: one caption sentence in muted ink behind a hairline on its left, the
- * Retry link (only when the server says it may help) at the end of the sentence.
+ * Unified v5 status and CLI upgrade hint line under a source-bound field (`botiverse/slock` `#17086`):
+ * single caption line without a left hairline; muted ink except `runtime_outdated` (danger strong).
+ * When an upgrade hint and [upgradeTarget] are present, renders [RuntimeFormV2InlineUpgradeLine].
  */
 @Composable
-private fun RuntimeFormV2SourceStatusLine(status: RuntimeFormV2SourceStatus, retrying: Boolean, onRetry: (() -> Unit)?) {
-    val reason = stringResource(runtimeFormV2SourceReasonText(status.reason))
-    val fallback = stringResource(Res.string.runtime_form_v2_source_status_fallback)
-    // A stale list (the Computer's last one: it did not answer in time) says so instead of the reason.
-    val text =
+private fun RuntimeFormV2SourceStatusLine(
+    fieldKey: String,
+    status: RuntimeFormV2SourceStatus?,
+    upgradeHint: RuntimeModelUpgradeHint?,
+    runtimeName: String,
+    upgradeTarget: RuntimeModelUpgradeTarget?,
+    retrying: Boolean,
+    onRetry: (() -> Unit)?,
+) {
+    val effectiveHint =
+        upgradeHint
+            ?: RuntimeModelUpgradeHint.RuntimeOutdated.takeIf { status?.reason == "runtime_outdated" && !status.stale }
+    val toneColor = if (effectiveHint?.isDanger == true) RaftTheme.colors.dangerStrong else RaftTheme.colors.foregroundMuted
+    val containerModifier = Modifier.fillMaxWidth().padding(top = 2.dp).testTag("runtime-form-v2-$fieldKey-status")
+
+    val fallbackContent: (@Composable () -> Unit)? =
         when {
-            status.stale -> stringResource(Res.string.runtime_form_v2_source_status_stale)
-            status.unavailable -> reason
-            else -> "$reason $fallback"
+            status != null -> {
+                {
+                    val reason = stringResource(runtimeFormV2SourceReasonText(status.reason))
+                    val fallback = stringResource(Res.string.runtime_form_v2_source_status_fallback)
+                    val text =
+                        when {
+                            status.stale -> stringResource(Res.string.runtime_form_v2_source_status_stale)
+                            status.unavailable -> reason
+                            else -> joinLocalizedSentences(reason, fallback)
+                        }
+                    val retryLabel = stringResource(Res.string.common_retry)
+                    val retryingLabel = stringResource(Res.string.runtime_form_v2_retrying)
+                    val retry = onRetry?.takeIf { status.retryable }
+                    if (retry != null && retrying) {
+                        val retryingLine =
+                            buildAnnotatedString {
+                                append(text)
+                                append(inlineActionGap(text))
+                                appendInlineContent("spinner", " ")
+                                append(" ")
+                                append(retryingLabel)
+                            }
+                        val inlineSpinner =
+                            mapOf(
+                                "spinner" to
+                                    InlineTextContent(
+                                        Placeholder(
+                                            width = 12.sp,
+                                            height = 12.sp,
+                                            placeholderVerticalAlign = PlaceholderVerticalAlign.TextCenter,
+                                        )
+                                    ) {
+                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                            RaftSpinner(size = RaftSpinnerSize.Xs, color = toneColor, contentDescription = "")
+                                        }
+                                    }
+                            )
+                        RaftText(
+                            text = retryingLine,
+                            modifier = Modifier.fillMaxWidth().testTag("runtime-form-v2-$fieldKey-retrying"),
+                            style = RaftTheme.typography.caption,
+                            color = toneColor,
+                            inlineContent = inlineSpinner,
+                        )
+                    } else {
+                        val line =
+                            buildAnnotatedString {
+                                append(text)
+                                if (retry != null) {
+                                    append(inlineActionGap(text))
+                                    appendRaftTextLink(retryLabel, onClick = retry)
+                                }
+                            }
+                        RaftText(
+                            text = line,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = RaftTheme.typography.caption,
+                            color = toneColor,
+                        )
+                    }
+                }
+            }
+            effectiveHint is RuntimeModelUpgradeHint.UnavailableModels -> {
+                {
+                    val sentence =
+                        if (effectiveHint.count == 1) {
+                            stringResource(Res.string.runtime_form_v2_upgrade_hint_unavailable_models_one, effectiveHint.count, runtimeName)
+                        } else {
+                            stringResource(Res.string.runtime_form_v2_upgrade_hint_unavailable_models_other, effectiveHint.count, runtimeName)
+                        }
+                    val guidance = stringResource(Res.string.runtime_form_v2_upgrade_hint_update_on_computer)
+                    RaftText(
+                        text = joinLocalizedSentences(sentence, guidance),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = RaftTheme.typography.caption,
+                        color = toneColor,
+                    )
+                }
+            }
+            effectiveHint is RuntimeModelUpgradeHint.SuggestedVersion -> {
+                {
+                    val sentence = stringResource(Res.string.runtime_form_v2_upgrade_hint_older_version, runtimeName)
+                    val guidance = stringResource(Res.string.runtime_form_v2_upgrade_hint_update_on_computer)
+                    RaftText(
+                        text = joinLocalizedSentences(sentence, guidance),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = RaftTheme.typography.caption,
+                        color = toneColor,
+                    )
+                }
+            }
+            else -> null
         }
-    val retryLabel = stringResource(Res.string.common_retry)
-    val retry = onRetry?.takeIf { status.retryable }
-    val line =
-        buildAnnotatedString {
-            append(text)
-            if (retry != null) {
-                append(" ")
-                appendRaftTextLink(retryLabel, onClick = retry, enabled = !retrying)
+
+    if (fallbackContent == null) return
+
+    Box(containerModifier) {
+        if (effectiveHint != null && upgradeTarget != null) {
+            RuntimeFormV2InlineUpgradeLine(
+                target = upgradeTarget,
+                hint = effectiveHint,
+                runtimeName = runtimeName.ifBlank { observeAgentRuntimeDisplayName(upgradeTarget.runtimeId) },
+                hasFallback = status != null && !status.unavailable,
+                toneColor = toneColor,
+                retrying = retrying,
+                onRetry = onRetry,
+                fallbackContent = fallbackContent,
+            )
+        } else {
+            fallbackContent()
+        }
+    }
+}
+
+/**
+ * In-place inline CLI upgrade UX under the model field (`botiverse/slock` `#17086`,
+ * `RuntimeFormV2OutdatedUpgrade.tsx`):
+ * - Non-owner (`canManage == false` or `view?.canAct == false`): never fetches `/runtime-auth`,
+ *   appends owner guidance.
+ * - Offered (`view.upgradeOffered(authRuntime)`): single inline `Upgrade` link -> `Upgrading…`
+ *   spinner -> automatic `?refresh=1` reload (`Refreshing list…`) -> formatted upgrade outcome;
+ *   or specific failure copy + inline `Retry` when retryable.
+ * - Not offered: renders [fallbackContent].
+ */
+@Composable
+private fun RuntimeFormV2InlineUpgradeLine(
+    target: RuntimeModelUpgradeTarget,
+    hint: RuntimeModelUpgradeHint,
+    runtimeName: String,
+    hasFallback: Boolean,
+    toneColor: androidx.compose.ui.graphics.Color,
+    retrying: Boolean,
+    onRetry: (() -> Unit)?,
+    fallbackContent: @Composable () -> Unit,
+) {
+    val authRuntime = RuntimeAuthRuntime.forRaftRuntime(target.runtimeId)
+    val canReadAuth = authRuntime != null && target.canManage == true && target.ops != null
+    val subject = Triple(target.serverId, target.machineId, authRuntime)
+    val subjectToken = remember(subject, target.ops) { Any() }
+    var authView by remember(subject, target.ops) {
+        mutableStateOf<RuntimeAuthView?>(null)
+    }
+    var upgradeState by remember(subject, target.ops) {
+        mutableStateOf<ComputerRuntimeUpgradeState>(ComputerRuntimeUpgradeState.Idle)
+    }
+    val currentSubjectTokenState = rememberUpdatedState(subjectToken)
+    val currentOnRetry by rememberUpdatedState(onRetry)
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(canReadAuth, subjectToken) {
+        if (!canReadAuth) return@LaunchedEffect
+        val loadedView = target.ops?.view(force = false)
+        if (currentSubjectTokenState.value === subjectToken) {
+            authView = loadedView
+        }
+    }
+
+    val baseSentence =
+        when (hint) {
+            RuntimeModelUpgradeHint.RuntimeOutdated ->
+                if (hasFallback) {
+                    stringResource(Res.string.runtime_form_v2_source_status_runtime_outdated_named_fallback, runtimeName)
+                } else {
+                    stringResource(Res.string.runtime_form_v2_source_status_runtime_outdated_named, runtimeName)
+                }
+            is RuntimeModelUpgradeHint.UnavailableModels ->
+                if (hint.count == 1) {
+                    stringResource(Res.string.runtime_form_v2_upgrade_hint_unavailable_models_one, hint.count, runtimeName)
+                } else {
+                    stringResource(Res.string.runtime_form_v2_upgrade_hint_unavailable_models_other, hint.count, runtimeName)
+                }
+            is RuntimeModelUpgradeHint.SuggestedVersion ->
+                stringResource(Res.string.runtime_form_v2_upgrade_hint_older_version, runtimeName)
+        }
+
+    val viewerCannotUpgrade = target.canManage == false || (authView != null && !authView!!.canAct)
+    if (viewerCannotUpgrade) {
+        val ownerGuidance = stringResource(Res.string.runtime_form_v2_upgrade_hint_owner_can_upgrade)
+        RaftText(
+            text = joinLocalizedSentences(baseSentence, ownerGuidance),
+            modifier = Modifier.fillMaxWidth().testTag("runtime-upgrade-no-permission"),
+            style = RaftTheme.typography.caption,
+            color = toneColor,
+        )
+        return
+    }
+
+    val offered = authRuntime != null && target.ops != null && authView?.upgradeOffered(authRuntime) == true
+    if (!offered) {
+        fallbackContent()
+        return
+    }
+
+    val startUpgrade: () -> Unit = {
+        val ops = target.ops
+        if (authRuntime != null && ops != null && upgradeState !is ComputerRuntimeUpgradeState.Running) {
+            upgradeState = ComputerRuntimeUpgradeState.Running
+            val callToken = subjectToken
+            scope.launch {
+                val next =
+                    when (val call = ops.upgrade(authRuntime)) {
+                        is RuntimeAuthCall.Done -> ComputerRuntimeUpgradeState.Done(call.value)
+                        is RuntimeAuthCall.Refused -> {
+                            val (reason, serverMessage) = call.error.toOperationRefusal()
+                            ComputerRuntimeUpgradeState.Refused(reason, call.error.traceId, serverMessage)
+                        }
+                        RuntimeAuthCall.Superseded -> ComputerRuntimeUpgradeState.Idle
+                    }
+                if (currentSubjectTokenState.value === callToken) {
+                    upgradeState = next
+                    if (isRuntimeUpgradeSuccess(next)) {
+                        currentOnRetry?.invoke()
+                    }
+                }
             }
         }
-    val hairline = RaftTheme.colors.lineHairline
-    RaftText(
-        line,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .drawBehind {
-                    val x = RaftStroke.Hairline.toPx() / 2f
-                    drawLine(hairline, Offset(x, 0f), Offset(x, size.height), strokeWidth = RaftStroke.Hairline.toPx())
+    }
+
+    if (upgradeState is ComputerRuntimeUpgradeState.Running) {
+        Row(
+            modifier = Modifier.fillMaxWidth().testTag("runtime-upgrade-running"),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftSpinner(size = RaftSpinnerSize.Xs, color = toneColor, contentDescription = "")
+            RaftText(
+                text = stringResource(Res.string.settings_computers_runtime_upgrade_running),
+                style = RaftTheme.typography.caption,
+                color = toneColor,
+            )
+        }
+        return
+    }
+
+    if (isRuntimeUpgradeSuccess(upgradeState)) {
+        if (retrying) {
+            Row(
+                modifier = Modifier.fillMaxWidth().testTag("runtime-upgrade-refreshing"),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RaftSpinner(size = RaftSpinnerSize.Xs, color = toneColor, contentDescription = "")
+                RaftText(
+                    text = stringResource(Res.string.runtime_form_v2_refreshing_list),
+                    style = RaftTheme.typography.caption,
+                    color = toneColor,
+                )
+            }
+            return
+        }
+        val doneResult = (upgradeState as? ComputerRuntimeUpgradeState.Done)?.result
+        val outcomeText =
+            when (doneResult) {
+                is RuntimeUpgradeResult.Upgraded -> {
+                    val from = doneResult.from
+                    val to = doneResult.to
+                    if (from != null && to != null) {
+                        stringResource(Res.string.settings_computers_runtime_upgrade_upgraded_from_to, runtimeName, from, to)
+                    } else {
+                        stringResource(Res.string.settings_computers_runtime_upgrade_upgraded, runtimeName)
+                    }
                 }
-                .padding(start = 8.dp),
+                is RuntimeUpgradeResult.Current -> {
+                    val version = doneResult.version
+                    if (version != null) {
+                        stringResource(Res.string.settings_computers_runtime_upgrade_current_version, runtimeName, version)
+                    } else {
+                        stringResource(Res.string.settings_computers_runtime_upgrade_current, runtimeName)
+                    }
+                }
+                else -> null
+            }
+        if (outcomeText != null) {
+            RaftText(
+                text = outcomeText,
+                modifier = Modifier.fillMaxWidth().testTag("runtime-upgrade-outcome"),
+                style = RaftTheme.typography.caption,
+                color = toneColor,
+            )
+            return
+        }
+    }
+
+    val failure = runtimeModelUpgradeFailureCopy(upgradeState)
+    if (failure != null) {
+        val failureText = stringResource(failure.message)
+        val retryLabel = stringResource(Res.string.common_retry)
+        val line =
+            buildAnnotatedString {
+                append(failureText)
+                if (failure.retryable) {
+                    append(inlineActionGap(failureText))
+                    appendRaftTextLink(retryLabel, onClick = startUpgrade)
+                }
+            }
+        RaftText(
+            text = line,
+            modifier = Modifier.fillMaxWidth().testTag("runtime-upgrade-outcome"),
+            style = RaftTheme.typography.caption,
+            color = toneColor,
+        )
+        return
+    }
+
+    val upgradeLabel = stringResource(Res.string.settings_computers_runtime_upgrade_action)
+    val line =
+        buildAnnotatedString {
+            append(baseSentence)
+            append(inlineActionGap(baseSentence))
+            appendRaftTextLink(upgradeLabel, onClick = startUpgrade)
+        }
+    RaftText(
+        text = line,
+        modifier = Modifier.fillMaxWidth().testTag("runtime-upgrade-action"),
         style = RaftTheme.typography.caption,
-        color = RaftTheme.colors.foregroundMuted
+        color = toneColor,
     )
 }
 
@@ -1120,6 +1451,7 @@ private fun RuntimeFormV2FieldFrame(
     enabled: Boolean,
     required: Boolean,
     labelTrailing: (@Composable () -> Unit)? = null,
+    reserveMessage: Boolean = true,
     content: @Composable () -> Unit
 ) {
     if (description == null || !runtimeFormV2HintHasLinks(description)) {
@@ -1131,9 +1463,9 @@ private fun RuntimeFormV2FieldFrame(
             enabled = enabled,
             required = required,
             labelTrailing = labelTrailing,
-            // Web StableField: the line under the control is always there, so a hint or an error
-            // appearing moves nothing below.
-            reserveMessage = true,
+            // Web StableField: the line under the control is always there unless a below-control status/upgrade
+            // line replaces the reserved slot.
+            reserveMessage = reserveMessage,
             content = content
         )
         return

@@ -13,7 +13,9 @@ package build.raft.app
     /** The viewer's own Computer (attached or owned, [build.raft.app.data.raftIsMyComputer]): the default prefers it. */
     val mine: Boolean = false,
     /** The note the Computer's owner wrote about it (botiverse/slock #16578). */
-    val description: String? = null
+    val description: String? = null,
+    /** Server `runtimeVersions`: runtime id -> detected CLI version (botiverse/slock #17086). */
+    val runtimeVersions: Map<String, String> = emptyMap(),
 )
 
 @RaftCoreInternalApi data class SharedCreateAgentRuntimeModelOption(

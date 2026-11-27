@@ -1285,7 +1285,8 @@ private fun List<ComputerSummary>.toCreateAgentMachineOptions(userId: String?): 
             creatorId = machine.creator?.id,
             usageFactsKnown = true,
             mine = machine.isMyComputer(userId),
-            description = machine.description
+            description = machine.description,
+            runtimeVersions = machine.runtimeVersions,
         )
     }
 

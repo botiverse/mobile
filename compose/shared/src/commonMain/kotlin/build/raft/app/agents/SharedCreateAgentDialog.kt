@@ -578,6 +578,14 @@ internal fun SharedCreateAgentDialog(
     val runtimeUsageAccess = LocalMembersRuntimeAccountUsageAccess.current
     val selectedQuotaMachine =
         machines.firstOrNull { it.id == availableSelectedMachineId }?.quotaMachine()?.copy(access = runtimeUsageAccess)
+    val modelUpgradeTarget =
+        rememberRuntimeModelUpgradeTarget(
+            access = runtimeUsageAccess,
+            serverId = cleanCreateAgentServerId,
+            machineId = availableSelectedMachineId,
+            runtimeId = runtime,
+            machineOption = machines.firstOrNull { it.id == availableSelectedMachineId },
+        )
     // The runtimes this server offers (GET servers/:id/runtimes): the cached answer first, then the
     // server's; the bundled table until either lands. Never blocks the dialog.
     var serverRuntimeCatalog by remember(createAgentFormStore, cleanCreateAgentServerId) {
@@ -1068,7 +1076,8 @@ internal fun SharedCreateAgentDialog(
                                     onAdvancedOpenChange = { advancedOpen = it },
                                     enabled = !submitting,
                                     sourceRefresh = v2SourceRefresh,
-                                    envVarsCopy = envVarsCopy
+                                    envVarsCopy = envVarsCopy,
+                                    upgradeTarget = modelUpgradeTarget?.copy(runtimeId = (v2Form ?: v2Loaded).form.runtimeId.ifBlank { modelUpgradeTarget.runtimeId }),
                                 )
                             }
                         }
