@@ -536,7 +536,8 @@ data class SharedServerMemberStatus(
 /** A scoped profile plus whether it came from an authoritative record or a message-author seed. */
 private data class ScopedMemberProfileResolution(
     val profile: MemberProfile?,
-    val authoritative: Boolean
+    val authoritative: Boolean,
+    val fromRoster: Boolean
 )
 
 /**
@@ -1551,7 +1552,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             _state.value.entryFor(serverId)
                 ?.membersById
                 ?.get(memberId)
-        if (rosterMember != null) return ScopedMemberProfileResolution(rosterMember, authoritative = true)
+        if (rosterMember != null) return ScopedMemberProfileResolution(rosterMember, authoritative = true, fromRoster = true)
         val channelMember =
             currentOwnerChannelMemberSlices(serverId)
                 .asSequence()
@@ -1559,9 +1560,9 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                 .filterNot { it.storedStandIn }
                 .flatMap { it.members.asSequence() }
                 .firstOrNull { it.id.value.trim() == memberId }
-        if (channelMember != null) return ScopedMemberProfileResolution(channelMember, authoritative = true)
+        if (channelMember != null) return ScopedMemberProfileResolution(channelMember, authoritative = true, fromRoster = false)
         val cached = _state.value.profileCacheByServerId[serverId.value.trim()]?.get(memberId)
-        return ScopedMemberProfileResolution(cached, authoritative = false)
+        return ScopedMemberProfileResolution(cached, authoritative = false, fromRoster = false)
     }
 
     fun currentChannelMembers(
@@ -1818,9 +1819,14 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             member.readinessAttentionMemberStatusOrNull(presenceFact)?.let { return it }
         }
         if (presenceFact == null && resolution.authoritative) {
-            // No fact at all (a carried-over fact is still a fact): an `active` managed agent
-            // reads "Likely online" rather than neutral or Offline (artin, #triage:#97).
-            member.likelyOnlineMemberStatusOrNull()?.let { return it }
+            // No fact at all (a carried-over fact is still a fact): an `active` managed agent on
+            // this server's roster reads "Likely online" rather than neutral or Offline (artin,
+            // #triage:#97). Channel-members-only rows (joint-channel peer agents or guest
+            // `channel_summary` rows without live activity) do not guess "Likely online"
+            // (slock #17017).
+            if (resolution.fromRoster && member?.isOtherServerFor(viewerServerId) != true) {
+                member.likelyOnlineMemberStatusOrNull()?.let { return it }
+            }
             // Web startFailureAttentionDisplay (#17124): an offline, non-stopped agent whose stored
             // failed start requires a person shows the error light even before activity loads.
             member.startFailureAttentionMemberStatusOrNull(presenceFact = null, resolvedStatus = member?.agentStatus)
@@ -1978,7 +1984,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                     .flatMapLatest { entry ->
                         val rosterMember = entry.membersById[memberId]
                         if (rosterMember != null) {
-                            flowOf(ScopedMemberProfileResolution(rosterMember, authoritative = true))
+                            flowOf(ScopedMemberProfileResolution(rosterMember, authoritative = true, fromRoster = true))
                         } else {
                             // Conversation/profile metadata can arrive before the canonical
                             // server directory. Observe that scoped cache without turning it

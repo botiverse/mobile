@@ -5,8 +5,10 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import kotlinx.coroutines.CompletableDeferred
@@ -131,6 +133,46 @@ class SharedServerMembersJointPeerAgentPresenceTest {
 
         assertNull(registry.factFor(owner, "peer-agent"))
         assertEquals(neutral, store.memberStatusFlow(serverId, "peer-agent").first())
+    }
+
+    @Test
+    fun activePeerAndGuestRowsWithoutActivityStayNeutralRatherThanLikelyOnline() = runBlocking {
+        // slock #17017: joint-channel peer agents and guest channel_summary rows without live
+        // activity are not on the viewer's local /agents roster, so they stay neutral ("—") rather
+        // than guessing "Likely online" from lifecycle status="active".
+        val activePeer = agentJson("peer-active", "server-2", activity = null, status = "active")
+        val activeGuest =
+            """{"id":"guest-active","serverId":"server-1","name":"guest-active","displayName":"guest-active",""" +
+                """"avatarUrl":null,"status":"active","profileProjection":"channel_summary",""" +
+                """"effectiveChannelRole":"member","canChangeChannelRole":false}"""
+        val (registry, _, store) = fixture(body(activePeer, activeGuest))
+        registry.rebaselineTransport(owner, registry.writeGeneration, transport1)
+
+        assertIs<DataResult.Content<*>>(store.loadChannelMembers(serverId, channelId))
+
+        assertEquals(neutral, store.memberStatusFlow(serverId, "peer-active").first())
+        assertEquals(neutral, store.memberStatusFlow(serverId, "guest-active").first())
+
+        // Positive twin: a local roster agent with lifecycle status="active" still emits
+        // likelyOnline = true through memberStatusFlow (scopedMemberProfileResolutionFlow keeps fromRoster = true).
+        store.seed(
+            MemberSnapshot(
+                server = ServerSummary(id = serverId, name = "Raft"),
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("roster-active"),
+                            kind = MemberKind.Agent,
+                            handle = "roster-active",
+                            displayName = "Roster Active",
+                            serverId = serverId,
+                            agentLifecycleStatus = "active",
+                            agentStatus = null,
+                        )
+                    )
+            )
+        )
+        assertTrue(store.memberStatusFlow(serverId, "roster-active").first()?.likelyOnline == true)
     }
 
     @Test

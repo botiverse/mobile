@@ -43,6 +43,7 @@ import build.raft.app.raftAgentStatusIndicatorState
 import build.raft.app.raftAvatarCacheSubject
 import build.raft.app.raftAvatarKind
 import build.raft.app.raftAvatarName
+import build.raft.app.knownPresenceDotOrNull
 import build.raft.app.rememberRaftAgentStatusIndicatorState
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftListRowGroup
@@ -251,7 +252,7 @@ private fun RaftMemberPickerRow(
                         external = member.isExternal,
                     ),
                 fixtureStatusFallbackEnabled = fixtureStatusFallbackEnabled,
-            )
+            ).knownPresenceDotOrNull()
         } else {
             null
         }
