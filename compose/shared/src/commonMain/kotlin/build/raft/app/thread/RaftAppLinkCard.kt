@@ -72,7 +72,9 @@ internal fun RaftAppLinkCardView(
     details: List<RaftPreviewCardDetail> = emptyList(),
     onTitleClick: (() -> Unit)? = null,
     showFooterIcon: Boolean = true,
+    linkTakesEmptyRow: Boolean = true,
 ) {
+    val titleClickLabel = if (onTitleClick != null) stringResource(Res.string.thread_link_preview_open_link) else null
     RaftPopoverSurface(modifier = modifier, width = null, contentPadding = PaddingValues(0.dp)) {
         // Body and actions scroll when the card is held shorter than they are (a popover in a
         // short window); the footer, where the link goes, stays.
@@ -88,13 +90,14 @@ internal fun RaftAppLinkCardView(
                         color = RaftTheme.colors.foregroundMuted,
                     )
                 } else {
-                    RaftPreviewCardItemTitle(card.title, onClick = onTitleClick)
+                    RaftPreviewCardItemTitle(card.title, onClick = onTitleClick, onClickLabel = titleClickLabel)
                     RaftPreviewCardMeta(details)
                     card.card?.let { RaftAppLinkCardBody(it, onAction) }
                     card.cardV2?.let { RaftAppLinkCardV2Body(it, surface = RaftAppLinkCardBadgeSurface.Popover) }
                 }
             }
-            RaftPreviewCardItemActions(buttons)
+            // connect_account titles do not open the link, so its Connect button stays in the row.
+            RaftPreviewCardItemActions(buttons, linkTakesEmptyRow = if (card.connectUrl != null) true else linkTakesEmptyRow)
         }
         RaftAppLinkCardFooter(
             appName = card.app.name,

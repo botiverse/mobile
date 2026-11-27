@@ -1,5 +1,9 @@
 package build.raft.app
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
@@ -41,6 +46,14 @@ import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardDetail
 import build.raft.designsystem.components.RaftPreviewCardDetailTone
 import build.raft.designsystem.theme.RaftTheme
+import coil3.annotation.ExperimentalCoilApi
+import coil3.asImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.AsyncImagePreviewHandler
+import coil3.compose.LocalAsyncImagePreviewHandler
+import coil3.compose.asPainter
+import coil3.request.ErrorResult
+import coil3.request.SuccessResult
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -48,15 +61,15 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 /**
- * #proj-mobile task #34: App link item cards ([RaftAppLinkCardView]) as a phone shows them (the
- * window's width; 400dp, raft-ui `size="item"`, where there is room), light and dark: a Linear
- * issue (a column of a Badge, a default and a muted Text) with Open Link ↗ alone at the card's
- * end, a Stamp pull request with its id line, state chip and "·" details and the App's buttons
- * (raft-design #939: the ⋯ with Refresh and the links, then frameless Approve and the bordered
- * Merge at the end), a pull request with only its title and a disabled action (its reason shows
- * in its long-press tooltip, not a caption under the row), and a long title cut at 2 lines over a
- * long App name and domain. The footer leads the App name with its 16dp icon (4dp gap) because a
- * phone popover covers the chip. Reports land in `build/reports/home-screenshots/`.
+ * #proj-mobile task #34 / #413 (raft-design #1480): App link item cards ([RaftAppLinkCardView]) as
+ * a phone popover shows them (the window's width; 400dp, raft-ui `size="item"`, where there is
+ * room), light and dark: a Linear issue (no App actions: ⋯ holds Open link since the title opens
+ * the item, fallback icon), a Stamp pull request with its real 16dp app icon, id line, state chip
+ * and "·" details and the App's buttons (raft-design #939: ⋯ with Refresh and Open in Stamp, then
+ * frameless Approve and bordered Merge at the end), a Stamp pull request with its real 16dp app
+ * icon and a disabled action (its reason shows in its long-press tooltip, not a caption under the
+ * row), and a long title cut at 2 lines over a long App name and domain (⋯ holds Open link).
+ * Reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -72,9 +85,14 @@ class RaftAppLinkCardScreenshotTest {
     fun cardsDark() = capture("thread.app-link-card.dark", RaftAppAppearance.Dark) { Cards() }
 
     private fun capture(name: String, appearance: RaftAppAppearance, content: @Composable () -> Unit) {
+        build.raft.app.image.raftInstallImageLoader()
         RaftRobolectricScreenshot.capture(name, appearance, reportDir = "build/reports/home-screenshots", activities = activities) {
             val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-            CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+            CompositionLocalProvider(
+                LocalActivity provides RaftPageActivity(pager),
+                LocalInspectionMode provides true,
+                LocalAsyncImagePreviewHandler provides FixtureAppIcons,
+            ) {
                 RaftDesignSystemTheme {
                     Column(
                         Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas).padding(16.dp),
@@ -86,23 +104,55 @@ class RaftAppLinkCardScreenshotTest {
     }
 }
 
+private const val StampIconFixture = "fixture://stamp"
+
+/** Offline fixture app icon rendered through the real [ThreadAppLinkCardHeaderIcon] -> [RaftCachedImage] path. */
+@OptIn(ExperimentalCoilApi::class)
+private val FixtureAppIcons =
+    AsyncImagePreviewHandler { _, request ->
+        val source = request.data as? String
+        if (source == StampIconFixture) {
+            val image = stampFixtureIconBitmap().asImage()
+            AsyncImagePainter.State.Success(image.asPainter(request.context), SuccessResult(image, request))
+        } else {
+            AsyncImagePainter.State.Error(null, ErrorResult(null, request, IllegalStateException("fixture: no app icon")))
+        }
+    }
+
+/** Crisp 48x48 Stamp-style seal emblem (renders at 16dp with 2dp corners in the footer). */
+private fun stampFixtureIconBitmap(): Bitmap =
+    Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888).apply {
+        val canvas = Canvas(this)
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF18181B.toInt() }
+        canvas.drawRect(0f, 0f, 48f, 48f, bg)
+        val badge = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFDE047.toInt() }
+        // Stamp handle + die silhouette
+        canvas.drawRoundRect(RectF(17f, 8f, 31f, 22f), 5f, 5f, badge)
+        canvas.drawRoundRect(RectF(10f, 22f, 38f, 32f), 4f, 4f, badge)
+        val ink = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFAFAFA.toInt() }
+        canvas.drawRoundRect(RectF(10f, 35f, 38f, 40f), 2f, 2f, ink)
+    }
+
 @Composable
 private fun FixtureCard(
     url: String,
     appName: String,
     title: String,
     card: RaftAppLinkCard?,
+    appIcon: String? = null,
     appButtons: List<RaftPreviewCardButton> = emptyList(),
     eyebrow: String? = null,
     details: List<RaftPreviewCardDetail> = emptyList(),
 ) {
     RaftAppLinkCardView(
-        card = AppLinkResult.Card(url = url, app = AppLinkApp(appName, null), title = title, card = card),
+        card = AppLinkResult.Card(url = url, app = AppLinkApp(appName, appIcon), title = title, card = card),
         onAction = {},
         modifier = Modifier.fillMaxWidth().widthIn(max = RaftPreviewCardDefaults.ItemWidth),
         buttons = appButtons + raftAppLinkOpenLinkButton {},
         eyebrow = eyebrow,
         details = details,
+        onTitleClick = {},
+        linkTakesEmptyRow = false,
     )
 }
 
@@ -110,8 +160,8 @@ private fun FixtureCard(
  * The web's `prCard` (botiverse/slock 8de484350 `packages/web/tests/appLinkCardsBatchedRead.behavior.test.tsx`):
  * a wrapping row of three state Badges (drawn neutral whatever their tone, no "·" between chips)
  * then a Duration (here finished, so the golden holds still), a mono branch, a warning Text, and a
- * navigate Button that step 1 does not draw (Open Link ↗ stays alone at the end). The RelativeTime
- * is left out: its words move with the clock. A second row of plain details shows the "·".
+ * navigate Button that step 1 does not draw (⋯ holds Open Link since the title opens the item).
+ * The RelativeTime is left out: its words move with the clock. A second row of plain details shows the "·".
  */
 @Composable
 private fun CardV2() {
@@ -119,7 +169,7 @@ private fun CardV2() {
         card =
             AppLinkResult.Card(
                 url = "https://stamp.build/botiverse/slock/pull/12361",
-                app = AppLinkApp("Stamp", null),
+                app = AppLinkApp("Stamp", StampIconFixture),
                 title = "#12361 feat(web): an App link card's buttons in one row, the main action at its end",
                 cardV2 =
                     RaftAppLinkCardV2(
@@ -150,6 +200,8 @@ private fun CardV2() {
         onAction = {},
         modifier = Modifier.fillMaxWidth().widthIn(max = RaftPreviewCardDefaults.ItemWidth),
         buttons = listOf(raftAppLinkOpenLinkButton {}),
+        onTitleClick = {},
+        linkTakesEmptyRow = false,
     )
 }
 
@@ -174,6 +226,7 @@ private fun Cards() {
     FixtureCard(
         url = "https://stamp.build/botiverse/slock/pull/10449",
         appName = "Stamp",
+        appIcon = StampIconFixture,
         title = "refactor(i18n): one display-locale source for web and desktop",
         card = null,
         eyebrow = "botiverse/slock#10449",
@@ -195,6 +248,7 @@ private fun Cards() {
     FixtureCard(
         url = "https://stamp.build/botiverse/mobile/pull/3654",
         appName = "Stamp",
+        appIcon = StampIconFixture,
         title = "Fix the composer tray (#3654)",
         card = null,
         appButtons =

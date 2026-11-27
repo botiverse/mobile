@@ -311,6 +311,7 @@ internal fun ThreadAppLinkCardPopover(
             eyebrow = eyebrow,
             details = details,
             onTitleClick = onOpenLink,
+            linkTakesEmptyRow = false,
         )
     }
 }
