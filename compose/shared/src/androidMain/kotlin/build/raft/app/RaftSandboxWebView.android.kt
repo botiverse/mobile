@@ -26,12 +26,16 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import build.raft.webcontainer.WebContainerAndroidFullscreenController
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebContainerAndroidNewWindowTransport
 import build.raft.webcontainer.WebJsDialogKind
@@ -39,6 +43,7 @@ import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
 import build.raft.webcontainer.WebJsDialogTracker
 import build.raft.webcontainer.extractAndroidHitTestLinkUrl
+import build.raft.webcontainer.filterWebContainerAndroidInsets
 import build.raft.webcontainer.isWebJsDialogPermitted
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
@@ -209,7 +214,11 @@ internal class RaftAndroidSandboxWebView(
         private set
     /** [RaftWebViewConfig.backgroundArgb]: the colour before the first paint (0: white). */
     private var placeholderBackground: Int = 0
-    /** The current WebView painted a page; from then on its background is the default white. */
+    /** [RaftWebViewConfig.persistBackgroundAfterPaint]: keeps [placeholderBackground] applied after paint. */
+    private var persistBackgroundAfterPaint: Boolean = false
+    /** [RaftWebViewConfig.androidInsetMode]: controls which `WindowInsets` types pass to Chromium. */
+    private var androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled
+    /** The current WebView painted a page; from then on its background is the default white unless persisted. */
     private var pagePainted: Boolean = false
     internal val isDestroyed: Boolean get() = destroyed
     /** True when the current main-frame navigation failed (network/SSL/HTTP >= 400); cleared on next load. */
@@ -372,6 +381,7 @@ internal class RaftAndroidSandboxWebView(
         if (target === webView) webView = null
         runCatching {
             target?.let {
+                ViewCompat.setOnApplyWindowInsetsListener(it, null)
                 it.webChromeClient = null
                 it.webViewClient = WebViewClient()
                 removeView(it)
@@ -436,7 +446,8 @@ internal class RaftAndroidSandboxWebView(
             jsDialogTracker.cancelActive()
         }
         updateAllowNewWindows(config.allowNewWindows)
-        updatePlaceholderBackground(config.backgroundArgb)
+        updatePlaceholderBackground(config.backgroundArgb, config.persistBackgroundAfterPaint)
+        updateAndroidInsetMode(config.androidInsetMode)
         updateSrc(config.url)
     }
 
@@ -491,6 +502,7 @@ internal class RaftAndroidSandboxWebView(
         webView = null
         runCatching {
             previous?.let {
+                ViewCompat.setOnApplyWindowInsetsListener(it, null)
                 it.stopLoading()
                 it.webChromeClient = null
                 it.webViewClient = WebViewClient()
@@ -510,17 +522,33 @@ internal class RaftAndroidSandboxWebView(
     /**
      * Until its first page paints, the WebView shows the app's canvas colour instead of its default
      * white: the page is visible from attach (no cover), and a white rectangle would flash in dark
-     * mode. Afterwards white, as a browser, under pages that paint no background of their own.
+     * mode. Afterwards white, as a browser, under pages that paint no background of their own —
+     * unless [persistAfterPaint] is true, in which case [argb] stays applied across paint and live
+     * theme switches.
      */
-    private fun updatePlaceholderBackground(argb: Int) {
+    private fun updatePlaceholderBackground(argb: Int, persistAfterPaint: Boolean) {
+        val changed = placeholderBackground != argb || persistBackgroundAfterPaint != persistAfterPaint
         placeholderBackground = argb
-        if (!pagePainted) webView?.setBackgroundColor(raftWebViewBackgroundArgb(argb, painted = false))
+        persistBackgroundAfterPaint = persistAfterPaint
+        if (!pagePainted || changed) {
+            webView?.setBackgroundColor(
+                raftWebViewBackgroundArgb(placeholderBackground, painted = pagePainted, persistAfterPaint = persistBackgroundAfterPaint),
+            )
+        }
+    }
+
+    private fun updateAndroidInsetMode(next: WebContainerAndroidInsetMode) {
+        if (androidInsetMode == next) return
+        androidInsetMode = next
+        webView?.let(ViewCompat::requestApplyInsets)
     }
 
     private fun onPagePainted() {
         if (pagePainted) return
         pagePainted = true
-        webView?.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = true))
+        webView?.setBackgroundColor(
+            raftWebViewBackgroundArgb(placeholderBackground, painted = true, persistAfterPaint = persistBackgroundAfterPaint),
+        )
     }
 
     /** The kept document (keep-alive), as [RaftWebViewKeptDocument], or null when destroyed or failed. */
@@ -598,6 +626,7 @@ internal class RaftAndroidSandboxWebView(
         webView = null
         if (active != null) {
             runCatching {
+                ViewCompat.setOnApplyWindowInsetsListener(active, null)
                 active.stopLoading()
                 active.loadUrl(ABOUT_BLANK_URL)
                 active.webChromeClient = null
@@ -639,10 +668,13 @@ internal class RaftAndroidSandboxWebView(
         prepareWebViewProfile(nextWebView)
         builtDark = RaftAppThemeState.isDark
         pagePainted = false
-        nextWebView.setBackgroundColor(raftWebViewBackgroundArgb(placeholderBackground, painted = false))
+        nextWebView.setBackgroundColor(
+            raftWebViewBackgroundArgb(placeholderBackground, painted = false, persistAfterPaint = persistBackgroundAfterPaint),
+        )
         removeAllViews()
         addView(nextWebView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView(nextWebView)
+        ViewCompat.requestApplyInsets(nextWebView)
         if (restoreCurrentDocument) restoreCurrentDocumentAfterRecreation(restoreUrl)
     }
 
@@ -669,6 +701,10 @@ internal class RaftAndroidSandboxWebView(
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView(configuredWebView: WebView) {
+        ViewCompat.setOnApplyWindowInsetsListener(configuredWebView) { view, insets ->
+            val filtered = filterWebContainerAndroidInsets(insets, androidInsetMode)
+            ViewCompat.onApplyWindowInsets(view, filtered)
+        }
         configuredWebView.settings.apply {
             javaScriptEnabled = allowScripts
             domStorageEnabled = this@RaftAndroidSandboxWebView.domStorageEnabled
@@ -2521,6 +2557,14 @@ private fun String.raftSanitizedLogValue(limit: Int = 160): String =
     replace('\n', ' ').replace('\r', ' ').take(limit)
 
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = true
+
+@Composable
+internal actual fun rememberRaftArtifactWebViewInsetMode(): WebContainerAndroidInsetMode {
+    val context = LocalContext.current
+    return remember(context) {
+        raftAndroidWebViewInsetPolicy(RaftAndroidWebViewProvider.chromiumMajorVersion(context))
+    }
+}
 
 internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = true
 

@@ -305,6 +305,10 @@ internal class WebContainerIosHost(
                 prev.offlineBundle != next.offlineBundle ||
                 (usingSpare && next.allowsBackForwardNavigationGestures) ||
                 (!pagePainted && (prev.backgroundArgb != next.backgroundArgb || prev.isDarkTheme != next.isDarkTheme))
+        val backgroundChanged =
+            prev == null ||
+                prev.backgroundArgb != next.backgroundArgb ||
+                prev.persistBackgroundAfterPaint != next.persistBackgroundAfterPaint
         val urlChanged = prev == null || prev.url.trim() != next.url.trim()
 
         config = next
@@ -321,6 +325,9 @@ internal class WebContainerIosHost(
             rebuildWebView(next, restoreUrl = null)
         } else {
             registerActiveScope(next.isolationScope)
+            if (backgroundChanged) {
+                applyBackgroundVisuals(next)
+            }
             if (urlChanged) {
                 loadUrlInternal(next, overrideUrl = null)
             }
@@ -597,7 +604,13 @@ internal class WebContainerIosHost(
     private fun applyBackgroundVisuals(cfg: WebContainerConfig) {
         val view = webView
         val hasPlaceholder = cfg.backgroundArgb != 0
-        val color = if (!pagePainted && hasPlaceholder) iosColorFromArgb(cfg.backgroundArgb) else UIColor.whiteColor
+        val effectiveArgb =
+            resolveWebContainerBackgroundArgb(
+                backgroundArgb = cfg.backgroundArgb,
+                painted = pagePainted,
+                persistAfterPaint = cfg.persistBackgroundAfterPaint,
+            )
+        val color = iosColorFromArgb(effectiveArgb)
         container.backgroundColor = color
         if (view == null) return
         val showView = !hasPlaceholder || pageRevealed
@@ -605,6 +618,7 @@ internal class WebContainerIosHost(
         view.opaque = pagePainted || !hasPlaceholder
         view.backgroundColor = if (view.opaque) color else UIColor.clearColor
         view.scrollView.backgroundColor = view.backgroundColor
+        view.underPageBackgroundColor = color
     }
 
     private fun revealView() {
@@ -1095,7 +1109,11 @@ internal class WebContainerIosHost(
         currentLoading = false
         currentProgress = 100
         pagePainted = true
-        revealView()
+        if (pageRevealed) {
+            config?.let(::applyBackgroundVisuals)
+        } else {
+            revealView()
+        }
         chainState.markCommitted()
         val action = watchdog.onEvent(WebContainerWatchdogEvent.PageFinished(loadGeneration), webContainerMonotonicMillis())
         handleWatchdogAction(action)

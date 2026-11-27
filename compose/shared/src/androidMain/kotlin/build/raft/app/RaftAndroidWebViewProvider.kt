@@ -53,6 +53,13 @@ object RaftAndroidWebViewProvider {
         return raftWebViewProviderLabel(info.packageName, info.versionName)
     }
 
+    /** Leading Chromium major version of the current WebView package, or `null` when unknown. */
+    fun chromiumMajorVersion(context: Context): Int? {
+        val appContext = context.applicationContext ?: context
+        val info = cachedFor(appContext) ?: resolveAndCache(appContext)
+        return raftWebViewChromiumMajorVersion(info.versionName)
+    }
+
     /** Logs [label] once per process, when the first WebView is created, without blocking main. */
     internal fun logOnce(context: Context) {
         if (!logged.compareAndSet(false, true)) return
@@ -104,6 +111,15 @@ internal fun raftWebViewProviderLabel(packageName: String?, versionName: String?
 internal fun raftWebViewProviderLogLine(packageName: String?, versionName: String?): String =
     "webview_provider package=${packageName.raftWebViewProviderField() ?: "unavailable"} " +
         "version=${versionName.raftWebViewProviderField() ?: "unknown"}"
+
+/** Extracts the positive leading Chromium major version from a WebView `versionName` (e.g. `"139.0.7258.143"` -> `139`). */
+internal fun raftWebViewChromiumMajorVersion(versionName: String?): Int? {
+    val trimmed = versionName?.trim().orEmpty()
+    if (trimmed.isEmpty()) return null
+    val majorToken = trimmed.substringBefore('.')
+    if (majorToken.isEmpty() || majorToken.any { it !in '0'..'9' }) return null
+    return majorToken.toIntOrNull()?.takeIf { it > 0 }
+}
 
 private fun String?.raftWebViewProviderField(): String? =
     this?.trim()?.replace(Regex("\\s+"), "_")?.take(80)?.takeIf { it.isNotEmpty() }

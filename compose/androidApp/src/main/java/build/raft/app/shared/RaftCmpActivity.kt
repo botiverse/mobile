@@ -114,6 +114,7 @@ import build.raft.app.nav.RaftStackOpenRoute
 import build.raft.app.nav.RaftStackPage
 import build.raft.app.nav.LocalRaftStackRootTab
 import build.raft.app.nav.RaftStackRootTab
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.runtime.remember
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.renderThreadShareImageBitmap
@@ -1250,6 +1251,11 @@ internal open class RaftCmpActivity :
         nav3SavedRootTab = null
         val composeView =
             ComposeView(this).apply {
+                // Propagate WindowInsets past ComposeView so embedded Chromium WebViews can handle
+                // native ime()/systemBars() insets (android_webview/docs/insets.md). Each WebView
+                // zeroes any host-handled inset types via OnApplyWindowInsetsListener to prevent
+                // double-padding on older Chromium or non-migrated surfaces.
+                consumeWindowInsets = false
                 setContent {
                     // Every root wears the light/dark mode this process reports from the windows'
                     // configurations (onCreate, onConfigurationChanged), not this window's own: a

@@ -1,10 +1,15 @@
 package build.raft.app
 
 import android.app.Activity
+import android.graphics.Color
 import android.net.Uri
 import android.os.Looper
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import java.time.Duration
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -167,5 +172,90 @@ class RaftAndroidArtifactViewerWebViewRulesTest {
         assertTrue(recreated.settings.supportZoom())
         assertTrue(recreated.settings.builtInZoomControls)
         assertFalse(recreated.settings.displayZoomControls)
+    }
+
+    @Test
+    fun chromiumMajorVersionParserAndProviderAccessorHandleRealAndMalformedVersions() {
+        assertEquals(139, raftWebViewChromiumMajorVersion("139.0.7258.143"))
+        assertEquals(144, raftWebViewChromiumMajorVersion(" 144.0.0.1 "))
+        assertEquals(145, raftWebViewChromiumMajorVersion("145"))
+        assertNull(raftWebViewChromiumMajorVersion(null))
+        assertNull(raftWebViewChromiumMajorVersion(""))
+        assertNull(raftWebViewChromiumMajorVersion("   "))
+        assertNull(raftWebViewChromiumMajorVersion("0.1.2"))
+        assertNull(raftWebViewChromiumMajorVersion("-139.0.0"))
+        assertNull(raftWebViewChromiumMajorVersion("139a.0.0"))
+        assertNull(raftWebViewChromiumMajorVersion("unknown"))
+
+        try {
+            RaftAndroidWebViewProvider.resetForTest()
+            RaftAndroidWebViewProvider.packageLoader = { "com.google.android.webview" to "144.0.7500.12" }
+            val app = RuntimeEnvironment.getApplication()
+            assertEquals(144, RaftAndroidWebViewProvider.chromiumMajorVersion(app))
+            assertEquals(
+                WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars,
+                raftAndroidWebViewInsetPolicy(RaftAndroidWebViewProvider.chromiumMajorVersion(app)),
+            )
+        } finally {
+            RaftAndroidWebViewProvider.resetForTest()
+        }
+    }
+
+    @Test
+    fun legacyAndroidWebViewPersistsBackgroundAcrossPaintThemeSwitchAndAppliesInsetModes() {
+        val darkCanvas = 0xFF1B1B19.toInt()
+        val lightCanvas = 0xFFFAF9F7.toInt()
+        val host = RaftAndroidSandboxWebView(RuntimeEnvironment.getApplication(), events)
+        val initialConfig =
+            raftArtifactViewerWebViewConfig(
+                url = viewerUrl,
+                scope = scope,
+                injectedJavaScript = "",
+                backgroundArgb = darkCanvas,
+                persistBackgroundAfterPaint = true,
+                androidInsetMode = WebContainerAndroidInsetMode.HostHandled,
+            )
+        host.applyConfig(initialConfig)
+        val webView = host.getChildAt(0) as WebView
+
+        assertEquals(darkCanvas, shadowOf(webView).backgroundColor)
+        val client = shadowOf(webView).webViewClient
+        client.onPageCommitVisible(webView, viewerUrl)
+        client.onPageFinished(webView, viewerUrl)
+        assertEquals(darkCanvas, shadowOf(webView).backgroundColor)
+
+        // Live theme switch updates the already-painted WebView background immediately.
+        host.applyConfig(initialConfig.copy(backgroundArgb = lightCanvas))
+        assertEquals(lightCanvas, shadowOf(webView).backgroundColor)
+
+        // Turning off persistence reverts a painted WebView back to default white.
+        host.applyConfig(initialConfig.copy(backgroundArgb = darkCanvas, persistBackgroundAfterPaint = false))
+        assertEquals(Color.WHITE, shadowOf(webView).backgroundColor)
+
+        val rawInsets =
+            WindowInsetsCompat.Builder()
+                .setInsets(WindowInsetsCompat.Type.statusBars(), Insets.of(0, 72, 0, 0))
+                .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars(), Insets.of(0, 72, 0, 0))
+                .setInsets(WindowInsetsCompat.Type.navigationBars(), Insets.of(0, 0, 0, 48))
+                .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars(), Insets.of(0, 0, 0, 48))
+                .setInsets(WindowInsetsCompat.Type.ime(), Insets.of(0, 0, 0, 580))
+                .setInsets(WindowInsetsCompat.Type.displayCutout(), Insets.of(0, 72, 0, 0))
+                .setInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout(), Insets.of(0, 72, 0, 0))
+                .build()
+
+        val hostHandled = ViewCompat.dispatchApplyWindowInsets(webView, rawInsets)
+        assertEquals(Insets.NONE, hostHandled.getInsets(WindowInsetsCompat.Type.ime()))
+        assertEquals(Insets.NONE, hostHandled.getInsets(WindowInsetsCompat.Type.systemBars()))
+
+        host.applyConfig(initialConfig.copy(androidInsetMode = WebContainerAndroidInsetMode.NativeImeHostNavBar))
+        val imeOnly = ViewCompat.dispatchApplyWindowInsets(webView, rawInsets)
+        assertEquals(Insets.of(0, 0, 0, 580), imeOnly.getInsets(WindowInsetsCompat.Type.ime()))
+        assertEquals(Insets.NONE, imeOnly.getInsets(WindowInsetsCompat.Type.systemBars()))
+
+        host.applyConfig(initialConfig.copy(androidInsetMode = WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars))
+        val imeAndBottom = ViewCompat.dispatchApplyWindowInsets(webView, rawInsets)
+        assertEquals(Insets.of(0, 0, 0, 580), imeAndBottom.getInsets(WindowInsetsCompat.Type.ime()))
+        assertEquals(Insets.NONE, imeAndBottom.getInsets(WindowInsetsCompat.Type.statusBars()))
+        assertEquals(Insets.of(0, 0, 0, 48), imeAndBottom.getInsets(WindowInsetsCompat.Type.navigationBars()))
     }
 }

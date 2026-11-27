@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import build.raft.app.compat.json.JSONObject
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import build.raft.webcontainer.WebJsDialogRequest
 
 /**
@@ -81,10 +82,24 @@ internal data class RaftWebViewConfig(
     /**
      * ARGB the native view shows until its first page has painted (the app's canvas colour, so a
      * page shown before its first paint is no white rectangle in dark mode); after that the
-     * engine's default white, as in a browser, for pages that paint no background. 0: white from
-     * the start.
+     * engine's default white, as in a browser, for pages that paint no background — unless
+     * [persistBackgroundAfterPaint] is true. 0: white from the start.
      */
     val backgroundArgb: Int = 0,
+    /**
+     * Keeps [backgroundArgb] applied on the native WebView even after first paint and updates it
+     * live across theme changes (used by themed first-party surfaces such as the Artifact viewer
+     * to avoid white flashes during resize/IME/theme transitions). Off by default so unthemed
+     * external web pages keep the browser-default white canvas after first paint.
+     */
+    val persistBackgroundAfterPaint: Boolean = false,
+    /**
+     * Android `WindowInsets` handoff mode ([WebContainerAndroidInsetMode]) applied to the
+     * underlying Chromium `WebView`. Defaults to [WebContainerAndroidInsetMode.HostHandled] so
+     * surfaces that pad the WebView from Compose never double-pad when `ComposeView` stops
+     * consuming insets. Ignored on iOS and Desktop.
+     */
+    val androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
     /**
      * Which product surface this WebView is (`artifact_viewer`, `in_app_browser`, ...), for
      * diagnostics only: renderer-death logs and tickets name it (Android `RaftWebViewRendererGone`).
@@ -256,6 +271,14 @@ internal expect fun RaftSandboxWebViewHost(
  * the page no bottom safe-area inset. iOS: WKWebView handles both. Desktop: neither exists.
  */
 internal expect val raftWebViewNeedsHostBottomInsets: Boolean
+
+/**
+ * Resolves the Android WebView inset handoff mode for the Artifact viewer
+ * ([raftAndroidWebViewInsetPolicy]); iOS and Desktop always return
+ * [WebContainerAndroidInsetMode.HostHandled] since [raftWebViewNeedsHostBottomInsets] is `false`.
+ */
+@Composable
+internal expect fun rememberRaftArtifactWebViewInsetMode(): WebContainerAndroidInsetMode
 
 /**
  * How a host lays a page out at a desktop width (`useWideViewPort`, task #188, the Artifact

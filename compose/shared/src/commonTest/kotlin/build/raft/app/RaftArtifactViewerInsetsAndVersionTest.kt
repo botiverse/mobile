@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -62,5 +63,75 @@ class RaftArtifactViewerInsetsAndVersionTest {
         // Gesture navigation, no keyboard.
         assertEquals(24, raftArtifactViewerWebBottomInsetPx(imeBottomPx = 0, navigationBarBottomPx = 24, hostPadsWebView = true))
         assertEquals(0, raftArtifactViewerWebBottomInsetPx(imeBottomPx = -1, navigationBarBottomPx = 0, hostPadsWebView = true))
+    }
+
+    @Test
+    fun androidInsetPolicySelectsNativeModesByChromiumMajorVersion() {
+        assertEquals(WebContainerAndroidInsetMode.HostHandled, raftAndroidWebViewInsetPolicy(null))
+        assertEquals(WebContainerAndroidInsetMode.HostHandled, raftAndroidWebViewInsetPolicy(0))
+        assertEquals(WebContainerAndroidInsetMode.HostHandled, raftAndroidWebViewInsetPolicy(114))
+        assertEquals(WebContainerAndroidInsetMode.HostHandled, raftAndroidWebViewInsetPolicy(138))
+        assertEquals(WebContainerAndroidInsetMode.NativeImeHostNavBar, raftAndroidWebViewInsetPolicy(139))
+        assertEquals(WebContainerAndroidInsetMode.NativeImeHostNavBar, raftAndroidWebViewInsetPolicy(143))
+        assertEquals(WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars, raftAndroidWebViewInsetPolicy(144))
+        assertEquals(WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars, raftAndroidWebViewInsetPolicy(150))
+    }
+
+    @Test
+    fun androidWebBottomInsetRespectsNativeWebViewInsetModes() {
+        // M139-M143: static navigation bar only; IME never resizes the Android WebView View.
+        assertEquals(
+            72,
+            raftArtifactViewerWebBottomInsetPx(
+                imeBottomPx = 560,
+                navigationBarBottomPx = 72,
+                hostPadsWebView = true,
+                androidInsetMode = WebContainerAndroidInsetMode.NativeImeHostNavBar,
+            ),
+        )
+        assertEquals(
+            0,
+            raftArtifactViewerWebBottomInsetPx(
+                imeBottomPx = 560,
+                navigationBarBottomPx = -4,
+                hostPadsWebView = true,
+                androidInsetMode = WebContainerAndroidInsetMode.NativeImeHostNavBar,
+            ),
+        )
+        // M144+: Chromium handles both IME and bottom system bars natively.
+        assertEquals(
+            0,
+            raftArtifactViewerWebBottomInsetPx(
+                imeBottomPx = 560,
+                navigationBarBottomPx = 72,
+                hostPadsWebView = true,
+                androidInsetMode = WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars,
+            ),
+        )
+        // iOS / Desktop never apply host bottom padding regardless of inset mode.
+        assertEquals(
+            0,
+            raftArtifactViewerWebBottomInsetPx(
+                imeBottomPx = 560,
+                navigationBarBottomPx = 72,
+                hostPadsWebView = false,
+                androidInsetMode = WebContainerAndroidInsetMode.HostHandled,
+            ),
+        )
+    }
+
+    @Test
+    fun webViewBackgroundArgbPersistsAfterPaintOnlyWhenRequested() {
+        val darkCanvas = 0xFF1B1B19.toInt()
+        assertEquals(darkCanvas, raftWebViewBackgroundArgb(darkCanvas, painted = false))
+        assertEquals(RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB, raftWebViewBackgroundArgb(darkCanvas, painted = true))
+        assertEquals(
+            darkCanvas,
+            raftWebViewBackgroundArgb(darkCanvas, painted = true, persistAfterPaint = true),
+        )
+        assertEquals(
+            RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB,
+            raftWebViewBackgroundArgb(0, painted = true, persistAfterPaint = true),
+        )
     }
 }

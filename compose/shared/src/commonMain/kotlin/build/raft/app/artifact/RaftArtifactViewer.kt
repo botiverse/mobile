@@ -10,6 +10,7 @@ import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.isArtifactContentHost
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import kotlin.math.roundToInt
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -1149,19 +1150,52 @@ internal fun raftArtifactViewerRereadsLatest(
     next: RaftArtifactViewerNavigation.Stay,
 ): Boolean = previous?.version != null && next.version == null
 
+/** Chromium major version that first handles `ime()` insets natively inside WebView (`visualViewport`). */
+internal const val RAFT_ANDROID_WEBVIEW_NATIVE_IME_MIN_CHROMIUM = 139
+
+/** Chromium major version that handles both `ime()` and `systemBars()` (`env(safe-area-inset-*)`) on all WebViews. */
+internal const val RAFT_ANDROID_WEBVIEW_NATIVE_SYSTEM_BARS_MIN_CHROMIUM = 144
+
 /**
- * The bottom padding of the viewer's WebView, in px. Where the WebView does not inset itself
- * ([hostPadsWebView]: Android, whose window is edge-to-edge, so neither the keyboard nor the
- * navigation bar resizes it and the page gets no `env(safe-area-inset-bottom)`), the web page
- * ends above the keyboard while it is up, else above the navigation bar: the IME inset already
- * covers the navigation bar, so the larger one. Elsewhere (iOS: WKWebView applies the safe area
- * and the keyboard itself) nothing.
+ * Selects the Android `WindowInsets` handoff mode for the Artifact viewer WebView based on the
+ * device's system Chromium WebView major version (`android_webview/docs/insets.md`):
+ * - M144+: WebView handles `ime()` and bottom `systemBars()` / `displayCutout()` natively.
+ * - M139-M143: WebView handles `ime()` natively; host applies static bottom navigation-bar padding.
+ * - < M139 or unknown: legacy host padding (`maxOf(ime, navigationBar)`), WebView zeroes all insets.
+ */
+internal fun raftAndroidWebViewInsetPolicy(chromiumMajorVersion: Int?): WebContainerAndroidInsetMode =
+    when {
+        chromiumMajorVersion == null || chromiumMajorVersion < RAFT_ANDROID_WEBVIEW_NATIVE_IME_MIN_CHROMIUM ->
+            WebContainerAndroidInsetMode.HostHandled
+        chromiumMajorVersion < RAFT_ANDROID_WEBVIEW_NATIVE_SYSTEM_BARS_MIN_CHROMIUM ->
+            WebContainerAndroidInsetMode.NativeImeHostNavBar
+        else -> WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars
+    }
+
+/**
+ * The bottom padding of the viewer's WebView, in px. Where the host pads the WebView
+ * ([hostPadsWebView]: Android), the padding follows [androidInsetMode]:
+ * - [WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars] (M144+): `0` — Chromium handles
+ *   both the keyboard (`window.visualViewport`) and bottom `env(safe-area-inset-bottom)`.
+ * - [WebContainerAndroidInsetMode.NativeImeHostNavBar] (M139-M143): static [navigationBarBottomPx]
+ *   only — Chromium handles the keyboard natively without resizing the Android `WebView` View.
+ * - [WebContainerAndroidInsetMode.HostHandled] (< M139 or surfaces without native inset handoff):
+ *   `maxOf(imeBottomPx, navigationBarBottomPx)`.
+ * Elsewhere (iOS: WKWebView applies the safe area and the keyboard itself; Desktop) nothing.
  */
 internal fun raftArtifactViewerWebBottomInsetPx(
     imeBottomPx: Int,
     navigationBarBottomPx: Int,
     hostPadsWebView: Boolean,
-): Int = if (hostPadsWebView) maxOf(imeBottomPx, navigationBarBottomPx).coerceAtLeast(0) else 0
+    androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
+): Int {
+    if (!hostPadsWebView) return 0
+    return when (androidInsetMode) {
+        WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars -> 0
+        WebContainerAndroidInsetMode.NativeImeHostNavBar -> navigationBarBottomPx.coerceAtLeast(0)
+        WebContainerAndroidInsetMode.HostHandled -> maxOf(imeBottomPx, navigationBarBottomPx).coerceAtLeast(0)
+    }
+}
 
 /**
  * Desktop Mode (artin 11-03, "artifact 预览应该要支持一个桌面模式"): the viewer lays the page out at a

@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toArgb
 import build.raft.designsystem.components.raftPaneGridNoFade
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.compat.json.JSONObject
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import build.raft.webcontainer.WebJsDialogRequest
 
 internal data class RaftWebViewNavigationState(
@@ -281,6 +282,12 @@ internal fun RaftSandboxWebView(
     allowNewWindows: Boolean = false,
     /** [RaftWebViewEvents.onJsDialog]. */
     onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
+    /** [RaftWebViewConfig.backgroundArgb]; null defaults to `RaftTheme.colors.layerCanvas`. */
+    backgroundArgb: Int? = null,
+    /** [RaftWebViewConfig.persistBackgroundAfterPaint]. */
+    persistBackgroundAfterPaint: Boolean = false,
+    /** [RaftWebViewConfig.androidInsetMode]. */
+    androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
 ) {
     val useWebContainer = rememberRaftWebContainerV1Enabled()
     val loadAttempt =
@@ -367,7 +374,7 @@ internal fun RaftSandboxWebView(
         onContentProcessGone?.invoke(reason)
     }
     if (loadWatchdog != null) RaftWebViewLoadWatchdogEffect(loadWatchdog, controller)
-    val backgroundArgb = RaftTheme.colors.layerCanvas.toArgb()
+    val resolvedBackgroundArgb = backgroundArgb ?: RaftTheme.colors.layerCanvas.toArgb()
     val allowedNavigationSchemesValue = allowedNavigationSchemes.toRaftWebViewAllowedNavigationSchemesValue()
     val config =
         remember(
@@ -384,7 +391,9 @@ internal fun RaftSandboxWebView(
             mainFrameOrigin,
             frameHosts,
             keepAliveKey,
-            backgroundArgb,
+            resolvedBackgroundArgb,
+            persistBackgroundAfterPaint,
+            androidInsetMode,
             diagnosticsSurface,
             showsFormAccessoryBar,
             allowPinchZoom,
@@ -410,7 +419,9 @@ internal fun RaftSandboxWebView(
                 mainFrameOrigin = mainFrameOrigin,
                 frameHosts = frameHosts,
                 keepAliveKey = keepAliveKey,
-                backgroundArgb = backgroundArgb,
+                backgroundArgb = resolvedBackgroundArgb,
+                persistBackgroundAfterPaint = persistBackgroundAfterPaint,
+                androidInsetMode = androidInsetMode,
                 diagnosticsSurface = diagnosticsSurface,
                 showsFormAccessoryBar = showsFormAccessoryBar,
                 allowPinchZoom = allowPinchZoom,
@@ -534,6 +545,12 @@ internal fun RaftWebView(
     allowNewWindows: Boolean = false,
     /** [RaftWebViewEvents.onJsDialog]. */
     onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
+    /** [RaftWebViewConfig.backgroundArgb]; null defaults to `RaftTheme.colors.layerCanvas`. */
+    backgroundArgb: Int? = null,
+    /** [RaftWebViewConfig.persistBackgroundAfterPaint]. */
+    persistBackgroundAfterPaint: Boolean = false,
+    /** [RaftWebViewConfig.androidInsetMode]. */
+    androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -569,6 +586,9 @@ internal fun RaftWebView(
         allowJsDialogs = allowJsDialogs,
         allowNewWindows = allowNewWindows,
         onJsDialog = onJsDialog,
+        backgroundArgb = backgroundArgb,
+        persistBackgroundAfterPaint = persistBackgroundAfterPaint,
+        androidInsetMode = androidInsetMode,
     )
 }
 

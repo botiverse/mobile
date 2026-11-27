@@ -227,6 +227,60 @@ data class WebOfflineBundleDescriptor(
     }
 }
 
+/**
+ * How Android `WindowInsets` reach the underlying Chromium `WebView` inside [WebContainerView].
+ *
+ * Follows Chromium WebView's inset contract (`android_webview/docs/insets.md`): consumed inset
+ * types are zeroed with `Insets.NONE` (never short-circuited via `CONSUMED`) so dynamic
+ * transitions clear Chromium's cached insets.
+ */
+enum class WebContainerAndroidInsetMode {
+    /**
+     * Host handles all insets (`ime()`, `systemBars()`, `displayCutout()`).
+     * The WebView listener zeroes all three before forwarding to `WebView.onApplyWindowInsets`
+     * so disabling `ComposeView.consumeWindowInsets` never causes double-padding on legacy
+     * WebViews or surfaces that apply host padding.
+     */
+    HostHandled,
+
+    /**
+     * Chromium M139-M143: WebView natively handles `ime()` (`window.visualViewport` resize
+     * without resizing the Android `WebView` View), while the host applies static bottom
+     * navigation-bar padding and top status-bar chrome. The WebView listener zeroes
+     * `systemBars()` and `displayCutout()` and passes `ime()` unconsumed to WebView.
+     */
+    NativeImeHostNavBar,
+
+    /**
+     * Chromium M144+: WebView natively handles both `ime()` (`window.visualViewport`) and
+     * bottom `systemBars()` / `displayCutout()` (`env(safe-area-inset-*)`), while the host owns
+     * the top status bar / header chrome. The WebView listener zeroes top insets (`statusBars()`,
+     * `captionBar()`, top of `navigationBars()`/`displayCutout()`) and passes `ime()` and
+     * bottom/horizontal navigation-bar/cutout insets unconsumed to WebView.
+     */
+    NativeImeAndBottomSystemBars,
+}
+
+/**
+ * Resolves the effective native WebView background ARGB.
+ *
+ * When [persistAfterPaint] is `false` (default, suitable for external/unthemed web pages),
+ * [backgroundArgb] acts only as a pre-first-paint placeholder and reverts to opaque white
+ * (`0xFFFFFFFF`) once [painted] is `true`. When [persistAfterPaint] is `true` and
+ * [backgroundArgb] is non-zero, [backgroundArgb] stays applied after paint and follows live
+ * theme updates.
+ */
+fun resolveWebContainerBackgroundArgb(
+    backgroundArgb: Int,
+    painted: Boolean,
+    persistAfterPaint: Boolean = false,
+): Int =
+    if (backgroundArgb != 0 && (!painted || persistAfterPaint)) {
+        backgroundArgb
+    } else {
+        0xFFFFFFFF.toInt()
+    }
+
 /** Top-level configuration for [WebContainerView]. */
 data class WebContainerConfig(
     val url: String,
@@ -238,6 +292,8 @@ data class WebContainerConfig(
     val allowPinchZoom: Boolean = false,
     val desktopViewportMode: Boolean = false,
     val backgroundArgb: Int = 0,
+    val persistBackgroundAfterPaint: Boolean = false,
+    val androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
     val isDarkTheme: Boolean = false,
     val coverActive: Boolean = false,
     val allowsBackForwardNavigationGestures: Boolean = false,

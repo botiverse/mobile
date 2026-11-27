@@ -119,10 +119,20 @@ internal const val RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB: Int = -0x1
 /**
  * The background a native WebView shows ([RaftWebViewConfig.backgroundArgb]): the app's canvas
  * colour until its first page painted, then the engine's default white (pages without a background
- * of their own read as in a browser). [placeholderArgb] 0: white throughout.
+ * of their own read as in a browser), unless [persistAfterPaint] is true (themed first-party
+ * surfaces such as the Artifact viewer keep their canvas colour after paint and across theme
+ * switches). [placeholderArgb] 0: white throughout.
  */
-internal fun raftWebViewBackgroundArgb(placeholderArgb: Int, painted: Boolean): Int =
-    if (painted || placeholderArgb == 0) RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB else placeholderArgb
+internal fun raftWebViewBackgroundArgb(
+    placeholderArgb: Int,
+    painted: Boolean,
+    persistAfterPaint: Boolean = false,
+): Int =
+    if (placeholderArgb == 0 || (painted && !persistAfterPaint)) {
+        RAFT_WEB_VIEW_DEFAULT_BACKGROUND_ARGB
+    } else {
+        placeholderArgb
+    }
 
 /**
  * Whether a native WebView is shown (iOS): not while a canvas colour is set ([placeholderArgb] not

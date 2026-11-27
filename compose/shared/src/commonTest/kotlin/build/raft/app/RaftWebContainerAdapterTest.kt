@@ -10,6 +10,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideMode
 import build.raft.app.network.sync.DiagnosticFeatureFlagOverrideRegistry
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideController
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import build.raft.webcontainer.WebContainerController
 import build.raft.webcontainer.WebContainerOrigin
 import build.raft.webcontainer.WebDownloadResult
@@ -65,6 +66,8 @@ class RaftWebContainerAdapterTest {
         raftHost: RaftHostHeader? = null,
         useWideViewPort: Boolean = false,
         coverActive: Boolean = false,
+        persistBackgroundAfterPaint: Boolean = false,
+        androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
     ): RaftWebViewConfig =
         RaftWebViewConfig(
             url = url,
@@ -81,6 +84,8 @@ class RaftWebContainerAdapterTest {
             frameHosts = frameHosts,
             keepAliveKey = "artifact-key",
             backgroundArgb = 0xFF112233.toInt(),
+            persistBackgroundAfterPaint = persistBackgroundAfterPaint,
+            androidInsetMode = androidInsetMode,
             diagnosticsSurface = "artifact_viewer",
             showsFormAccessoryBar = false,
             allowPinchZoom = true,
@@ -155,6 +160,8 @@ class RaftWebContainerAdapterTest {
                 injectedJavaScript = "window.__raftInit = 1;",
                 useWideViewPort = true,
                 coverActive = true,
+                persistBackgroundAfterPaint = true,
+                androidInsetMode = WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars,
                 raftHost = RaftHostHeader(origin = "https://app.raft.build", value = "mobile-app"),
             ).toWebContainerConfig(isDarkTheme = true)
 
@@ -162,6 +169,8 @@ class RaftWebContainerAdapterTest {
         assertTrue(mappedDefault.isDarkTheme)
         assertTrue(mappedDefault.desktopViewportMode)
         assertTrue(mappedDefault.coverActive)
+        assertTrue(mappedDefault.persistBackgroundAfterPaint)
+        assertEquals(WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars, mappedDefault.androidInsetMode)
         assertTrue(mappedDefault.allowPinchZoom)
         assertTrue(mappedDefault.allowsBackForwardNavigationGestures)
         assertEquals("artifact_viewer", mappedDefault.surfaceId)
@@ -183,6 +192,8 @@ class RaftWebContainerAdapterTest {
 
         val mappedEphemeral = baseConfig(ephemeral = true, storagePartition = null).toWebContainerConfig(isDarkTheme = false)
         assertEquals(WebIsolationScope.Ephemeral, mappedEphemeral.isolationScope)
+        assertFalse(mappedEphemeral.persistBackgroundAfterPaint)
+        assertEquals(WebContainerAndroidInsetMode.HostHandled, mappedEphemeral.androidInsetMode)
 
         val mappedThirdParty =
             baseConfig(storagePartition = RaftWebViewStoragePartition.IsolatedThirdParty)

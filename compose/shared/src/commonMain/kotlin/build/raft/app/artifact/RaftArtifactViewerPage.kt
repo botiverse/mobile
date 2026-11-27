@@ -26,10 +26,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.dp
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
@@ -105,6 +107,9 @@ internal fun raftArtifactViewerWebViewConfig(
     injectedJavaScript: String,
     /** Desktop Mode: the page laid out at a desktop width and fitted ([raftArtifactViewerInjectedScript]). */
     desktopMode: Boolean = false,
+    backgroundArgb: Int = 0,
+    persistBackgroundAfterPaint: Boolean = true,
+    androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
 ): RaftWebViewConfig =
     RaftWebViewConfig(
         url = url,
@@ -122,6 +127,9 @@ internal fun raftArtifactViewerWebViewConfig(
         mainFrameOrigin = scope.webOrigin,
         frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
         keepAliveKey = scope.keepAliveKey,
+        backgroundArgb = backgroundArgb,
+        persistBackgroundAfterPaint = persistBackgroundAfterPaint,
+        androidInsetMode = androidInsetMode,
         diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
         // #proj-workspace:#360: pinch-to-zoom stays available outside Desktop Mode too.
         allowPinchZoom = true,
@@ -225,6 +233,7 @@ internal fun RaftArtifactViewerScreenFrame(
     scopeKnown: Boolean,
     desktopMode: Boolean? = null,
     actions: RaftArtifactViewerBarActions = RaftArtifactViewerBarActions(),
+    overlayHeaderOverContent: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     RaftArtifactViewerFrame(
@@ -234,6 +243,7 @@ internal fun RaftArtifactViewerScreenFrame(
         desktopMode = desktopMode,
         pageDrawsBar = pageSaysItDrawsBar && viewing && scopeKnown,
         inColumn = LocalRaftArtifactViewerInColumn.current,
+        overlayHeaderOverContent = overlayHeaderOverContent && viewing && scopeKnown,
         content = content,
     )
 }
@@ -442,8 +452,10 @@ internal fun RaftArtifactViewerPrewarmRuntime(
     }
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
     val head = raftArtifactViewerHostHeadOrNull(hostHead)
+    val canvasBackgroundArgb = RaftColor.Canvas.toArgb()
+    val insetMode = rememberRaftArtifactWebViewInsetMode()
     val config =
-        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation, head) {
+        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation, head, canvasBackgroundArgb, insetMode) {
             val session = snapshot.session
             if (!settled || scope == null || session == null || session.user.id.trim() != scope.accountId) {
                 null
@@ -457,6 +469,9 @@ internal fun RaftArtifactViewerPrewarmRuntime(
                     injectedJavaScript =
                         raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
                     desktopMode = desktopMode,
+                    backgroundArgb = canvasBackgroundArgb,
+                    persistBackgroundAfterPaint = true,
+                    androidInsetMode = insetMode,
                 )
             }
         }
@@ -637,6 +652,9 @@ private fun RaftArtifactViewerScreen() {
     LaunchedEffect(splashKinds, header?.kind) { splashKinds.update(header?.kind, splashOpenedAt) }
     // The page draws the only bar (`hostToolbar=1`, shown, no load error): this one is left out.
     var pageDrawsBar by remember(params.toString()) { mutableStateOf(false) }
+    // Keeps the WebView at its final full height under the native bar from frame 0 while loading so
+    // the handoff to `hostToolbar=1` never resizes the WebView or flashes white.
+    var webOverlayHeader by remember(params.toString()) { mutableStateOf(true) }
 
     // Revalidate (never trusting the cached header for access): a fresh summary; unavailable (403/404)
     // replaces the screen and drops the cached copy.
@@ -676,6 +694,7 @@ private fun RaftArtifactViewerScreen() {
             host.bridge.log("artifact_viewer_kept_reload reason=self_navigation to=${reloading.to}")
             // A new load: a new opening for the splash, as the page's own starts again.
             splashOpenedAt = kotlin.time.TimeSource.Monotonic.markNow()
+            webOverlayHeader = true
             webRetry += 1
             bodyState = RaftArtifactViewerBodyState.Viewing
             return@LaunchedEffect
@@ -694,6 +713,7 @@ private fun RaftArtifactViewerScreen() {
                 RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,
                 "artifact_viewer_session_recover outcome=reloaded refresh=${if (refreshed) "ok" else "failed"} to=${recovering.to}",
             )
+            webOverlayHeader = true
             webRetry += 1
             bodyState = RaftArtifactViewerBodyState.Viewing
             return@LaunchedEffect
@@ -762,6 +782,7 @@ private fun RaftArtifactViewerScreen() {
         pageSaysItDrawsBar = pageDrawsBar,
         viewing = viewing,
         scopeKnown = scope != null,
+        overlayHeaderOverContent = webOverlayHeader,
         actions =
             RaftArtifactViewerBarActions(
                 onToggleDesktopMode = { toggleDesktopMode("bar") },
@@ -810,7 +831,10 @@ private fun RaftArtifactViewerScreen() {
                             desktopMode = desktopMode,
                             hostDesktop = hostDesktop,
                             retry = webRetry,
-                            onRetry = { webRetry += 1 },
+                            onRetry = {
+                                webOverlayHeader = true
+                                webRetry += 1
+                            },
                             onStay = { next ->
                                 if (raftArtifactViewerRereadsLatest(addressed, next)) latestReads += 1
                                 addressed = next
@@ -854,6 +878,7 @@ private fun RaftArtifactViewerScreen() {
                                 }
                             },
                             onPageDrawsBar = { pageDrawsBar = it },
+                            onOverlayHeaderOverContent = { webOverlayHeader = it },
                             freshReloadAvailable = !freshReloadUsed,
                             splashKinds = splashKinds,
                             splashOpenedAt = splashOpenedAt,
@@ -911,6 +936,8 @@ private fun RaftArtifactViewerWebBody(
     onHostAction: (action: RaftArtifactViewerHostAction, version: Int?) -> Unit,
     /** Whether the page now draws the only bar (`hostToolbar=1`, shown, no load error). */
     onPageDrawsBar: (Boolean) -> Unit,
+    /** Whether the native header should overlay the WebView while [onPageDrawsBar] is still false. */
+    onOverlayHeaderOverContent: (Boolean) -> Unit = {},
     /** One fresh load per open may replace a close ([raftArtifactViewerLeaveAction]). */
     freshReloadAvailable: Boolean,
     /** The loading splash's Artifact kind ([RaftArtifactSplashKindState]) and its opening ([RaftArtifactViewerSplashCover]). */
@@ -944,7 +971,7 @@ private fun RaftArtifactViewerWebBody(
                 "artifact_viewer_waiting_session elapsedMs=$RAFT_ARTIFACT_VIEWER_SLOW_LOAD_MS sessionRead=${readSession != null}",
             )
         }
-        RaftArtifactViewerSplashCover(splashKinds, splashOpenedAt, desktopMode)
+        RaftArtifactViewerSplashCover(splashKinds, splashOpenedAt, desktopMode, headerOverlaid = true)
         return
     }
     // A kept document of this scope and session is shown as it is (the same Artifact: at once;
@@ -1244,8 +1271,12 @@ private fun RaftArtifactViewerWebBody(
     LaunchedEffect(loadingIndicator) {
         raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_loading_indicator shown=${loadingIndicator.logToken}")
     }
+    val overlayHeader =
+        !loadError && (drawsBar || loadingIndicator == RaftArtifactViewerLoadingIndicator.AppSplash || !visible)
     val currentOnPageDrawsBar by rememberUpdatedState(onPageDrawsBar)
+    val currentOnOverlayHeader by rememberUpdatedState(onOverlayHeaderOverContent)
     LaunchedEffect(drawsBar) { currentOnPageDrawsBar(drawsBar) }
+    LaunchedEffect(overlayHeader) { currentOnOverlayHeader(overlayHeader) }
     DisposableEffect(Unit) {
         onDispose {
             currentOnPageDrawsBar(false)
@@ -1300,11 +1331,19 @@ private fun RaftArtifactViewerWebBody(
         }
     }
     val density = LocalDensity.current
+    val insetMode = rememberRaftArtifactWebViewInsetMode()
+    val imeBottomPx =
+        if (raftWebViewNeedsHostBottomInsets && insetMode == WebContainerAndroidInsetMode.HostHandled) {
+            raftImeBottomPx(density)
+        } else {
+            0
+        }
     val bottomInsetPx =
         raftArtifactViewerWebBottomInsetPx(
-            imeBottomPx = raftImeBottomPx(density),
+            imeBottomPx = imeBottomPx,
             navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
             hostPadsWebView = raftWebViewNeedsHostBottomInsets,
+            androidInsetMode = insetMode,
         )
     // The page, and over it the App's splash while it covers the page (one loader at a time).
     Box(Modifier.fillMaxSize()) {
@@ -1312,7 +1351,7 @@ private fun RaftArtifactViewerWebBody(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(RaftColor.SurfaceWhite)
+                .background(RaftColor.Canvas)
                 .padding(bottom = with(density) { bottomInsetPx.toDp() }),
     ) {
         if (!loadError) RaftSandboxWebView(
@@ -1340,6 +1379,9 @@ private fun RaftArtifactViewerWebBody(
             // #wg-mobile-sync:#242: keep desktop's heavyweight SwingPanel tucked behind Compose's
             // AppSplash until the cover ends so the splash is visible instead of a blank panel.
             coverActive = loadingIndicator == RaftArtifactViewerLoadingIndicator.AppSplash,
+            backgroundArgb = RaftColor.Canvas.toArgb(),
+            persistBackgroundAfterPaint = true,
+            androidInsetMode = insetMode,
             loadWatchdog = loadWatchdog,
             onLoadCommit = {
                 // A new document: it holds the token its injected session wrote.
@@ -1462,6 +1504,7 @@ private fun RaftArtifactViewerWebBody(
             splashOpenedAt,
             desktopMode,
             underPageBar = drawsBar,
+            headerOverlaid = overlayHeader,
             loadedAt = pageLoadedAt,
             onGone = { splashEnded = true },
         )
@@ -1507,7 +1550,10 @@ internal const val RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG = "artifact_viewer_spla
  * toolbar row (Back alone, `back=host`) too, so no second bar shows under the App's; [underPageBar]
  * (the page draws the only bar, `hostToolbar=1`, the App's is gone) it starts under the page's bar
  * ([raftArtifactViewerSplashCoverTop]: the App's head height, which the page's bar has in the
- * Artifact column), so that bar shows and the splash does not move.
+ * Artifact column), so that bar shows and the splash does not move. When [headerOverlaid] is true
+ * and [underPageBar] is false, the cover still fills from the top of the overlaid body so nothing
+ * peeks behind the native bar while applying the same bar-height top inset inside so the splash
+ * icon stays stationary across the bar handoff.
  */
 @Composable
 internal fun RaftArtifactViewerSplashCover(
@@ -1515,33 +1561,39 @@ internal fun RaftArtifactViewerSplashCover(
     openedAt: kotlin.time.TimeMark,
     desktopMode: Boolean,
     underPageBar: Boolean = false,
+    headerOverlaid: Boolean = false,
     loadedAt: kotlin.time.TimeMark? = null,
     onGone: () -> Unit = {},
 ) {
     val density = LocalDensity.current
+    val insetMode = rememberRaftArtifactWebViewInsetMode()
+    val navBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() }
     val bottomPx =
-        if (raftWebViewNeedsHostBottomInsets) {
+        if (raftWebViewNeedsHostBottomInsets && insetMode == WebContainerAndroidInsetMode.HostHandled) {
             raftArtifactViewerWebBottomInsetPx(
                 imeBottomPx = raftImeBottomPx(density),
-                navigationBarBottomPx = with(density) { raftBottomSafeAreaPadding().roundToPx() },
+                navigationBarBottomPx = navBarBottomPx,
                 hostPadsWebView = true,
+                androidInsetMode = insetMode,
             )
         } else {
-            with(density) { raftBottomSafeAreaPadding().roundToPx() }
+            navBarBottomPx
         }
     val windowWidthDp = with(density) { LocalWindowInfo.current.containerSize.width.toDp().value }
     val widthDp = LocalRaftArtifactViewerColumnWidthDp.current ?: windowWidthDp
     val scale = raftArtifactViewerSplashScale(desktopMode, widthDp)
     val loadingArtifact = stringResource(Res.string.artifacts_card_loading)
     val gettingPage = stringResource(Res.string.artifacts_viewer_getting_page)
-    val top = raftArtifactViewerSplashCoverTop(underPageBar, RaftTheme.controls.headHeight, scale)
+    val barOffset = raftArtifactViewerSplashCoverTop(pageDrawsBar = true, barHeight = RaftTheme.controls.headHeight, scale = scale)
+    val outerTop = if (underPageBar) barOffset else 0.dp
+    val innerTop = if (!underPageBar && headerOverlaid) barOffset else 0.dp
     Box(
         Modifier
             .fillMaxSize()
-            .padding(top = top)
+            .padding(top = outerTop)
             .testTag(RAFT_ARTIFACT_VIEWER_SPLASH_COVER_TAG)
             .background(RaftColor.Canvas)
-            .padding(bottom = with(density) { bottomPx.toDp() })
+            .padding(top = innerTop, bottom = with(density) { bottomPx.toDp() })
     ) {
         RaftArtifactLoadingSplash(
             kinds = kinds,
