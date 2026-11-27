@@ -1262,9 +1262,9 @@ HSPLbuild/raft/app/PixelAvatarWireDocument$$serializer;->deserialize(Lkotlinx/se
 HSPLbuild/raft/app/PixelAvatarWireDocument$$serializer;->deserialize(Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
 HSPLbuild/raft/app/PixelAvatarWireDocument$Companion;->serializer()Lkotlinx/serialization/KSerializer;
 HSPLbuild/raft/app/PixelAvatarWireDocument;-><clinit>()V
-HSPLbuild/raft/app/SettingsHomePageKt;-><clinit>()V
-HSPLbuild/raft/app/SettingsHomePageKt;->getHomeSearchVisualMember()Lbuild/raft/app/model/MemberProfile;
-HSPLbuild/raft/app/SettingsHomeSearchResultsKt;->pinnedChannelConversationIds(Lbuild/raft/app/data/SettingsServerSidebarOrderSnapshot;)Ljava/util/Set;
+HSPLbuild/raft/app/settings/SettingsHomePageKt;-><clinit>()V
+HSPLbuild/raft/app/settings/SettingsHomePageKt;->getHomeSearchVisualMember()Lbuild/raft/app/model/MemberProfile;
+HSPLbuild/raft/app/settings/SettingsHomeSearchResultsKt;->pinnedChannelConversationIds(Lbuild/raft/app/data/SettingsServerSidebarOrderSnapshot;)Ljava/util/Set;
 HSPLbuild/raft/app/thread/SharedConversationHeaderProjectionKt;->headerDiagnosticValue$default(Ljava/lang/String;IILjava/lang/Object;)Ljava/lang/String;
 HSPLbuild/raft/app/thread/SharedConversationHeaderProjectionKt;->headerDiagnosticValue(Ljava/lang/String;I)Ljava/lang/String;
 HSPLbuild/raft/app/thread/SharedConversationHeaderProjectionKt;->headerRouteDiagnostics(Lbuild/raft/app/thread/RaftThreadScreenPayload;)Ljava/lang/String;

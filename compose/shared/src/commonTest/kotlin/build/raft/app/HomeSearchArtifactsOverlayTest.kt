@@ -12,6 +12,9 @@ import build.raft.app.data.SearchArtifactsStatus
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.HomeSearchResultGroup
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SearchEntityType
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

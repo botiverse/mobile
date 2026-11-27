@@ -20,6 +20,11 @@ import build.raft.app.data.SharedServerArchiveIntent
 import build.raft.app.data.SharedServerArchiveState
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.SettingsArchivedAgentsSection
+import build.raft.app.settings.SettingsArchivedChannelsSection
+import build.raft.app.settings.SettingsServerArchiveUi
+import build.raft.app.settings.settingsArchivedAgentWorkspaceTag
+import build.raft.app.settings.settingsArchivedChannelRowTag
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

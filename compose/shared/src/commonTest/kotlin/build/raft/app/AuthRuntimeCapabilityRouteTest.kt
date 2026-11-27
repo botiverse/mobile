@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.settings.AUTH_CHOOSE_SERVER_PAGE
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals

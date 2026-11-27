@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
 import build.raft.app.data.RaftProductPageView
+import build.raft.app.iconName
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
@@ -13,6 +14,13 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.resources.*
+import build.raft.app.settings.AppShellChildTabRegistry
+import build.raft.app.settings.PageErrorContent
+import build.raft.app.settings.RAFT_APP_SHELL_CHILD_TAB_PAGE
+import build.raft.app.settings.appShellChildPageRendersContent
+import build.raft.app.settings.appShellChildTabContentActive
+import build.raft.app.settings.iconName
+import build.raft.app.settings.retainedAppShellSelectedTab
 
 @Page(RAFT_APP_SHELL_CHILD_TAB_PAGE, supportInLocal = true)
 internal class ComposeRaftAppShellChildTabPage : build.raft.app.base.BasePager() {

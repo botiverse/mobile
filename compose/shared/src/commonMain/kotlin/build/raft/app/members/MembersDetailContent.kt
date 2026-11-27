@@ -4,6 +4,7 @@ import build.raft.app.data.agentOffersLounge
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.data.agentBlockedState
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.formatThreadTimeRevealLabel
 import build.raft.app.thread.formatTimestampLabel
@@ -19,6 +20,7 @@ import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationStore
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.raftProGateDecision
+import build.raft.app.iconName
 import build.raft.app.data.AgentTurnStopFeedback
 import build.raft.app.data.AgentSubagentStopFeedback
 import build.raft.app.data.AgentSubagentStopIntent

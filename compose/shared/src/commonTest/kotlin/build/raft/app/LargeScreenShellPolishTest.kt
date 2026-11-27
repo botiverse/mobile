@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.ui.unit.dp
+import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.designsystem.theme.RaftScale
 import kotlin.test.Test
 import kotlin.test.assertEquals

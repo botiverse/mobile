@@ -1,6 +1,6 @@
 package build.raft.app.nav
 
-import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -87,10 +87,10 @@ class RaftPageStackTest {
         val logs = mutableListOf<String>()
         val loggedStack = RaftPageStack(log = { logs += it })
         loggedStack.open(
-            build.raft.app.SETTINGS_WEB_VIEW_PAGE,
+            build.raft.app.settings.SETTINGS_WEB_VIEW_PAGE,
             data(
-                build.raft.app.SETTINGS_WEB_VIEW_SURFACE to "web-page",
-                build.raft.app.SETTINGS_WEB_VIEW_TARGET_URL to "https://app.raft.build/integration-invites/secret-token-xyz?ticket=abc#frag",
+                build.raft.app.settings.SETTINGS_WEB_VIEW_SURFACE to "web-page",
+                build.raft.app.settings.SETTINGS_WEB_VIEW_TARGET_URL to "https://app.raft.build/integration-invites/secret-token-xyz?ticket=abc#frag",
             ),
             from = loggedStack.pages.single(),
         )

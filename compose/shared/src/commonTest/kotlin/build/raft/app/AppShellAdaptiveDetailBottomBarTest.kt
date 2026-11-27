@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.settings.AppShellAdaptiveListDetailTabs
+import build.raft.app.settings.appShellAdaptiveDetailCoversTabRoot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

@@ -1,6 +1,7 @@
 package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.sharedSettingsResolvedWebBaseUrl
 import build.raft.app.taskConversationLaunchIdentity
 import build.raft.app.thread.iconName
@@ -62,7 +63,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import build.raft.app.openRaftPage
 import build.raft.app.optString
 import build.raft.app.raftBottomSafeAreaPadding

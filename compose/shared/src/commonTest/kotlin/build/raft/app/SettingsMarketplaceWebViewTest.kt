@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.settings.settingsBillingWebViewSpec
+import build.raft.app.settings.settingsMarketplaceWebViewSpec
+import build.raft.app.settings.settingsMarketplaceWebViewUrl
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

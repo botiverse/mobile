@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentRequest
+import build.raft.app.settings.standaloneSettingsWebBaseUrl
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -12,6 +12,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.SeatJoinBlocksChanged
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.settings.toHomeNotificationItem
 import build.raft.app.toHomeNotificationItem
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi

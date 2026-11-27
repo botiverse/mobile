@@ -992,7 +992,7 @@ internal class RaftSharedStoreProvider private constructor(
                 agentActivityOverviewCache.clear()
                 feedbackTicketsListCache.clear()
                 artifactsHomeSnapshotCache.clear()
-                build.raft.app.SettingsFeedbackTicketSummaryCache.clear()
+                build.raft.app.settings.SettingsFeedbackTicketSummaryCache.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
             besideMemory = besideMemoryRepository,
@@ -2617,7 +2617,7 @@ internal class RaftSharedStoreProvider private constructor(
                 }
             },
             // Phase 3: with multi-session realtime on, token rotation keeps every window's server.
-            multiSessionEnabled = { build.raft.app.raftMultiServerRealtimeEnabled() },
+            multiSessionEnabled = { build.raft.app.settings.raftMultiServerRealtimeEnabled() },
         ).start()
         RaftHostNetworkEvents(eventBus).addAuthoritativeOnlineListener {
             // Task #150: a new default network (e.g. a VPN switched on/off) may resolve the host
@@ -4623,7 +4623,7 @@ internal class RaftSharedStoreProvider private constructor(
                             {
                                 RaftShareSuggestionsHostProvider.clear("auth_session_authenticated")
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
-                                build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                                build.raft.app.settings.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                                 processServerMembersCore.invalidateAll(reason = "authenticated")
                                 activityUnreadSummaryStore.invalidateAll(reason = "authenticated")
                             }
@@ -4635,8 +4635,8 @@ internal class RaftSharedStoreProvider private constructor(
                                 RaftMinBuildGate.onSignedOut()
                                 RaftEarlyAccessPolicyHost.onSignedOut()
                                 ProcessDiagnosticFeatureFlagOverrides.registry.clearObservations()
-                                build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
-                                build.raft.app.RaftScreenshotFeedbackRuntime.controller.onEligibilityLost()
+                                build.raft.app.settings.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                                build.raft.app.settings.RaftScreenshotFeedbackRuntime.controller.onEligibilityLost()
                                 RaftFcmProbeHost.onSignedOut()
                                 processServerMembersCore.invalidateAll(reason = "cleared")
                                 activityUnreadSummaryStore.invalidateAll(reason = "cleared")
@@ -4682,14 +4682,14 @@ internal class RaftSharedStoreProvider private constructor(
                     .collect {
                         serverFeatureFlags.onLastKnownBindingChanged()
                         syncEarlyAccessPolicy()
-                        build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                        build.raft.app.settings.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                         RaftFcmProbeHost.onFeatureFlagChanged()
                     }
             }
             CoroutineScope(SupervisorJob()).launch {
                 serverFeatureFlags.snapshotRevision.collect {
                     syncEarlyAccessPolicy()
-                    build.raft.app.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
+                    build.raft.app.settings.RaftScreenshotFeedbackRuntime.notifyEligibilitySignalChanged()
                     RaftFcmProbeHost.onFeatureFlagChanged()
                 }
             }

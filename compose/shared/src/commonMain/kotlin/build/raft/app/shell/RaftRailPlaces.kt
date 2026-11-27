@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
+import build.raft.app.settings.retainedAppShellSelectedTab
 
 /*
  * Where a rail click lands on the wide layout (web docs/frontend/layout-memory.md, slock #15815). Every rail tab

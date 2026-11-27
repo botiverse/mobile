@@ -31,6 +31,8 @@ import build.raft.app.data.toSettingsMobileSelectionSnapshot
 import build.raft.app.model.NotificationLevelChanged
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
+import build.raft.app.settings.SettingsNotificationServer
+import build.raft.app.settings.SettingsNotificationsContent
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import org.junit.runner.RunWith

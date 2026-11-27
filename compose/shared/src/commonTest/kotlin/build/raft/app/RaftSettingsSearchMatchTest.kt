@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.app.settings.RaftSearchableSetting
+import build.raft.app.settings.RaftSettingsSearchField
+import build.raft.app.settings.normalizeSettingsSearchText
+import build.raft.app.settings.searchSettings
+import build.raft.app.settings.settingsSearchAliases
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

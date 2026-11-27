@@ -1,11 +1,17 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.app.format.RaftFormat
+import build.raft.app.get
+import build.raft.app.iconName
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.raftArgbHex
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
+import build.raft.app.userFacingMessage
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +50,15 @@ import androidx.compose.ui.Modifier
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.ErrorPresentationStrings
+import build.raft.app.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTopPageHeader
+import build.raft.app.RaftType
+import build.raft.app.RememberKmmResourceLocaleSeedFromLocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject

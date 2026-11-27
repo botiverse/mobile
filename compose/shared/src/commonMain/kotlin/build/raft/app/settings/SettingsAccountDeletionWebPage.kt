@@ -1,12 +1,16 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.sharedSettingsHostShellWebUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import build.raft.app.RAFT_HOST_EVENT_SESSION_LOGOUT
+import build.raft.app.RaftLucideIconName
 import build.raft.app.base.Utils
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AppLocale
@@ -14,7 +18,10 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.get
+import build.raft.app.iconName
 import build.raft.app.model.ServerId
+import build.raft.app.raftShellStoreScope
 import kotlinx.coroutines.launch
 
 // Self-service account deletion is the WEB flow (botiverse/slock #12459, Settings > Account >

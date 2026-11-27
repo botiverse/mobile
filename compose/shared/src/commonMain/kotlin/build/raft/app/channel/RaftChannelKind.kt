@@ -18,10 +18,12 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
+import build.raft.app.iconName
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 
 /**
  * A channel's kind glyph: who can read what is written there (botiverse/slock 6b0965841, #16060,

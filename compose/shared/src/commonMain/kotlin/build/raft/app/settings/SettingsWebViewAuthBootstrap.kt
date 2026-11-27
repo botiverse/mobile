@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.origin
+import build.raft.app.raftWebOriginOf
 import build.raft.app.thread.key
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json

@@ -15,7 +15,7 @@ import androidx.compose.ui.text.TextStyle
 import build.raft.app.AgentContextViewOverlay
 import build.raft.app.AgentContextViewRequest
 import build.raft.app.RaftThreadSurfaceKind
-import build.raft.app.RaftUpgradeGate
+import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.SecondFactorStepUpDialog
 import build.raft.app.SharedThreadComposerDraftViewModel
 import build.raft.app.compat.pager.Pager
@@ -41,8 +41,8 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
-import build.raft.app.openRaftUpgradeDialog
-import build.raft.app.openSettingsBillingPage
+import build.raft.app.settings.openRaftUpgradeDialog
+import build.raft.app.settings.openSettingsBillingPage
 import build.raft.app.openSettingsComputersPage
 import build.raft.app.raftLocalizedShortDateTime
 import build.raft.app.rememberCreatedAgent

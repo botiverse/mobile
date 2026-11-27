@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
+import build.raft.app.settings.SettingsAboutPayloadCopy
+import build.raft.app.settings.settingsAboutUpdateStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

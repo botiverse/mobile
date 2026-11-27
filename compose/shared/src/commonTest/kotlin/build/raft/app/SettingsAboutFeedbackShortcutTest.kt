@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
+import build.raft.app.settings.RaftSharedSettingsRow
+import build.raft.app.settings.SETTINGS_ABOUT_FEEDBACK_ACTION
+import build.raft.app.settings.settingsAboutDeveloperShortcutRows
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

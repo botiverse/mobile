@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.percentEncode
 import build.raft.app.links.RaftHttpUrl
+import build.raft.app.matches
+import build.raft.app.settings.matches
 
 /*
  * "Log in with Raft" from a page of the in-app browser (#356 §5): the rules, pure so each one is

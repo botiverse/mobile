@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +22,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppTopBarUpdateAction
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.DataResult

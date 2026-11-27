@@ -15,6 +15,9 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.SearchEntityType
+import build.raft.app.settings.homeSearchChannelFilters
+import build.raft.app.settings.homeSearchEntityCandidates
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import kotlin.test.Test

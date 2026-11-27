@@ -37,6 +37,8 @@ import build.raft.app.data.SettingsComputerRestartProgress
 import build.raft.app.data.SettingsComputerSizeStatusSnapshot
 import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
 import build.raft.app.resources.*
+import build.raft.app.settings.LocalRaftSettingsWideDetail
+import build.raft.app.settings.SettingsDetailShell
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerVersionGateSnapshot
 import build.raft.app.data.SettingsComputersSnapshot

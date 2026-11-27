@@ -72,6 +72,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.getModelLabel
 import build.raft.app.resources.*
+import build.raft.app.settings.settingsCompactDateLabel
 import build.raft.app.thread.icon
 import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.RaftBanner

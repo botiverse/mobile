@@ -17,6 +17,7 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RawMessagePage
 import build.raft.app.data.RawMessagePageWitness
 import build.raft.app.data.ScreenError
+import build.raft.app.matches
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
@@ -25,6 +26,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.settings.matches
 import build.raft.app.thread.SharedThreadIntent
 import build.raft.app.thread.SharedThreadStore
 import build.raft.app.thread.ThreadReplyEmptyDetail

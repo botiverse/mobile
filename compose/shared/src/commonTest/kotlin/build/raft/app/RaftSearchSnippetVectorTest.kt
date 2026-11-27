@@ -8,6 +8,7 @@
 // checks where it does not. Update by re-copying the cases and bumping the SHA together.
 package build.raft.app
 
+import build.raft.app.settings.homeSearchHighlightTokens
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

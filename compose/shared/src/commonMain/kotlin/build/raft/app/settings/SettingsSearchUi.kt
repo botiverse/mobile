@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -30,12 +30,19 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.intl.Locale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftSearchHitText
 import build.raft.app.data.PUBLIC_SERVER_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftNotificationAccountSettings
 import build.raft.app.data.SERVER_SSO_FEATURE_FLAG_KEY
 import build.raft.app.model.ServerId
+import build.raft.app.raftArgbHex
+import build.raft.app.resolve
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.get
 import build.raft.app.resources.*
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftButton

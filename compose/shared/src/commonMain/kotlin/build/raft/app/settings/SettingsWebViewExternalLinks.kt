@@ -1,6 +1,14 @@
-package build.raft.app
+package build.raft.app.settings
 
+import build.raft.app.RaftAppEntryRequest
+import build.raft.app.RaftInstalledAppOriginMatch
+import build.raft.app.RaftLinkOpenTarget
 import build.raft.app.data.LinkOpenMode
+import build.raft.app.get
+import build.raft.app.origin
+import build.raft.app.raftAppEntryOriginOf
+import build.raft.app.raftWebOriginOf
+import build.raft.app.resolveRaftLinkOpenDecision
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 

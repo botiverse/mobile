@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import build.raft.app.HomeAppUpdateBanner
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -20,6 +21,9 @@ import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.kuiklyBridgeCallContext
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.toSharedHomeAppUpdateNotification
+import build.raft.app.get
+import build.raft.app.settings.toHomeNotificationItem
+import build.raft.app.toHomeNotificationItem
 
 /**
  * The app-update notice for a signed-out person. The signed-in Home asks the host for the update

@@ -1,6 +1,6 @@
 package build.raft.app.thread
 
-import build.raft.app.RaftDataExportLinkInbox
+import build.raft.app.settings.RaftDataExportLinkInbox
 import build.raft.app.RaftSendPromptLinkInbox
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.RaftAppLogin
@@ -16,7 +16,7 @@ import build.raft.app.links.parseRaftConversationLink
 import build.raft.app.links.raftComparableHostname
 import build.raft.app.model.ConversationKind
 import build.raft.app.origin
-import build.raft.app.parseRaftDataExportLink
+import build.raft.app.settings.parseRaftDataExportLink
 import build.raft.app.parseRaftSendPromptLink
 import build.raft.app.raftLogInfo
 import build.raft.app.raftSchemeLinkToWebLink

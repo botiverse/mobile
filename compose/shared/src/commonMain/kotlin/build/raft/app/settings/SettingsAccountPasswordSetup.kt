@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.ACCOUNT_ACTION_PROVIDER_DISCONNECT
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftNetworkClient
@@ -19,6 +20,7 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.sendSharedPasswordSetupEmail
 import build.raft.app.resources.*
 import build.raft.app.thread.dispatch
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.ServerAppearance
@@ -8,6 +8,7 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.applyStoredServerAppearance
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.get
 import build.raft.app.model.RaftServerThemeLook
 import build.raft.app.model.ServerId
 import build.raft.app.model.isFreeThemePlan

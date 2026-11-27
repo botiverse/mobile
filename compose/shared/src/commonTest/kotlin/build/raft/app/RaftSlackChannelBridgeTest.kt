@@ -16,6 +16,7 @@ import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.toSharedConversationDirectoryProjection
 import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
+import build.raft.app.settings.SharedHomeConversationRowProjector
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

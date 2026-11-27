@@ -19,6 +19,11 @@ import build.raft.designsystem.components.RaftSideActionColumnDefaults
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.SharedHomeConversationRowProjector
+import build.raft.app.settings.appShellPhoneBottomTabs
+import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
+import build.raft.app.settings.iconName
+import build.raft.app.settings.toHomeNotificationItem
 import build.raft.app.thread.LocalRaftEmojiPickerOwnerKey
 import build.raft.app.thread.THREAD_PAGE
 import build.raft.app.thread.dispatch
@@ -26,6 +31,7 @@ import build.raft.app.thread.icon
 import build.raft.app.thread.label
 import build.raft.app.thread.threadLaunchPageData
 import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toHomeNotificationItem
 import build.raft.app.toThreadLaunchConversationIdentity
 import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.RaftProductEvents
@@ -149,6 +155,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.iconName
 import build.raft.app.label
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState

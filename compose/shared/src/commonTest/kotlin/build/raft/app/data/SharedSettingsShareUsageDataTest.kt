@@ -3,7 +3,7 @@ package build.raft.app.data
 import build.raft.app.data.SharedSettingsStoreTest.BlockingCall
 import build.raft.app.data.SharedSettingsStoreTest.FakeSettingsRepository
 import build.raft.app.englishErrorPresentationStringsForTest
-import build.raft.app.toAccountPayload
+import build.raft.app.settings.toAccountPayload
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

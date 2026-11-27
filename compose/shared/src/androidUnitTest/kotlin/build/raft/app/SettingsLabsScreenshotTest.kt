@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import build.raft.app.data.ServerLab
 import build.raft.app.data.ServerLabState
 import build.raft.app.data.ServerLabsReadback
+import build.raft.app.settings.SettingsLabsScreen
+import build.raft.app.settings.SettingsLabsState
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

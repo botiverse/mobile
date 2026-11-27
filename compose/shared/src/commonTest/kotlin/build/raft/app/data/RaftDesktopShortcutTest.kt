@@ -6,7 +6,7 @@ import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftHomeConversationItem
 import build.raft.app.RaftHomePinnedMemberItem
 import build.raft.app.RaftHomePinnedRow
-import build.raft.app.appShellDesktopShortcutNavigationIntent
+import build.raft.app.settings.appShellDesktopShortcutNavigationIntent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId

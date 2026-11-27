@@ -1,6 +1,6 @@
 package build.raft.app.nav
 
-import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

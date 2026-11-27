@@ -9,6 +9,12 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.settings.SettingsHandsFeedbackImageEditRequest
+import build.raft.app.settings.feedbackComposerAttachmentId
+import build.raft.app.settings.normalizeSettingsHandsFeedbackPickerFiles
+import build.raft.app.settings.settingsHandsFeedbackImageEditPreviewRequest
+import build.raft.app.settings.settingsHandsFeedbackMergedAttachments
+import build.raft.app.settings.settingsHandsFeedbackPickedImageToAnnotate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

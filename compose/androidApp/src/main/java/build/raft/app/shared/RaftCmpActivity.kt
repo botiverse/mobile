@@ -29,8 +29,8 @@ import build.raft.app.data.RAFT_GOOGLE_PLAY_BETA_URL
 import build.raft.app.data.RaftAppAppearanceRuntime
 import build.raft.app.data.RaftServicesPrivacyGate
 import build.raft.app.data.RaftTelemetryPrivacy
-import build.raft.app.RaftScreenshotFeedbackRuntime
-import build.raft.app.extractScreenshotFeedbackPageContext
+import build.raft.app.settings.RaftScreenshotFeedbackRuntime
+import build.raft.app.settings.extractScreenshotFeedbackPageContext
 import build.raft.app.RaftWindowFocusScope
 import build.raft.app.RaftDatabaseLaunchReadiness
 import build.raft.designsystem.focus.RaftFocusCoordinator

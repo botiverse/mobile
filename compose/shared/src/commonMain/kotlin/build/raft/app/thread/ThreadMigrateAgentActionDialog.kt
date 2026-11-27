@@ -50,7 +50,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.*
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import kotlinx.coroutines.flow.flowOf
 
 /** Open state of the native migration dialog launched from an `agent:migrate` action card (#proj-mobile:#356). */

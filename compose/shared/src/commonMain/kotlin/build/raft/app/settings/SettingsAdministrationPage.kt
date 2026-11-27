@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.AppLocale
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.sharedSettingsHostShellWebUrl
 import build.raft.app.compat.pager.Pager
 
 // Administration renders the WEB settings page in an in-app WebView instead of

@@ -15,6 +15,8 @@ import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftAvatarCacheSubject
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ServerId
+import build.raft.app.settings.settingsAccountAvatarCacheIdentity
+import build.raft.app.settings.toAccountPayload
 import build.raft.app.model.MemberKind
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test

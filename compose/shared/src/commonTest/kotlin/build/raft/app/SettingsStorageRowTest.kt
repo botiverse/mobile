@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.settings.SettingsDestinationStorage
+import build.raft.app.settings.settingsHomeRowKeys
+import build.raft.app.settings.settingsStorageAvailable
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

@@ -8,6 +8,7 @@ import build.raft.app.data.artifactWebUrl
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.SharedThreadDataSource
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.formatTimestampLabel

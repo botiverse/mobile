@@ -43,6 +43,8 @@ import build.raft.app.data.RaftMinBuildGateDecision
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.resources.*
+import build.raft.app.settings.openSettingsHandsFeedbackPage
+import build.raft.app.settings.performStandaloneSettingsLogout
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus

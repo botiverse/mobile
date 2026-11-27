@@ -1,7 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.RaftNavDestination
+import build.raft.app.iconName
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import androidx.compose.runtime.Composable

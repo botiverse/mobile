@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.ui.unit.dp
+import build.raft.app.settings.appShellBottomTabs
+import build.raft.app.settings.appShellPhoneBottomTabs
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.downloads.RaftShareFileName
+import build.raft.app.matches
+import build.raft.app.settings.matches
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 

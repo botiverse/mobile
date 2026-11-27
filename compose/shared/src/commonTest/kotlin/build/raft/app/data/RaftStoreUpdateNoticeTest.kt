@@ -1,9 +1,9 @@
 package build.raft.app.data
 
-import build.raft.app.appUpdateCanSkipVersion
-import build.raft.app.appUpdatePrimaryActionLabel
-import build.raft.app.loadSignedOutAppUpdateNotification
-import build.raft.app.withSkippedAppUpdateVersionApplied
+import build.raft.app.settings.appUpdateCanSkipVersion
+import build.raft.app.settings.appUpdatePrimaryActionLabel
+import build.raft.app.settings.loadSignedOutAppUpdateNotification
+import build.raft.app.settings.withSkippedAppUpdateVersionApplied
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

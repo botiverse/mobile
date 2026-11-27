@@ -13,6 +13,7 @@ import build.raft.app.data.SharedAuthGateState
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.settings.authGateDiagnosticsName
 import kotlinx.coroutines.delay
 
 /**

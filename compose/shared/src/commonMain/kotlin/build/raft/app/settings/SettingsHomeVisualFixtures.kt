@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.textFieldValueAtEnd
 import build.raft.designsystem.components.RaftMobileNavServerPopoverItem
 import build.raft.designsystem.components.rememberRaftMobileNavServerPopoverState
 import androidx.compose.ui.input.key.key
@@ -16,6 +18,10 @@ import build.raft.app.data.SharedSettingsRoute
 import build.raft.app.data.SharedSettingsState
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.toSettingsMobileSelectionSnapshot
+import build.raft.app.get
+import build.raft.app.iconName
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.memberPickerKey
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
@@ -52,6 +58,10 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.optBoolean
+import build.raft.app.optString
+import build.raft.app.raftShellStoreScope
+import build.raft.app.rememberRaftAppShellScope
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -83,6 +93,22 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.AppShellSearchTabKey
+import build.raft.app.RaftAppBottomTabBarHost
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftBottomTabBar
+import build.raft.app.RaftBottomTabItemPayload
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftNavigationRailTabBar
+import build.raft.app.RaftServerSwitcherItem
+import build.raft.app.RaftTabItemPayload
+import build.raft.app.RaftType
+import build.raft.app.RaftVerticalTabBar
+import build.raft.app.RememberKmmResourceLocaleSeedFromLocalActivity
+import build.raft.app.ServerSwitcherAvatarTile
+import build.raft.app.SettingsComputersLoadingContent
+import build.raft.app.available
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.flow.first

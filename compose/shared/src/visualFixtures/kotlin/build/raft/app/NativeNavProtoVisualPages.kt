@@ -17,6 +17,9 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.base.BasePager
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.compat.pager.Page
+import build.raft.app.settings.SettingsHomeContent
+import build.raft.app.settings.SettingsPageVisualContent
+import build.raft.app.settings.settingsTabBarSmokePayload
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.ThreadMessageCard
 import build.raft.app.thread.ThreadPageHeader

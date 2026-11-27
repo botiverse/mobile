@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import build.raft.app.RAFT_LINK_SLOT
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.SecondFactorStepUpDialog
+import build.raft.app.currentRaftEffectiveDateTimeContext
 import build.raft.app.data.NetworkSignedInDevicesDataSource
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedSignedInDevicesIntent
@@ -34,8 +40,13 @@ import build.raft.app.data.SignedInDevicesNotice
 import build.raft.app.data.SignedInDevicesReauthDialog
 import build.raft.app.data.SignedInDevicesSignOutDialog
 import build.raft.app.data.SignedInDevicesSignOutTarget
-import build.raft.app.icon
+import build.raft.app.iconName
+import build.raft.app.settings.icon
+import build.raft.app.settings.iconName
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.raftArgbHex
+import build.raft.app.raftRelativeTimestampLabel
+import build.raft.app.raftSentenceWithLink
 import build.raft.app.resources.*
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon

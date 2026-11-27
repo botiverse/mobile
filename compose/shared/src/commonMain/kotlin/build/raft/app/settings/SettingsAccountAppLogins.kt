@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,14 +10,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIconName
 import build.raft.app.data.AppLogin
 import build.raft.app.data.NetworkAppLoginsDataSource
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedAppLoginsIntent
 import build.raft.app.data.SharedAppLoginsState
 import build.raft.app.data.SharedAppLoginsStore
+import build.raft.app.iconName
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.app.thread.dispatch
 import build.raft.designsystem.components.LocalRaftToastHostState

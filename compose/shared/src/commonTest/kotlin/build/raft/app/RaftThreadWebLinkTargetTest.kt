@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.model.ConversationKind
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.thread.RaftThreadWebLinkTarget
 import build.raft.app.thread.resolveMarkdownOpenRequest
 import build.raft.app.thread.toRaftThreadWebLinkTarget

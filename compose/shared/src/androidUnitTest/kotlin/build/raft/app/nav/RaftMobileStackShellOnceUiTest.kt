@@ -41,7 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import build.raft.app.thread.LocalThreadInPlaceTextSelectionHost
-import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.thread.ThreadInPlaceSelectableBody
 import build.raft.app.thread.ThreadInPlaceTextSelectionHost

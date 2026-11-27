@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +36,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftProBadge
 import build.raft.app.components.RaftProUpgradeDialog
@@ -43,6 +45,8 @@ import build.raft.app.components.raftProThemeGateDescription
 import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.ServerAppearanceRepository
+import build.raft.app.fill
+import build.raft.app.raftArgbHex
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.text.RaftText

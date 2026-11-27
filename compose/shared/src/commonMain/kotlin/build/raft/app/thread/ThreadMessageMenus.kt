@@ -2,6 +2,7 @@ package build.raft.app.thread
 
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.iconName
 import build.raft.app.thread.label
 import build.raft.app.toJson
@@ -43,7 +44,7 @@ import build.raft.app.data.RaftEventBus
 import build.raft.app.data.map
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.TaskStatus
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import build.raft.app.optString
 import build.raft.app.post
 import build.raft.app.raftCaptureLiveRootAnchor

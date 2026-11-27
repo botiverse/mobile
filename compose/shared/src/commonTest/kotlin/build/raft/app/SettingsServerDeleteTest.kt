@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.SERVER_ACTION_DELETE
 import build.raft.app.data.SERVER_ACTION_LEAVE
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.settings.settingsServerDeleteEnabled
+import build.raft.app.settings.settingsServerLeftOrDeleted
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

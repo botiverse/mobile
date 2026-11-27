@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 /**
  * The hidden way into Settings › Developer: [SettingsDeveloperUnlockTapCount] taps on the Settings

@@ -29,9 +29,13 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.resources.*
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SearchEntityType
+import build.raft.app.settings.toHomeSearchEntityResult
 import build.raft.app.thread.key
 import build.raft.app.thread.label
 import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.toHomeSearchEntityResult
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton

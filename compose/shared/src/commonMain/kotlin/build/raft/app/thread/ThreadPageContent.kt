@@ -3,7 +3,7 @@ package build.raft.app.thread
 import build.raft.app.assistant.LocalThreadAssistantPanelEmbed
 import build.raft.app.assistant.ThreadAssistantPanelMessagesReport
 import build.raft.app.resources.*
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.app.showsChannelDetails
 import build.raft.app.taskHeadFloatOutsidePress
 import build.raft.app.thread.accepts
@@ -107,7 +107,8 @@ import build.raft.app.RaftMemberModelLabelResolver
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.RaftType
-import build.raft.app.RaftUpgradeGate
+import build.raft.app.settings.RaftUpgradeGate
+import build.raft.app.settings.iconName
 import build.raft.app.SharedThreadComposerDraftPersistSlice
 import build.raft.app.SharedThreadComposerDraftViewModel
 import build.raft.app.TaskConversationHeadRow

@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.SharedAdaptiveScrollAnchorStore
+import build.raft.app.settings.observe
 import build.raft.app.thread.SharedThreadComposerDraftSnapshot
 import build.raft.app.thread.key
 import build.raft.app.data.RealtimeSubscription

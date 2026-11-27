@@ -41,6 +41,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.observe
 import build.raft.app.thread.ConversationSideCard
 import build.raft.app.thread.ConversationSideCardsState
 import build.raft.app.thread.LocalThreadHeaderMenuEventBus

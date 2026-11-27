@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
+import build.raft.app.settings.observe
 import build.raft.app.thread.ThreadMessageTapMovementGate
 import build.raft.app.thread.ThreadVisibleResumeGate
 import build.raft.app.thread.ThreadVisibleResumePlan

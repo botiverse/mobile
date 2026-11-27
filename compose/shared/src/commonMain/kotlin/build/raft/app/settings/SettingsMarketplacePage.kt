@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.percentEncode
+import build.raft.app.sharedSettingsHostShellWebUrl
 import build.raft.app.compat.pager.Pager
 
 internal fun Pager.openSettingsMarketplacePage(

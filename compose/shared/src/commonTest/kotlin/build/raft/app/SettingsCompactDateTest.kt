@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour
+import build.raft.app.settings.SettingsCompactDate
+import build.raft.app.settings.settingsCompactDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

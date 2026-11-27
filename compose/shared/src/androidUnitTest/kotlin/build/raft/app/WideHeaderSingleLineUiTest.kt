@@ -21,6 +21,7 @@ import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.observe
 import build.raft.app.thread.LocalThreadHeaderMenuEventBus
 import build.raft.app.thread.LocalThreadHeaderOriginalState
 import build.raft.app.thread.RaftThreadMessageItem

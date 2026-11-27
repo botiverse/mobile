@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.settings.raftMultiShellHostEnabled
+import build.raft.app.settings.withAppShellSelectedServer
 import build.raft.app.thread.traceIdOrNull
 import build.raft.app.traceIdOrNull
 import androidx.compose.foundation.background

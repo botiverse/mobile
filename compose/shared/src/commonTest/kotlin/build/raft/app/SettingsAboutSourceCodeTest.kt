@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.SharedSettingsAboutSnapshot
+import build.raft.app.settings.SETTINGS_ABOUT_SOURCE_CODE_ACTION
+import build.raft.app.settings.settingsAboutExternalUrl
+import build.raft.app.settings.toAboutPayload
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

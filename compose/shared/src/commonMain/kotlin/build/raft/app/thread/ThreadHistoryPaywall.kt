@@ -35,8 +35,8 @@ import build.raft.app.RaftRelativeTimestampText
 import build.raft.app.RaftTaskConversationChannelKind
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.RaftTimestampDisplayGroup
-import build.raft.app.RaftUpgradeHistoryContext
-import build.raft.app.SettingsBillingFreeHistoryDays
+import build.raft.app.settings.RaftUpgradeHistoryContext
+import build.raft.app.settings.SettingsBillingFreeHistoryDays
 import build.raft.app.components.raftBillingLeavesRaftTrailingIcon
 import build.raft.app.components.RaftViewPlanButton
 import build.raft.app.data.HiddenHistory
@@ -50,7 +50,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.normalizedThreadChannelKind
 import build.raft.app.raftAvatarKind
 import build.raft.app.resources.*
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

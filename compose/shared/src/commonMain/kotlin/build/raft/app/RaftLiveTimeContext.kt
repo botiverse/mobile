@@ -18,6 +18,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.raftOffsetMinutesForTimeZoneOrNull
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftTimeContextRefreshDelayMillis
+import build.raft.app.settings.observe
 import build.raft.app.thread.toRaftTimeCapabilities
 import build.raft.app.toRaftTimeCapabilities
 import build.raft.app.compat.pager.LocalActivity

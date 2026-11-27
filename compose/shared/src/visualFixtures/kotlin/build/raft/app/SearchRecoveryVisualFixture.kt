@@ -4,6 +4,8 @@ import androidx.compose.runtime.*
 import build.raft.app.base.BasePager
 import build.raft.app.data.*
 import build.raft.app.model.ServerId
+import build.raft.app.settings.SharedHomeSearchPanel
+import build.raft.app.settings.homeSearchVisualSession
 import build.raft.app.thread.dispatch
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Text

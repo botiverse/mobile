@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -6,6 +6,7 @@ import build.raft.app.base.Utils
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
+import build.raft.app.optString
 import build.raft.app.thread.key
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)

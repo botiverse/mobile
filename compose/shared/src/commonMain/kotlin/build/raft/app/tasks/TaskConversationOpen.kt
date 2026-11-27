@@ -13,6 +13,8 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.topLevelThreadId
+import build.raft.app.settings.AppShellThreadTimeContext
+import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
 
 /**
  * Task v2: where opening a task lands. Mirrors web `useOpenTask` / `opensAsTaskConversation` /

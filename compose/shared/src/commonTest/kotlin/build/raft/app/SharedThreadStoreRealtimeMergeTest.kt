@@ -36,6 +36,7 @@ import build.raft.app.model.MessageUpdated
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.SharedThreadIntent

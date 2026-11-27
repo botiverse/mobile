@@ -11,6 +11,7 @@ import build.raft.app.data.withOpenedDetail
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
+import build.raft.app.settings.AppShellRailPlaces
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

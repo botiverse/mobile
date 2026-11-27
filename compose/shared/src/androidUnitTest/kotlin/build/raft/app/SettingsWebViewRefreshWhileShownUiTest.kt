@@ -8,6 +8,8 @@ import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
+import build.raft.app.settings.SettingsWebViewWhileShown
+import build.raft.app.settings.rememberRaftPagerAppeared
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.awaitCancellation

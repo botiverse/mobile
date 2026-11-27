@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.appUpdateErrorMessage
+import build.raft.app.settings.appUpdateErrorMessage
 import build.raft.app.englishErrorPresentationStringsForTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

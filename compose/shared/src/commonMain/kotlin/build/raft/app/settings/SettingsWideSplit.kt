@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -15,9 +15,21 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAdaptiveListDetailSplit
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftColor
+import build.raft.app.RaftListPaneWidths
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.SETTINGS_COMPUTERS_PAGE
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.iconName
+import build.raft.app.raftArgbHex
+import build.raft.app.settings.iconName
+import build.raft.app.settingsComputersPageData
 import build.raft.app.thread.key
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftPointerInput

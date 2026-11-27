@@ -42,9 +42,9 @@ import androidx.compose.foundation.layout.size
 import build.raft.app.ConversationOpenResolution
 import build.raft.app.ConversationOpenSource
 import build.raft.app.ConversationOpenSourceMessageIdentity
-import build.raft.app.HOME_SEARCH_FOCUS_INPUT
-import build.raft.app.HOME_SEARCH_PAGE
-import build.raft.app.HOME_SEARCH_SELECTED_CHANNEL_ID
+import build.raft.app.settings.HOME_SEARCH_FOCUS_INPUT
+import build.raft.app.settings.HOME_SEARCH_PAGE
+import build.raft.app.settings.HOME_SEARCH_SELECTED_CHANNEL_ID
 import build.raft.app.HomeMessageOpenRequest
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberDetailIdentity

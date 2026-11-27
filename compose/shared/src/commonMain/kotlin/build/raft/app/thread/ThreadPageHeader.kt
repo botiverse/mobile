@@ -5,6 +5,7 @@ import build.raft.app.available
 import build.raft.designsystem.theme.RaftControlMetrics
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.iconName
 import build.raft.app.toJson
 import build.raft.app.toRaftNativeNavBarActions
@@ -100,7 +101,7 @@ import build.raft.app.data.map
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.model.MemberKind
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import build.raft.app.optString
 import build.raft.app.post
 import build.raft.app.raftArgbHex

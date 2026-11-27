@@ -15,6 +15,12 @@ import build.raft.app.data.SecondFactorStepUpBanner
 import build.raft.app.data.SecondFactorStepUpDialogState
 import build.raft.app.data.SecondFactorStepUpMethod
 import build.raft.app.data.SharedAccountLoginSecurityState
+import build.raft.app.settings.RaftSettingsAccountPayload
+import build.raft.app.settings.RaftSettingsAccountProfile
+import build.raft.app.settings.RaftSettingsConnectedAccount
+import build.raft.app.settings.SettingsAccountContent
+import build.raft.app.settings.SettingsAccountDeletionUi
+import build.raft.app.settings.SettingsAccountLoginSecurityUi
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

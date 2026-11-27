@@ -3,6 +3,11 @@ package build.raft.app
 import build.raft.designsystem.components.RaftMobileNavServerPopoverState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import build.raft.app.iconName
+import build.raft.app.settings.SettingsDestinationComputers
+import build.raft.app.settings.appShellBottomTabsVisible
+import build.raft.app.settings.appShellPhoneBottomTabs
+import build.raft.app.settings.iconName
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -7,7 +7,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.openAppShellServerSwitchWindow
+import build.raft.app.settings.openAppShellServerSwitchWindow
 import kotlin.random.Random
 import kotlin.test.Test
 import kotlin.test.assertEquals

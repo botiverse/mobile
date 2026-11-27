@@ -1,7 +1,7 @@
 package build.raft.app.thread
 
 import build.raft.app.RaftThreadSurfaceKind
-import build.raft.app.buildStandaloneConversationThreadLaunchPayload
+import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
 import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeSnapshot

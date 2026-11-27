@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.app.settings.SettingsDestinationAppAuthorizations
+import build.raft.app.settings.SettingsDestinationComputers
+import build.raft.app.settings.SettingsDestinationConnectedApps
+import build.raft.app.settings.SettingsDestinationStorage
+import build.raft.app.settings.settingsHomeRowKeys
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

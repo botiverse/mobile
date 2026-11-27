@@ -39,7 +39,7 @@ import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftPopoverLocalPoint
 import build.raft.app.RaftThreadSurfaceKind
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import build.raft.app.origin
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.resolve

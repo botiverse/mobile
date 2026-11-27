@@ -1,7 +1,7 @@
 package build.raft.app.thread
 
 import build.raft.app.TaskCreateSourceMessage
-import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.canRetainThreadPageFor
 import build.raft.app.currentRevisionForReplyCacheOwner
 import build.raft.app.resources.*
@@ -38,9 +38,9 @@ import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskStatus
-import build.raft.app.openSettingsFeedbackCardPage
+import build.raft.app.settings.openSettingsFeedbackCardPage
 import build.raft.app.postChannelMemberRemovedToast
-import build.raft.app.raftFeedbackCardEntryOrNull
+import build.raft.app.settings.raftFeedbackCardEntryOrNull
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineStart

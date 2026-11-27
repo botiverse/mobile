@@ -1,6 +1,21 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.settings.RaftSettingsSearchContext
+import build.raft.app.settings.RaftSettingsSearchCopies
+import build.raft.app.settings.RaftSettingsSearchEntries
+import build.raft.app.settings.SETTINGS_SEARCH_ANCHOR
+import build.raft.app.settings.SettingsDestinationAccount
+import build.raft.app.settings.SettingsDestinationAdministration
+import build.raft.app.settings.SettingsSearchAnchorRequest
+import build.raft.app.settings.SettingsSearchSeekStep
+import build.raft.app.settings.putSettingsSearchAnchor
+import build.raft.app.settings.raftSettingsSearchPlacements
+import build.raft.app.settings.settingsHomeRowKeys
+import build.raft.app.settings.settingsSearchAnchorFromPageData
+import build.raft.app.settings.settingsSearchSeekStep
+import build.raft.app.settings.settingsSearchWebUrlWithAnchor
+import build.raft.app.settings.settingsWideDetailPage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,6 +1,7 @@
 package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.sharedTaskStatusChipMeta
 import build.raft.app.sharedTaskStatusChipMetaOrDefault
 import build.raft.app.shownAuthorName

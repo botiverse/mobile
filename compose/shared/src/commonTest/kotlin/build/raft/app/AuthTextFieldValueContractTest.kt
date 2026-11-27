@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import build.raft.app.settings.authCreateServerSlugFieldValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame

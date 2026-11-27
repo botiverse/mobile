@@ -22,6 +22,8 @@ import build.raft.app.data.FeedbackTicketsListPhase
 import build.raft.app.data.FeedbackTicketsListState
 import build.raft.app.data.SettingsFeedbackTicketsState
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.settings.SettingsFeedbackTicketsActions
+import build.raft.app.settings.SettingsFeedbackTicketsScreen
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

@@ -8,9 +8,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftColor
-import build.raft.app.raftFormatFreezeDeadline
+import build.raft.app.settings.raftFormatFreezeDeadline
 import build.raft.app.resources.*
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

@@ -1,10 +1,10 @@
 package build.raft.app.data
 
 import build.raft.app.AppShellPhoneBottomBarKeys
-import build.raft.app.AppShellRailAppsKey
-import build.raft.app.AppShellRailArtifactsKey
-import build.raft.app.AppShellRailComputersKey
-import build.raft.app.AppShellRailSearchKey
+import build.raft.app.settings.AppShellRailAppsKey
+import build.raft.app.settings.AppShellRailArtifactsKey
+import build.raft.app.settings.AppShellRailComputersKey
+import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.AppShellSearchTabKey
 import build.raft.app.AppShellServerTabKey
 import build.raft.app.AppShellTabHistory
@@ -14,12 +14,12 @@ import build.raft.app.RaftBottomTabItemPayload
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftMoreAttention
 import build.raft.app.RaftServerMenuEntry
-import build.raft.app.appShellBottomTabsVisible
+import build.raft.app.settings.appShellBottomTabsVisible
 import build.raft.app.appShellDynamicPhoneTabKeys
 import build.raft.app.appShellMobileServerMenuEntries
 import build.raft.app.appShellMoreChildBackTarget
 import build.raft.app.appShellPhoneBottomBarSelectedKey
-import build.raft.app.appShellPhoneBottomTabs
+import build.raft.app.settings.appShellPhoneBottomTabs
 import build.raft.app.appShellPhonePrimaryTabKey
 import build.raft.app.appShellPromotedPhoneTabMovesToRailInline
 import build.raft.app.appShellResolvedRailItems

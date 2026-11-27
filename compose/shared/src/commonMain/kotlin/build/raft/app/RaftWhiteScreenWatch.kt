@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import build.raft.app.settings.retainedAppShellSelectedTab
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 

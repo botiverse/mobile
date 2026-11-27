@@ -1,6 +1,12 @@
 package build.raft.app
 
 import build.raft.app.data.LinkOpenMode
+import build.raft.app.settings.SettingsAppPreferenceActions
+import build.raft.app.settings.SettingsNativeDetailPage
+import build.raft.app.settings.raftComposerEnterKeyLabel
+import build.raft.app.settings.raftComposerModEnterKeyLabel
+import build.raft.app.settings.settingsAppPreferenceVisibility
+import build.raft.app.settings.settingsNativeDetailPageKeys
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

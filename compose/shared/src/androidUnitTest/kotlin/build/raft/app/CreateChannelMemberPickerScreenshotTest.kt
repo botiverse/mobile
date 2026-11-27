@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.settings.SharedCreateChannelMemberPicker
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

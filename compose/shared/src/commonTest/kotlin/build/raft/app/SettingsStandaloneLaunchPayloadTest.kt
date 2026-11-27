@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.settings.RaftSettingsConnectedAccount
+import build.raft.app.settings.parseSettingsAccountPayload
+import build.raft.app.settings.visibleSettingsConnectedAccounts
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

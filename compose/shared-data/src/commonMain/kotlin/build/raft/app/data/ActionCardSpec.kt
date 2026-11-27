@@ -92,7 +92,7 @@ val RAFT_APP_ACTION_CARD_CAPABILITIES: List<String> =
 /**
  * [RAFT_APP_ACTION_CARD_CAPABILITIES] for one viewer: without `intent.feedback_form` while the
  * native feedback form a feedback card opens is unavailable (the viewing server is not known yet,
- * [build.raft.app.raftFeedbackCardEntryEnabled]), so that button is "Open in web" rather than a
+ * [build.raft.app.settings.raftFeedbackCardEntryEnabled]), so that button is "Open in web" rather than a
  * button that only says it can't.
  */
 fun raftAppActionCardCapabilities(feedbackFormAvailable: Boolean): List<String> =

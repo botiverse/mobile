@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.settings.retainedAppShellSelectedTab
+
 internal enum class AppShellBottomTabTapAction {
     /** Another tab: select it. */
     Select,

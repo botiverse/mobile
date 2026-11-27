@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.compat.pager.Page
 

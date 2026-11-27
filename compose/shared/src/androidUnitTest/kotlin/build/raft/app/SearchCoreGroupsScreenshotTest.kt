@@ -61,6 +61,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SharedHomeSearchPanel
 import build.raft.app.thread.key
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest

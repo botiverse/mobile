@@ -4,6 +4,11 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.settings.SettingsThemePageSection
+import build.raft.app.settings.SettingsThemePageSections
+import build.raft.app.settings.settingsAppearanceShowsModeCard
+import build.raft.app.settings.settingsThemeDecorSwitchShown
+import build.raft.app.settings.settingsThemePageSections
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

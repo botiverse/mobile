@@ -25,7 +25,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.raftLocalizedMediumDateTime
 import build.raft.app.resources.*
-import build.raft.app.settingsDisplayName
+import build.raft.app.settings.settingsDisplayName
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftThemeId

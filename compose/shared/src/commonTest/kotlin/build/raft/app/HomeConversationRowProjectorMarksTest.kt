@@ -6,6 +6,7 @@ import build.raft.app.data.HomeFollowedThreadUnread
 import build.raft.app.data.foldThreadUnreadByParent
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.SharedHomeConversationRowProjector
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

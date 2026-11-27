@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.AppShellRailSearchKey
+import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.RaftAppDestination
 import build.raft.app.RaftBottomTabItemPayload
 import build.raft.app.RaftLucideIconName

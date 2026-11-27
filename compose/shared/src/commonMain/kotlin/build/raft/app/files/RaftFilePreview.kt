@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.settings.isCommittable
+import build.raft.app.settings.localizedMessage
 import build.raft.app.thread.RaftThreadAttachmentItem
 import build.raft.app.thread.ThreadAttachmentCommentsDialogState
 import build.raft.app.thread.clearAttachmentCommentsError
@@ -82,6 +85,8 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.format.RaftFormat
+import build.raft.app.iconName
+import build.raft.app.localizedMessage
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftEventBuses
 import build.raft.app.data.RaftSharedStoreRegistry

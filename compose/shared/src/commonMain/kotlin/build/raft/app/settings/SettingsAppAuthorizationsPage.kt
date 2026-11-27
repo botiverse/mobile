@@ -1,8 +1,9 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AppLocale
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.sharedSettingsHostShellWebUrl
 
 // App authorizations (botiverse/slock #16572 050f7d16a, formerly Authorized accounts #16176):
 // `/s/<slug>/settings/app-authorizations`, visible to every member of the current server

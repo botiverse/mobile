@@ -17,6 +17,14 @@ import build.raft.app.data.SettingsAppearanceSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.settings.LocalSettingsAppearancePreviewTimeLabel
+import build.raft.app.settings.SettingsAppearanceContent
+import build.raft.app.settings.SettingsAppearanceKeyboardSectionTag
+import build.raft.app.settings.SettingsAppearanceSectionTag
+import build.raft.app.settings.SettingsAppearanceSendKeyErrorTag
+import build.raft.app.settings.SettingsAppearanceSendKeyRowTag
+import build.raft.app.settings.SettingsKeyboardShortcutsRowTag
+import build.raft.app.settings.settingsAppPreferenceVisibility
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.settings.AppShellChildTabEntry
+import build.raft.app.settings.AppShellChildTabRegistry
+import build.raft.app.settings.AppShellChildTabRenderer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

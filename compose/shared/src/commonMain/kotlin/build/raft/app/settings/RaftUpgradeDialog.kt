@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -25,8 +25,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftUnifiedDialog
 import build.raft.app.base.Utils
 import build.raft.app.compat.pager.Pager
+import build.raft.app.currentRaftEffectiveDateTimeContext
 import build.raft.app.data.PRO_AGENT_SEAT_BLOCK_SIZE
 import build.raft.app.data.ProPricing
 import build.raft.app.data.RaftShellStoreScope
@@ -41,10 +46,18 @@ import build.raft.app.data.loadServerAgentHistoryBlocks7d
 import build.raft.app.data.loadServerProPricing
 import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.get
+import build.raft.app.holdsExternalSlot
+import build.raft.app.membersLocalizedCreatedDateOrNull
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.raftLocalizedMediumDateTime
+import build.raft.app.raftLocalizedShortMonth
+import build.raft.app.raftPlatformFollowsAppStoreBillingRules
 import build.raft.app.resources.*
+import build.raft.app.settings.holdsExternalSlot
+import build.raft.app.sharedSettingsWebUrl
 import build.raft.app.thread.key
 import build.raft.app.thread.threadHistoryPaywallCount
 import build.raft.designsystem.components.RaftBanner

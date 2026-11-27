@@ -43,6 +43,7 @@ import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.observe
 import build.raft.app.thread.LocalThreadReverseLayout
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.RaftThreadScreenPayload

@@ -21,6 +21,11 @@ import build.raft.app.resources.upgrade_dialog_history_agent_hits_none
 import build.raft.app.resources.upgrade_dialog_history_agent_hits_one
 import build.raft.app.resources.upgrade_dialog_history_agent_hits_other
 import build.raft.app.resources.upgrade_dialog_history_hint_channel_other
+import build.raft.app.settings.RaftUpgradeDialog
+import build.raft.app.settings.RaftUpgradeGate
+import build.raft.app.settings.RaftUpgradeHistoryContext
+import build.raft.app.settings.RaftUpgradeMode
+import build.raft.app.settings.RaftUpgradeRequest
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -3,6 +3,14 @@ package build.raft.app
 import build.raft.app.data.raftSelectedServerIdFlow
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.LocalRaftPhoneTabRootBottomInset
+import build.raft.app.settings.LocalRaftSettingsWideDetail
+import build.raft.app.settings.RaftUpgradeGate
+import build.raft.app.settings.SettingsDetailShell
+import build.raft.app.settings.StandaloneSettingsEffectHandler
+import build.raft.app.settings.iconName
+import build.raft.app.settings.openRaftUpgradeDialog
+import build.raft.app.settings.rememberStandaloneSettingsEnvironment
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -143,6 +151,7 @@ import build.raft.app.data.isRefreshing
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.iconName
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.MemberKind

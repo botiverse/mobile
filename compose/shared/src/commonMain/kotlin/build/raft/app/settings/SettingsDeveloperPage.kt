@@ -1,7 +1,10 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.settings.matches
+import build.raft.app.userFacingMessage
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftCardVariant
@@ -22,7 +25,12 @@ import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.DIAGNOSTICS_ACTION_APPLE_SIGNIN_LOCAL_OVERRIDE
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.raftProcessRealtimeSessionDemand
+import build.raft.app.iconName
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.matches
 import build.raft.app.nav.RaftNav3StackFlag
+import build.raft.app.raftPlatformSupportsMultiShellHost
+import build.raft.app.resolve
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -47,6 +55,14 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.ErrorPresentationStrings
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTextInputDiagnostics
+import build.raft.app.RaftType
+import build.raft.app.RaftVerboseDiagnostics
+import build.raft.app.available
 import kotlinx.coroutines.flow.map
 
 @Composable

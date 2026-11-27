@@ -19,9 +19,9 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.model.ChannelId
 import build.raft.app.normalizeThreadAttachmentUploadDraftKey
-import build.raft.app.openRaftUpgradeDialog
-import build.raft.app.raftUpgradeGateForErrorCode
-import build.raft.app.raftUploadSizeLimitIsFree
+import build.raft.app.settings.openRaftUpgradeDialog
+import build.raft.app.settings.raftUpgradeGateForErrorCode
+import build.raft.app.settings.raftUploadSizeLimitIsFree
 import build.raft.app.settle
 import build.raft.app.threadAttachmentUploadAttemptIdentity
 import build.raft.app.threadAttachmentUploadFile
@@ -41,7 +41,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import build.raft.app.RaftComposerServerUploads
-import build.raft.app.RaftUpgradeGate
+import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.SharedThreadComposerAttachment
 import build.raft.app.SharedThreadComposerAttachmentAdmission
 import build.raft.app.SharedThreadComposerDraftIntent

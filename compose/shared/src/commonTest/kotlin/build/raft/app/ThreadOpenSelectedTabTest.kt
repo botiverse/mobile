@@ -8,6 +8,7 @@ import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.SharedThreadDataSource
 import build.raft.app.thread.SharedThreadIntent

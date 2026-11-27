@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.settings.isCommittable
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

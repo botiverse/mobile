@@ -47,6 +47,7 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.settings.observe
 import build.raft.app.thread.CONVERSATION_SIDE_CARDS_SWITCH_TEST_TAG
 import build.raft.app.thread.ConversationSideCard
 import build.raft.app.thread.ConversationSideCardsCover

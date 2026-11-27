@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.RaftBackgroundKillNotice
 import build.raft.app.data.RaftBackgroundWhitelistGuide
 import build.raft.app.data.RaftMinBuildGateDecision
+import build.raft.app.settings.SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR
+import build.raft.app.settings.SettingsNativeDetailPage
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

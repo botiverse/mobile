@@ -10,6 +10,8 @@ import build.raft.app.compat.pager.raftPlatformName
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.network.RaftAppIdentityRegistry
 import build.raft.app.network.platformRaftUserAgentPlatformName
+import build.raft.app.settings.raftUrlIsAppStoreRestrictedPurchaseUrl
+import build.raft.app.settings.standaloneSettingsWebBaseUrl
 import build.raft.webcontainer.jsb.JsbAppInfo
 import build.raft.webcontainer.jsb.JsbAuthStatus
 import build.raft.webcontainer.jsb.JsbCallContext

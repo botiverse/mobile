@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -6,6 +6,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.RaftLinkOpenIntent
+import build.raft.app.RaftLinkOpenTarget
+import build.raft.app.RaftLucideIconName
+import build.raft.app.SharedSettingsEmbedContract
+import build.raft.app.SharedSettingsEmbedHostShell
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
@@ -16,10 +22,25 @@ import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.isArtifactContentHost
+import build.raft.app.get
+import build.raft.app.iconName
 import build.raft.app.links.raftComparableHostname
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.network.RaftContentCdnHost
 import build.raft.app.network.RaftRetiredContentHost
+import build.raft.app.openRaftPage
+import build.raft.app.optString
+import build.raft.app.raftOwnLinkIsWebPage
+import build.raft.app.raftOwnLinkRoute
+import build.raft.app.raftOwnWebUrlForLog
+import build.raft.app.raftPlatformFollowsAppStoreBillingRules
+import build.raft.app.raftPlatformSupportsEmbeddedOwnWebView
+import build.raft.app.raftPlatformUsesEphemeralAuthWebView
+import build.raft.app.raftShellStoreScopeOrNull
+import build.raft.app.raftWebOriginOf
+import build.raft.app.rememberRaftWebViewController
+import build.raft.app.resolveRaftLinkOpenDecision
+import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftMessageLinkProductionHosts
 import build.raft.app.thread.isRaftLinkIdentifier
 import build.raft.app.thread.raftOwnWebLinkPath

@@ -3,6 +3,7 @@ package build.raft.app
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
+import build.raft.app.settings.settingsWebViewBlockedNavigationUrlOrNull
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment

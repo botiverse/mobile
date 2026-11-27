@@ -15,6 +15,12 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.RaftSettingsAccountPayload
+import build.raft.app.settings.SettingsLogoutAction
+import build.raft.app.settings.SettingsLogoutButtonTag
+import build.raft.app.settings.SettingsLogoutCancelTag
+import build.raft.app.settings.SettingsLogoutConfirmTag
+import build.raft.app.settings.SettingsLogoutDialogTag
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

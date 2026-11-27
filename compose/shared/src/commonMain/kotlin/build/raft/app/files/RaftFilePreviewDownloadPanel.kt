@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import androidx.compose.foundation.background
@@ -33,6 +34,7 @@ import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.transfer.RaftTransferPhase
 import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.format.RaftFormat
+import build.raft.app.iconName
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBannerStatus

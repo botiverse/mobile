@@ -36,6 +36,12 @@ import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.toSettingsMobileSelectionSnapshot
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.settings.SETTINGS_NOTIFICATIONS_BATTERY_OPTIMIZATION_ROW_TAG
+import build.raft.app.settings.SETTINGS_NOTIFICATIONS_DIRECT_FCM_FALLBACK_ACTIVE_NOTICE_TAG
+import build.raft.app.settings.SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TAG
+import build.raft.app.settings.SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG
+import build.raft.app.settings.SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG
+import build.raft.app.settings.SettingsNotificationsContent
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

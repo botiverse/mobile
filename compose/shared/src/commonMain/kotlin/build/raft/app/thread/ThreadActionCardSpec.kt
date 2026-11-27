@@ -3,7 +3,8 @@ package build.raft.app.thread
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.resources.*
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.matches
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.app.settle
 import build.raft.app.traceId
 import org.jetbrains.compose.resources.StringResource
@@ -57,7 +58,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.parseConversationKindOrNull
-import build.raft.app.raftFeedbackCardEntryEnabled
+import build.raft.app.settings.raftFeedbackCardEntryEnabled
 import build.raft.app.raftPlatformHasFinePointer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel

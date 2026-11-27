@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.app.data.*
+import build.raft.app.settings.appUpdatePrimaryActionEnabled
+import build.raft.app.settings.appUpdatePrimaryActionLabel
+import build.raft.app.settings.observe
+import build.raft.app.settings.toAppUpdateResultProjection
+import build.raft.app.settings.withLocalDownloadTerminal
 import build.raft.app.transfer.RaftTransferMeter
 import kotlin.test.*
 import kotlinx.serialization.json.buildJsonObject

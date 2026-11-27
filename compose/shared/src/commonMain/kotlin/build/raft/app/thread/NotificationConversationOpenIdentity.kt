@@ -1,6 +1,6 @@
 package build.raft.app.thread
 
-import build.raft.app.AppShellNotificationThreadLaunchRequest
+import build.raft.app.settings.AppShellNotificationThreadLaunchRequest
 import build.raft.app.ConversationOpenSource
 import build.raft.app.ConversationOpenSourceMessageIdentity
 import build.raft.app.model.ConversationKind

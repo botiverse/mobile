@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.userFacingMessage
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
@@ -17,12 +19,19 @@ import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.iconName
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.raftPlatformProductName
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.unit.Dp
+import build.raft.app.ErrorPresentationStrings
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftLucideIconName
+import build.raft.app.SharedSettingsDefaultWebBaseUrl
 import kotlinx.coroutines.flow.map
 
 @Composable

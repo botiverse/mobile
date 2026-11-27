@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.isMarkedUnreadIn
 import build.raft.app.data.HomeRowRestoredHint
@@ -22,10 +22,19 @@ import build.raft.app.model.Presence
 import build.raft.app.model.RaftSlackSyncProblem
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.nativeSettledClosedWithoutCommand
+import build.raft.app.pendingAdmission
+import build.raft.app.pointerPolicy
+import build.raft.app.rememberRaftMoveableDrawerState
+import build.raft.app.rowLaidOut
+import build.raft.app.serverSwitcherShowsInviteHuman
+import build.raft.app.settle
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.isGenericThreadHeaderFallbackLabel
 import build.raft.app.thread.threadHeaderCandidateTitle
 import build.raft.app.thread.threadHeaderIdentityLikeTitle
+import build.raft.app.toRaftSurfaceKind
+import build.raft.app.toWireChannelKindOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -57,11 +66,34 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.HomeServerDrawerCommandPhase
+import build.raft.app.HomeServerDrawerCommandState
+import build.raft.app.HomeServerDrawerHostedPanel
+import build.raft.app.HomeServerDrawerOpenGestureAdmission
+import build.raft.app.LocalRaftHomeDrawerOpenGesture
+import build.raft.app.RaftAppPresence
+import build.raft.app.RaftHomeConversationItem
+import build.raft.app.RaftHomeDrawerOpenGesture
+import build.raft.app.RaftHomeServerDrawerHostedSection
+import build.raft.app.RaftHomeServerDrawerSection
+import build.raft.app.RaftHomeShellLabels
+import build.raft.app.RaftMoveableDrawer
+import build.raft.app.RaftNativeTabBarCover
+import build.raft.app.RaftServerDrawerUserHeader
+import build.raft.app.RaftServerSwitcherItem
+import build.raft.app.SharedThreadComposerDraftProjection
+import build.raft.app.acceptsConversationClick
+import build.raft.app.acceptsRowObservation
+import build.raft.app.beginProgrammaticClose
+import build.raft.app.beginProgrammaticOpen
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import build.raft.app.data.map
+import build.raft.app.establishClosedOwner
+import build.raft.app.homeServerDrawerWidth
+import build.raft.app.markSubmitted
 
 internal fun SharedHomeShellState.withoutServerDrawerRuntimeForAppShellRender(): SharedHomeShellState =
     copy(

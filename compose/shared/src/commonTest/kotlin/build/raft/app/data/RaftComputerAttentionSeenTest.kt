@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftMoreAttention
-import build.raft.app.appShellPhoneBottomTabs
+import build.raft.app.settings.appShellPhoneBottomTabs
 import build.raft.app.raftMoreAttention
 import kotlin.test.Test
 import kotlin.test.assertEquals

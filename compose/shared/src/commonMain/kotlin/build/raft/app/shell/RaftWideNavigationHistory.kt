@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.settings.appShellDmsTabShowsDetail
+import build.raft.app.settings.appShellSharedDetailSurfaceVisible
+import build.raft.app.settings.retainedAppShellSelectedTab
 import build.raft.app.thread.key
 
 /*

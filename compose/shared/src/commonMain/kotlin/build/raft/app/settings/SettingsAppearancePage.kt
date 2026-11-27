@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +26,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppAppearance
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.RaftType
 import build.raft.app.assistant.AssistantOtterVisibleRow
 import build.raft.app.assistant.AssistantOwnerOtterRow
 import build.raft.app.assistant.AssistantSettingChangesSection
@@ -34,9 +41,12 @@ import build.raft.app.assistant.assistantViewerIsGuest
 import build.raft.app.assistant.rememberAssistantOtterRow
 import build.raft.app.assistant.rememberAssistantSettingChanges
 import build.raft.app.assistant.rememberMyAssistantGate
+import build.raft.app.available
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
+import build.raft.app.currentRaftEffectiveDateTimeContext
+import build.raft.app.currentRaftTimeContextProvider
 import build.raft.app.data.APPEARANCE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import build.raft.app.data.ASSISTANT_ACTION_SETTINGS
@@ -55,12 +65,17 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.iconName
+import build.raft.app.localizedUserFacingMessage
+import build.raft.app.raftPlatformShortcutsUseCommand
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.ThreadMessageCard
 import build.raft.app.thread.isKnownThreadMarkdownTag
 import build.raft.app.thread.key
 import build.raft.app.thread.raftMessageBodyTextStyle
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowChevron
 import build.raft.designsystem.components.RaftListRowGroup

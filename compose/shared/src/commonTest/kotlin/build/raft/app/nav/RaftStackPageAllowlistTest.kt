@@ -1,11 +1,11 @@
 package build.raft.app.nav
 
-import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import build.raft.app.RAFT_IN_APP_BROWSER_OUTBOUND_KEY
 import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
 import build.raft.app.RAFT_IN_APP_BROWSER_TAB_ID_KEY
 import build.raft.app.RAFT_IN_APP_BROWSER_URL_KEY
-import build.raft.app.SETTINGS_NATIVE_DETAIL_PAGE
+import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

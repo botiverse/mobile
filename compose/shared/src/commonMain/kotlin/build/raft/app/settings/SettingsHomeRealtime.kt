@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.realtime.RealtimeCursorPolicy
 import build.raft.app.data.RealtimeConnectionWitness
@@ -38,6 +38,8 @@ import build.raft.app.model.AgentTypingUpdated
 import build.raft.app.model.ConversationWorkerStateUpdated
 import build.raft.app.model.ScopeReadUpdated
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.optLong
+import build.raft.app.optString
 import kotlinx.coroutines.flow.map
 import build.raft.app.data.map
 import kotlinx.serialization.json.JsonObject

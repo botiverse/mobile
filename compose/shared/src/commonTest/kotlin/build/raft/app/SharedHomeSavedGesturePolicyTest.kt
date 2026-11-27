@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.settings.SharedHomeSavedGestureOwner
+import build.raft.app.settings.sharedHomeSavedGestureOwner
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

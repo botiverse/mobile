@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -17,7 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftMemberAvatar
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftUnifiedDialog
+import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.base.Utils
+import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
@@ -28,6 +35,8 @@ import build.raft.app.data.SEAT_REQUEST_REASON_MAX_LENGTH
 import build.raft.app.data.SeatJoinSeatUsage
 import build.raft.app.data.SeatRequestPurpose
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.get
+import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.memberDetailIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -36,6 +45,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.userFacingMessage
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

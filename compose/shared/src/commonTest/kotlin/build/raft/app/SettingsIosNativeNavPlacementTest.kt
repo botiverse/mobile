@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.nav.RaftIosNativeNavFlag
+import build.raft.app.settings.settingsAppPreferenceVisibility
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

@@ -10,6 +10,7 @@ import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.settings.settingsStandalonePageData
 
 internal const val SETTINGS_COMPUTER_ID = "settingsComputerId"
 

@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.assistant.threadComposerComposing
 import build.raft.app.resources.*
+import build.raft.app.settings.matches
+import build.raft.app.settings.raftComposerModEnterKeyLabel
 import build.raft.app.thread.LocalThreadQuoteReplyHost
 import build.raft.app.thread.LocalThreadVoiceDictationHost
 import build.raft.app.thread.RaftThreadScreenPayload
@@ -73,6 +75,7 @@ import build.raft.app.markdown.toComposeLayoutDirection
 import build.raft.app.markdown.toComposeTextDirection
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
+import build.raft.app.matches
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftIconButton

@@ -23,6 +23,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.RaftThreadOutlineApi
 import build.raft.app.data.ThreadOutlineItem
 import build.raft.app.data.ThreadOutlinePage
+import build.raft.app.settings.observe
 import build.raft.app.thread.LocalThreadActionCardSpecHost
 import build.raft.app.thread.LocalThreadHeaderMenuEventBus
 import build.raft.app.thread.LocalThreadOutlineApi

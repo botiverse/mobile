@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.settings.AppShellForegroundResumePlan
+import build.raft.app.settings.appShellForegroundResumePlan
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

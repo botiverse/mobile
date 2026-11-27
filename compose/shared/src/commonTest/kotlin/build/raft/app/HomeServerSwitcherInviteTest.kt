@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.model.serverPermissionsForRole
+import build.raft.app.settings.homeServerSwitcherInviteClick
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

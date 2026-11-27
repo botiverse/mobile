@@ -4,6 +4,7 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
@@ -70,6 +71,7 @@ import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftAppRailFooterItem
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.iconName
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.ui.draw.clip
