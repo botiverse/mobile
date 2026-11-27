@@ -240,6 +240,20 @@ class ThreadTimelinePlacementResizeUiTest {
     private fun ThreadListViewport.visibleItemBottom(forwardIndex: Int): Int? =
         layoutInfo.visibleItemsInfo.firstOrNull { it.index == forwardIndex }?.let { it.offset + it.size }
 
+    private fun androidx.compose.ui.test.ComposeUiTest.awaitCondition(
+        description: String,
+        maxFrames: Int = 60,
+        condition: () -> Boolean,
+    ) {
+        waitForIdle()
+        repeat(maxFrames) {
+            if (condition()) return
+            mainClock.advanceTimeByFrame()
+            waitForIdle()
+        }
+        assertTrue(condition(), "Timed out waiting for $description after $maxFrames frames")
+    }
+
     private fun androidx.compose.ui.test.ComposeUiTest.placeFocusedInitially(harness: Harness) {
         val vp = requireNotNull(harness.viewport)
         runOnIdle {
@@ -253,8 +267,7 @@ class ThreadTimelinePlacementResizeUiTest {
                 )
             )
         }
-        waitUntil(timeoutMillis = 5_000L) { !harness.hasPendingCommand() }
-        waitForIdle()
+        awaitCondition(description = "initial focused anchor settlement") { !harness.hasPendingCommand() }
         runOnIdle {
             val rawInfo = vp.raw.layoutInfo
             harness.tracker.place(
@@ -273,10 +286,9 @@ class ThreadTimelinePlacementResizeUiTest {
         harness: Harness,
         expectedGeneration: Int,
     ) {
-        waitUntil(timeoutMillis = 5_000L) {
+        awaitCondition(description = "resize re-placement generation $expectedGeneration") {
             !harness.hasPendingCommand() && harness.tracker.rePlacementSettledGeneration >= expectedGeneration
         }
-        waitForIdle()
     }
 
     @Test
