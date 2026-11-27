@@ -17,6 +17,7 @@ import build.raft.app.data.AgentMigrationDataSource
 import build.raft.app.data.AgentMigrationIntent
 import build.raft.app.data.AgentMigrationNotice
 import build.raft.app.data.AgentMigrationStartResult
+import build.raft.app.data.AgentMigrationStatusSnapshot
 import build.raft.app.data.AgentMigrationStore
 import build.raft.app.data.AgentMigrationTarget
 import build.raft.app.data.AppLocale
