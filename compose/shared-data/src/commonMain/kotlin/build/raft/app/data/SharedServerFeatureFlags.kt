@@ -491,6 +491,13 @@ private val featureFlagsJson = Json {
 }
 
 private val featureFlagRequestGeneration = atomic(0L)
+/**
+ * Process-wide monotonic revision counter shared across all [SharedServerFeatureFlags] instances.
+ * Compose's `StateFlow.collectAsState()` retains an unkeyed `mutableStateOf` across flow instance
+ * swaps; if two stores both start at 0 and increment to 1 on `Dispatchers.Default` before the
+ * collector reads 0, writing `1L` over a stale `1L` is a structural no-op and drops recomposition.
+ */
+private val featureFlagSnapshotRevision = atomic(0L)
 
 @Serializable
 private data class FeatureFlagEvaluateRequestBody(
@@ -676,7 +683,7 @@ class SharedServerFeatureFlags(
     @Volatile
     private var snapshots: Map<String, ServerFeatureFlagSnapshot> = emptyMap()
 
-    private val snapshotRevisionState = MutableStateFlow(0L)
+    private val snapshotRevisionState = MutableStateFlow(featureFlagSnapshotRevision.incrementAndGet())
 
     /**
      * Bumped every time an evaluation is accepted into the per-server snapshots, and once when the first
@@ -723,7 +730,7 @@ class SharedServerFeatureFlags(
     fun onLastKnownBindingChanged() {
         // Readers keyed on snapshotRevision (the server setup gate) re-read isEnabled, which now
         // finds the stored value for the bound account.
-        if (lastKnown != null) snapshotRevisionState.value += 1
+        if (lastKnown != null) snapshotRevisionState.value = featureFlagSnapshotRevision.incrementAndGet()
     }
 
     private fun markAttemptSettledWithoutSnapshot(serverId: ServerId) {
@@ -731,7 +738,7 @@ class SharedServerFeatureFlags(
             synchronized(stateLock) {
                 snapshots[serverId.value] == null && settledWithoutSnapshot.add(serverId.value)
             }
-        if (changed) snapshotRevisionState.value += 1
+        if (changed) snapshotRevisionState.value = featureFlagSnapshotRevision.incrementAndGet()
     }
 
     fun snapshotFor(serverId: ServerId?): ServerFeatureFlagSnapshot =
@@ -1069,7 +1076,7 @@ class SharedServerFeatureFlags(
             } else {
                 acceptedGenerationByServer[serverId.value] = requestGeneration
                 snapshots = snapshots + (serverId.value to snapshot)
-                snapshotRevisionState.value += 1
+                snapshotRevisionState.value = featureFlagSnapshotRevision.incrementAndGet()
                 true
             }
         }

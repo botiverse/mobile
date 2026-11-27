@@ -1239,4 +1239,28 @@ class SharedServerFeatureFlagsTest {
         overridden.prefetch(server)
         assertFalse(overridden.isProSeatAddEnabled(server))
     }
+
+    @Test
+    fun snapshotRevisionIsGloballyUniqueAcrossInstancesToAvoidCollectAsStateCollisions() = runTest {
+        val offFlags =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$VOICE_DICTATION_V1_FEATURE_FLAG_KEY","enabled":false,"reason":"rule"}]}""")),
+            )
+        val onFlags =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$VOICE_DICTATION_V1_FEATURE_FLAG_KEY","enabled":true,"reason":"rule"}]}""")),
+            )
+        val offBefore = offFlags.snapshotRevision.value
+        val onBefore = onFlags.snapshotRevision.value
+        assertTrue(onBefore > offBefore)
+
+        offFlags.prefetch(server)
+        val offAfter = offFlags.snapshotRevision.value
+        assertTrue(offAfter > offBefore)
+
+        onFlags.prefetch(server)
+        val onAfter = onFlags.snapshotRevision.value
+        assertTrue(onAfter > onBefore)
+        assertTrue(onAfter != offAfter, "separate SharedServerFeatureFlags instances must not emit colliding revisions")
+    }
 }
