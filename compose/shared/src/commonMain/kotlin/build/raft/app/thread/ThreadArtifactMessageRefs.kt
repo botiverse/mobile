@@ -16,6 +16,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -39,10 +40,13 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -113,6 +117,7 @@ import coil3.compose.LocalPlatformContext
 import coil3.compose.rememberAsyncImagePainter
 import coil3.request.ImageRequest
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // web `ArtifactMessageRefs.tsx` / `ArtifactMessageCard.tsx` (botiverse/slock staging 84e41d9be):
@@ -360,6 +365,10 @@ internal fun ThreadArtifactMessageRefs(
                 followingOf = { summary -> followState?.followingOf(host.serverId, summary.id) ?: summary.following },
                 followPendingOf = { summary -> followState?.isPending(host.serverId, summary.id) == true },
                 onToggleFollow = toggleFollow,
+                onRereadLatest = { artifactId ->
+                    artifacts.summaries.refresh(host.serverId, ArtifactLinkTarget(artifactId))
+                },
+                isPageVisible = artifacts.isPageVisible,
             )
         }
     }
@@ -378,6 +387,8 @@ internal fun ThreadArtifactMessageRefsContent(
     followingOf: (ArtifactSummary) -> Boolean? = { it.following },
     followPendingOf: (ArtifactSummary) -> Boolean = { false },
     onToggleFollow: ((ArtifactSummary, Boolean) -> Unit)? = null,
+    onRereadLatest: ((String) -> Unit)? = null,
+    isPageVisible: () -> Boolean = { true },
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (view) {
@@ -397,6 +408,8 @@ internal fun ThreadArtifactMessageRefsContent(
                                     followingOverride = followingOf(ref.summary),
                                     followPending = followPendingOf(ref.summary),
                                     onToggleFollow = onToggleFollow?.let { cb -> { next -> cb(ref.summary, next) } },
+                                    onRereadLatest = onRereadLatest,
+                                    isPageVisible = isPageVisible,
                                 )
                             is ThreadArtifactMessageRef.Deleted -> ArtifactDeletedCard(ref.deleted)
                         }
@@ -420,7 +433,17 @@ internal val LocalArtifactScreenshotReader = staticCompositionLocalOf<ArtifactSc
  */
 internal fun artifactScreenshotPhoneLayout(windowWidth: Dp): Boolean = !raftWindowWide(windowWidth)
 
-/** web `ArtifactCardPicture` for a screenshot: none, its place kept while it is read, or shown. */
+/** Web `HELD_PICTURE_REREAD_MS` (slock #16979): re-poll the unpinned latest summary every 15s while holding a cover box. */
+internal const val ARTIFACT_CARD_HELD_PICTURE_REREAD_MILLIS: Long = 15_000L
+
+/** Web `HELD_PICTURE_MAX_MS` (slock #16979): drop the held cover box after 10 minutes without a new screenshot. */
+internal const val ARTIFACT_CARD_HELD_PICTURE_MAX_MILLIS: Long = 10L * 60L * 1000L
+
+internal const val ArtifactCardCoverTestTag = "artifact-card-cover"
+internal const val ArtifactCardCoverPendingTestTag = "artifact-card-cover-pending"
+internal val ArtifactCardCoverStateKey = SemanticsPropertyKey<String>("ArtifactCardCoverState")
+
+/** web `ArtifactCardPicture` for a screenshot: none, its place kept while it is read/held, or shown. */
 @Immutable
 internal sealed interface ArtifactCardScreenshotView {
     /** No screenshot. */
@@ -428,6 +451,12 @@ internal sealed interface ArtifactCardScreenshotView {
 
     /** Being read: the card keeps its place, so the conversation doesn't move when it comes. */
     data object Pending : ArtifactCardScreenshotView
+
+    /**
+     * A new version arrived before its publish-check screenshot landed: keep the 16:10 box until
+     * the new screenshot arrives (polled every 15s) or 10 minutes elapse (web `slock#16979`).
+     */
+    data object Held : ArtifactCardScreenshotView
 
     /**
      * The card names a screenshot that couldn't be read: its place stays, an empty box (no spinner,
@@ -438,6 +467,80 @@ internal sealed interface ArtifactCardScreenshotView {
 
     /** Read: [bytes] of file [fileId] of card [cardId], drawn by the image loader. */
     class Shown(val cardId: String, val fileId: String, val bytes: ByteArray) : ArtifactCardScreenshotView
+}
+
+/** Web `drawsPictureBox` (slock #16979): true whenever this card is showing or holding a picture box (not an excerpt). */
+internal fun ArtifactCardScreenshotView.drawsPictureBox(): Boolean =
+    this is ArtifactCardScreenshotView.Shown ||
+        this is ArtifactCardScreenshotView.Pending ||
+        this is ArtifactCardScreenshotView.Unreadable
+
+/** Web `useArtifactMessageCardPicture` hold condition (slock #16979). */
+internal fun artifactMessageCardHoldsPictureBox(
+    raw: ArtifactCardScreenshotView,
+    hasExcerpt: Boolean,
+    cardId: String,
+    boxFor: String?,
+    lapsedFor: String?,
+): Boolean = raw == ArtifactCardScreenshotView.None && !hasExcerpt && boxFor == cardId && lapsedFor != cardId
+
+private class ArtifactHeldPictureBoxTracker {
+    var boxFor: String? = null
+}
+
+/**
+ * Message-card picture state (web `useArtifactMessageCardPicture`, slock #16979): when an Artifact
+ * message card that previously drew a 16:10 picture box receives a new version without a screenshot
+ * (and without a Markdown excerpt), holds the 16:10 muted box and re-polls the unpinned latest
+ * summary every 15 seconds while visible, dropping the box after 10 minutes.
+ */
+@Composable
+internal fun rememberArtifactMessageCardScreenshot(
+    summary: ArtifactSummary,
+    onRereadLatest: ((String) -> Unit)? = null,
+    isPageVisible: () -> Boolean = { true },
+): ArtifactCardScreenshotView {
+    val raw = rememberArtifactCardScreenshot(summary)
+    val boxTracker = remember { ArtifactHeldPictureBoxTracker() }
+    var lapsedFor by remember { mutableStateOf<String?>(null) }
+    val drawsBox = raw.drawsPictureBox()
+    if (drawsBox) {
+        boxTracker.boxFor = summary.id
+    }
+    SideEffect {
+        if (drawsBox && lapsedFor == summary.id) {
+            lapsedFor = null
+        }
+    }
+    val held =
+        artifactMessageCardHoldsPictureBox(
+            raw = raw,
+            hasExcerpt = summary.excerpt != null,
+            cardId = summary.id,
+            boxFor = boxTracker.boxFor,
+            lapsedFor = lapsedFor,
+        )
+    val currentLifecycleOwner by rememberUpdatedState(LocalLifecycleOwner.current)
+    val currentIsPageVisible by rememberUpdatedState(isPageVisible)
+    val currentRereadLatest by rememberUpdatedState(onRereadLatest)
+    // Keyed only on (held, summary.id) — never version or visibility — so hiding/showing the page
+    // skips poll ticks without resetting the 10-minute lapse cap (slock #16979).
+    LaunchedEffect(held, summary.id) {
+        if (!held) return@LaunchedEffect
+        val poller =
+            launch {
+                while (true) {
+                    delay(ARTIFACT_CARD_HELD_PICTURE_REREAD_MILLIS)
+                    if (currentIsPageVisible() && currentLifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                        currentRereadLatest?.invoke(summary.id)
+                    }
+                }
+            }
+        delay(ARTIFACT_CARD_HELD_PICTURE_MAX_MILLIS)
+        poller.cancel()
+        lapsedFor = summary.id
+    }
+    return if (held) ArtifactCardScreenshotView.Held else raw
 }
 
 /**
@@ -491,8 +594,29 @@ internal fun artifactCardScreenshotHeightPx(widthPx: Int, maxHeightPx: Int): Int
 @Composable
 internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
     val colors = RaftTheme.colors
+    val coverState =
+        when (view) {
+            ArtifactCardScreenshotView.Pending -> "loading"
+            ArtifactCardScreenshotView.Held -> "held"
+            ArtifactCardScreenshotView.Unreadable -> "unreadable"
+            ArtifactCardScreenshotView.None, is ArtifactCardScreenshotView.Shown -> null
+        }
+    val boxModifier =
+        Modifier
+            .artifactCardScreenshotSize()
+            .background(colors.fillMuted)
+            .let { base ->
+                when {
+                    view is ArtifactCardScreenshotView.Shown -> base.testTag(ArtifactCardCoverTestTag)
+                    coverState != null ->
+                        base.testTag(ArtifactCardCoverPendingTestTag).semantics {
+                            this[ArtifactCardCoverStateKey] = coverState
+                        }
+                    else -> base
+                }
+            }
     RaftMessageEmbedContent {
-        Box(Modifier.artifactCardScreenshotSize().background(colors.fillMuted)) {
+        Box(boxModifier) {
             if (view is ArtifactCardScreenshotView.Shown) {
                 val context = LocalPlatformContext.current
                 val request =
@@ -558,6 +682,8 @@ internal fun ArtifactMessageCard(
     followingOverride: Boolean? = null,
     followPending: Boolean = false,
     onToggleFollow: ((Boolean) -> Unit)? = null,
+    onRereadLatest: ((String) -> Unit)? = null,
+    isPageVisible: () -> Boolean = { true },
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -569,7 +695,12 @@ internal fun ArtifactMessageCard(
             time != null -> stringResource(Res.string.artifacts_card_updated_by, summary.authorName, time)
             else -> summary.authorName.takeIf { it.isNotBlank() }
         }
-    val screenshot = rememberArtifactCardScreenshot(summary)
+    val screenshot =
+        rememberArtifactMessageCardScreenshot(
+            summary = summary,
+            onRereadLatest = if (preview) null else onRereadLatest,
+            isPageVisible = isPageVisible,
+        )
     // web `useArtifactCardPicture`: a screenshot, else a Markdown version's excerpt (one kind at a
     // time from the server, so an excerpt never waits for or replaces a picture).
     val excerpt = summary.excerpt.takeIf { screenshot == ArtifactCardScreenshotView.None }
