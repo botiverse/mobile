@@ -32,6 +32,9 @@ import build.raft.app.settings.AppShellThreadTimeContext
 import build.raft.app.settings.ThreadLaunchAccessState
 import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.raftShellStoreScopeOrNull
+import build.raft.app.shell.withRaftShellStoreScope
 import build.raft.app.thread.MarkdownTaskNumberOpenResult
 import build.raft.app.thread.RaftThreadAttachmentItem
 import build.raft.app.thread.RaftThreadMessageItem

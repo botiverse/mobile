@@ -8,7 +8,7 @@ import build.raft.app.data.RaftAppSettingSurface
 import build.raft.app.data.toSystemNotificationActionResult
 import build.raft.app.get
 import build.raft.app.iconName
-import build.raft.app.jumpPage
+import build.raft.app.shell.jumpPage
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
@@ -70,7 +70,7 @@ import build.raft.app.model.ServerNotificationPreferencesChanged
 import build.raft.app.openAssistantSettings
 import build.raft.app.openSettingsComputerPage
 import build.raft.app.openSettingsComputersPage
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect

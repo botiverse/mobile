@@ -3,6 +3,13 @@ package build.raft.app
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.settings.raftUrlIsAppStoreRestrictedPurchaseUrl
 import build.raft.app.settings.raftUrlIsOwnBillingPath
+import build.raft.app.shell.RaftLinkNavigator
+import build.raft.app.shell.RaftLinkOpenDecision
+import build.raft.app.shell.RaftLinkOpenIntent
+import build.raft.app.shell.RaftLinkOpenTarget
+import build.raft.app.shell.RaftLinkRejectReason
+import build.raft.app.shell.raftInAppBrowserDisplayUrl
+import build.raft.app.shell.resolveRaftLinkOpenDecision
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

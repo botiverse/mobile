@@ -6,6 +6,10 @@ import build.raft.designsystem.focus.LocalRaftAutofocusTargetField
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import build.raft.designsystem.focus.LocalRaftFocusRegion
 import build.raft.app.resources.*
+import build.raft.app.shell.LocalRaftTopSafeAreaClearedAbovePage
+import build.raft.app.shell.LocalRaftTopSafeAreaConsumed
+import build.raft.app.shell.LocalRaftWindowHorizontalSafeArea
+import build.raft.app.shell.RaftHorizontalSafeAreaShell
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.gesture.raftBackSwipeRegion
 import androidx.compose.runtime.Composable

@@ -9,6 +9,11 @@ import build.raft.app.data.RaftProductEvent
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.model.ServerId
+import build.raft.app.shell.RaftNativeNavBarAction
+import build.raft.app.shell.RaftNativeNavBarPlacement
+import build.raft.app.shell.foldPhoneConversationNativeNavBarActions
+import build.raft.app.shell.raftNativeNavBarSplit
+import build.raft.app.shell.raftNativeNavBarSymbolFor
 import build.raft.app.thread.PhoneConversationHeaderActionSlot
 import build.raft.app.thread.PhoneConversationHeaderPrimaryConfig
 import build.raft.app.thread.PhoneConversationHeaderPrimaryEntry

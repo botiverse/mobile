@@ -7,6 +7,8 @@ import build.raft.app.network.RaftCaptureFakeServer
 import build.raft.app.settings.HOME_DRAFTS_PAGE
 import build.raft.app.settings.SETTINGS_ACCOUNT_PAGE
 import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.thread.threadLaunchPageData
 
 /**

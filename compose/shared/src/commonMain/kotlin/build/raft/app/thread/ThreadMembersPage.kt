@@ -89,7 +89,7 @@ import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.settings.openRaftUpgradeDialog
 import build.raft.app.settings.openSettingsBillingPage
 import build.raft.app.openSettingsComputersPage
@@ -99,15 +99,15 @@ import build.raft.app.parsedMemberKindOrNull
 import build.raft.app.postChannelMemberRemovedToast
 import build.raft.app.postExternalInviteToasts
 import build.raft.app.raftAvatarKind
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftMemberAppBotResolver
 import build.raft.app.raftMemberAvatarCacheSubject
 import build.raft.app.raftMemberAvatarResolver
-import build.raft.app.raftNativeNavBarPrimaryList
+import build.raft.app.shell.raftNativeNavBarPrimaryList
 import build.raft.app.raftOriginServerLogos
 import build.raft.app.raftOriginServerNames
 import build.raft.app.raftScopedAgentStatusResolver
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.rememberAgentAttentionParts
 import build.raft.app.rememberAgentDeliveryHoldView
 import build.raft.app.rememberAgentReadinessDisplayCopy
@@ -196,7 +196,7 @@ import build.raft.app.JointConnectedServersHolder
 import build.raft.app.JointConnectedServersOverlays
 import build.raft.app.LocalMembersRuntimeAccountUsageAccess
 import build.raft.app.LocalRaftMemberAppBotResolver
-import build.raft.app.LocalRaftSidePanePage
+import build.raft.app.shell.LocalRaftSidePanePage
 import build.raft.app.LocalRaftViewerServerLogos
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberConnectAccount
@@ -214,7 +214,7 @@ import build.raft.app.RaftColor
 import build.raft.app.RaftDialogFooter
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftSidePanePage
+import build.raft.app.shell.RaftSidePanePage
 import build.raft.app.RaftTopPageHeader
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.RaftType
@@ -222,7 +222,7 @@ import build.raft.app.RaftUnifiedDialog
 import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.RealExternalInvitesDataSource
 import build.raft.app.ThreadAddMemberPanel
-import build.raft.app.authenticatedRouteOwnerOrNull
+import build.raft.app.shell.authenticatedRouteOwnerOrNull
 import build.raft.app.available
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule

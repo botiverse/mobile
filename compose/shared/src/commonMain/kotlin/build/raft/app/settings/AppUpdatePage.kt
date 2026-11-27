@@ -51,8 +51,8 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.ErrorPresentationStrings
-import build.raft.app.RAFT_SHELL_INSTANCE_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName

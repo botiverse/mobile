@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.Dp
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftColor
 import build.raft.app.RaftThreadSurfaceKind
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

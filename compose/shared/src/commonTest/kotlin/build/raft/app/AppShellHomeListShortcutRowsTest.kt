@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.settings.AppShellRailSavedKey
+import build.raft.app.shell.AppShellPhoneBottomBarKeys
+import build.raft.app.shell.AppShellRailOrder
+import build.raft.app.shell.AppShellRailTabKeys
+import build.raft.app.shell.appShellNavCarriesSearchAndActivity
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

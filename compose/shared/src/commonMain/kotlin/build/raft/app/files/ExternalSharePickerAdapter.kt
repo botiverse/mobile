@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.resources.*
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.thread.RaftForwardPickerLoadState
 import build.raft.app.thread.RaftForwardPickerSessionKey
 import build.raft.app.thread.RaftForwardTargetPicker

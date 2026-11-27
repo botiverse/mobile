@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,6 +13,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import build.raft.app.RaftCenteredLoading
+import build.raft.app.RaftTimestampDisplayScope
+import build.raft.app.RaftUnifiedDialogHost
+import build.raft.app.RaftUnifiedDialogHostProvider
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
@@ -21,6 +25,9 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.data.RaftProductPageView
+import build.raft.app.optString
+import build.raft.app.raftPlatformSupportsAppShellServerStackPage
+import build.raft.app.rememberRaftUnifiedDialogHostState
 import build.raft.app.settings.AppShellChildTabEntry
 import build.raft.app.settings.AppShellChildTabRegistry
 import build.raft.app.settings.AppShellChildTabRenderer

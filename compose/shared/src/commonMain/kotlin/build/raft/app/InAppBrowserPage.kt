@@ -41,6 +41,14 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.resources.*
 import build.raft.app.settings.raftUrlIsAppStoreRestrictedPurchaseUrl
 import build.raft.app.settings.raftUrlIsOnOwnRaftHost
+import build.raft.app.shell.openRaftInAppBrowserOutboundChild
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftInAppBrowserAppEntryTokenOrNull
+import build.raft.app.shell.raftInAppBrowserIsOutbound
+import build.raft.app.shell.raftInAppBrowserTabIdOrNull
+import build.raft.app.shell.raftInAppBrowserUrlOrNull
+import build.raft.app.shell.raftPageWindowTopSafeAreaPadding
+import build.raft.app.shell.raftShellStoreScopeOrNull
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

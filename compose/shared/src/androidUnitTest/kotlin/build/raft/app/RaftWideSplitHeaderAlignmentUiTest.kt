@@ -48,6 +48,17 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.settings.observe
+import build.raft.app.shell.LocalRaftChannelSideLayoutStore
+import build.raft.app.shell.LocalRaftPaneGridStore
+import build.raft.app.shell.LocalRaftSidePanePage
+import build.raft.app.shell.RaftPaneGrid
+import build.raft.app.shell.RaftPaneGridCell
+import build.raft.app.shell.RaftPaneGridColumn
+import build.raft.app.shell.RaftPaneGridStore
+import build.raft.app.shell.RaftProfileColumnCell
+import build.raft.app.shell.RaftSidePanePage
+import build.raft.app.shell.raftArtifactColumn
+import build.raft.app.shell.raftProfileColumn
 import build.raft.app.thread.CONVERSATION_SIDE_CARDS_SWITCH_TEST_TAG
 import build.raft.app.thread.ConversationSideCard
 import build.raft.app.thread.ConversationSideCardsCover

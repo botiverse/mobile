@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.app.data.RaftLastCountsPersistStorage
 import build.raft.app.data.SharedPreferenceStore

@@ -1,8 +1,13 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.WireThreadLaunchPayload
+import build.raft.app.get
 import build.raft.app.settings.appShellDmsTabShowsDetail
 import build.raft.app.settings.appShellSharedDetailSurfaceVisible
 import build.raft.app.settings.retainedAppShellSelectedTab
+import build.raft.app.settle
 import build.raft.app.thread.key
 
 /*

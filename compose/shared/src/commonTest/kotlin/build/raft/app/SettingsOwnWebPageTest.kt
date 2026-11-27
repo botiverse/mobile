@@ -5,6 +5,7 @@ import build.raft.app.settings.raftAuthenticatedOwnWebPageUrlOrNull
 import build.raft.app.settings.raftUrlIsAppStoreRestrictedPurchaseUrl
 import build.raft.app.settings.raftUrlIsOwnBillingPath
 import build.raft.app.settings.settingsOwnWebExternalOpenIntent
+import build.raft.app.shell.RaftLinkOpenIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

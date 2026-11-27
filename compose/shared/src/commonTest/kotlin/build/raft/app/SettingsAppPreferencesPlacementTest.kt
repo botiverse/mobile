@@ -7,6 +7,7 @@ import build.raft.app.settings.raftComposerEnterKeyLabel
 import build.raft.app.settings.raftComposerModEnterKeyLabel
 import build.raft.app.settings.settingsAppPreferenceVisibility
 import build.raft.app.settings.settingsNativeDetailPageKeys
+import build.raft.app.shell.effectiveLinkOpenMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.designsystem.components.rememberRaftStablePaddingValues
 import build.raft.designsystem.theme.raftTrackPointerInput
@@ -29,9 +29,16 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppSpacing
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
+import build.raft.app.get
+import build.raft.app.has
+import build.raft.app.optBoolean
+import build.raft.app.optString
+import build.raft.app.raftHostStatusBarHidden
+import build.raft.app.raftPlatformIsiOSAppOnMac
 import build.raft.app.settings.observe
 import build.raft.designsystem.components.LocalRaftSafeAreaInsets
 import build.raft.designsystem.components.RaftSafeAreaInsets

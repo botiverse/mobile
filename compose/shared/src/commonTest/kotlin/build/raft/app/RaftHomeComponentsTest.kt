@@ -23,6 +23,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.settings.SharedHomeConversationRowProjector
 import build.raft.app.settings.SharedHomeConversationRowSeed
+import build.raft.app.shell.HomeServerDrawerOpenGestureAdmission
+import build.raft.app.shell.shouldOpenHomeServerDrawerFromContentGesture
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import androidx.compose.ui.text.font.FontWeight

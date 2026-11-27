@@ -1,6 +1,6 @@
 package build.raft.app.base
 
-import build.raft.app.ProvideRaftLinkOpening
+import build.raft.app.shell.ProvideRaftLinkOpening
 import build.raft.app.ProvideRaftPageBaseTimeContext
 import build.raft.app.RaftDatabaseLaunchGate
 import build.raft.app.RaftEnvironmentIndicatorHost
@@ -16,12 +16,12 @@ import build.raft.app.raftLogError
 import build.raft.app.raftLogInfo
 import build.raft.app.toJsonObject
 import build.raft.app.RaftAdaptivePanePagerEvent
-import build.raft.app.RaftSideColumnPosture
-import build.raft.app.RaftSideColumnScaffold
-import build.raft.app.toRaftSideColumnPosture
-import build.raft.app.toRaftAdaptivePaneEventOrNull
+import build.raft.app.shell.RaftSideColumnPosture
+import build.raft.app.shell.RaftSideColumnScaffold
+import build.raft.app.shell.toRaftSideColumnPosture
+import build.raft.app.shell.toRaftAdaptivePaneEventOrNull
 import build.raft.app.markdown.RaftLinkHoverStatusHost
-import build.raft.app.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
+import build.raft.app.shell.RAFT_ADAPTIVE_NATIVE_COMMIT_RESULT_EVENT
 import build.raft.app.data.RaftEnhancedNotifyCenter
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftProductPageView

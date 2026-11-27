@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.designsystem.components.RaftPaneGridExpand

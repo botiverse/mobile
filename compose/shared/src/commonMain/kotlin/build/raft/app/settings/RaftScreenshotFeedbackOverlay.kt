@@ -72,7 +72,7 @@ import build.raft.app.post
 import build.raft.app.raftArgbHex
 import build.raft.app.raftFeedbackWebViewClientKind
 import build.raft.app.raftLogInfo
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.resources.Res
 import build.raft.app.resources.artifacts_column_title
 import build.raft.app.resources.artifacts_dashboard_title

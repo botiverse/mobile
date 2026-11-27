@@ -25,7 +25,7 @@ import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochMillisUtcIso
 import build.raft.app.model.raftStartOfDayUtcIso
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.openSettingsComputerPage
 import build.raft.app.optString
 import build.raft.app.parseConversationKindOrNull
@@ -51,7 +51,7 @@ import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.toRaftTimeCapabilities
 import build.raft.app.typedReplyParentConversationKindOrNull
 import build.raft.app.usesMemberScopedMentions
-import build.raft.app.withRaftOpenAnimation
+import build.raft.app.shell.withRaftOpenAnimation
 import androidx.compose.foundation.layout.offset
 import build.raft.app.ConversationOpenResolution
 import build.raft.app.ConversationOpenSource

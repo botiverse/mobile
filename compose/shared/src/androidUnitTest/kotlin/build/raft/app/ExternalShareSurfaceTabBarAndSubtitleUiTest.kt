@@ -19,6 +19,9 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ExternalShareEnvelope
 import build.raft.app.data.ExternalShareItem
 import build.raft.app.data.ExternalShareState
+import build.raft.app.shell.LocalRaftNativeTabBarBridge
+import build.raft.app.shell.RaftNativeTabBarBridge
+import build.raft.app.shell.RaftNativeTabBarState
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

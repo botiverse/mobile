@@ -5,6 +5,10 @@ import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.settings.openRaftUpgradeDialog
 import build.raft.app.settings.openSettingsBillingPage
 import build.raft.app.settings.settingsBillingOffersUpgrade
+import build.raft.app.shell.openRaftPage
+import build.raft.app.shell.raftShellStoreScope
+import build.raft.app.shell.rememberRaftLinkNavigator
+import build.raft.app.shell.toRaftAdaptivePaneEventOrNull
 import build.raft.app.thread.dispatch
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils

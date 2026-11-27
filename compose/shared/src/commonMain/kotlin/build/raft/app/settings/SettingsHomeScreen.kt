@@ -82,7 +82,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.AgentLoungeConversationSide
 import build.raft.app.AgentLoungeOpener
-import build.raft.app.AppShellLazyListPosition
+import build.raft.app.shell.AppShellLazyListPosition
 import build.raft.app.ErrorPresentationStrings
 import build.raft.app.LeaveChannelConfirmDialog
 import build.raft.app.RaftAppSpacing

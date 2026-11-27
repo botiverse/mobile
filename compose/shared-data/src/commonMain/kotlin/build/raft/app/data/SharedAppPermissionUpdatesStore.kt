@@ -18,7 +18,7 @@ import kotlinx.serialization.json.Json
  * `packages/server/src/routes/integrations.ts` & `useAppPermissionUpdates.ts`):
  * - [count]: installed Apps with added permissions waiting for approval (`approvalRequired`).
  * - [needsAdminReview]: whether anything on the Apps page awaits an owner or admin (a permission
- *   update or prompt text confirmation); lights the Apps attention dot ([build.raft.app.RaftMoreAttention.AppsReview]).
+ *   update or prompt text confirmation); lights the Apps attention dot ([build.raft.app.shell.RaftMoreAttention.AppsReview]).
  */
 @RaftCoreInternalApi data class AppPermissionUpdatesSummary(
     val count: Int,

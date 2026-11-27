@@ -20,6 +20,11 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftListPaneKind
+import build.raft.app.shell.RaftAdaptiveListDetailSplit
+import build.raft.app.shell.RaftAppShellTopBar
+import build.raft.app.shell.RaftBottomTabItemPayload
+import build.raft.app.shell.RaftListPaneWidths
+import build.raft.app.shell.RaftNavigationRailTabBar
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.ThreadComposerDock

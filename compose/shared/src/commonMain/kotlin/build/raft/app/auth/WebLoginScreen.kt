@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.settings.SignedOutAppUpdateBanner
+import build.raft.app.shell.RaftInAppBrowserRouteScope
+import build.raft.app.shell.rememberRaftLinkNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect

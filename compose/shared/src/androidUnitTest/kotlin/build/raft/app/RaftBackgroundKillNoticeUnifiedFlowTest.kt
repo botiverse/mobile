@@ -42,6 +42,10 @@ import build.raft.app.settings.SETTINGS_NOTIFICATIONS_DIRECT_GMS_OVERRIDE_ROW_TA
 import build.raft.app.settings.SETTINGS_NOTIFICATIONS_PLAY_FCM_UNREACHABLE_NOTICE_TAG
 import build.raft.app.settings.SETTINGS_NOTIFICATIONS_VENDOR_BACKGROUND_ROW_TAG
 import build.raft.app.settings.SettingsNotificationsContent
+import build.raft.app.shell.RAFT_BACKGROUND_KILL_NOTICE_BANNER_TAG
+import build.raft.app.shell.RAFT_BACKGROUND_KILL_NOTICE_SETTINGS_TAG
+import build.raft.app.shell.RaftAppShellNetworkStatus
+import build.raft.app.shell.rememberRaftBackgroundKillNoticeBannerSlot
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -53,6 +53,9 @@ import build.raft.app.settings.RaftScreenshotFeedbackSubmitButtonTag
 import build.raft.app.settings.RaftScreenshotFeedbackThumbnailTag
 import build.raft.app.settings.localizedScreenshotFeedbackPageLabelResource
 import build.raft.app.settings.resolveScreenshotFeedbackPromptBottomPadding
+import build.raft.app.shell.RaftNativeTabBarBand
+import build.raft.app.shell.RaftNativeTabBarEdge
+import build.raft.app.shell.raftNativeHostActiveBottomTabBarBandHeight
 import build.raft.designsystem.components.RaftButton
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.data.RaftComposerSendKey
 import build.raft.app.data.SharedMembersLoadStatus
+import build.raft.app.shell.raftWindowWidth
 import build.raft.app.thread.ThreadComposerDock
 import kotlin.test.Test
 import kotlin.test.assertEquals

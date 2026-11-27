@@ -12,6 +12,9 @@ import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
+import build.raft.app.shell.RaftEnvironmentIndicatorZIndex
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftWindowTopSafeAreaPadding
 import build.raft.app.data.RaftAppScopeApiEnvironment
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.BoxWithConstraints

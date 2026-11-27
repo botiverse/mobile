@@ -4,6 +4,9 @@ import build.raft.designsystem.components.LocalRaftBarButtons
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
+import build.raft.app.shell.LocalRaftHorizontalSafeAreaBleed
+import build.raft.app.shell.raftBleedHorizontalSafeArea
+import build.raft.app.shell.raftWindowTopSafeAreaPadding
 import build.raft.app.shownAuthorName
 import build.raft.app.thread.RaftThreadAttachmentItem
 import build.raft.app.thread.RaftThreadMessageItem

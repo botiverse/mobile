@@ -76,6 +76,8 @@ import build.raft.app.network.sync.CurrentGrantMessageShadowCommitOutcome
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_DURABLE_CONSUMER_ID
 import build.raft.app.settings.RaftAppShellContent
 import build.raft.app.settings.appShellAuthGateViewModelKey
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.SharedThreadDataSource
 import build.raft.app.thread.SharedThreadRouteContent

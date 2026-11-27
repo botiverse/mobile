@@ -9,7 +9,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import build.raft.app.appLifecycleEventTargetsShell
+import build.raft.app.shell.appLifecycleEventTargetsShell
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftAgentLounge

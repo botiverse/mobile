@@ -5,6 +5,10 @@ import build.raft.app.data.RaftBackgroundWhitelistGuide
 import build.raft.app.data.RaftMinBuildGateDecision
 import build.raft.app.settings.SETTINGS_NOTIFICATIONS_BACKGROUND_KEEP_ALIVE_ANCHOR
 import build.raft.app.settings.SettingsNativeDetailPage
+import build.raft.app.shell.RaftAppShellNetworkStatus
+import build.raft.app.shell.RaftBackgroundKillNoticeSettingsLink
+import build.raft.app.shell.RaftBackgroundKillNoticeSettingsTarget
+import build.raft.app.shell.shouldShowBackgroundKillNotice
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

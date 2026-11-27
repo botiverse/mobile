@@ -1,5 +1,12 @@
 package build.raft.app
 
+import build.raft.app.shell.RaftNativeServerSwitcherActionCreateServer
+import build.raft.app.shell.RaftNativeServerSwitcherActionInviteHuman
+import build.raft.app.shell.RaftNativeServerSwitcherActionJoinCommunityPrefix
+import build.raft.app.shell.RaftNativeServerSwitcherBridge
+import build.raft.app.shell.RaftNativeServerSwitcherListener
+import build.raft.app.shell.RaftNativeServerSwitcherState
+import build.raft.app.shell.raftNativeServerSwitcherState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

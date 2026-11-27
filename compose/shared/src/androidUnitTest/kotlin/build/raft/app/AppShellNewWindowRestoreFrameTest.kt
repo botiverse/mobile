@@ -9,6 +9,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.shell.AppShellNewWindowRestoreFrame
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import org.junit.Rule

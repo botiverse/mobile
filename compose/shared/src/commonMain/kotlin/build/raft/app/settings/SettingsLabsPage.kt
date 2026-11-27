@@ -53,8 +53,8 @@ import build.raft.app.get
 import build.raft.app.messageRes
 import build.raft.app.model.ServerId
 import build.raft.app.raftArgbHex
-import build.raft.app.raftBottomSafeAreaPadding
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.resources.*
 import build.raft.app.thread.icon
 import build.raft.app.thread.key

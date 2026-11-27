@@ -11,6 +11,9 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ThreadId
+import build.raft.app.shell.RaftOwnLinkRoute
+import build.raft.app.shell.raftOwnLinkRoute
+import build.raft.app.shell.raftOwnLinkShellOpener
 import build.raft.app.thread.RaftMessageLinkIngress
 import kotlin.test.Test
 import kotlin.test.assertEquals

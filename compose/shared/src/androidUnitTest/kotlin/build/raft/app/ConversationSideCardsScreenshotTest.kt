@@ -39,6 +39,14 @@ import build.raft.app.data.toTaskSummary
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskSummary
+import build.raft.app.shell.LocalRaftPaneGridStore
+import build.raft.app.shell.RaftAdaptiveListDetailSplit
+import build.raft.app.shell.RaftListPaneWidths
+import build.raft.app.shell.RaftPaneGrid
+import build.raft.app.shell.RaftPaneGridCell
+import build.raft.app.shell.RaftPaneGridColumn
+import build.raft.app.shell.RaftPaneGridStore
+import build.raft.app.shell.RaftSidebarCollapseState
 import build.raft.app.thread.ConversationSideCard
 import build.raft.app.thread.ConversationSideCardsCover
 import build.raft.app.thread.ConversationSideCardsState

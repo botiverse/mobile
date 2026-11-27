@@ -9,6 +9,11 @@ import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
+import build.raft.app.shell.AppShellScrollToTopRequestFence
+import build.raft.app.shell.RaftAppShellBodyTopBanner
+import build.raft.app.shell.RaftAppShellScope
+import build.raft.app.shell.rememberRaftAppShellScope
+import build.raft.app.shell.rememberRaftWebPageOpener
 import build.raft.app.thread.SharedThreadDataSource
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.formatTimestampLabel

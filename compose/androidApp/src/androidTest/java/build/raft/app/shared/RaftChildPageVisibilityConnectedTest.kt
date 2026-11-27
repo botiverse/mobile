@@ -12,8 +12,8 @@ import android.view.PixelCopy
 import android.view.Window
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
-import build.raft.app.RAFT_CHILD_PAGE_VISIBILITY_ACTIVE_PAGE
-import build.raft.app.RAFT_CHILD_PAGE_VISIBILITY_PROBE_PAGE
+import build.raft.app.shell.RAFT_CHILD_PAGE_VISIBILITY_ACTIVE_PAGE
+import build.raft.app.shell.RAFT_CHILD_PAGE_VISIBILITY_PROBE_PAGE
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference

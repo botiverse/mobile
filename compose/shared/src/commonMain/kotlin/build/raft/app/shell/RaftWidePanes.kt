@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -17,6 +17,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import build.raft.app.CHANNEL_SETTINGS_PAGE
+import build.raft.app.LocalRaftArtifactOpenInColumn
+import build.raft.app.LocalRaftArtifactViewerColumnWidthDp
+import build.raft.app.LocalRaftArtifactViewerInColumn
+import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftPaneGridColumns
 import build.raft.app.base.BridgeModule
 import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.LocalRaftHost
@@ -24,8 +31,10 @@ import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPaneRole
+import build.raft.app.get
 import build.raft.app.resources.*
 import build.raft.app.thread.THREAD_PAGE
+import build.raft.app.toKuiklyJson
 import build.raft.designsystem.components.LocalRaftPaneGridColumnShown
 import build.raft.designsystem.components.RaftPaneGridExpand
 import build.raft.designsystem.focus.RaftFocusRegion

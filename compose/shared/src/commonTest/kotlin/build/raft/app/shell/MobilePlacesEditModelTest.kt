@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect

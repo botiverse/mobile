@@ -4,6 +4,10 @@ import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.artifactWebUrl
+import build.raft.app.shell.RaftLinkNavigator
+import build.raft.app.shell.RaftLinkOpenIntent
+import build.raft.app.shell.RaftLinkOpenTarget
+import build.raft.app.shell.raftArtifactLinkOpener
 import build.raft.app.thread.RaftArtifactLinkInbox
 import build.raft.app.thread.RaftMessageLinkInbox
 import build.raft.app.thread.RaftMessageLinkIngress

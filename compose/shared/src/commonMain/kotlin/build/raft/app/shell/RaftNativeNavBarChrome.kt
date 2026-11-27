@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +27,18 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.AgentLoungeConversationSide
+import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftAvatarHttpImage
+import build.raft.app.RaftColor
+import build.raft.app.RaftMonoMeta
+import build.raft.app.RaftNativeNavBarAgentConversationAvatar
+import build.raft.app.RaftSpaceMonoBoldFaceName
+import build.raft.app.RaftType
+import build.raft.app.raftMonoFamilyForWeight
+import build.raft.app.raftSpaceGroteskFaceName
 import build.raft.app.thread.RaftChannelIdentityTile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel

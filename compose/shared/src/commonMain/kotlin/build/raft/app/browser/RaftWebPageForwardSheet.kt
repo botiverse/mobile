@@ -29,6 +29,7 @@ import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.thread.RaftForwardPickerLoadState
 import build.raft.app.thread.RaftForwardPickerSessionKey
 import build.raft.app.thread.RaftForwardTargetPicker

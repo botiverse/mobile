@@ -5,7 +5,7 @@ import build.raft.app.settings.iconName
 import build.raft.app.settings.localizedMessage
 import build.raft.app.traceId
 import build.raft.app.userFacingErrorCodeMessage
-import build.raft.app.withAuthenticatedRouteOwner
+import build.raft.app.shell.withAuthenticatedRouteOwner
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftButton
@@ -43,7 +43,7 @@ import build.raft.app.localizedMessage
 import build.raft.app.loginPageData
 import build.raft.app.optBoolean
 import build.raft.app.raftPlatformSupportsMultiShellHost
-import build.raft.app.raftShellStoreScopeOrNull
+import build.raft.app.shell.raftShellStoreScopeOrNull
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
@@ -98,11 +98,11 @@ import build.raft.app.AuthSuccessNotice
 import build.raft.app.AuthTextField
 import build.raft.app.LOGIN_PAGE
 import build.raft.app.MembersPageHeader
-import build.raft.app.RAFT_DOCUMENT_SHELL
-import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
-import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
-import build.raft.app.RAFT_SHELL_INSTANCE_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.RAFT_DOCUMENT_SHELL
+import build.raft.app.shell.RAFT_SERVER_SWITCH_KEEP_WINDOW
+import build.raft.app.shell.RAFT_SERVER_SWITCH_WINDOW_ID
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftCachedImage

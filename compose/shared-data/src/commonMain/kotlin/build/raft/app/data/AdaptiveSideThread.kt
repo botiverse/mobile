@@ -71,7 +71,7 @@ import kotlinx.serialization.json.JsonObject
 /**
  * Whether the side column stands beside the conversation (#189 rule 3, web rowPlan `decideFold`): in desktop mode
  * and a dual pane, where the row plan does not fold the thread into the conversation. [threadFolds] is the plan's
- * answer for the row the detail stands in ([build.raft.app.raftPaneGridFolds]: every column in it and the
+ * answer for the row the detail stands in ([build.raft.app.shell.raftPaneGridFolds]: every column in it and the
  * conversation at their kept widths); without one, [detailPaneWidthDp] (the room the detail and its columns have,
  * after the rail, the list and insets) decides with the conversation and the thread alone at their defaults. Unknown
  * width (not yet measured) means no column.

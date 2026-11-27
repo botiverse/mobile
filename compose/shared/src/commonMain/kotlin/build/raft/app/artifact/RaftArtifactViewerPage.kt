@@ -72,6 +72,9 @@ import build.raft.app.settings.rememberSettingsWebViewHostAuthBinding
 import build.raft.app.settings.settingsWebViewAuthStorageJavaScript
 import build.raft.app.settings.settingsWebViewErrorBody
 import build.raft.app.settings.standaloneSettingsWebBaseUrl
+import build.raft.app.shell.openRaftPage
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.thread.RaftArtifactLinkInbox
 import build.raft.app.thread.RaftMessageLinkIngress
 import build.raft.app.thread.openTarget

@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import build.raft.app.compat.pager.Page
 import build.raft.app.settings.HOME_ACTIVITY_PAGE
+import build.raft.app.shell.toRaftAdaptivePaneEventOrNull
 import build.raft.app.compat.json.JSONObject
 
 @Page(HOME_ACTIVITY_PAGE, supportInLocal = true)

@@ -38,7 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftOwnLinkRoute
+import build.raft.app.shell.RaftOwnLinkRoute
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAppScopeApiEnvironment
 import build.raft.app.data.RaftClientConfigAppHosts
@@ -47,7 +47,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
 import build.raft.app.raftArgbHex
 import build.raft.app.thread.raftMarkdownUrlOpen
-import build.raft.app.raftOwnLinkRoute
+import build.raft.app.shell.raftOwnLinkRoute
 import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme

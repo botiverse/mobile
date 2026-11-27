@@ -9,6 +9,8 @@ import build.raft.app.settings.SettingsThemePageSections
 import build.raft.app.settings.settingsAppearanceShowsModeCard
 import build.raft.app.settings.settingsThemeDecorSwitchShown
 import build.raft.app.settings.settingsThemePageSections
+import build.raft.app.shell.raftAdaptiveNavRailActive
+import build.raft.app.shell.raftWindowWide
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

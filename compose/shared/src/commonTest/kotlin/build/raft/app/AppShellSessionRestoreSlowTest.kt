@@ -7,6 +7,7 @@ import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.shell.appShellRestoreSignOut
 import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent

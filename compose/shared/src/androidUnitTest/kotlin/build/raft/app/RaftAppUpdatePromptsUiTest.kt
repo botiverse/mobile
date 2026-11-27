@@ -50,6 +50,12 @@ import build.raft.app.settings.RAFT_APP_UPDATE_STRONG_DIALOG_TAG
 import build.raft.app.settings.RAFT_APP_UPDATE_STRONG_DIALOG_UPDATE_TAG
 import build.raft.app.settings.RaftAppUpdateStrongPromptDialog
 import build.raft.app.settings.toHomeNotificationItem
+import build.raft.app.shell.LocalRaftAppShellTopBar
+import build.raft.app.shell.RAFT_TOP_BAR_UPDATE_BUTTON_TAG
+import build.raft.app.shell.RAFT_TOP_BAR_UPDATE_DOT_TAG
+import build.raft.app.shell.RaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellTopBarState
+import build.raft.app.shell.RaftAppTopBarUpdateAction
 import build.raft.app.toHomeNotificationItem
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftPageCoverSignal

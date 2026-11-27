@@ -32,7 +32,7 @@ import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.raftCardMarkdownRenderSource
 import build.raft.app.markdown.raftCardMarkdownTagValid
 import build.raft.app.raftRelativeTimestampLabel
-import build.raft.app.rememberRaftLinkOpensInRaft
+import build.raft.app.shell.rememberRaftLinkOpensInRaft
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

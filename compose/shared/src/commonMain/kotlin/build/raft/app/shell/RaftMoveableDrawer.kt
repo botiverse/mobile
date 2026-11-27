@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.animate
@@ -31,6 +31,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import build.raft.app.get
+import build.raft.app.settle
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch

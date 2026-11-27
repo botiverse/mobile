@@ -2,15 +2,15 @@ package build.raft.app.thread
 
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import build.raft.app.post
-import build.raft.app.postAdaptiveTrace
+import build.raft.app.shell.postAdaptiveTrace
 import build.raft.app.raftPlatformThreadImeProgrammaticViewportPolicy
 import build.raft.app.resources.*
 import build.raft.app.touchListenerWithConfiguration
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
-import build.raft.app.RAFT_ADAPTIVE_DETAIL_READY_EVENT
+import build.raft.app.shell.RAFT_ADAPTIVE_DETAIL_READY_EVENT
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_SHELL_ID
 import build.raft.app.RaftAdaptiveDetailCloseRequest
-import build.raft.app.RaftAdaptiveReadyGate
+import build.raft.app.shell.RaftAdaptiveReadyGate
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftMemberAvatarResolver
 import build.raft.app.RaftMemberModelLabelResolver
@@ -22,8 +22,8 @@ import build.raft.app.data.ThreadFindIntent
 import build.raft.app.base.Utils
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.map
-import build.raft.app.evaluateRaftAdaptiveReadyGate
-import build.raft.app.formatAdaptiveTraceLine
+import build.raft.app.shell.evaluateRaftAdaptiveReadyGate
+import build.raft.app.shell.formatAdaptiveTraceLine
 import build.raft.app.get
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.defaultNowMillis
@@ -80,7 +80,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import build.raft.app.AppShellScrollToTopRequestFence
+import build.raft.app.shell.AppShellScrollToTopRequestFence
 import build.raft.app.EmptyRaftAgentStatusResolver
 import build.raft.app.EmptyRaftMemberAvatarResolver
 import build.raft.app.EmptyRaftMemberModelLabelResolver

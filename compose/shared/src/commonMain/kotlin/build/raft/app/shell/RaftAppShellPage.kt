@@ -1,11 +1,20 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import build.raft.app.RAFT_SEARCH_SHORTCUT_EVENT
+import build.raft.app.RaftAdaptivePaneState
+import build.raft.app.RaftSearchTabHandoffRole
+import build.raft.app.RaftSearchTabQueryRequest
+import build.raft.app.RaftTimestampDisplayScope
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftRatingPrompt
+import build.raft.app.get
+import build.raft.app.optString
+import build.raft.app.reduceRaftAdaptivePane
+import build.raft.app.retainedRaftTimestampDisplayState
 import build.raft.app.settings.RAFT_APP_SHELL_HOST_DID_APPEAR_PAGER_EVENT
 import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import build.raft.app.settings.RaftAppShellContent

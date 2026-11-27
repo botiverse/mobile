@@ -1,5 +1,11 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.CHANNEL_SETTINGS_PAGE
+import build.raft.app.RaftAvatarKind
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.agentLoungeLookupChannelId
+import build.raft.app.agentLoungeTitleNow
+import build.raft.app.appBotIdentityOrNull
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftAgentLounge
@@ -11,6 +17,8 @@ import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.agentLoungeEnabled
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.optString
+import build.raft.app.raftAvatarKind
 import build.raft.app.resources.Res
 import build.raft.app.resources.agent_lounge_audience_notice
 import build.raft.app.resources.agent_lounge_label
@@ -34,6 +42,7 @@ import build.raft.app.resources.thread_members_heading
 import build.raft.app.resources.thread_reply_title
 import build.raft.app.resources.thread_side_card_files_open
 import build.raft.app.resources.thread_side_card_tasks_open
+import build.raft.app.shouldShowAgentLoungeConversationSwitch
 import build.raft.app.thread.ConversationSideCard
 import build.raft.app.thread.PhoneConversationHeaderPrimaryConfig
 import build.raft.app.thread.RaftThreadScreenPayload

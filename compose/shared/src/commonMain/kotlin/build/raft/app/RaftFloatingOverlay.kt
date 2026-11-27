@@ -23,6 +23,9 @@ import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.zIndex
+import build.raft.app.shell.LocalRaftHorizontalSafeAreaBleed
+import build.raft.app.shell.RaftFloatingOverlayHostZIndex
+import build.raft.app.shell.raftBleedHorizontalSafeArea
 
 internal expect fun Modifier.raftNativeDispatchCapture(): Modifier
 

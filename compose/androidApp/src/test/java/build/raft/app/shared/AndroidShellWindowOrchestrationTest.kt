@@ -7,10 +7,10 @@ import android.net.Uri
 import build.raft.app.BuildConfig
 import build.raft.app.MainActivity
 import build.raft.app.MainActivityOnCreateShareAction
-import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
-import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
-import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.RAFT_SERVER_SWITCH_KEEP_WINDOW
+import build.raft.app.shell.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
+import build.raft.app.shell.RAFT_SERVER_SWITCH_WINDOW_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftDesktopShortcutContract
 import build.raft.app.dispatchMainActivityLaunchIntent

@@ -16,6 +16,8 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
+import build.raft.app.shell.LocalRaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellTopBarState
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule

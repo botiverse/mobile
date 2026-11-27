@@ -17,6 +17,10 @@ import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE
 import build.raft.app.settings.SETTINGS_STORAGE_PAGE
 import build.raft.app.settings.SETTINGS_WEB_VIEW_PAGE
 import build.raft.app.settings.openLoginReplacingCurrentPage
+import build.raft.app.shell.authenticatedProductPageView
+import build.raft.app.shell.productPageView
+import build.raft.app.shell.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScopeOrNull
 import build.raft.app.thread.THREAD_FORWARD_BUNDLE_PAGE
 import build.raft.app.thread.THREAD_MEMBERS_PAGE
 import build.raft.app.thread.THREAD_PAGE

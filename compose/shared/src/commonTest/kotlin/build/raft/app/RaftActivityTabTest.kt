@@ -8,6 +8,8 @@ import build.raft.app.settings.appShellBottomTabPerformanceRoute
 import build.raft.app.settings.appShellBottomTabs
 import build.raft.app.settings.appShellLaunchSelection
 import build.raft.app.settings.appShellRetainedChildTabs
+import build.raft.app.shell.appShellPhoneBottomBarSelectedKey
+import build.raft.app.shell.appShellSettingsRootTab
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

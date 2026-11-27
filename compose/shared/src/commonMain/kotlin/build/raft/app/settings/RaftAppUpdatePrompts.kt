@@ -22,7 +22,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import build.raft.app.RaftAppTopBarUpdateAction
+import build.raft.app.shell.RaftAppTopBarUpdateAction
 import build.raft.app.RaftContentLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.compat.ui.LocalRaftPageActive

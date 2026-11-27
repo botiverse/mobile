@@ -141,7 +141,7 @@ internal object AndroidLoginTransitionRouting {
         }
         if (destination == RaftPages.APP_SHELL &&
             (destinationPageData?.optBoolean(ANDROID_DOCUMENT_SHELL_KEY, false) == true ||
-                destinationPageData?.optNonNullString(build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID)?.isNotEmpty() == true)
+                destinationPageData?.optNonNullString(build.raft.app.shell.RAFT_SERVER_SWITCH_WINDOW_ID)?.isNotEmpty() == true)
         ) {
             return false
         }

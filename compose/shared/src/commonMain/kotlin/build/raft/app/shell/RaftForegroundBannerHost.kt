@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.app.resources.Res
 import build.raft.app.resources.common_close
@@ -12,6 +12,8 @@ import build.raft.app.shownAuthorName
 import build.raft.app.thread.resolveThreadRouteIdentity
 import build.raft.app.thread.shownAuthorName
 import build.raft.app.thread.threadChannelHeaderIcon
+import build.raft.app.toThreadLaunchOriginFallback
+import build.raft.app.withRaftFontWeight
 import build.raft.app.resources.RawStringDesc
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.foreground_banner_new_message
@@ -37,6 +39,7 @@ import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -52,6 +55,14 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
+import build.raft.app.raftAvatarCacheSubject
+import build.raft.app.raftAvatarKind
+import build.raft.app.raftAvatarName
+import build.raft.app.raftGesturePointerInput
+import build.raft.app.raftNativeDispatchCapture
+import build.raft.app.rememberRaftGestureOwner
+import build.raft.app.resolve
+import build.raft.app.resolveOpenRequest
 import build.raft.app.resolveThreadRouteIdentity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -88,6 +99,20 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import build.raft.app.ConversationOpenResolution
+import build.raft.app.ConversationOpenSource
+import build.raft.app.ConversationOpenSourceMessageIdentity
+import build.raft.app.HomeMessageOpenRequest
+import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftColor
+import build.raft.app.RaftGestureSession
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftType
+import build.raft.app.TaskPendingDraftStore
+import build.raft.app.ThreadLaunchConversationIdentity
+import build.raft.app.ThreadRouteIdentity
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

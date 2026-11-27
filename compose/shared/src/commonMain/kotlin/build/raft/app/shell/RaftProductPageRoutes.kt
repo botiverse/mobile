@@ -1,10 +1,14 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.AuthenticatedProductRoute
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftPageRoute
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSettingsTab
+import build.raft.app.get
+import build.raft.app.optString
 import build.raft.app.settings.AppShellRailSavedKey
 import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.settings.HOME_SEARCH_SELECTED_CHANNEL_ID
@@ -12,6 +16,7 @@ import build.raft.app.settings.SettingsNativeDetailPage
 import build.raft.app.settings.SettingsWebViewSurface
 import build.raft.app.settings.settingsNativeDetailRoute
 import build.raft.app.settings.settingsWebViewSurfaceFromPageData
+import build.raft.app.settingsComputerRouteIdentityFromPageData
 import build.raft.app.thread.key
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

@@ -7,6 +7,9 @@ import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.threadIdentity
 import build.raft.app.settings.iconName
+import build.raft.app.shell.RaftForegroundMessageBanner
+import build.raft.app.shell.RaftForegroundMessageBannerIconKind
+import build.raft.app.shell.RaftForegroundMessageBannerView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf

@@ -1355,7 +1355,7 @@ HSPLbuild/raft/app/RaftDesignTokensKt;->raftTextStyle-XlFSzeY(Lcom/tencent/kuikl
 HSPLbuild/raft/app/RaftDesignTokensKt;->withResolvedRaftFontFamily(Lcom/tencent/kuikly/compose/ui/text/TextStyle;)Lcom/tencent/kuikly/compose/ui/text/TextStyle;
 HSPLbuild/raft/app/RaftDesignTokensKt;->withRaftFontWeight(Lcom/tencent/kuikly/compose/ui/text/TextStyle;Lcom/tencent/kuikly/compose/ui/text/font/FontWeight;)Lcom/tencent/kuikly/compose/ui/text/TextStyle;
 HSPLbuild/raft/app/RaftDesignTokensKt;->withRaftRenderedFontWeight(Lcom/tencent/kuikly/compose/ui/text/TextStyle;)Lcom/tencent/kuikly/compose/ui/text/TextStyle;
-HSPLbuild/raft/app/RaftForegroundBannerHostKt;->RaftForegroundBannerHost-uBaBiJ0(Lbuild/raft/app/RaftForegroundMessageBanner;FLbuild/raft/app/data/SharedServerMembersStore;Lbuild/raft/app/data/ComposeLocalDataStore;Lbuild/raft/app/model/ServerId;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
+HSPLbuild/raft/app/shell/RaftForegroundBannerHostKt;->RaftForegroundBannerHost-uBaBiJ0(Lbuild/raft/app/shell/RaftForegroundMessageBanner;FLbuild/raft/app/data/SharedServerMembersStore;Lbuild/raft/app/data/ComposeLocalDataStore;Lbuild/raft/app/model/ServerId;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function1;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
 HSPLbuild/raft/app/RaftHomeComponentsKt$RaftAppAvatar$3;->invoke(Landroidx/compose/runtime/Composer;I)V
 HSPLbuild/raft/app/RaftHomeComponentsKt$RaftAppAvatar$3;->invoke(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/RaftHomeComponentsKt;->DefaultUserAvatar-ax4iNyU(Lcom/tencent/kuikly/compose/ui/Modifier;FFLandroidx/compose/runtime/Composer;II)V
@@ -1368,7 +1368,7 @@ HSPLbuild/raft/app/RaftIndependentTimeoutScheduler$1;->invokeSuspend(Ljava/lang/
 HSPLbuild/raft/app/RaftIndependentTimeoutScheduler$schedule$timerJob$1;->invokeSuspend(Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/RaftLazyListPolicyKt;->raftViewportBeyondBoundsItemCount$default(IFFIIFILjava/lang/Object;)I
 HSPLbuild/raft/app/RaftLazyListPolicyKt;->raftViewportBeyondBoundsItemCount(IFFIIF)I
-HSPLbuild/raft/app/RaftLinkNavigationKt;->rememberRaftLinkNavigator(Lcom/tencent/kuikly/core/pager/Pager;Lbuild/raft/app/base/BridgeModule;Lbuild/raft/app/RaftInAppBrowserRouteScope;Landroidx/compose/runtime/Composer;II)Lbuild/raft/app/RaftLinkNavigator;
+HSPLbuild/raft/app/shell/RaftLinkNavigationKt;->rememberRaftLinkNavigator(Lcom/tencent/kuikly/core/pager/Pager;Lbuild/raft/app/base/BridgeModule;Lbuild/raft/app/shell/RaftInAppBrowserRouteScope;Landroidx/compose/runtime/Composer;II)Lbuild/raft/app/shell/RaftLinkNavigator;
 HSPLbuild/raft/app/RaftLiveRootAnchorCaptureRegistry$Entry;-><init>(Lcom/tencent/kuikly/compose/ui/layout/LayoutCoordinates;Lbuild/raft/app/RaftPopoverAnchor$LiveRef;)V
 HSPLbuild/raft/app/RaftLiveRootAnchorCaptureRegistry$Entry;->getCoordinates()Lcom/tencent/kuikly/compose/ui/layout/LayoutCoordinates;
 HSPLbuild/raft/app/RaftLiveRootAnchorCaptureRegistry$Entry;->getOwner()Lbuild/raft/app/RaftPopoverAnchor$LiveRef;
@@ -1412,8 +1412,8 @@ HSPLbuild/raft/app/RaftPlatformLogRecord;->getTag()Ljava/lang/String;
 HSPLbuild/raft/app/RaftPopoverAnchor$LiveRef;->captureFromLayoutCoordinates$shared_debug(Lcom/tencent/kuikly/compose/ui/layout/LayoutCoordinates;)V
 HSPLbuild/raft/app/RaftRelativeTimeKt;->localized(Lbuild/raft/app/model/RaftRelativeTimeLabel$Relative;Landroidx/compose/runtime/Composer;I)Ljava/lang/String;
 HSPLbuild/raft/app/RaftRelativeTimeKt;->raftRelativeTimestampLabel(Ljava/lang/String;Lbuild/raft/app/model/RaftTimeContext;Landroidx/compose/runtime/Composer;II)Ljava/lang/String;
-HSPLbuild/raft/app/RaftAppSafeAreaKt;->safeAreaPx(Lcom/tencent/kuikly/core/nvi/serialization/json/JSONObject;Ljava/lang/String;)F
-HSPLbuild/raft/app/RaftAppSafeAreaKt;->raftTopSafeAreaPadding(Landroidx/compose/runtime/Composer;I)F
+HSPLbuild/raft/app/shell/RaftAppSafeAreaKt;->safeAreaPx(Lcom/tencent/kuikly/core/nvi/serialization/json/JSONObject;Ljava/lang/String;)F
+HSPLbuild/raft/app/shell/RaftAppSafeAreaKt;->raftTopSafeAreaPadding(Landroidx/compose/runtime/Composer;I)F
 HSPLbuild/raft/app/RaftSectionHeaderKt$RaftTopPageHeader$1$1;->invoke(Lcom/tencent/kuikly/compose/foundation/layout/RowScope;Landroidx/compose/runtime/Composer;I)V
 HSPLbuild/raft/app/RaftSectionHeaderKt$RaftTopPageHeader$1$1;->invoke(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
 HSPLbuild/raft/app/RaftSectionHeaderKt$RaftTopPageHeaderAction$1$1;->invoke(Landroidx/compose/runtime/Composer;I)V

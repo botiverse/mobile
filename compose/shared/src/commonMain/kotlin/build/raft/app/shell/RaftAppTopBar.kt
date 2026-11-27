@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.designsystem.components.raftSlot
 import build.raft.app.resources.*
@@ -26,8 +26,25 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.HomeServerPublicPageGlobeSize
+import build.raft.app.HomeServerSwitcherBadgeKind
+import build.raft.app.RaftAlphaBuildBadge
+import build.raft.app.RaftAppTopBarNotificationBell
+import build.raft.app.RaftColor
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftHomeNotificationItem
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftServerSwitcherItem
+import build.raft.app.RaftStatusIndicator
+import build.raft.app.RaftStatusIndicatorTokens
+import build.raft.app.RaftWorkingNowSummary
+import build.raft.app.RaftWorkingNowTopBarHeight
+import build.raft.app.ServerSwitcherAvatarTile
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftPublicPageGlobe
+import build.raft.app.homeServerSwitcherBadgePresentation
+import build.raft.app.homeServerSwitcherHasOtherUnread
+import build.raft.app.raftArgbHex
 import build.raft.designsystem.components.RaftAvatarAttentionLight
 import build.raft.designsystem.components.RaftAvatarBadgeBox
 import build.raft.designsystem.components.RaftAvatarSize

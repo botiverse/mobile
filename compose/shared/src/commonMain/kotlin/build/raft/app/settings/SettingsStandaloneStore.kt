@@ -45,8 +45,8 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.get
 import build.raft.app.loginPageData
 import build.raft.app.raftClearInAppBrowserStorage
-import build.raft.app.raftShellStoreScope
-import build.raft.app.rememberRaftLinkNavigator
+import build.raft.app.shell.raftShellStoreScope
+import build.raft.app.shell.rememberRaftLinkNavigator
 import build.raft.app.data.MemberRemovalImpactRepository
 import build.raft.app.data.NetworkMemberRemovalImpactRepository
 import androidx.compose.runtime.Composable

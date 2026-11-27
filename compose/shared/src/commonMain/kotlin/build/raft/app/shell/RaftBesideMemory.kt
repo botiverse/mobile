@@ -1,6 +1,12 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.get
+import build.raft.app.has
 import build.raft.app.matches
+import build.raft.app.normalizedThreadChannelKind
 import build.raft.app.settings.matches
 
 /*

@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.iconName
 import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.settings.iconName
+import build.raft.app.shell.RaftBottomTabItemPayload
+import build.raft.app.shell.appShellRailItemsWithSearch
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -21,6 +21,10 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.RaftLiveAgentActivityItem
 import build.raft.app.model.AgentStatus
+import build.raft.app.shell.LocalRaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellTopBarHistory
+import build.raft.app.shell.RaftAppShellTopBarState
 import build.raft.designsystem.components.RaftTopBarDefaults
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test

@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.shell.RaftRailLanding
+import build.raft.app.shell.RaftRailPlaces
+import build.raft.app.shell.RaftWideNavDetail
+import build.raft.app.shell.RaftWideNavEntry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

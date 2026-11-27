@@ -28,7 +28,7 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.raftPlatformFollowsAppStoreBillingRules
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize

@@ -1,7 +1,9 @@
 package build.raft.app
 
-import build.raft.app.RaftAppShellNetworkStatus.Offline
-import build.raft.app.RaftAppShellNetworkStatus.Online
+import build.raft.app.shell.RaftAppShellNetworkBannerGate
+import build.raft.app.shell.RaftAppShellNetworkStatus
+import build.raft.app.shell.RaftAppShellNetworkStatus.Offline
+import build.raft.app.shell.RaftAppShellNetworkStatus.Online
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.ExperimentalCoroutinesApi

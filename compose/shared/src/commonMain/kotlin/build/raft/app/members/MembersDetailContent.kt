@@ -5,6 +5,7 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.data.agentBlockedState
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
+import build.raft.app.shell.LocalRaftProfileAgentTabReport
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.formatThreadTimeRevealLabel
 import build.raft.app.thread.formatTimestampLabel

@@ -45,6 +45,11 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.resources.*
 import build.raft.app.settings.openSettingsHandsFeedbackPage
 import build.raft.app.settings.performStandaloneSettingsLogout
+import build.raft.app.shell.LocalRaftTopSafeAreaClearedAbovePage
+import build.raft.app.shell.raftHorizontalSafeArea
+import build.raft.app.shell.raftNativeTabBarEdgeInsets
+import build.raft.app.shell.raftShellStoreScope
+import build.raft.app.shell.raftWindowTopSafeAreaPadding
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus

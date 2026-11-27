@@ -1,6 +1,9 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
+import build.raft.app.get
 import build.raft.app.settings.retainedAppShellSelectedTab
 
 /*

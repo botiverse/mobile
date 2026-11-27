@@ -3,6 +3,17 @@ package build.raft.app
 import androidx.compose.ui.unit.dp
 import build.raft.app.settings.appShellBottomTabs
 import build.raft.app.settings.appShellPhoneBottomTabs
+import build.raft.app.shell.AppShellSearchTabKey
+import build.raft.app.shell.RaftAppTabBarRenderer
+import build.raft.app.shell.RaftBottomTabItemPayload
+import build.raft.app.shell.RaftNativeTabBarBridge
+import build.raft.app.shell.RaftNativeTabBarListener
+import build.raft.app.shell.RaftNativeTabBarState
+import build.raft.app.shell.raftAppBottomTabBarContentInset
+import build.raft.app.shell.raftNativeHostTabBarContentInset
+import build.raft.app.shell.raftNativeTabBarBadgeValue
+import build.raft.app.shell.raftNativeTabBarItem
+import build.raft.app.shell.raftNativeTabBarState
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

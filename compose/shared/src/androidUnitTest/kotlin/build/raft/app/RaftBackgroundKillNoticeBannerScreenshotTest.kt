@@ -10,6 +10,7 @@ import build.raft.app.data.RaftBackgroundKillNotice
 import build.raft.app.data.RaftBackgroundWhitelistGuide
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.shell.RaftBackgroundKillNoticeBanner
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import org.junit.Rule

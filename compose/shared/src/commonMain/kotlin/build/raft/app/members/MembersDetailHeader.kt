@@ -10,6 +10,12 @@ import build.raft.designsystem.components.raftPaneGridFitHead
 import build.raft.designsystem.components.raftPaneGridHeadShownActions
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
+import build.raft.app.shell.LocalRaftNativeNavBar
+import build.raft.app.shell.LocalRaftSidePanePage
+import build.raft.app.shell.RaftNativeNavBarAction
+import build.raft.app.shell.raftNativeNavBarPublish
+import build.raft.app.shell.raftSidePaneShowsBack
+import build.raft.app.shell.raftTopSafeAreaPadding
 import build.raft.app.thread.formatTimestampLabel
 import build.raft.app.thread.icon
 import build.raft.app.thread.localizedLabel

@@ -19,6 +19,11 @@ import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedAdaptiveWorkspaceStore
 import build.raft.app.data.closeDetailCompletely
+import build.raft.app.shell.RaftArtifactColumnCell
+import build.raft.app.shell.RaftArtifactColumnPane
+import build.raft.app.shell.RaftChildPage
+import build.raft.app.shell.RaftPaneEntry
+import build.raft.app.shell.withRaftShellStoreScope
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost
 import kotlinx.serialization.json.JsonObject

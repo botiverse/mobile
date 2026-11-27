@@ -21,7 +21,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.model.ServerId
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScope
 import kotlinx.coroutines.launch
 
 // Self-service account deletion is the WEB flow (botiverse/slock #12459, Settings > Account >

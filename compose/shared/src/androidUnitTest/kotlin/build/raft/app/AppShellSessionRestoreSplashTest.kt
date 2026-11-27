@@ -19,6 +19,10 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.shell.AppShellRestoreRetryTestTag
+import build.raft.app.shell.AppShellRestoreSlowAfterMillis
+import build.raft.app.shell.AppShellRestoreSlowTestTag
+import build.raft.app.shell.AppShellSessionRestoreSplash
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

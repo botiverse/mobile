@@ -1,39 +1,39 @@
 package build.raft.app.data
 
-import build.raft.app.AppShellPhoneBottomBarKeys
+import build.raft.app.shell.AppShellPhoneBottomBarKeys
 import build.raft.app.settings.AppShellRailAppsKey
 import build.raft.app.settings.AppShellRailArtifactsKey
 import build.raft.app.settings.AppShellRailComputersKey
 import build.raft.app.settings.AppShellRailSearchKey
-import build.raft.app.AppShellSearchTabKey
-import build.raft.app.AppShellServerTabKey
-import build.raft.app.AppShellTabHistory
-import build.raft.app.MobileRecentlyUsedEntry
-import build.raft.app.MobileRecentlyUsedStore
-import build.raft.app.RaftBottomTabItemPayload
+import build.raft.app.shell.AppShellSearchTabKey
+import build.raft.app.shell.AppShellServerTabKey
+import build.raft.app.shell.AppShellTabHistory
+import build.raft.app.shell.MobileRecentlyUsedEntry
+import build.raft.app.shell.MobileRecentlyUsedStore
+import build.raft.app.shell.RaftBottomTabItemPayload
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMoreAttention
-import build.raft.app.RaftServerMenuEntry
+import build.raft.app.shell.RaftMoreAttention
+import build.raft.app.shell.RaftServerMenuEntry
 import build.raft.app.settings.appShellBottomTabsVisible
-import build.raft.app.appShellDynamicPhoneTabKeys
-import build.raft.app.appShellMobileServerMenuEntries
-import build.raft.app.appShellMoreChildBackTarget
-import build.raft.app.appShellPhoneBottomBarSelectedKey
+import build.raft.app.shell.appShellDynamicPhoneTabKeys
+import build.raft.app.shell.appShellMobileServerMenuEntries
+import build.raft.app.shell.appShellMoreChildBackTarget
+import build.raft.app.shell.appShellPhoneBottomBarSelectedKey
 import build.raft.app.settings.appShellPhoneBottomTabs
-import build.raft.app.appShellPhonePrimaryTabKey
-import build.raft.app.appShellPromotedPhoneTabMovesToRailInline
-import build.raft.app.appShellResolvedRailItems
-import build.raft.app.appShellServerPageOrigin
-import build.raft.app.appShellTabBarPlacesEnabled
-import build.raft.app.appShellTabHistoryRoots
+import build.raft.app.shell.appShellPhonePrimaryTabKey
+import build.raft.app.shell.appShellPromotedPhoneTabMovesToRailInline
+import build.raft.app.shell.appShellResolvedRailItems
+import build.raft.app.shell.appShellServerPageOrigin
+import build.raft.app.shell.appShellTabBarPlacesEnabled
+import build.raft.app.shell.appShellTabHistoryRoots
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.MobilePlacesUpdated
 import build.raft.app.model.ServerId
-import build.raft.app.projectNativeTabletRailItemsFromMobilePlaces
-import build.raft.app.raftMobilePlaceKeyForShellTab
-import build.raft.app.raftNativeTabBarState
-import build.raft.app.raftShellTabKeyForMobilePlace
+import build.raft.app.shell.projectNativeTabletRailItemsFromMobilePlaces
+import build.raft.app.shell.raftMobilePlaceKeyForShellTab
+import build.raft.app.shell.raftNativeTabBarState
+import build.raft.app.shell.raftShellTabKeyForMobilePlace
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -575,15 +575,15 @@ class RaftMobileRailPlacesTest {
         assertNull(AppShellTabHistory().backTarget(current = "artifacts", roots = roots, primaryTab = "artifacts"))
 
         // Android 5+1=6 vs iOS 4+1=5 platform tab caps share the same flat mobilePlaces list.
-        assertEquals(5, build.raft.app.appShellPhoneMaxPlaceTabs(isAndroid = true))
-        assertEquals(4, build.raft.app.appShellPhoneMaxPlaceTabs(isAndroid = false))
+        assertEquals(5, build.raft.app.shell.appShellPhoneMaxPlaceTabs(isAndroid = true))
+        assertEquals(4, build.raft.app.shell.appShellPhoneMaxPlaceTabs(isAndroid = false))
         val androidSixTabKeys =
             appShellDynamicPhoneTabKeys(
                 enabled = true,
                 mobilePlaces = ordered,
                 artifactsEnabled = true,
                 isGuest = false,
-                maxPlaceTabs = build.raft.app.AppShellAndroidPhoneMaxPlaceTabs,
+                maxPlaceTabs = build.raft.app.shell.AppShellAndroidPhoneMaxPlaceTabs,
             )
         assertEquals(
             listOf("artifacts", "computers", "members", "apps", "home", AppShellServerTabKey),

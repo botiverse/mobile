@@ -50,8 +50,8 @@ import build.raft.app.entries
 import build.raft.app.iconName
 import build.raft.app.optString
 import build.raft.app.raftAttachmentOpenResultMessage
-import build.raft.app.raftBottomSafeAreaPadding
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonVariant

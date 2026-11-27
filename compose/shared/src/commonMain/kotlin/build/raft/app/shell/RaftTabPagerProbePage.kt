@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -11,6 +11,8 @@ import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.TabPager
 import build.raft.app.components.TabPagerGesturePolicy
+import build.raft.app.optInt
+import build.raft.app.raftPlatformTabPagerStartEdgeInsetDp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box

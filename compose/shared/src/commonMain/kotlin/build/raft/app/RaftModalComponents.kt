@@ -1,6 +1,12 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.shell.LocalRaftWindowHorizontalSafeArea
+import build.raft.app.shell.RaftGlobalModalHostZIndex
+import build.raft.app.shell.RaftHorizontalSafeArea
+import build.raft.app.shell.maxSafeAreaDp
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftWindowTopSafeAreaPadding
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.LocalRaftCopyHandler
 import build.raft.designsystem.components.raftCopyable

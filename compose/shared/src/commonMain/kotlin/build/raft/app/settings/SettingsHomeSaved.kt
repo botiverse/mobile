@@ -25,14 +25,14 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.avatarWireValueForAvatarSlot
-import build.raft.app.opening
+import build.raft.app.shell.opening
 import build.raft.app.raftAvatarKind
 import build.raft.app.raftButtonAccessibility
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftGesturePointerInput
 import build.raft.app.raftLogger
 import build.raft.app.raftMemberAvatarCacheIdentity
-import build.raft.app.rememberRaftAppShellScope
+import build.raft.app.shell.rememberRaftAppShellScope
 import build.raft.app.rememberRaftGestureOwner
 import build.raft.app.rememberRaftMemberAvatarWireValue
 import build.raft.app.resolve
@@ -83,8 +83,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.app.EmptyRaftMemberAvatarResolver
 import build.raft.app.RaftAppAvatar
-import build.raft.app.RaftAppShellBodyTopBanner
-import build.raft.app.RaftAppShellScope
+import build.raft.app.shell.RaftAppShellBodyTopBanner
+import build.raft.app.shell.RaftAppShellScope
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftBaseMenuItem
 import build.raft.app.RaftBaseMenuOverlay
@@ -92,7 +92,7 @@ import build.raft.app.RaftCenteredLoading
 import build.raft.app.RaftColor
 import build.raft.app.RaftContentLucideIcon
 import build.raft.app.RaftGestureSession
-import build.raft.app.RaftInlineListSelection
+import build.raft.app.shell.RaftInlineListSelection
 import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName

@@ -15,6 +15,8 @@ import build.raft.app.settings.rememberSettingsWebViewAuthSnapshot
 import build.raft.app.settings.rememberSettingsWebViewHostAuthBinding
 import build.raft.app.settings.settingsWebViewAuthStorageJavaScript
 import build.raft.app.settings.settingsWebViewGuardedAuthJavaScript
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftPageWindowTopSafeAreaPadding
 import build.raft.app.thread.key
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect

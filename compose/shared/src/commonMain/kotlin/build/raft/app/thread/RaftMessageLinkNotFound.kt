@@ -31,9 +31,9 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.optBoolean
-import build.raft.app.raftTopSafeAreaPadding
+import build.raft.app.shell.raftTopSafeAreaPadding
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftIconTile

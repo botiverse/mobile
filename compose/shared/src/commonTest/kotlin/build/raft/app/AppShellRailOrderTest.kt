@@ -1,6 +1,13 @@
 package build.raft.app
 
 import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.shell.AppShellPhoneBottomBarKeys
+import build.raft.app.shell.AppShellRailTabKeys
+import build.raft.app.shell.AppShellSearchTabKey
+import build.raft.app.shell.appShellRailTabs
+import build.raft.app.shell.orderedLikePhoneBar
+import build.raft.app.shell.orderedLikeRailTabOrder
+import build.raft.app.shell.raftRailTabIdForKey
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -54,8 +54,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.thread.RaftThreadMessageItem
-import build.raft.app.raftWindowWide
-import build.raft.app.raftWindowWidth
+import build.raft.app.shell.raftWindowWide
+import build.raft.app.shell.raftWindowWidth
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.resources.*
 import build.raft.app.thread.threadActionCard

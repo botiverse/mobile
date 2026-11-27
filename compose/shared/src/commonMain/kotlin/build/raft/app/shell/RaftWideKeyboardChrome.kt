@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.raftImeBottomPx
+import build.raft.app.get
 import build.raft.app.thread.RAFT_THREAD_COMPOSER_KEPT_HEIGHT
 import build.raft.designsystem.theme.RaftTheme
 

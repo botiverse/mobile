@@ -66,6 +66,10 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.shell.RaftNativeNavBarAction
+import build.raft.app.shell.RaftNativeNavBarTitleImageSize
+import build.raft.app.shell.raftWindowWide
+import build.raft.app.shell.raftWindowWidth
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.ThreadAccessResolution
 import build.raft.app.thread.ThreadActivityMuteUiState

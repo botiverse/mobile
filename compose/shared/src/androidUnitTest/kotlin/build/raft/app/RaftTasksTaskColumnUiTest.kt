@@ -49,6 +49,9 @@ import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.StringDesc
+import build.raft.app.shell.LocalRaftPaneGridStore
+import build.raft.app.shell.LocalRaftTopSafeAreaConsumed
+import build.raft.app.shell.RaftPaneGridStore
 import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
 import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import kotlin.test.Test

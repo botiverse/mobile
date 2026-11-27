@@ -7,6 +7,9 @@ import build.raft.app.settings.RaftSettingsLink
 import build.raft.app.settings.RaftSettingsLinkTarget
 import build.raft.app.settings.parseRaftSettingsLink
 import build.raft.app.settings.raftSettingsLinkTarget
+import build.raft.app.shell.RaftLinkOpenIntent
+import build.raft.app.shell.RaftLinkOpenTarget
+import build.raft.app.shell.resolveRaftLinkOpenDecision
 import build.raft.app.thread.raftOwnWebLinkPath
 
 /**

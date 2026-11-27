@@ -17,6 +17,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
+import build.raft.app.shell.RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP
+import build.raft.app.shell.RaftPaneGrid
+import build.raft.app.shell.RaftPaneGridCell
+import build.raft.app.shell.RaftPaneGridColumn
+import build.raft.app.shell.RaftWideNavHistoryCap
 import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftIconToggleButton

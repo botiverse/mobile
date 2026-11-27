@@ -48,7 +48,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.RaftCachedImage
 import build.raft.app.RaftColor
-import build.raft.app.RaftLinkOpenIntent
+import build.raft.app.shell.RaftLinkOpenIntent
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftMemberAvatarCacheIdentity
@@ -84,9 +84,9 @@ import build.raft.app.openSettingsComputersPage
 import build.raft.app.optString
 import build.raft.app.providerIconAssetSource
 import build.raft.app.raftArgbHex
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftPlatformSupportsAppleSignIn
-import build.raft.app.raftTopSafeAreaPadding
+import build.raft.app.shell.raftTopSafeAreaPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -125,7 +125,7 @@ import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.AuthenticatedProductPager
 import build.raft.app.AuthenticatedProductRoute
-import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.shell.LocalRaftLinkNavigator
 import build.raft.app.ProviderIconKey
 import build.raft.app.RaftAppAvatar
 import build.raft.app.RaftAppSpacing

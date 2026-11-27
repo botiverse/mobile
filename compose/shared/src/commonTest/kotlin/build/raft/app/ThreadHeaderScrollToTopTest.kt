@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.shell.AppShellScrollToTopRequestFence
 import build.raft.app.thread.consumeThreadHeaderScrollToTopRequest
 import build.raft.app.thread.threadHeaderScrollToTopEnabled
 import kotlin.test.Test

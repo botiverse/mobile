@@ -5,6 +5,13 @@ import build.raft.app.resources.*
 import build.raft.app.settings.iconName
 import build.raft.app.settings.isCommittable
 import build.raft.app.settings.localizedMessage
+import build.raft.app.shell.authenticatedRouteOwnerOrNull
+import build.raft.app.shell.openRaftPage
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftKeyboardInsetExcludesBottomSafeArea
+import build.raft.app.shell.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScopeOrNull
+import build.raft.app.shell.withRaftShellStoreScope
 import build.raft.app.thread.RaftThreadAttachmentItem
 import build.raft.app.thread.ThreadAttachmentCommentsDialogState
 import build.raft.app.thread.clearAttachmentCommentsError

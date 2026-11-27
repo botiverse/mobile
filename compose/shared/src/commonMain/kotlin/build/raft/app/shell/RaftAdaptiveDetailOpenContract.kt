@@ -1,7 +1,24 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.RAFT_ADAPTIVE_DETAIL_GENERATION
+import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.RaftAdaptivePaneEvent
+import build.raft.app.RaftAdaptivePanePosture
+import build.raft.app.RaftAdaptiveWorkspaceIntent
+import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.data.RaftEventBus
+import build.raft.app.get
+import build.raft.app.optBoolean
+import build.raft.app.optDouble
+import build.raft.app.optJsonObject
+import build.raft.app.optString
+import build.raft.app.post
+import build.raft.app.reduceRaftAdaptivePane
+import build.raft.app.reduceRaftAdaptiveWorkspace
 import build.raft.app.thread.key
+import build.raft.app.toJson
+import build.raft.app.toJsonObject
 import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

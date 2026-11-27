@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.iconName
@@ -7,6 +7,7 @@ import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import androidx.compose.runtime.Composable
+import build.raft.app.RaftLucideIconName
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import org.jetbrains.compose.resources.StringResource
 

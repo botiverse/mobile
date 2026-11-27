@@ -16,7 +16,7 @@ import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.model.delegatedGroupKey
 import build.raft.app.optString
 import build.raft.app.origin
-import build.raft.app.raftChildPageOriginKey
+import build.raft.app.shell.raftChildPageOriginKey
 import build.raft.app.raftViewportBeyondBoundsItemCount
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect

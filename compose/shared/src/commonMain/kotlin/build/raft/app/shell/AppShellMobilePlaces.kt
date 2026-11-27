@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import build.raft.app.appShellArtifactsShown
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftMobileBuiltInPlaceIds
 import build.raft.app.data.RaftMobilePlacesSnapshot
@@ -31,6 +32,8 @@ import build.raft.app.data.raftRailTabOrderWithVisibleOrder
 import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.iconName
 import build.raft.app.model.ServerId
+import build.raft.app.raftPlatformIsAndroid
+import build.raft.app.raftPlatformIsDesktop
 import build.raft.app.settings.AppShellRailAppsKey
 import build.raft.app.settings.AppShellRailArtifactsKey
 import build.raft.app.settings.AppShellRailComputersKey

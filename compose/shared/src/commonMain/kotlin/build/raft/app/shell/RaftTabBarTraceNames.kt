@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 /**
  * #192 trace scope extension: phase names for top / bottom tab bar rendering.

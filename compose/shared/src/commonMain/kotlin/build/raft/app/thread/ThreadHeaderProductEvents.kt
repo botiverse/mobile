@@ -1,7 +1,7 @@
 package build.raft.app.thread
 
-import build.raft.app.RaftNativeNavBarAction
-import build.raft.app.RaftNativeNavBarPlacement
+import build.raft.app.shell.RaftNativeNavBarAction
+import build.raft.app.shell.RaftNativeNavBarPlacement
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.RaftConversationHeaderAction
 import build.raft.app.data.RaftConversationHeaderKind

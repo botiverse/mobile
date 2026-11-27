@@ -1,13 +1,22 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.RAFT_ADAPTIVE_DETAIL_GENERATION
+import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.RaftAdaptiveDetailIdentity
+import build.raft.app.WireThreadLaunchPayload
 import build.raft.app.data.SharedAdaptiveScrollAnchor
 import build.raft.app.data.SharedAdaptiveScrollAnchorStore
+import build.raft.app.optDouble
+import build.raft.app.optString
+import build.raft.app.post
 import build.raft.app.settings.observe
 import build.raft.app.thread.SharedThreadComposerDraftSnapshot
 import build.raft.app.thread.key
+import build.raft.app.toJson
 import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.RaftEventBus
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.complete
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext

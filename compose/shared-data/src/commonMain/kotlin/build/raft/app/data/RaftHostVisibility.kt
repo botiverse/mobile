@@ -55,7 +55,7 @@ fun updateRaftHostVisibility(shellInstanceId: String, visible: Boolean) {
 
 /**
  * The process' one [RaftRealtimeSessionDemand]: shell windows claim their server here, closing a
- * window releases it ([build.raft.app.releaseRaftShellStoreScope]), [updateRaftHostVisibility] reports
+ * window releases it ([build.raft.app.shell.releaseRaftShellStoreScope]), [updateRaftHostVisibility] reports
  * visibility. Both the shell reconcile and the process reconcile read it, so with multi-session realtime
  * on they send the same set.
  */

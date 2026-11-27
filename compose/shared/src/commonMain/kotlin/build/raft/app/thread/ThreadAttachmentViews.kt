@@ -61,7 +61,7 @@ import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.image.raftImageMayBeAnimated
 import build.raft.app.messages
 import build.raft.app.raftArgbHex
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftDialogContentPointerBarrier
 import build.raft.app.raftFilePreviewAttachmentSupportsViewerComments
 import build.raft.app.raftFilePreviewIsAudioAttachment

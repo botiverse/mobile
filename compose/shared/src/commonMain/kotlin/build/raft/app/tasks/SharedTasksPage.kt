@@ -4,6 +4,10 @@ import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.raftSlot
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
+import build.raft.app.shell.AppShellLazyListPosition
+import build.raft.app.shell.AppShellScrollToTopRequestFence
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.toAppShellLazyListPosition
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import build.raft.app.thread.localizedLabel
