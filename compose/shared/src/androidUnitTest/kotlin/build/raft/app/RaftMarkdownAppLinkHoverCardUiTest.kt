@@ -210,7 +210,7 @@ class RaftMarkdownAppLinkHoverCardUiTest {
             assertFalse(state.isOpen, "opening a link from the hover card must dismiss it")
             assertFalse(threadCards.hasOpenHoverCard, "dismissed hover card must clear hover engagement")
             assertEquals(listOf("https://stamp.build"), lookedUpOrigins)
-            assertEquals(listOf(stampPrUrl to "Stamp"), openedAppEntries)
+            assertEquals(listOf<Pair<String, String?>>(stampPrUrl to "Stamp"), openedAppEntries)
             assertEquals(emptyList<String>(), fallbackLinks)
         }
 
