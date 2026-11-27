@@ -8,6 +8,7 @@ import build.raft.app.data.secondFactorStepUpErrorOrNull
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -15,6 +16,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -39,6 +41,8 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 
 private const val RAFT_OAUTH_CLIENT_LOOKUP_PATH = "oauth/clients/lookup"
+/** Maximum unique server IDs per `server_ids=` batch lookup request (botiverse/slock #17196 `CLIENT_LOOKUP_BATCH_MAX`). */
+internal const val RAFT_OAUTH_CLIENT_LOOKUP_BATCH_MAX: Int = 50
 private const val RAFT_OAUTH_AUTHORIZE_HUMAN_PATH = "oauth/authorize/human"
 private const val RAFT_OAUTH_AUTHORIZE_ACCOUNT_PATH = "oauth/authorize/account"
 private const val RAFT_INTEGRATIONS_APP_ORIGINS_PATH = "integrations/app-origins"
@@ -195,6 +199,19 @@ internal sealed interface RaftBrowserSignInLookupResult {
     data class Failed(val traceId: String? = null) : RaftBrowserSignInLookupResult
 }
 
+internal sealed interface RaftBrowserSignInBatchLookupResult {
+    /** Batch lookup resolved for the requested server IDs. */
+    data class Completed(
+        val results: Map<String, RaftBrowserSignInLookupResult>,
+    ) : RaftBrowserSignInBatchLookupResult
+
+    /**
+     * Batch endpoint unavailable on this server (HTTP 400 from servers predating `slock #17196`,
+     * or an API implementation without batch support): fall back to per-server [RaftBrowserSignInApi.lookupClient].
+     */
+    data object Unsupported : RaftBrowserSignInBatchLookupResult
+}
+
 internal sealed interface RaftBrowserSignInApproveTarget {
     data class Server(val serverId: String) : RaftBrowserSignInApproveTarget
 
@@ -268,6 +285,18 @@ internal interface RaftBrowserSignInApi {
     ): RaftBrowserSignInLookupResult
 
     /**
+     * Batch form of `GET oauth/clients/lookup?client_id=&scope=&server_ids=a,b,...`
+     * (`botiverse/slock #17196` / `#17197`), chunked to at most [RAFT_OAUTH_CLIENT_LOOKUP_BATCH_MAX]
+     * case-insensitively deduplicated servers per request. Returns
+     * [RaftBrowserSignInBatchLookupResult.Unsupported] when an older server responds with HTTP 400.
+     */
+    suspend fun lookupClientsBatch(
+        clientId: String,
+        serverIds: List<String>,
+        scope: String,
+    ): RaftBrowserSignInBatchLookupResult = RaftBrowserSignInBatchLookupResult.Unsupported
+
+    /**
      * Issues a human or account authorization code (`POST oauth/authorize/human` or
      * `POST oauth/authorize/account`). A 403 `second_factor_step_up_required` returns
      * `DataResult.Error` with a step-up challenge so `SecondFactorStepUpCoordinator.run` can handle
@@ -314,6 +343,95 @@ internal class NetworkRaftBrowserSignInApi(
                 return RaftBrowserSignInLookupResult.Failed()
             }
         return parseRaftBrowserSignInLookupResponse(serverId = serverId, response = response)
+    }
+
+    override suspend fun lookupClientsBatch(
+        clientId: String,
+        serverIds: List<String>,
+        scope: String,
+    ): RaftBrowserSignInBatchLookupResult {
+        if (serverIds.isEmpty()) {
+            return RaftBrowserSignInBatchLookupResult.Completed(emptyMap())
+        }
+        // Deduplicate case-insensitively (slock #17196 rejects duplicate server_ids ignoring case),
+        // keeping the first occurrence untrimmed as sent. Blank or comma-containing ids cannot be
+        // encoded in a comma-separated server_ids list and fail closed without poisoning the batch.
+        val seenLower = HashSet<String>(serverIds.size)
+        val uniqueValidIds = ArrayList<String>(serverIds.size)
+        for (serverId in serverIds) {
+            if (serverId.isBlank() || ',' in serverId) continue
+            if (seenLower.add(serverId.lowercase())) {
+                uniqueValidIds += serverId
+            }
+        }
+        if (uniqueValidIds.isEmpty()) {
+            return RaftBrowserSignInBatchLookupResult.Completed(
+                serverIds.associateWith { RaftBrowserSignInLookupResult.Failed() },
+            )
+        }
+        if (uniqueValidIds.size == 1) {
+            val singleId = uniqueValidIds.single()
+            val singleResult = lookupClient(clientId = clientId, serverId = singleId, scope = scope)
+            return RaftBrowserSignInBatchLookupResult.Completed(
+                mapLookupResultsToRequestedIds(serverIds, mapOf(singleId.lowercase() to singleResult)),
+            )
+        }
+
+        val chunks = uniqueValidIds.chunked(RAFT_OAUTH_CLIENT_LOOKUP_BATCH_MAX)
+        val chunkOutcomes =
+            coroutineScope {
+                chunks.map { chunk ->
+                    async { fetchLookupBatchChunk(clientId = clientId, serverIds = chunk, scope = scope) }
+                }.awaitAll()
+            }
+        if (chunkOutcomes.any { it is RaftBrowserSignInBatchLookupResult.Unsupported }) {
+            return RaftBrowserSignInBatchLookupResult.Unsupported
+        }
+        val byLower = HashMap<String, RaftBrowserSignInLookupResult>(uniqueValidIds.size)
+        for (outcome in chunkOutcomes) {
+            val completed = outcome as RaftBrowserSignInBatchLookupResult.Completed
+            for ((serverId, result) in completed.results) {
+                byLower[serverId.lowercase()] = result
+            }
+        }
+        return RaftBrowserSignInBatchLookupResult.Completed(
+            mapLookupResultsToRequestedIds(serverIds, byLower),
+        )
+    }
+
+    private suspend fun fetchLookupBatchChunk(
+        clientId: String,
+        serverIds: List<String>,
+        scope: String,
+    ): RaftBrowserSignInBatchLookupResult {
+        val response =
+            try {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = RAFT_OAUTH_CLIENT_LOOKUP_PATH,
+                    method = "GET",
+                    query =
+                        listOf(
+                            "client_id" to clientId,
+                            "server_ids" to serverIds.joinToString(","),
+                            "scope" to scope,
+                        ),
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                return RaftBrowserSignInBatchLookupResult.Completed(
+                    serverIds.associateWith { RaftBrowserSignInLookupResult.Failed() },
+                )
+            }
+        // Older servers before slock #17196 require single `server_id` and answer HTTP 400 when
+        // given `server_ids`; return Unsupported so callers fall back to fast per-server lookups.
+        if (response.code == 400) {
+            return RaftBrowserSignInBatchLookupResult.Unsupported
+        }
+        return RaftBrowserSignInBatchLookupResult.Completed(
+            parseRaftBrowserSignInLookupBatchResponse(requestedServerIds = serverIds, response = response),
+        )
     }
 
     override suspend fun approve(request: RaftBrowserSignInApproveRequest): DataResult<RaftBrowserSignInApproveOutcome> {
@@ -538,6 +656,92 @@ internal fun parseRaftBrowserSignInLookupResponse(
         return RaftBrowserSignInLookupResult.NotAvailable
     }
     return RaftBrowserSignInLookupResult.Failed(response.traceId)
+}
+
+/**
+ * Parses `GET oauth/clients/lookup?client_id=&scope=&server_ids=a,b,...` (`botiverse/slock #17196`):
+ * `{ "results": [ { "serverId": "...", "status": 200|403|500, "body": { ... } } ] }`.
+ *
+ * Each entry's `status` and `body` are fed through [parseRaftBrowserSignInLookupResponse] so the
+ * batch form cannot drift from the single `server_id=` form (RFC 079 D4). Any server absent from
+ * `results` or any non-200 / malformed batch response maps to [RaftBrowserSignInLookupResult.Failed].
+ */
+internal fun parseRaftBrowserSignInLookupBatchResponse(
+    requestedServerIds: List<String>,
+    response: HomeNetworkResponse,
+): Map<String, RaftBrowserSignInLookupResult> {
+    if (requestedServerIds.isEmpty()) return emptyMap()
+    val failedAll = {
+        requestedServerIds.associateWith { RaftBrowserSignInLookupResult.Failed(response.traceId) }
+    }
+    if (!response.isSuccessful) return failedAll()
+    val body = response.bodyText?.takeIf { it.isNotBlank() } ?: return failedAll()
+    val root =
+        try {
+            raftBrowserSignInJson.parseToJsonElement(body) as? JsonObject
+        } catch (_: SerializationException) {
+            null
+        } ?: return failedAll()
+    val resultsArray = root["results"] as? JsonArray ?: return failedAll()
+
+    val exactEntries = HashMap<String, JsonObject>(resultsArray.size)
+    val lowerEntries = HashMap<String, JsonObject>(resultsArray.size)
+    for (element in resultsArray) {
+        val entry = element as? JsonObject ?: continue
+        val entryServerId = (entry["serverId"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: continue
+        if (entryServerId !in exactEntries) {
+            exactEntries[entryServerId] = entry
+        }
+        val lower = entryServerId.lowercase()
+        if (lower !in lowerEntries) {
+            lowerEntries[lower] = entry
+        }
+    }
+
+    val parsed = LinkedHashMap<String, RaftBrowserSignInLookupResult>(requestedServerIds.size)
+    for (serverId in requestedServerIds) {
+        val entry = exactEntries[serverId] ?: lowerEntries[serverId.lowercase()]
+        if (entry == null) {
+            parsed[serverId] = RaftBrowserSignInLookupResult.Failed(response.traceId)
+            continue
+        }
+        val entryStatus =
+            (entry["status"] as? JsonPrimitive)
+                ?.takeIf { !it.isString }
+                ?.content
+                ?.toIntOrNull()
+        if (entryStatus == null || (entryStatus in 200..299 && entryStatus != 200)) {
+            parsed[serverId] = RaftBrowserSignInLookupResult.Failed(response.traceId)
+            continue
+        }
+        val entryBodyText = entry["body"]?.takeUnless { it is JsonNull }?.toString()
+        val syntheticResponse =
+            HomeNetworkResponse(
+                code = entryStatus,
+                bodyText = if (entryStatus == 200) entryBodyText else null,
+                errorBodyText = if (entryStatus == 200) null else entryBodyText,
+                responseHeaders = response.responseHeaders,
+            )
+        parsed[serverId] = parseRaftBrowserSignInLookupResponse(serverId = serverId, response = syntheticResponse)
+    }
+    return parsed
+}
+
+private fun mapLookupResultsToRequestedIds(
+    requestedServerIds: List<String>,
+    byLower: Map<String, RaftBrowserSignInLookupResult>,
+): Map<String, RaftBrowserSignInLookupResult> {
+    val mapped = LinkedHashMap<String, RaftBrowserSignInLookupResult>(requestedServerIds.size)
+    for (serverId in requestedServerIds) {
+        val result = byLower[serverId.lowercase()] ?: RaftBrowserSignInLookupResult.Failed()
+        mapped[serverId] =
+            if (result is RaftBrowserSignInLookupResult.Found && result.client.serverId != serverId) {
+                result.copy(client = result.client.copy(serverId = serverId))
+            } else {
+                result
+            }
+    }
+    return mapped
 }
 
 internal fun parseRaftBrowserSignInApproveResponse(

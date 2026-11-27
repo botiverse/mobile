@@ -1,12 +1,16 @@
 package build.raft.app
 
+import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
+import build.raft.app.data.HomeNetworkResponse
+import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SecondFactorStepUpChallenge
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SecondFactorStepUpMethod
 import build.raft.app.data.SecondFactorStepUpResult
+import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -102,6 +106,7 @@ class RaftBrowserSignInSessionTest {
         var approveHandler: suspend (RaftBrowserSignInApproveRequest) -> DataResult<RaftBrowserSignInApproveOutcome> = {
             DataResult.Content(RaftBrowserSignInApproveOutcome.Failed("unhandled"))
         },
+        val apiOverride: RaftBrowserSignInApi? = null,
         val stepUp: SecondFactorStepUpCoordinator? = null,
     ) {
         val loadedUrls = mutableListOf<String>()
@@ -124,7 +129,7 @@ class RaftBrowserSignInSessionTest {
                 isAppForeground = { appForeground },
                 fetchAuthorize = { fetchHandler(it) },
                 api =
-                    object : RaftBrowserSignInApi {
+                    apiOverride ?: object : RaftBrowserSignInApi {
                         override suspend fun lookupClient(clientId: String, serverId: String, scope: String) =
                             lookupHandler(clientId, serverId, scope)
 
@@ -1259,5 +1264,242 @@ class RaftBrowserSignInSessionTest {
         assertEquals(2, fetchCalls)
         assertNotNull(h.session.uiState.value.sheet)
         assertNull(h.session.uiState.value.declinedReason)
+    }
+
+    @Test
+    fun batchLookupCompletesAccountAndServerFlowsInOneRequestWithZeroFallbackLookups() = runTest {
+        // 1. Account-mode consent-skip across 20 servers completes in 1 batch lookup request.
+        val accountLookupQueries = mutableListOf<Map<String, String>>()
+        val accountApprovePaths = mutableListOf<String>()
+        val accountNetwork =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse =
+                    when (path) {
+                        "oauth/clients/lookup" -> {
+                            val map = query.toMap()
+                            accountLookupQueries += map
+                            val ids = assertNotNull(map["server_ids"]).split(",")
+                            val entries =
+                                ids.joinToString(",") { id ->
+                                    when (id) {
+                                        "srv-7", "srv-12" ->
+                                            """{"serverId":"$id","status":200,"body":{"clientId":"stamp","name":"Stamp","returnUrl":"$appReturnUrl","availability":"ready","loginMode":"account","consent":{"granted":true,"coversRequested":true}}}"""
+                                        "srv-19" ->
+                                            """{"serverId":"$id","status":500,"body":{"error":"Failed to load OAuth client","code":"lookup_failed"}}"""
+                                        else ->
+                                            """{"serverId":"$id","status":403,"body":{"error":"This app isn't available to you.","code":"app_not_available"}}"""
+                                    }
+                                }
+                            HomeNetworkResponse(code = 200, bodyText = """{"results":[$entries]}""")
+                        }
+                        "oauth/authorize/account" -> {
+                            accountApprovePaths += path
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText = """{"code":"batch-acct-1","returnUrl":"$appReturnUrl","scopes":["openid","profile"]}""",
+                            )
+                        }
+                        else -> error("unexpected path $path")
+                    }
+            }
+        val acctHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20, currentServerId = "srv-5"),
+                preferredServerId = "srv-5",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                apiOverride = NetworkRaftBrowserSignInApi(accountNetwork),
+            )
+        assertTrue(acctHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+
+        assertEquals(1, accountLookupQueries.size)
+        val acctSentIds = assertNotNull(accountLookupQueries.single()["server_ids"]).split(",")
+        assertEquals(20, acctSentIds.size)
+        assertEquals("srv-5", acctSentIds.first())
+        assertFalse("server_id" in accountLookupQueries.single())
+        assertEquals(listOf("oauth/authorize/account"), accountApprovePaths)
+        assertFalse(acctHarness.session.uiState.value.resolving)
+        assertNull(acctHarness.session.uiState.value.sheet)
+        assertEquals(listOf("Stamp"), acctHarness.toasts)
+        assertEquals(
+            listOf("https://stamp.build/auth/callback?next=1&code=batch-acct-1&state=secret-state-xyz"),
+            acctHarness.loadedUrls,
+        )
+
+        // 2. Server-mode skip fallback (403 step-up) opens complete picker in original order with ZERO extra lookups.
+        var serverLookupCalls = 0
+        val serverNetwork =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse =
+                    when (path) {
+                        "oauth/clients/lookup" -> {
+                            serverLookupCalls += 1
+                            val ids = assertNotNull(query.toMap()["server_ids"]).split(",")
+                            val entries =
+                                ids.joinToString(",") { id ->
+                                    when (id) {
+                                        "srv-5" ->
+                                            """{"serverId":"$id","status":200,"body":{"clientId":"stamp","name":"Stamp","returnUrl":"$appReturnUrl","availability":"ready","consent":{"granted":true,"coversRequested":true}}}"""
+                                        "srv-2" ->
+                                            """{"serverId":"$id","status":200,"body":{"clientId":"stamp","name":"Stamp","returnUrl":"$appReturnUrl","availability":"ready"}}"""
+                                        else ->
+                                            """{"serverId":"$id","status":403,"body":{"error":"This app isn't available to you.","code":"app_not_available"}}"""
+                                    }
+                                }
+                            HomeNetworkResponse(code = 200, bodyText = """{"results":[$entries]}""")
+                        }
+                        "oauth/authorize/human" ->
+                            HomeNetworkResponse(
+                                code = 403,
+                                bodyText = null,
+                                errorBodyText = """{"error":"Confirm it's you","code":"second_factor_step_up_required","methods":["totp"]}""",
+                            )
+                        else -> error("unexpected path $path")
+                    }
+            }
+        val srvHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20, currentServerId = "srv-5"),
+                preferredServerId = "srv-5",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                apiOverride = NetworkRaftBrowserSignInApi(serverNetwork),
+            )
+        assertTrue(srvHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+
+        assertEquals(1, serverLookupCalls)
+        assertFalse(srvHarness.session.uiState.value.resolving)
+        val sheetMode = assertIs<RaftBrowserSignInSheetMode.ServerReady>(srvHarness.session.uiState.value.sheet?.mode)
+        // Preserves original account server list order (srv-2 before srv-5) while selecting preferred srv-5.
+        assertEquals(listOf("srv-2", "srv-5"), sheetMode.readyServers.map { it.id })
+        assertEquals("srv-5", sheetMode.selectedServerId)
+    }
+
+    @Test
+    fun batchLookupHttp400FallsBackToFastSingleServerLookupAndHintedSingleUsesServerIdDirectly() = runTest {
+        var batchCalls = 0
+        val startedSlowSingles = mutableSetOf<String>()
+        val cancelledSingles = mutableSetOf<String>()
+        val slowGate = CompletableDeferred<HomeNetworkResponse>()
+        val olderServerNetwork =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse =
+                    when (path) {
+                        "oauth/clients/lookup" -> {
+                            val map = query.toMap()
+                            if ("server_ids" in map) {
+                                batchCalls += 1
+                                HomeNetworkResponse(
+                                    code = 400,
+                                    bodyText = null,
+                                    errorBodyText = """{"code":"invalid_input","error":"serverId is required"}""",
+                                )
+                            } else {
+                                val sid = assertNotNull(map["server_id"])
+                                if (sid == "srv-7") {
+                                    HomeNetworkResponse(
+                                        code = 200,
+                                        bodyText = """{"clientId":"stamp","name":"Stamp","returnUrl":"$appReturnUrl","availability":"ready","loginMode":"account","consent":{"granted":true,"coversRequested":true}}""",
+                                    )
+                                } else {
+                                    startedSlowSingles += sid
+                                    try {
+                                        slowGate.await()
+                                    } catch (cancelled: CancellationException) {
+                                        cancelledSingles += sid
+                                        throw cancelled
+                                    }
+                                }
+                            }
+                        }
+                        "oauth/authorize/account" ->
+                            HomeNetworkResponse(
+                                code = 200,
+                                bodyText = """{"code":"fallback-400-ok","returnUrl":"$appReturnUrl","scopes":["openid","profile"]}""",
+                            )
+                        else -> error("unexpected path $path")
+                    }
+            }
+        val fallbackHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                apiOverride = NetworkRaftBrowserSignInApi(olderServerNetwork),
+            )
+        assertTrue(fallbackHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+
+        assertEquals(1, batchCalls)
+        assertFalse(slowGate.isCompleted)
+        assertTrue("srv-1" in cancelledSingles)
+        assertEquals(startedSlowSingles, cancelledSingles)
+        assertFalse(fallbackHarness.session.uiState.value.resolving)
+        assertEquals(listOf("Stamp"), fallbackHarness.toasts)
+        assertEquals(
+            listOf("https://stamp.build/auth/callback?next=1&code=fallback-400-ok&state=secret-state-xyz"),
+            fallbackHarness.loadedUrls,
+        )
+
+        // When serverHint narrows to 1 server, session calls single `server_id=` directly without ever calling `server_ids=`.
+        val hintedQueries = mutableListOf<Map<String, String>>()
+        val hintedNetwork =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    hintedQueries += query.toMap()
+                    return HomeNetworkResponse(
+                        code = 200,
+                        bodyText = """{"clientId":"stamp","name":"Stamp","returnUrl":"$appReturnUrl","availability":"ready"}""",
+                    )
+                }
+            }
+        val hintedHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, "$setupLocation&server=server-12") },
+                apiOverride = NetworkRaftBrowserSignInApi(hintedNetwork),
+            )
+        assertTrue(hintedHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+
+        assertEquals(1, hintedQueries.size)
+        assertEquals("srv-12", hintedQueries.single()["server_id"])
+        assertFalse("server_ids" in hintedQueries.single())
+        val hintedMode = assertIs<RaftBrowserSignInSheetMode.ServerReady>(hintedHarness.session.uiState.value.sheet?.mode)
+        assertEquals(listOf("srv-12"), hintedMode.readyServers.map { it.id })
+        assertEquals("srv-12", hintedMode.selectedServerId)
     }
 }

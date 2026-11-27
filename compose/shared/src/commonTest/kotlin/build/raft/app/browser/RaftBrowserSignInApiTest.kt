@@ -566,4 +566,278 @@ class RaftBrowserSignInApiTest {
             }
         assertNull(NetworkRaftBrowserSignInApi(failingClient).fetchInstalledAppOrigins("srv-1"))
     }
+
+    @Test
+    fun batchLookupParsesMixedReadyRefusedAndServerErrorEntriesInRequestedOrder() = runTest {
+        val traceId = "abcdef0123456789abcdef0123456789"
+        val recordedQueries = mutableListOf<Map<String, String>>()
+        val batchBody =
+            """
+            {
+              "results": [
+                {
+                  "serverId": "srv-err",
+                  "status": 500,
+                  "body": { "error": "Failed to load OAuth client", "code": "lookup_failed", "correlationId": "corr-1" }
+                },
+                {
+                  "serverId": "srv-ready",
+                  "status": 200,
+                  "body": {
+                    "clientId": "stamp",
+                    "appType": "third_party_global",
+                    "name": "Stamp",
+                    "returnUrl": "https://stamp.build/auth/callback",
+                    "marketplace": true,
+                    "availability": "ready",
+                    "scopeValidation": { "allowed": true, "reason": null, "disallowedScopes": [] },
+                    "loginMode": "account",
+                    "consent": { "granted": true, "coversRequested": true }
+                  }
+                },
+                {
+                  "serverId": "srv-suspended",
+                  "status": 200,
+                  "body": {
+                    "clientId": "stamp",
+                    "name": "Stamp",
+                    "returnUrl": "https://stamp.build/auth/callback",
+                    "availability": "suspended"
+                  }
+                },
+                {
+                  "serverId": "srv-install",
+                  "status": 200,
+                  "body": {
+                    "id": "uuid-1",
+                    "clientId": "stamp",
+                    "name": "Stamp",
+                    "returnUrl": "https://stamp.build/auth/callback",
+                    "marketplace": true,
+                    "availability": "install_required",
+                    "installation": { "serverId": "srv-install", "canInstall": true }
+                  }
+                },
+                {
+                  "serverId": "srv-refused",
+                  "status": 403,
+                  "body": { "error": "This app isn't available to you.", "code": "app_not_available" }
+                },
+                {
+                  "serverId": "srv-forbidden",
+                  "status": 403,
+                  "body": { "error": "Forbidden", "code": "other_forbidden" }
+                },
+                {
+                  "serverId": "srv-gone",
+                  "status": 404,
+                  "body": { "error": "Not found" }
+                }
+              ]
+            }
+            """.trimIndent()
+        val fakeClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    assertEquals("oauth/clients/lookup", path)
+                    assertEquals("GET", method)
+                    recordedQueries += query.toMap()
+                    return HomeNetworkResponse(
+                        code = 200,
+                        bodyText = batchBody,
+                        responseHeaders = mapOf("X-Trace-Id" to listOf(traceId)),
+                    )
+                }
+            }
+
+        val requested =
+            listOf(
+                "srv-ready",
+                "srv-suspended",
+                "srv-install",
+                "srv-refused",
+                "srv-forbidden",
+                "srv-gone",
+                "srv-err",
+                "srv-missing",
+            )
+        val outcome =
+            assertIs<RaftBrowserSignInBatchLookupResult.Completed>(
+                NetworkRaftBrowserSignInApi(fakeClient).lookupClientsBatch(
+                    clientId = "stamp",
+                    serverIds = requested,
+                    scope = "openid profile",
+                ),
+            )
+        assertEquals(1, recordedQueries.size)
+        val q = recordedQueries.single()
+        assertEquals("stamp", q["client_id"])
+        assertEquals("openid profile", q["scope"])
+        assertEquals(requested.joinToString(","), q["server_ids"])
+        assertFalse("server_id" in q)
+        assertEquals(requested, outcome.results.keys.toList())
+
+        val ready = assertIs<RaftBrowserSignInLookupResult.Found>(outcome.results["srv-ready"]).client
+        assertEquals("srv-ready", ready.serverId)
+        assertEquals("Stamp", ready.name)
+        assertEquals(RaftSignInLoginMode.Account, ready.loginMode)
+        assertEquals(RaftSignInAvailability.Ready, ready.availability)
+        assertEquals(RaftSignInConsent(granted = true, coversRequested = true), ready.consent)
+
+        val suspended = assertIs<RaftBrowserSignInLookupResult.Found>(outcome.results["srv-suspended"]).client
+        assertEquals(RaftSignInAvailability.Suspended, suspended.availability)
+
+        val install = assertIs<RaftBrowserSignInLookupResult.Found>(outcome.results["srv-install"]).client
+        assertEquals(RaftSignInAvailability.InstallRequired, install.availability)
+        assertTrue(install.canInstall)
+
+        assertEquals(RaftBrowserSignInLookupResult.NotAvailable, outcome.results["srv-refused"])
+        assertEquals(RaftBrowserSignInLookupResult.Failed(traceId), outcome.results["srv-forbidden"])
+        assertEquals(RaftBrowserSignInLookupResult.NotAvailable, outcome.results["srv-gone"])
+        assertEquals(RaftBrowserSignInLookupResult.Failed(traceId), outcome.results["srv-err"])
+        assertEquals(RaftBrowserSignInLookupResult.Failed(traceId), outcome.results["srv-missing"])
+    }
+
+    @Test
+    fun batchLookupDeduplicatesCaseInsensitivelyChunksAtFiftyAndUsesSingleForOneServer() = runTest {
+        val batchQueries = mutableListOf<Map<String, String>>()
+        val fakeClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse {
+                    val map = query.toMap()
+                    batchQueries += map
+                    val singleId = map["server_id"]
+                    if (singleId != null) {
+                        assertFalse("server_ids" in map)
+                        return HomeNetworkResponse(
+                            code = 200,
+                            bodyText = """{"clientId":"stamp","name":"Stamp","returnUrl":"https://stamp.build/cb","availability":"ready"}""",
+                        )
+                    }
+                    val ids = assertNotNull(map["server_ids"]).split(",")
+                    assertFalse("server_id" in map)
+                    assertTrue(ids.size <= RAFT_OAUTH_CLIENT_LOOKUP_BATCH_MAX)
+                    assertEquals(ids.size, ids.map { it.lowercase() }.toSet().size)
+                    val entriesJson =
+                        ids.joinToString(",") { id ->
+                            """{"serverId":"$id","status":200,"body":{"clientId":"stamp","name":"Stamp","returnUrl":"https://stamp.build/cb","availability":"ready"}}"""
+                        }
+                    return HomeNetworkResponse(code = 200, bodyText = """{"results":[$entriesJson]}""")
+                }
+            }
+        val api = NetworkRaftBrowserSignInApi(fakeClient)
+
+        // 120 unique servers + 1 case-insensitive duplicate ("S-3") -> 3 chunks of [50, 50, 20].
+        val unique120 = (0 until 120).map { "s-$it" }
+        val withCaseDup = unique120 + "S-3"
+        val chunkedOutcome =
+            assertIs<RaftBrowserSignInBatchLookupResult.Completed>(
+                api.lookupClientsBatch(clientId = "stamp", serverIds = withCaseDup, scope = "openid profile"),
+            )
+        assertEquals(
+            listOf(50, 50, 20),
+            batchQueries.map { assertNotNull(it["server_ids"]).split(",").size }.sortedDescending(),
+        )
+        assertEquals(121, chunkedOutcome.results.size)
+        val upperDup = assertIs<RaftBrowserSignInLookupResult.Found>(chunkedOutcome.results["S-3"]).client
+        assertEquals("S-3", upperDup.serverId)
+        val lowerOrig = assertIs<RaftBrowserSignInLookupResult.Found>(chunkedOutcome.results["s-3"]).client
+        assertEquals("s-3", lowerOrig.serverId)
+
+        // Single server (and case-duplicate pair resolving to 1 unique server) uses single `server_id=` directly.
+        batchQueries.clear()
+        val singleOutcome =
+            assertIs<RaftBrowserSignInBatchLookupResult.Completed>(
+                api.lookupClientsBatch(clientId = "stamp", serverIds = listOf("srv-1", "SRV-1"), scope = "openid profile"),
+            )
+        assertEquals(1, batchQueries.size)
+        assertEquals("srv-1", batchQueries.single()["server_id"])
+        assertFalse("server_ids" in batchQueries.single())
+        assertEquals("srv-1", assertIs<RaftBrowserSignInLookupResult.Found>(singleOutcome.results["srv-1"]).client.serverId)
+        assertEquals("SRV-1", assertIs<RaftBrowserSignInLookupResult.Found>(singleOutcome.results["SRV-1"]).client.serverId)
+
+        // Empty list makes zero requests.
+        batchQueries.clear()
+        val emptyOutcome =
+            assertIs<RaftBrowserSignInBatchLookupResult.Completed>(
+                api.lookupClientsBatch(clientId = "stamp", serverIds = emptyList(), scope = "openid profile"),
+            )
+        assertTrue(batchQueries.isEmpty())
+        assertTrue(emptyOutcome.results.isEmpty())
+    }
+
+    @Test
+    fun batchLookupReturnsUnsupportedOnHttp400AndFailsClosedOn401And503() = runTest {
+        val traceId = "0123456789abcdef0123456789abcdef"
+        var responseCode = 400
+        var responseBody: String? = """{"code":"invalid_input","error":"serverId is required"}"""
+        val fakeClient =
+            object : RaftNetworkClient {
+                override suspend fun request(
+                    priority: DataRequestPriority,
+                    path: String,
+                    method: String,
+                    query: List<Pair<String, String>>,
+                    serverIdOverride: ServerId?,
+                    bodyText: String?,
+                ): HomeNetworkResponse =
+                    HomeNetworkResponse(
+                        code = responseCode,
+                        bodyText = if (responseCode in 200..299) responseBody else null,
+                        errorBodyText = if (responseCode in 200..299) null else responseBody,
+                        responseHeaders = mapOf("X-Trace-Id" to listOf(traceId)),
+                    )
+            }
+        val api = NetworkRaftBrowserSignInApi(fakeClient)
+
+        // HTTP 400 from an older server without `server_ids` support signals Unsupported for fallback.
+        assertEquals(
+            RaftBrowserSignInBatchLookupResult.Unsupported,
+            api.lookupClientsBatch("stamp", listOf("srv-1", "srv-2"), "openid profile"),
+        )
+
+        // HTTP 401 (unauthorized after refresh) fails closed without falling back to single lookups.
+        responseCode = 401
+        responseBody = """{"error":"Unauthorized"}"""
+        val unauthorized =
+            assertIs<RaftBrowserSignInBatchLookupResult.Completed>(
+                api.lookupClientsBatch("stamp", listOf("srv-1", "srv-2"), "openid profile"),
+            )
+        assertEquals(
+            mapOf(
+                "srv-1" to RaftBrowserSignInLookupResult.Failed(traceId),
+                "srv-2" to RaftBrowserSignInLookupResult.Failed(traceId),
+            ),
+            unauthorized.results,
+        )
+
+        // HTTP 503 fails closed without falling back to single lookups.
+        responseCode = 503
+        responseBody = null
+        val outage =
+            assertIs<RaftBrowserSignInBatchLookupResult.Completed>(
+                api.lookupClientsBatch("stamp", listOf("srv-1", "srv-2"), "openid profile"),
+            )
+        assertEquals(
+            mapOf(
+                "srv-1" to RaftBrowserSignInLookupResult.Failed(traceId),
+                "srv-2" to RaftBrowserSignInLookupResult.Failed(traceId),
+            ),
+            outage.results,
+        )
+    }
 }
