@@ -701,10 +701,11 @@ internal enum class RaftArtifactViewerHostAction(val wireName: String) {
     DesktopMode("desktop-mode"),
     CopyLink("copy-link"),
     ShareLink("share-link"),
+    FloatWindow("float-window"),
 }
 
 /** Every [RaftArtifactViewerHostAction], comma-separated (a const: [RaftArtifactViewerEmbedQuery] is read before it). */
-internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,copy-link,share-link"
+internal const val RAFT_ARTIFACT_VIEWER_HOST_MENU = "desktop-mode,copy-link,share-link,float-window"
 
 /** What [url]'s fragment asks the App for (`#host=<request>`: the text after `host=`), or null when it asks for nothing. */
 private fun raftArtifactViewerHostRequest(url: String): String? =

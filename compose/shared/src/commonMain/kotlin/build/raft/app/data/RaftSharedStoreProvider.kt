@@ -997,7 +997,8 @@ internal class RaftSharedStoreProvider private constructor(
                 if (agentContextViewStatusStoreLazy.isInitialized()) agentContextViewStatusStore.clearAll()
                 quotedPermalinkCache.clear()
                 build.raft.app.ThreadComposerQuoteMetaCache.clear()
-                // The Artifact viewer's headers and its kept WebView (Tenny's cache rule 1).
+                // The Artifact viewer's headers, floating windows, and kept WebViews (Tenny's cache rule 1).
+                build.raft.app.RaftFloatingWindowCoordinator.process.clearAll()
                 build.raft.app.RaftArtifactViewerMemory.clear()
                 build.raft.app.raftWebViewKeepAliveClear()
                 RaftModelLabelCatalogs.clear()

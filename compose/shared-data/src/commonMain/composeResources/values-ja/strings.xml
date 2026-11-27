@@ -7071,4 +7071,9 @@
     <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s は %2$s ですが、%3$s の今月のアップロード容量 %5$s の残りは %4$s です。%6$s にリセットされます。%7$sPro には月間の上限がありません。</string>
     <string name="upgrade_dialog_upload_quota_hint_files">%1$s の今月のアップロード容量 %3$s の残りは %2$s で、この %4$d 件のファイルには足りません。%5$s にリセットされます。Pro には月間の上限がありません。</string>
     <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s の今月のアップロード容量 %3$s の残りは %2$s で、この %4$d 件のファイルには足りません。%5$s にリセットされます。%6$sPro には月間の上限がありません。</string>
+    <string name="floating_mini_window_collapse_to_pill">端に最小化</string>
+    <string name="floating_mini_window_expand_full_screen">全画面に拡大</string>
+    <string name="floating_mini_window_resize_a11y">フローティングウィンドウのサイズを変更</string>
+    <string name="floating_mini_window_drag_a11y">フローティングウィンドウをドラッグ</string>
+    <string name="floating_window_kind_artifact">Artifact</string>
 </resources>

@@ -882,11 +882,14 @@ internal class RaftMobileWebPanelCoordinator(
      * `UIApplicationDidReceiveMemoryWarningNotification`) while keeping the currently visible
      * foreground tab untouched. Hibernated tabs keep their URL/title/App metadata and reload on resume.
      */
-    fun hibernateBackgroundTabs(): List<RaftAppBrowserTab> {
+    fun hibernateBackgroundTabs(protectedTabId: Long? = null): List<RaftAppBrowserTab> {
         val hibernated =
             synchronized(lock) {
                 val current = _state.value
-                val toHibernate = current.tabs.filter { it.isLive && it.tabId != current.activeTabId }
+                val toHibernate =
+                    current.tabs.filter { tab ->
+                        tab.isLive && tab.tabId != current.activeTabId && tab.tabId != protectedTabId
+                    }
                 if (toHibernate.isEmpty()) return@synchronized emptyList()
                 val hibernateIds = toHibernate.mapTo(HashSet()) { it.tabId }
                 val nextTabs =

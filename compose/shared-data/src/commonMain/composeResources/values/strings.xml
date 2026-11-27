@@ -7072,4 +7072,9 @@
     <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s is %2$s, and %3$s has %4$s left of this month's %5$s of uploads; it resets on %6$s. %7$s Pro has no monthly limit.</string>
     <string name="upgrade_dialog_upload_quota_hint_files">%1$s has %2$s left of this month's %3$s of uploads, not enough for these %4$d files; it resets on %5$s. Pro has no monthly limit.</string>
     <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s has %2$s left of this month's %3$s of uploads, not enough for these %4$d files; it resets on %5$s. %6$s Pro has no monthly limit.</string>
+    <string name="floating_mini_window_collapse_to_pill">Minimize to edge</string>
+    <string name="floating_mini_window_expand_full_screen">Expand to full screen</string>
+    <string name="floating_mini_window_resize_a11y">Resize floating window</string>
+    <string name="floating_mini_window_drag_a11y">Drag floating window</string>
+    <string name="floating_window_kind_artifact">Artifact</string>
 </resources>

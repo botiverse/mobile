@@ -600,7 +600,7 @@ internal actual fun raftWebViewKeepAliveOnMemoryPressure(critical: Boolean) {
 }
 
 private fun trimAndroidAppAndLegacyPools(critical: Boolean) {
-    RaftMobileWebPanelCoordinator.process.hibernateBackgroundTabs()
+    RaftFloatingWindowCoordinator.process.hibernateBackgroundWindows()
     val trimAction = {
         RaftAndroidWebViewKeepAlive.dropAppTabs("memory_pressure")
         if (critical) {

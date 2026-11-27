@@ -7070,4 +7070,9 @@
     <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s 的大小為 %2$s，但 %3$s 本月 %5$s 的上傳額度只剩 %4$s，%6$s 重設。%7$sPro 沒有每月上限。</string>
     <string name="upgrade_dialog_upload_quota_hint_files">%1$s 本月 %3$s 的上傳額度只剩 %2$s，不夠這 %4$d 個檔案使用，%5$s 重設。Pro 沒有每月上限。</string>
     <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s 本月 %3$s 的上傳額度只剩 %2$s，不夠這 %4$d 個檔案使用，%5$s 重設。%6$sPro 沒有每月上限。</string>
+    <string name="floating_mini_window_collapse_to_pill">收合到側邊</string>
+    <string name="floating_mini_window_expand_full_screen">展開全螢幕</string>
+    <string name="floating_mini_window_resize_a11y">調整浮窗大小</string>
+    <string name="floating_mini_window_drag_a11y">拖動浮窗</string>
+    <string name="floating_window_kind_artifact">Artifact</string>
 </resources>

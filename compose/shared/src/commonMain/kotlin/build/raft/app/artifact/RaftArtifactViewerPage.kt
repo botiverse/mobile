@@ -798,6 +798,7 @@ private fun RaftArtifactViewerScreen() {
     LaunchedEffect(bodyState) {
         // After the WebView left the screen (and was parked), so surgical eviction destroys only this slot.
         if (bodyState == RaftArtifactViewerBodyState.Unavailable) {
+            RaftFloatingWindowCoordinator.process.closeArtifact(shown.key)
             RaftArtifactViewerMemory.cache.evict(scope, shown.canonicalId)
             activeSlotKey?.let(::raftWebViewKeepAliveDrop)
             host.bridge.log("artifact_viewer_unavailable action=replace_and_evict")
@@ -899,10 +900,66 @@ private fun RaftArtifactViewerScreen() {
         }
     }
     val viewing = bodyState == RaftArtifactViewerBodyState.Viewing
+    var floatingToMiniWindow by remember(params.toString()) { mutableStateOf(false) }
+    DisposableEffect(inColumn, shown.key) {
+        val windowKey = shown.key
+        if (!inColumn) {
+            RaftFloatingWindowCoordinator.process.onArtifactEnteredFullScreen(windowKey)
+        }
+        onDispose {
+            if (!inColumn) {
+                RaftFloatingWindowCoordinator.process.onArtifactFullScreenClosed(
+                    windowKey = windowKey,
+                    keepFloating = floatingToMiniWindow,
+                )
+            }
+        }
+    }
+    val canFloatWindow =
+        !inColumn &&
+            viewing &&
+            scope != null &&
+            activeSlotKey != null &&
+            raftPlatformSupportsInAppBrowser()
+    fun minimizeToMiniWindow(from: String) {
+        val currentScope = scope ?: return
+        val slotKey = activeSlotKey ?: return
+        if (inColumn || !viewing) return
+        floatingToMiniWindow = true
+        val entryTitle = header?.title?.ifBlank { untitled } ?: untitled
+        val entryKind = header?.kind ?: build.raft.app.data.ArtifactKind.Other
+        val env = host.sharedStores.apiEnvironmentStore.current()
+        val addressedTarget = ArtifactLinkTarget(shown.id, addressed?.version ?: shown.version)
+        val entryEmbeddedUrl =
+            raftArtifactViewerWithHostDesktop(
+                raftArtifactViewerEmbeddedPageUrl(webBaseUrl, addressedTarget, conversationId, bootHostHead, langTag),
+                hostDesktop,
+            )
+        RaftFloatingWindowCoordinator.process.floatArtifactInMiniWindow(
+            RaftFloatingArtifactWindow(
+                artifactId = shown.id,
+                canonicalId = shown.canonicalId,
+                version = shown.version,
+                title = entryTitle,
+                kind = entryKind,
+                scope = currentScope,
+                conversationId = conversationId,
+                hostHead = bootHostHead,
+                langTag = langTag,
+                keepAliveKey = slotKey,
+                embeddedPageUrl = entryEmbeddedUrl,
+                desktopMode = desktopMode,
+                storeScope = host.openStoreScope ?: host.storeScope,
+                environmentKey = "${env.webUrl}|${env.apiBaseUrl}",
+            ),
+        )
+        host.bridge.log("artifact_viewer_float_window from=$from")
+        closePage()
+    }
     // One bar where the page draws it (`hostToolbar=1`, artin "双栏"): its toolbar has Back, the
     // title and this bar's items in its own ⋯. Otherwise (a web that does not, while loading, a
-    // load error, unavailable) this bar has Back, the title, and a ⋮ with Desktop Mode when
-    // offered; nothing shows twice.
+    // load error, unavailable) this bar has Back, the title, and a ⋮ with Desktop Mode / Float
+    // window when offered; nothing shows twice.
     RaftArtifactViewerScreenFrame(
         title = header?.title?.ifBlank { untitled } ?: untitled,
         onBack = ::closePage,
@@ -914,6 +971,7 @@ private fun RaftArtifactViewerScreen() {
         actions =
             RaftArtifactViewerBarActions(
                 onToggleDesktopMode = { toggleDesktopMode("bar") },
+                onMinimizeToFloat = if (canFloatWindow) ({ minimizeToMiniWindow("bar") }) else null,
             ),
     ) {
         when (bodyState) {
@@ -1006,6 +1064,9 @@ private fun RaftArtifactViewerScreen() {
                                     // for the Artifact's canonical link, falling back to clipboard copy on desktop.
                                     RaftArtifactViewerHostAction.ShareLink ->
                                         shareLink(raftArtifactViewerPageUrl(webBaseUrl, ArtifactLinkTarget(shown.id, version)))
+                                    // Float window (dm:@artin:#175): hands off warm keep-alive slot to Mini-Window overlay.
+                                    RaftArtifactViewerHostAction.FloatWindow ->
+                                        if (canFloatWindow) minimizeToMiniWindow("page")
                                 }
                             },
                             onPageDrawsBar = { pageDrawsBar = it },

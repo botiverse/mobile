@@ -105,7 +105,7 @@ internal const val RAFT_THIRD_PARTY_STORAGE_SCOPE_ID: String = "raft_third_party
 internal suspend fun raftClearWebViewAuthStorage(
     origins: Set<String> = emptySet(),
 ) {
-    RaftMobileWebPanelCoordinator.process.clearAll()
+    RaftFloatingWindowCoordinator.process.clearAll()
     RaftSharedStoreRegistry.currentOrNull()?.invalidateInstalledAppOriginsCache()
     raftClearPlatformWebViewAuthStorage(origins)
 }
@@ -119,7 +119,7 @@ internal expect suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
  * Raft account or local database.
  */
 internal suspend fun raftClearInAppBrowserStorage(): Boolean {
-    RaftMobileWebPanelCoordinator.process.clearAll()
+    RaftFloatingWindowCoordinator.process.clearAll()
     raftWebViewKeepAliveClear()
     return raftClearPlatformInAppBrowserStorage()
 }

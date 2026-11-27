@@ -214,13 +214,14 @@ private fun RaftInAppBrowserScreen() {
         val keepAliveKey = if (!isOutboundChild) activeTabKeepAliveKey else null
         if (tabId != null) {
             coordinator.activateTab(tabId)
+            RaftFloatingWindowCoordinator.process.onAppTabActivatedFullScreen(tabId)
         }
         onDispose {
             if (tabId != null) {
                 if (explicitlySuspended) {
                     coordinator.suspendTab(tabId)
                 } else if (!explicitlyClosed && coordinator.state.value.activeTabId == tabId) {
-                    coordinator.closeTab(tabId)
+                    RaftFloatingWindowCoordinator.process.closeAppTab(tabId)
                 }
                 if (
                     keepAliveKey != null &&
@@ -362,7 +363,9 @@ private fun RaftInAppBrowserScreen() {
                                 if (!isOutboundChild && !inColumn) {
                                     {
                                         explicitlySuspended = true
-                                        activeTab?.let { coordinator.suspendTab(it.tabId) }
+                                        activeTab?.let {
+                                            RaftFloatingWindowCoordinator.process.floatAppTabInMiniWindow(it.tabId)
+                                        }
                                         closePage()
                                     }
                                 } else {
@@ -370,7 +373,7 @@ private fun RaftInAppBrowserScreen() {
                                 },
                             onClose = {
                                 explicitlyClosed = true
-                                activeTab?.let { coordinator.closeTab(it.tabId) }
+                                activeTab?.let { RaftFloatingWindowCoordinator.process.closeAppTab(it.tabId) }
                                 closePage()
                             },
                             onContentProcessGone = {
@@ -440,11 +443,12 @@ private fun RaftInAppBrowserScreen() {
                             switcherOpen = false
                             explicitlyClosed = true
                         }
-                        coordinator.closeTab(tabId)
+                        RaftFloatingWindowCoordinator.process.closeAppTab(tabId)
                         if (closingCurrent) {
                             val nextTab = coordinator.state.value.tabs.firstOrNull()
                             if (nextTab != null) {
                                 coordinator.activateTab(nextTab.tabId)
+                                RaftFloatingWindowCoordinator.process.onAppTabActivatedFullScreen(nextTab.tabId)
                                 currentTabId = nextTab.tabId
                             } else {
                                 switcherOpen = false
@@ -456,7 +460,7 @@ private fun RaftInAppBrowserScreen() {
                     onCloseAll = {
                         switcherOpen = false
                         explicitlyClosed = true
-                        coordinator.closeAll()
+                        RaftFloatingWindowCoordinator.process.closeAll()
                         closePage()
                     },
                     onDismiss = { switcherOpen = false },

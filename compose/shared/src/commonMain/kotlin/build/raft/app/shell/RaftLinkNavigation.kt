@@ -24,6 +24,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
+import build.raft.app.ComposeRaftArtifactViewerPage
 import build.raft.app.ComposeRaftInAppBrowserPage
 import build.raft.app.LocalRaftArtifactOpenStoreScope
 import build.raft.app.LocalRaftFloatingBrowserPillHostMounted
@@ -36,6 +37,7 @@ import build.raft.app.RaftAppEntryRegistry
 import build.raft.app.RaftAppEntryRequest
 import build.raft.app.RaftArtifactOpenTrace
 import build.raft.app.RaftFloatingBrowserTabPillHost
+import build.raft.app.RaftFloatingWindowCoordinator
 import build.raft.app.RaftInstalledAppOriginMatch
 import build.raft.app.RaftInstalledAppScope
 import build.raft.app.RaftInstalledAppSyncLookup
@@ -786,6 +788,7 @@ internal fun rememberRaftLinkNavigator(
                     serverId = serverId,
                     environmentKey = currentEnvironmentKey(),
                 )
+            RaftFloatingWindowCoordinator.process.onAppTabActivatedFullScreen(result.tab.tabId)
             val opened =
                 pager.openRaftInAppBrowserTab(
                     tab = result.tab,
@@ -796,7 +799,7 @@ internal fun rememberRaftLinkNavigator(
                 if (result.reusedExisting) {
                     RaftMobileWebPanelCoordinator.process.suspendTab(result.tab.tabId)
                 } else {
-                    RaftMobileWebPanelCoordinator.process.closeTab(result.tab.tabId)
+                    RaftFloatingWindowCoordinator.process.closeAppTab(result.tab.tabId)
                 }
             }
             return opened
@@ -1070,7 +1073,8 @@ internal fun ProvideRaftLinkOpening(pager: Pager, content: @Composable () -> Uni
     val ownsPillHost =
         !parentHasPillHost &&
             raftPlatformSupportsInAppBrowser() &&
-            pager !is ComposeRaftInAppBrowserPage
+            pager !is ComposeRaftInAppBrowserPage &&
+            pager !is ComposeRaftArtifactViewerPage
     val navigator = rememberRaftLinkNavigator(pager, bridge)
     val uriHandler =
         remember(navigator) {

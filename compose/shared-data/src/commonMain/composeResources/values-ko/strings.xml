@@ -7070,4 +7070,9 @@
     <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s 파일은 %2$s인데, %3$s의 이번 달 업로드 한도 %5$s 중 %4$s만 남았어요. %6$s에 초기화돼요. %7$s Pro는 월 한도가 없어요.</string>
     <string name="upgrade_dialog_upload_quota_hint_files">%1$s의 이번 달 업로드 한도 %3$s 중 %2$s만 남아 파일 %4$d개를 올릴 수 없어요. %5$s에 초기화돼요. Pro는 월 한도가 없어요.</string>
     <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s의 이번 달 업로드 한도 %3$s 중 %2$s만 남아 파일 %4$d개를 올릴 수 없어요. %5$s에 초기화돼요. %6$s Pro는 월 한도가 없어요.</string>
+    <string name="floating_mini_window_collapse_to_pill">가장자리로 최소화</string>
+    <string name="floating_mini_window_expand_full_screen">전체 화면으로 확대</string>
+    <string name="floating_mini_window_resize_a11y">플로팅 창 크기 조절</string>
+    <string name="floating_mini_window_drag_a11y">플로팅 창 드래그</string>
+    <string name="floating_window_kind_artifact">Artifact</string>
 </resources>

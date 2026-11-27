@@ -211,7 +211,7 @@ internal actual fun raftWebViewKeepAliveEvict(key: String) {
 }
 
 internal actual fun raftWebViewKeepAliveOnMemoryPressure(critical: Boolean) {
-    RaftMobileWebPanelCoordinator.process.hibernateBackgroundTabs()
+    RaftFloatingWindowCoordinator.process.hibernateBackgroundWindows()
     RaftIosAppBrowserWebViewPool.clearAll("memory_warning")
     runCatching {
         WebContainerIosKeepAlive.onMemoryPressure(
