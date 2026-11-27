@@ -723,7 +723,7 @@ private fun RaftMiniWindowResizeHandle(
 ) {
     val colors = RaftTheme.colors
     val a11y = stringResource(Res.string.floating_mini_window_resize_a11y)
-    val gripColor = if (active) colors.accent else colors.foregroundHint.copy(alpha = 0.7f)
+    val gripColor = if (active) colors.brand else colors.foregroundHint.copy(alpha = 0.7f)
 
     Box(
         modifier =
