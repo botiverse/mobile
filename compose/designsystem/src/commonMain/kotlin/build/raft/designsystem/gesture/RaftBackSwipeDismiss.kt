@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -20,8 +21,10 @@ import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
+import build.raft.designsystem.motion.RaftMotion
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import kotlin.math.abs
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Decision of [rememberRaftBackSwipeDismiss] for one drag before it claims it. */
@@ -72,8 +75,9 @@ internal fun raftBackSwipeDismissCommits(offsetPx: Float, widthPx: Float, backVe
  * it blocks the page's back swipe ([RaftBlockBackSwipe]) so the drag reaches Compose; a
  * back-direction horizontal drag no content below consumed then slides the overlay with the
  * finger and, released past a third of its width or flung, slides it out and calls [onDismiss];
- * otherwise it slides back. Put the returned modifier on the overlay's root. The overlay is
- * expected to leave composition on [onDismiss] (it stays slid out meanwhile).
+ * otherwise it slides back. Put the returned modifier on the overlay's root. [onDismiss] is
+ * expected to remove the overlay synchronously on the next recomposition; if the overlay stays
+ * composed after two frames, it smoothly slides back into view.
  *
  * Inert (an empty modifier, nothing blocked) on hosts without a content back swipe (Android: the
  * system back gesture already reaches the overlay's back handler) or when [enabled] is false.
@@ -86,6 +90,7 @@ fun rememberRaftBackSwipeDismiss(enabled: Boolean = true, onDismiss: () -> Unit)
     if (!active) return Modifier
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val currentOnDismiss by rememberUpdatedState(onDismiss)
+    val currentReducedMotion by rememberUpdatedState(rememberRaftReducedMotion())
     val scope = rememberCoroutineScope()
     val offset = remember { mutableFloatStateOf(0f) }
     val width = remember { mutableIntStateOf(0) }
@@ -93,52 +98,86 @@ fun rememberRaftBackSwipeDismiss(enabled: Boolean = true, onDismiss: () -> Unit)
         Modifier
             .onSizeChanged { width.intValue = it.width }
             .pointerInput(isLtr) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
-                    val tracker = VelocityTracker()
-                    tracker.addPointerInputChange(down)
-                    val slop = viewConfiguration.touchSlop
-                    var claimed = false
-                    while (!claimed) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                        // Content below (a scroller away from its start, a seek bar) took the drag.
-                        if (!change.pressed || change.isConsumed) return@awaitEachGesture
-                        tracker.addPointerInputChange(change)
-                        val total = change.position - down.position
-                        when (raftBackSwipeDismissDecision(total.x, total.y, slop, isLtr)) {
-                            RaftBackSwipeDismissDecision.Undecided -> Unit
-                            RaftBackSwipeDismissDecision.Release -> return@awaitEachGesture
-                            RaftBackSwipeDismissDecision.Claim -> {
-                                claimed = true
-                                change.consume()
+                var settleJob: Job? = null
+                try {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
+                        val tracker = VelocityTracker()
+                        tracker.addPointerInputChange(down)
+                        val slop = viewConfiguration.touchSlop
+                        var claimed = false
+                        while (!claimed) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                            // Content below (a scroller away from its start, a seek bar) took the drag.
+                            if (!change.pressed || change.isConsumed) return@awaitEachGesture
+                            tracker.addPointerInputChange(change)
+                            val total = change.position - down.position
+                            when (raftBackSwipeDismissDecision(total.x, total.y, slop, isLtr)) {
+                                RaftBackSwipeDismissDecision.Undecided -> Unit
+                                RaftBackSwipeDismissDecision.Release -> return@awaitEachGesture
+                                RaftBackSwipeDismissDecision.Claim -> {
+                                    // Cancel any in-flight settle animation so the finger immediately
+                                    // retakes sole ownership of `offset` without fighting a prior launch.
+                                    settleJob?.cancel()
+                                    settleJob = null
+                                    claimed = true
+                                    change.consume()
+                                }
                             }
                         }
-                    }
-                    var released = false
-                    while (!released) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        tracker.addPointerInputChange(change)
-                        if (!change.pressed) released = true
-                        val dx = change.position.x - change.previousPosition.x
-                        offset.floatValue = (offset.floatValue + raftBackSwipeDismissProgress(dx, isLtr)).coerceAtLeast(0f)
-                        change.consume()
-                    }
-                    val backVelocity = raftBackSwipeDismissProgress(tracker.calculateVelocity().x, isLtr)
-                    val widthPx = width.intValue.toFloat()
-                    val commits = released && raftBackSwipeDismissCommits(offset.floatValue, widthPx, backVelocity)
-                    scope.launch {
-                        animate(offset.floatValue, if (commits) widthPx else 0f, animationSpec = tween(220)) { value, _ ->
-                            offset.floatValue = value
+                        var released = false
+                        while (!released) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            tracker.addPointerInputChange(change)
+                            if (!change.pressed) released = true
+                            val dx = change.position.x - change.previousPosition.x
+                            offset.floatValue = (offset.floatValue + raftBackSwipeDismissProgress(dx, isLtr)).coerceAtLeast(0f)
+                            change.consume()
                         }
-                        if (commits) {
-                            currentOnDismiss()
-                            // Normally gone by now; an overlay that stayed comes back into view.
-                            delay(600)
-                            offset.floatValue = 0f
-                        }
+                        val backVelocity = raftBackSwipeDismissProgress(tracker.calculateVelocity().x, isLtr)
+                        val widthPx = width.intValue.toFloat()
+                        val commits = released && raftBackSwipeDismissCommits(offset.floatValue, widthPx, backVelocity)
+                        settleJob?.cancel()
+                        settleJob =
+                            scope.launch {
+                                val target = if (commits) widthPx else 0f
+                                if (currentReducedMotion) {
+                                    offset.floatValue = target
+                                } else {
+                                    animate(
+                                        initialValue = offset.floatValue,
+                                        targetValue = target,
+                                        animationSpec = tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide),
+                                    ) { value, _ ->
+                                        offset.floatValue = value
+                                    }
+                                }
+                                if (commits) {
+                                    currentOnDismiss()
+                                    // Give synchronous composition two frames to remove the overlay after
+                                    // onDismiss(); if the caller intentionally kept it mounted, restore
+                                    // it smoothly (or snap under reduced motion) without a 600 ms timer.
+                                    withFrameNanos { }
+                                    withFrameNanos { }
+                                    if (currentReducedMotion) {
+                                        offset.floatValue = 0f
+                                    } else {
+                                        animate(
+                                            initialValue = offset.floatValue,
+                                            targetValue = 0f,
+                                            animationSpec = tween(RaftMotion.SlideMillis, easing = RaftMotion.EaseSlide),
+                                        ) { value, _ ->
+                                            offset.floatValue = value
+                                        }
+                                    }
+                                }
+                            }
                     }
+                } finally {
+                    settleJob?.cancel()
+                    offset.floatValue = 0f
                 }
             }
             // After the drag handler: it reads touches in the untranslated frame, so the finger's

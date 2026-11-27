@@ -1,6 +1,8 @@
 package build.raft.designsystem
 
 import build.raft.designsystem.components.RaftReorderState
+import build.raft.designsystem.components.raftReorderAutoScrollStepPx
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -90,5 +92,23 @@ class RaftReorderStateTest {
         assertEquals(listOf("a", "b", "c"), s.moveBy("a", -1))
         assertNull(s.moveBy("c", 1))
         assertNull(s.moveBy("a", -1))
+    }
+
+    @Test
+    fun edgeAutoScrollStepMatchesDistanceAcross60Hz90HzAnd120HzAndClampsStalls() {
+        val speedPxPerSec = 480f
+        val step60Hz = raftReorderAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 16_666_667L)
+        val step90Hz = raftReorderAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 11_111_111L)
+        val step120Hz = raftReorderAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 8_333_333L)
+        assertTrue(abs(step60Hz - 2f * step120Hz) < 0.01f)
+        assertTrue(abs(step60Hz * 2f - step90Hz * 3f) < 0.01f)
+        // Stalled frame clamped at 50 ms cap (480 * 0.05 = 24 px).
+        assertEquals(24f, raftReorderAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 250_000_000L))
+        assertEquals(0f, raftReorderAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 0L))
+        assertEquals(0f, raftReorderAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = -1_000_000L))
+        assertEquals(0f, raftReorderAutoScrollStepPx(0f, frameDeltaNanos = 16_666_667L))
+        assertEquals(0f, raftReorderAutoScrollStepPx(-100f, frameDeltaNanos = 16_666_667L))
+        assertEquals(0f, raftReorderAutoScrollStepPx(Float.NaN, frameDeltaNanos = 16_666_667L))
+        assertEquals(0f, raftReorderAutoScrollStepPx(Float.POSITIVE_INFINITY, frameDeltaNanos = 16_666_667L))
     }
 }
