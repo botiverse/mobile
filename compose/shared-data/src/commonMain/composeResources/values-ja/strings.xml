@@ -6893,8 +6893,6 @@
     <string name="server_panel_recently_used">最近使った項目</string>
     <string name="mobile_nav_edit_reset">リセット</string>
     <string name="mobile_nav_edit_tab_bar">タブバー</string>
-    <string name="mobile_nav_edit_tab_bar_hint">最大 4 件 · サーバーは末尾に固定</string>
-    <string name="mobile_nav_edit_more_hint">この順番 · 設定は末尾に固定</string>
     <string name="mobile_nav_edit_helper">ドラッグしてタブバーや「その他」の順番を並べ替えたり、両方の間で移動できます。</string>
     <string name="mobile_nav_edit_remove_place">タブバーから %1$s を外す</string>
     <string name="mobile_nav_edit_add_place">%1$s をタブバーに追加</string>

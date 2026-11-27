@@ -6894,8 +6894,6 @@
     <string name="server_panel_recently_used">Recently used</string>
     <string name="mobile_nav_edit_reset">Reset</string>
     <string name="mobile_nav_edit_tab_bar">Tab bar</string>
-    <string name="mobile_nav_edit_tab_bar_hint">Up to 4 · your server stays last</string>
-    <string name="mobile_nav_edit_more_hint">In this order · Settings stays last</string>
     <string name="mobile_nav_edit_helper">Drag to reorder the tab bar or More, or to move a place between the two.</string>
     <string name="mobile_nav_edit_remove_place">Remove %1$s from tab bar</string>
     <string name="mobile_nav_edit_add_place">Add %1$s to tab bar</string>

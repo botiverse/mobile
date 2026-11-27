@@ -36,6 +36,9 @@ import kotlinx.coroutines.launch
 /** Maximum number of dynamic place tabs placed before the fixed Server tab on the phone bar. */
 internal const val AppShellPhoneMaxPlaceTabs: Int = 4
 
+/** Number of columns in the phone Server popover's More grid (matches the 5-tab bottom bar density). */
+internal const val AppShellPhoneMoreGridColumns: Int = 5
+
 /**
  * Whether per-server phone & native tablet/foldable navigation places are enabled for [serverId]
  * (`tab_bar_places_v0`, `#proj-mobile:#329`).

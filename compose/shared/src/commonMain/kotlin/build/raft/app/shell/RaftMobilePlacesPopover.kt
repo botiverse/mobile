@@ -57,7 +57,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
@@ -471,7 +470,6 @@ internal fun RaftMobilePlacesEditPopoverBody(
             // Section 1: Tab bar
             MobilePlacesEditSectionHeader(
                 title = stringResource(Res.string.mobile_nav_edit_tab_bar),
-                hint = stringResource(Res.string.mobile_nav_edit_tab_bar_hint),
             )
             MobilePlacesEditGrid(
                 columns = AppShellPhoneMaxPlaceTabs,
@@ -510,10 +508,9 @@ internal fun RaftMobilePlacesEditPopoverBody(
             // Section 2: More (+ static Settings last)
             MobilePlacesEditSectionHeader(
                 title = stringResource(Res.string.tab_more),
-                hint = stringResource(Res.string.mobile_nav_edit_more_hint),
             )
             MobilePlacesEditGrid(
-                columns = AppShellPhoneMaxPlaceTabs,
+                columns = AppShellPhoneMoreGridColumns,
                 gap = MobilePlacesEditGridGap,
                 modifier = Modifier.testTag(RaftMobilePlacesPopoverTags.EDIT_MORE_GRID).padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
@@ -587,13 +584,11 @@ internal fun RaftMobilePlacesEditPopoverBody(
 @Composable
 private fun MobilePlacesEditSectionHeader(
     title: String,
-    hint: String,
 ) {
     val colors = RaftTheme.colors
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         RaftText(
             text = title,
@@ -602,16 +597,6 @@ private fun MobilePlacesEditSectionHeader(
             maxLines = 1,
             softWrap = false,
             overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.weight(1f))
-        RaftText(
-            text = hint,
-            style = RaftTheme.typography.caption,
-            color = colors.foregroundMuted,
-            maxLines = 1,
-            softWrap = false,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.End,
         )
     }
 }
