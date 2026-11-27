@@ -68,10 +68,17 @@ import kotlinx.serialization.json.JsonPrimitive
     fun applyRemoteDone(serverId: String, channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome
 
     /**
-     * Loaded channel member rosters refetch: [channelIds], or every loaded one when null. False when
-     * one of them [RaftSyncSnapshotRead.Failed] (a channel the viewer can no longer read is not a failure).
+     * Loaded channel member rosters refresh: [channelIds], or every loaded one when null.
+     * Actively observed slices refetch immediately while unobserved loaded slices are invalidated
+     * for on-demand refresh on next open. Returns [RaftSyncChannelMembersRefreshResult.AllSucceeded]
+     * when every targeted observed roster succeeded, or the specific failed channel ids to retake
+     * on the next pull (a channel the viewer can no longer read is not a failure).
      */
-    suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String): Boolean
+    suspend fun refreshChannelMembers(
+        serverId: String,
+        channelIds: Set<String>?,
+        reason: String,
+    ): RaftSyncChannelMembersRefreshResult
 
     /** Forced roster reload (`/servers/:id/members` + `/agents` + `/servers/:id/machines`). */
     suspend fun reloadRoster(serverId: String, reason: String): RaftSyncSnapshotRead
@@ -118,6 +125,23 @@ import kotlinx.serialization.json.JsonPrimitive
 
     /** No store could take them: `conversation` changes read the lists as before. */
     data object NotApplied : RaftSyncInboxRowsOutcome
+}
+
+/**
+ * Result of refreshing loaded channel member rosters ([RaftSyncStoreTargets.refreshChannelMembers]).
+ *
+ * - [AllSucceeded]: every targeted observed roster succeeded (and any unobserved loaded slices were
+ *   invalidated so their next open fetches fresh).
+ * - [FailedChannels]: only these specific [channelIds] failed and should be retaken on the next pull
+ *   without rescanning unrelated channels (Hands 5f4a14be).
+ * - [FailedAll]: whole-server fallback when specific failed channel ids are unknown.
+ */
+@RaftCoreInternalApi sealed interface RaftSyncChannelMembersRefreshResult {
+    data object AllSucceeded : RaftSyncChannelMembersRefreshResult
+
+    data class FailedChannels(val channelIds: Set<String>) : RaftSyncChannelMembersRefreshResult
+
+    data object FailedAll : RaftSyncChannelMembersRefreshResult
 }
 
 /** How one snapshot reload ended, for the cursor. */
@@ -177,9 +201,10 @@ import kotlinx.serialization.json.JsonPrimitive
 @RaftCoreInternalApi data class RaftSyncRetakes(
     val lists: Set<RaftSyncListRead> = emptySet(),
     val snapshots: Set<RaftSyncSnapshot> = emptySet(),
+    val channelMemberIds: Set<String> = emptySet(),
 ) {
     val isEmpty: Boolean
-        get() = lists.isEmpty() && snapshots.isEmpty()
+        get() = lists.isEmpty() && snapshots.isEmpty() && channelMemberIds.isEmpty()
 }
 
 /**
@@ -208,6 +233,7 @@ import kotlinx.serialization.json.JsonPrimitive
     private val requested = mutableMapOf<Pair<String, RaftSyncListRead>, Long>()
     private val failedLists = mutableSetOf<Pair<String, RaftSyncListRead>>()
     private val failedSnapshots = mutableMapOf<String, MutableSet<RaftSyncSnapshot>>()
+    private val failedChannelMemberChannels = mutableMapOf<String, MutableSet<String>>()
 
     fun requestListRead(serverId: String, list: RaftSyncListRead) {
         synchronized(lock) { requested[serverId to list] = ++clock }
@@ -230,7 +256,22 @@ import kotlinx.serialization.json.JsonPrimitive
 
     fun markFailed(serverId: String, snapshots: Set<RaftSyncSnapshot>) {
         if (snapshots.isEmpty()) return
-        synchronized(lock) { failedSnapshots.getOrPut(serverId) { mutableSetOf() } += snapshots }
+        synchronized(lock) {
+            failedSnapshots.getOrPut(serverId) { mutableSetOf() } += snapshots
+            if (RaftSyncSnapshot.ChannelMembers in snapshots) {
+                // Whole-server channel_members snapshot subsumes per-channel retakes.
+                failedChannelMemberChannels.remove(serverId)
+            }
+        }
+    }
+
+    fun markFailedChannelMembers(serverId: String, channelIds: Set<String>) {
+        val clean = channelIds.mapNotNullTo(LinkedHashSet()) { it.trim().takeIf(String::isNotEmpty) }
+        if (clean.isEmpty()) return
+        synchronized(lock) {
+            if (RaftSyncSnapshot.ChannelMembers in failedSnapshots[serverId].orEmpty()) return
+            failedChannelMemberChannels.getOrPut(serverId) { LinkedHashSet() } += clean
+        }
     }
 
     /** What [serverId]'s next pull reads again; forgotten here (a retake that fails is marked again). */
@@ -238,7 +279,15 @@ import kotlinx.serialization.json.JsonPrimitive
         synchronized(lock) {
             val lists = failedLists.filter { it.first == serverId }.mapTo(LinkedHashSet()) { it.second }
             failedLists.removeAll { it.first == serverId }
-            RaftSyncRetakes(lists = lists, snapshots = failedSnapshots.remove(serverId).orEmpty())
+            val snapshots = failedSnapshots.remove(serverId).orEmpty()
+            val channelMemberIds =
+                if (RaftSyncSnapshot.ChannelMembers in snapshots) {
+                    failedChannelMemberChannels.remove(serverId)
+                    emptySet()
+                } else {
+                    failedChannelMemberChannels.remove(serverId).orEmpty()
+                }
+            RaftSyncRetakes(lists = lists, snapshots = snapshots, channelMemberIds = channelMemberIds)
         }
 }
 
@@ -263,11 +312,11 @@ import kotlinx.serialization.json.JsonPrimitive
     private val logger: (String) -> Unit = {},
 ) : RaftSyncChangesSink {
     override suspend fun reloadSnapshots(scope: RaftSyncScope, snapshots: Set<RaftSyncSnapshot>, reason: String): Boolean {
-        val failed = reload(scope.serverId, snapshots, channelIds = null, reason = "sync_$reason")
+        val failures = reload(scope.serverId, snapshots, channelIds = null, reason = "sync_$reason")
         // The cursor stands on the roster and machine lists (the change log patches them row by
         // row). Channel member rosters and task lists are only the loaded ones: retaken by the next pull.
-        val pullFailed = failed.any { it != RaftSyncSnapshot.ChannelMembers && it != RaftSyncSnapshot.Tasks }
-        if (!pullFailed) ledger.markFailed(scope.serverId, failed)
+        val pullFailed = failures.snapshots.any { it != RaftSyncSnapshot.ChannelMembers && it != RaftSyncSnapshot.Tasks }
+        if (!pullFailed) recordReloadFailures(scope.serverId, failures)
         return !pullFailed
     }
 
@@ -282,12 +331,19 @@ import kotlinx.serialization.json.JsonPrimitive
         val reason = "sync_retake"
         logger(
             "sync_changes_retake serverId=$serverId lists=${retakes.lists.joinToString(",") { it.name }.ifEmpty { "none" }} " +
-                "snapshots=${retakes.snapshots.joinToString(",") { it.wireName }.ifEmpty { "none" }}"
+                "snapshots=${retakes.snapshots.joinToString(",") { it.wireName }.ifEmpty { "none" }}" +
+                (if (retakes.channelMemberIds.isNotEmpty()) " channelMembers=${retakes.channelMemberIds.size}" else "")
         )
         if (RaftSyncListRead.Home in retakes.lists) refreshHome(serverId, reason)
         if (RaftSyncListRead.Activity in retakes.lists) refreshActivity(serverId, reason)
         if (retakes.snapshots.isNotEmpty()) {
-            ledger.markFailed(serverId, reload(serverId, retakes.snapshots, channelIds = null, reason = reason))
+            recordReloadFailures(serverId, reload(serverId, retakes.snapshots, channelIds = null, reason = reason))
+        }
+        if (retakes.channelMemberIds.isNotEmpty() && RaftSyncSnapshot.ChannelMembers !in retakes.snapshots) {
+            recordChannelMembersRefreshFailure(
+                serverId = serverId,
+                result = targets.refreshChannelMembers(serverId, retakes.channelMemberIds, reason),
+            )
         }
     }
 
@@ -386,15 +442,16 @@ import kotlinx.serialization.json.JsonPrimitive
         if (homeChanged && !resnapshot.any { it in HomeSnapshots }) refreshHome(serverId, reason)
         if (activityChanged && !resnapshot.any { it in ActivitySnapshots }) refreshActivity(serverId, reason)
 
-        // Channel member rows: the loaded roster of each channel they name.
+        // Channel member rows: actively observed rosters refetch; unobserved loaded slices invalidate.
         val memberChannels =
             (plan.upsertsOf(RaftSyncRowEntity.ChannelMember).keys + plan.deletesOf(RaftSyncRowEntity.ChannelMember))
                 .mapNotNullTo(LinkedHashSet()) { id -> id.substringBefore(':').takeIf { it.isNotBlank() } }
         if (memberChannels.isNotEmpty() && RaftSyncSnapshot.ChannelMembers !in resnapshot) {
-            // Retaken whole (every loaded roster) by the next pull when one of them failed.
-            if (!targets.refreshChannelMembers(serverId, memberChannels, reason)) {
-                ledger.markFailed(serverId, setOf(RaftSyncSnapshot.ChannelMembers))
-            }
+            // Only the exact failed observed channel ids are retaken on the next pull (Hands 5f4a14be).
+            recordChannelMembersRefreshFailure(
+                serverId = serverId,
+                result = targets.refreshChannelMembers(serverId, memberChannels, reason),
+            )
         }
 
         // Messages changed in place (a card message's update): replace them where they are held. A
@@ -472,9 +529,9 @@ import kotlinx.serialization.json.JsonPrimitive
             val channelIds = plan.addedChannelIds.takeIf { it.isNotEmpty() && !serverRemoved }
             val taskChannelIds = if (wholeServerTaskResnapshot) null else channelIds
             // The cursor goes on past this page: what failed is read again by the next pull.
-            ledger.markFailed(
-                serverId,
-                reload(serverId, resnapshot, channelIds, reason = "sync_resnapshot", taskChannelIds = taskChannelIds),
+            recordReloadFailures(
+                serverId = serverId,
+                failures = reload(serverId, resnapshot, channelIds, reason = "sync_resnapshot", taskChannelIds = taskChannelIds),
             )
         }
         logger(
@@ -539,6 +596,35 @@ import kotlinx.serialization.json.JsonPrimitive
         targets.refreshActivity(serverId, reason)
     }
 
+    private class ReloadFailures(
+        val snapshots: Set<RaftSyncSnapshot>,
+        val failedChannelMemberIds: Set<String>,
+    )
+
+    private fun recordReloadFailures(serverId: String, failures: ReloadFailures) {
+        ledger.markFailed(serverId, failures.snapshots)
+        ledger.markFailedChannelMembers(serverId, failures.failedChannelMemberIds)
+    }
+
+    private fun recordChannelMembersRefreshFailure(
+        serverId: String,
+        result: RaftSyncChannelMembersRefreshResult,
+    ) {
+        when (result) {
+            RaftSyncChannelMembersRefreshResult.AllSucceeded -> Unit
+            is RaftSyncChannelMembersRefreshResult.FailedChannels -> {
+                val clean = result.channelIds.mapNotNullTo(LinkedHashSet()) { it.trim().takeIf(String::isNotEmpty) }
+                if (clean.isEmpty()) {
+                    ledger.markFailed(serverId, setOf(RaftSyncSnapshot.ChannelMembers))
+                } else {
+                    ledger.markFailedChannelMembers(serverId, clean)
+                }
+            }
+            RaftSyncChannelMembersRefreshResult.FailedAll ->
+                ledger.markFailed(serverId, setOf(RaftSyncSnapshot.ChannelMembers))
+        }
+    }
+
     /** Takes [snapshots]; returns the awaited ones that failed (Home / Activity settle in the ledger). */
     private suspend fun reload(
         serverId: String,
@@ -546,8 +632,9 @@ import kotlinx.serialization.json.JsonPrimitive
         channelIds: Set<String>?,
         reason: String,
         taskChannelIds: Set<String>? = channelIds,
-    ): Set<RaftSyncSnapshot> {
+    ): ReloadFailures {
         val failed = LinkedHashSet<RaftSyncSnapshot>()
+        val failedChannelMemberIds = LinkedHashSet<String>()
         if (snapshots.any { it in HomeSnapshots }) refreshHome(serverId, reason)
         if (snapshots.any { it in ActivitySnapshots }) refreshActivity(serverId, reason)
         // The roster load reads members, agents and machine names together.
@@ -566,13 +653,20 @@ import kotlinx.serialization.json.JsonPrimitive
                 RaftSyncSnapshotRead.Failed -> failed += RaftSyncSnapshot.Machines
             }
         }
-        if (RaftSyncSnapshot.ChannelMembers in snapshots && !targets.refreshChannelMembers(serverId, channelIds, reason)) {
-            failed += RaftSyncSnapshot.ChannelMembers
+        if (RaftSyncSnapshot.ChannelMembers in snapshots) {
+            when (val refresh = targets.refreshChannelMembers(serverId, channelIds, reason)) {
+                RaftSyncChannelMembersRefreshResult.AllSucceeded -> Unit
+                is RaftSyncChannelMembersRefreshResult.FailedChannels -> {
+                    val clean = refresh.channelIds.mapNotNullTo(LinkedHashSet()) { it.trim().takeIf(String::isNotEmpty) }
+                    if (clean.isEmpty()) failed += RaftSyncSnapshot.ChannelMembers else failedChannelMemberIds += clean
+                }
+                RaftSyncChannelMembersRefreshResult.FailedAll -> failed += RaftSyncSnapshot.ChannelMembers
+            }
         }
         if (RaftSyncSnapshot.Tasks in snapshots && !targets.refreshTasks(serverId, taskChannelIds, reason)) {
             failed += RaftSyncSnapshot.Tasks
         }
-        return failed
+        return ReloadFailures(snapshots = failed, failedChannelMemberIds = failedChannelMemberIds)
     }
 
     private companion object {

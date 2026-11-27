@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.model.AvatarReference
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelMemberSnapshot
 import build.raft.app.SharedThreadStoreTestFakes.FakeMemberRepository
 import build.raft.app.members.currentMemberAvatarWireValue
 import build.raft.app.model.MemberId
@@ -10,6 +12,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -188,6 +192,130 @@ class SharedServerMembersStoreSyncTest {
         assertEquals(2 to 0, repository.memberCalls to repository.agentCalls)
     }
 
+    @Test
+    fun `whole-server channel members sync refetches only observed channels and invalidates unobserved slices for next open`() = runTest {
+        val repository = ChannelMembersSyncTestRepository()
+        val store = SharedServerMembersStore(memberRepository = repository)
+        val observedId = ChannelId("ch-active")
+        val unobservedIds = (1..5).map { ChannelId("ch-bg-$it") }
+
+        repository.membersByChannel["ch-active"] = listOf(human("u-1", "Old Active"))
+        unobservedIds.forEach { ch -> repository.membersByChannel[ch.value] = listOf(human("u-bg", "Old ${ch.value}")) }
+
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(store.loadChannelMembers(serverId, observedId, force = true))
+        unobservedIds.forEach { ch ->
+            assertIs<DataResult.Content<ChannelMemberSnapshot>>(store.loadChannelMembers(serverId, ch, force = true))
+        }
+        repository.channelCalls.clear()
+
+        // Only ch-active has an active UI observer; ch-bg-1..5 were opened historically and closed.
+        val observerJob = launch { store.channelMemberSliceFlow(serverId, observedId).collect() }
+        runCurrent()
+
+        repository.membersByChannel["ch-active"] = listOf(human("u-1", "Fresh Active"))
+        repository.membersByChannel["ch-bg-1"] = listOf(human("u-bg", "Fresh ch-bg-1"))
+
+        val failed = store.refreshLoadedChannelMembers(serverId, channelIds = null, reason = "sync_retake")
+        assertEquals(emptySet(), failed)
+        // Zero background storm: ONLY the actively observed channel hit the network.
+        assertEquals(listOf("ch-active"), repository.channelCalls)
+        assertEquals(listOf("Fresh Active"), store.currentChannelMembers(serverId, observedId).map { it.displayName })
+
+        // Unobserved slices were evicted, so the next non-forced open fetches fresh from the server.
+        assertEquals(emptyList(), store.currentChannelMembers(serverId, ChannelId("ch-bg-1")))
+        val reopened = assertIs<DataResult.Content<ChannelMemberSnapshot>>(
+            store.loadChannelMembers(serverId, ChannelId("ch-bg-1"), force = false)
+        )
+        assertEquals(listOf("Fresh ch-bg-1"), reopened.data.members.map { it.displayName })
+        assertEquals(listOf("ch-active", "ch-bg-1"), repository.channelCalls)
+
+        observerJob.cancel()
+    }
+
+    @Test
+    fun `failed observed channel refresh returns only failed id and retries cleanly on retake after error status`() = runTest {
+        val repository = ChannelMembersSyncTestRepository()
+        val store = SharedServerMembersStore(memberRepository = repository)
+        val ch1 = ChannelId("ch-1")
+        val ch2 = ChannelId("ch-2")
+        repository.membersByChannel["ch-1"] = listOf(human("u-1", "Ann"))
+        repository.membersByChannel["ch-2"] = listOf(human("u-2", "Bob"))
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(store.loadChannelMembers(serverId, ch1, force = true))
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(store.loadChannelMembers(serverId, ch2, force = true))
+        repository.channelCalls.clear()
+
+        val obs1 = launch { store.channelMemberSliceFlow(serverId, ch1).collect() }
+        val obs2 = launch { store.channelMemberSliceFlow(serverId, ch2).collect() }
+        runCurrent()
+
+        // ch-1 succeeds; ch-2 fails transiently (network/5xx).
+        repository.membersByChannel["ch-1"] = listOf(human("u-1", "Ann Updated"))
+        repository.channelErrorCodes["ch-2"] = "network_timeout"
+        val firstFailed = store.refreshLoadedChannelMembers(serverId, setOf("ch-1", "ch-2"), reason = "sync_changes")
+        assertEquals(setOf("ch-2"), firstFailed)
+        assertEquals(listOf("ch-1", "ch-2"), repository.channelCalls)
+
+        // Retake only ch-2 even though markChannelFailure moved ch-2 to status=Error.
+        repository.channelCalls.clear()
+        repository.channelErrorCodes.remove("ch-2")
+        repository.membersByChannel["ch-2"] = listOf(human("u-2", "Bob Updated"))
+        val retakeFailed = store.refreshLoadedChannelMembers(serverId, firstFailed, reason = "sync_retake")
+        assertEquals(emptySet(), retakeFailed)
+        assertEquals(listOf("ch-2"), repository.channelCalls)
+        assertEquals(listOf("Bob Updated"), store.currentChannelMembers(serverId, ch2).map { it.displayName })
+
+        // A 404/access-lost error is not a retryable sync failure, and once dropLostChannel marks
+        // accessLost=true, a subsequent whole-server sync must NOT re-hit the lost channel.
+        repository.channelCalls.clear()
+        repository.channelErrorCodes["ch-2"] = "http_404"
+        val accessLostFailed = store.refreshLoadedChannelMembers(serverId, setOf("ch-2"), reason = "sync_changes")
+        assertEquals(emptySet(), accessLostFailed)
+        assertEquals(listOf("ch-2"), repository.channelCalls)
+
+        repository.channelCalls.clear()
+        val after404WholeServer = store.refreshLoadedChannelMembers(serverId, channelIds = null, reason = "sync_reset")
+        assertEquals(emptySet(), after404WholeServer)
+        assertEquals(listOf("ch-1"), repository.channelCalls)
+
+        // A non-auth 403 (NoPermission) on ch-1 also counts as NotReadable (non-retryable) and is
+        // skipped by subsequent whole-server syncs once dropLostChannel runs.
+        repository.channelCalls.clear()
+        repository.channelForbidden["ch-1"] = "channel_forbidden"
+        val forbiddenFailed = store.refreshLoadedChannelMembers(serverId, setOf("ch-1"), reason = "sync_changes")
+        assertEquals(emptySet(), forbiddenFailed)
+        repository.channelCalls.clear()
+        assertEquals(emptySet(), store.refreshLoadedChannelMembers(serverId, channelIds = null, reason = "sync_reset"))
+        assertEquals(emptyList(), repository.channelCalls)
+
+        obs1.cancel()
+        obs2.cancel()
+    }
+
+    @Test
+    fun `unobserved transient error slice is evicted on sync so stale members do not linger`() = runTest {
+        val repository = ChannelMembersSyncTestRepository()
+        val store = SharedServerMembersStore(memberRepository = repository)
+        val ch1 = ChannelId("ch-1")
+        repository.membersByChannel["ch-1"] = listOf(human("u-1", "Stale"))
+        assertIs<DataResult.Content<ChannelMemberSnapshot>>(store.loadChannelMembers(serverId, ch1, force = true))
+
+        // Transient error while observed keeps stale members under status=Error.
+        val obs = launch { store.channelMemberSliceFlow(serverId, ch1).collect() }
+        runCurrent()
+        repository.channelErrorCodes["ch-1"] = "network_timeout"
+        assertEquals(setOf("ch-1"), store.refreshLoadedChannelMembers(serverId, setOf("ch-1"), reason = "sync_changes"))
+        assertEquals(listOf("Stale"), store.currentChannelMembers(serverId, ch1).map { it.displayName })
+
+        // User navigates away before retake runs -> sync evicts the unobserved transient-Error slice.
+        obs.cancel()
+        runCurrent()
+        repository.channelCalls.clear()
+        repository.channelErrorCodes.remove("ch-1")
+        assertEquals(emptySet(), store.refreshLoadedChannelMembers(serverId, setOf("ch-1"), reason = "sync_retake"))
+        assertEquals(emptyList(), repository.channelCalls)
+        assertEquals(emptyList(), store.currentChannelMembers(serverId, ch1))
+    }
+
     private fun human(id: String, name: String) = profile(id, name, MemberKind.Human)
 
     private fun agent(id: String, name: String) = profile(id, name, MemberKind.Agent)
@@ -262,6 +390,34 @@ class SharedServerMembersStoreSyncTest {
             val answer = agents
             agentsGate?.also { agentsGate = null }?.await()
             return DataResult.Content(answer)
+        }
+    }
+
+    private class ChannelMembersSyncTestRepository : MemberRepository by FakeMemberRepository() {
+        val membersByChannel = mutableMapOf<String, List<MemberProfile>>()
+        val channelErrorCodes = mutableMapOf<String, String>()
+        val channelForbidden = mutableMapOf<String, String>()
+        val channelCalls = mutableListOf<String>()
+
+        override suspend fun getChannelMembers(
+            priority: DataRequestPriority,
+            channelId: ChannelId,
+        ): DataResult<ChannelMemberSnapshot> {
+            channelCalls += channelId.value
+            val forbiddenCode = channelForbidden[channelId.value]
+            if (forbiddenCode != null) {
+                return DataResult.NoPermission(PermissionBlocker(code = forbiddenCode, requiredCapability = "channel_access", traceId = null))
+            }
+            val errorCode = channelErrorCodes[channelId.value]
+            if (errorCode != null) {
+                return DataResult.Error(ScreenError(code = errorCode, retryable = errorCode != "http_404"))
+            }
+            return DataResult.Content(
+                ChannelMemberSnapshot(
+                    channelId = channelId,
+                    members = membersByChannel[channelId.value].orEmpty(),
+                )
+            )
         }
     }
 }
