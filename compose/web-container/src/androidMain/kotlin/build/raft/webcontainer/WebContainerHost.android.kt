@@ -1397,9 +1397,13 @@ internal class WebContainerAndroidView(
                                 method = "GET",
                                 requestCarriesScopedHeader = chainState.carriesScopedHeader,
                                 chainState = chainState,
+                                isRedirect = true,
+                                committedDocumentUrl = committedDocumentUrl,
                                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                                 routesMainFrameNavigation =
                                     events.routesMainFrameNavigation.takeUnless { isConfiguredInitialDocument },
+                                routesMainFrameNavigationWithContext =
+                                    events.routesMainFrameNavigationWithContext.takeUnless { isConfiguredInitialDocument },
                                 mutateChainState = false,
                             )
                         when (fence) {
@@ -1808,8 +1812,10 @@ internal class WebContainerAndroidView(
                 chainState = chainState,
                 isUserGesture = isUserGesture,
                 isRedirect = isRedirect,
+                committedDocumentUrl = committedDocumentUrl,
                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                 routesMainFrameNavigation = events.routesMainFrameNavigation,
+                routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
             )
         return when (decision) {
             WebNavigationDecision.Allow -> {
@@ -1884,8 +1890,10 @@ internal class WebContainerAndroidView(
                 chainState = chainState,
                 isUserGesture = true,
                 isRedirect = false,
+                committedDocumentUrl = committedDocumentUrl,
                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                 routesMainFrameNavigation = events.routesMainFrameNavigation,
+                routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
             )
         when (decision) {
             WebNavigationDecision.Allow -> configuredWebView.loadUrl(target)
@@ -2411,8 +2419,16 @@ internal class WebContainerAndroidView(
                 val target = command.url.trim()
                 if (target.isEmpty()) return
                 clearHostCancellationState()
+                mainFrameLoadFailed = false
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Page)
+                val starter =
+                    if (chainState.hasCommittedDocument) WebNavigationStarter.Page else WebNavigationStarter.Launch
+                chainState.startChain(
+                    carriesHeader = false,
+                    reissueBudget = budget,
+                    starter = starter,
+                    initialHop = target,
+                )
                 val decision =
                     evaluateMainFrameNavigation(
                         targetUrl = target,
@@ -2420,8 +2436,10 @@ internal class WebContainerAndroidView(
                         policy = config.navigationPolicy,
                         method = "GET",
                         chainState = chainState,
+                        committedDocumentUrl = committedDocumentUrl,
                         catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                         routesMainFrameNavigation = events.routesMainFrameNavigation,
+                        routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
                     )
                 when (decision) {
                     WebNavigationDecision.Allow -> webView.loadUrl(target)

@@ -228,9 +228,16 @@ internal fun raftMobileWebPanelMenuActions(
  * to another installed Raft App if the target origin is itself installed), rather than loading
  * inside the App's authenticated `Default`-partition WebView (`raft-design #1417` Row 12).
  *
- * Returns `false` for same-origin navigations, non-http(s) schemes (handled by external scheme
- * confirmation), App Store 3.1.1 restricted purchase URLs (handled by billing blocker), and Raft's
- * own hosts (handled by OAuth sign-in catch / Raft host router).
+ * Mirrors Desktop `appTabLeaves` parity (`webPreviewPage.ts`):
+ * - Server redirects ([isRedirect] == true) NEVER route out — they belong to the App's own
+ *   OAuth / SSO round trip (e.g. `stamp.build/auth/github/start` -> 302 -> `github.com/...`).
+ * - Only routes out when the currently committed document ([committedDocumentUrl]) is on
+ *   [scopeOrigin]. If nothing has committed yet or the tab is already temporarily off
+ *   [scopeOrigin] (e.g. mid-OAuth on `github.com`), every follow-up navigation stays in the same
+ *   WebView and cookie jar until the round trip returns to [scopeOrigin].
+ * - Also returns `false` for same-origin navigations, non-http(s) schemes (handled by external
+ *   scheme confirmation), App Store 3.1.1 restricted purchase URLs (handled by billing blocker),
+ *   and Raft's own hosts (handled by OAuth sign-in catch / Raft host router).
  */
 internal fun raftAppShouldRouteCrossOriginOutbound(
     candidateUrl: String,
@@ -239,8 +246,13 @@ internal fun raftAppShouldRouteCrossOriginOutbound(
     activeApiBaseUrl: String? = null,
     appStoreBillingRules: Boolean = raftPlatformFollowsAppStoreBillingRules(),
     appHosts: Set<String> = RaftClientConfigAppHosts.current,
+    isRedirect: Boolean = false,
+    committedDocumentUrl: String? = null,
 ): Boolean {
+    if (isRedirect) return false
     val cleanScope = scopeOrigin?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val committedOrigin = committedDocumentUrl?.trim()?.takeIf { it.isNotEmpty() }?.let(::raftAppEntryOriginOf)
+    if (committedOrigin != cleanScope) return false
     val trimmed = candidateUrl.trim()
     if (trimmed.isEmpty()) return false
     val candidateOrigin = raftAppEntryOriginOf(trimmed) ?: return false
@@ -252,6 +264,62 @@ internal fun raftAppShouldRouteCrossOriginOutbound(
         return false
     }
     return true
+}
+
+/**
+ * Whether an open installed Raft App tab is currently displaying a document on its own
+ * [scopeOrigin]. When `false` (for example during an in-tab third-party OAuth round trip such as
+ * `github.com`), the top bar hides App branding (`Stamp · Signed in as ...`) and shows only the
+ * live host domain to prevent origin spoofing.
+ */
+internal fun raftAppIsOnScopeOrigin(
+    currentUrl: String?,
+    scopeOrigin: String?,
+): Boolean {
+    val cleanScope = scopeOrigin?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val cleanUrl = currentUrl?.trim().orEmpty()
+    if (cleanUrl.isEmpty()) return true
+    return raftAppEntryOriginOf(cleanUrl) == cleanScope
+}
+
+/** Action taken when closing the sign-in-declined error overlay. */
+internal enum class RaftMobileWebPanelDeclinedCloseAction {
+    DismissNotice,
+    ClosePage,
+}
+
+/**
+ * Closing the sign-in-declined overlay dismisses the notice only when a real document has already
+ * committed underneath; otherwise (e.g. a deep link redirected to `/api/oauth/authorize` before
+ * any page committed), closing exits the browser page cleanly instead of exposing a blank white
+ * WebView.
+ */
+internal fun resolveRaftMobileWebPanelDeclinedCloseAction(
+    hasCommittedDocument: Boolean,
+): RaftMobileWebPanelDeclinedCloseAction =
+    if (hasCommittedDocument) {
+        RaftMobileWebPanelDeclinedCloseAction.DismissNotice
+    } else {
+        RaftMobileWebPanelDeclinedCloseAction.ClosePage
+    }
+
+/**
+ * Resolves a fresh launch URL to load via `controller.loadUrl(...)` on Reload when no document has
+ * committed yet or the active URL is blank / `about:blank` (where `controller.reload()` would only
+ * reload `about:blank`). Returns `null` when normal `controller.reload()` should be used.
+ */
+internal fun resolveRaftMobileWebPanelReloadTargetUrl(
+    currentUrl: String,
+    effectiveLaunchUrl: String?,
+    hasCommittedDocument: Boolean,
+): String? {
+    val launch = effectiveLaunchUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val current = currentUrl.trim()
+    val needsFreshLoad =
+        !hasCommittedDocument ||
+            current.isEmpty() ||
+            current.equals("about:blank", ignoreCase = true)
+    return if (needsFreshLoad) launch else null
 }
 
 /** System Back / top-bar ← resolution while an in-app browser page is visible. */

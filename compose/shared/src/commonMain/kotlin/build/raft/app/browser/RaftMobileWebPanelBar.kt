@@ -152,11 +152,13 @@ internal fun RaftAppBrowserTopBar(
     openTabCount: Int = 1,
     onOpenSwitcher: (() -> Unit)? = null,
     onForwardToRaft: (() -> Unit)? = null,
+    isOnAppOrigin: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
-    val showAppIdentity = isRaftApp && !isOutboundChild
-    val canMinimizeToFloat = showAppIdentity && !inColumn && onMinimizeToFloat != null
+    val isManagedAppTab = isRaftApp && !isOutboundChild
+    val showAppIdentity = isManagedAppTab && isOnAppOrigin
+    val canMinimizeToFloat = isManagedAppTab && !inColumn && onMinimizeToFloat != null
     val showLeadingBack = !inColumn || isOutboundChild || canGoBack
     val showLeadingQuickExit = (!inColumn || isOutboundChild) && canGoBack && onExitToHost != null
     val displayHost = remember(currentUrl) { raftMobileWebPanelDisplayHost(currentUrl) }
@@ -164,9 +166,9 @@ internal fun RaftAppBrowserTopBar(
     val displayAppName = cleanAppName ?: displayHost
     val isFallbackHost = cleanAppName == null && displayHost.isNotBlank()
     val menuActions =
-        remember(showAppIdentity, isOutboundChild, canMinimizeToFloat) {
+        remember(isManagedAppTab, isOutboundChild, canMinimizeToFloat) {
             raftMobileWebPanelMenuActions(
-                isRaftApp = showAppIdentity,
+                isRaftApp = isManagedAppTab,
                 isOutboundChild = isOutboundChild,
                 canMinimizeToFloat = canMinimizeToFloat,
             )
@@ -241,7 +243,7 @@ internal fun RaftAppBrowserTopBar(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (showAppIdentity && openTabCount >= 2 && onOpenSwitcher != null) {
+                if (isManagedAppTab && openTabCount >= 2 && onOpenSwitcher != null) {
                     RaftAppBrowserTabCountButton(
                         count = openTabCount,
                         onClick = onOpenSwitcher,

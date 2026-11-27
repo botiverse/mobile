@@ -1006,7 +1006,7 @@ internal class RaftAndroidSandboxWebView(
                         handleBlockedMainFrameNavigation(url)
                         return
                     }
-                    if (target.isNotEmpty() && events.routesMainFrameNavigation?.invoke(target) == true) {
+                    if (target.isNotEmpty() && invokeRoutesMainFrameNavigation(target, isRedirect = true, isUserGesture = false)) {
                         view?.stopLoading()
                         val now = System.currentTimeMillis()
                         val recentlyRouted =
@@ -1270,7 +1270,9 @@ internal class RaftAndroidSandboxWebView(
         if (tryCatchMainFrameNavigation(configuredWebView, target, stopLoading = false)) {
             return
         }
-        if (shouldRouteMainFrameNavigation(target, isUserGesture = true) || shouldBlockMainFrameNavigation(target, isUserGesture = true)) {
+        if (shouldRouteMainFrameNavigation(target, isRedirect = false, isUserGesture = true) ||
+            shouldBlockMainFrameNavigation(target, isUserGesture = true)
+        ) {
             return
         }
         val decision =
@@ -1798,7 +1800,7 @@ internal class RaftAndroidSandboxWebView(
             return true
         }
         val isUserGesture = request.hasGesture()
-        if (shouldRouteMainFrameNavigation(target, isUserGesture = isUserGesture) ||
+        if (shouldRouteMainFrameNavigation(target, isRedirect = isRedirect, isUserGesture = isUserGesture) ||
             shouldBlockMainFrameNavigation(target, isUserGesture = isUserGesture)
         ) {
             return true
@@ -1887,10 +1889,33 @@ internal class RaftAndroidSandboxWebView(
             url == lastRoutedBlockedUrl &&
             (System.currentTimeMillis() - lastRoutedBlockedAtMs) in 0L..1_500L
 
-    private fun shouldRouteMainFrameNavigation(url: String?, isUserGesture: Boolean = false): Boolean {
+    private fun invokeRoutesMainFrameNavigation(
+        target: String,
+        isRedirect: Boolean,
+        isUserGesture: Boolean,
+    ): Boolean {
+        val withContext = events.routesMainFrameNavigationWithContext
+        if (withContext != null) {
+            return withContext(
+                RaftWebViewMainFrameRouteAsk(
+                    url = target,
+                    isRedirect = isRedirect,
+                    isUserGesture = isUserGesture,
+                    committedUrl = committedDocumentUrl,
+                ),
+            )
+        }
+        return events.routesMainFrameNavigation?.invoke(target) == true
+    }
+
+    private fun shouldRouteMainFrameNavigation(
+        url: String?,
+        isRedirect: Boolean = false,
+        isUserGesture: Boolean = false,
+    ): Boolean {
         val target = url ?: return false
         if (wouldBlockMainFrameNavigation(target)) return false
-        if (events.routesMainFrameNavigation?.invoke(target) != true) return false
+        if (!invokeRoutesMainFrameNavigation(target, isRedirect = isRedirect, isUserGesture = isUserGesture)) return false
         diagnosticsInfo("navigation_routed_as_link url=${target.formatUrlForLog()}")
         lastRoutedBlockedUrl = target
         lastRoutedBlockedAtMs = System.currentTimeMillis()

@@ -23,6 +23,7 @@ import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -62,6 +63,7 @@ class WebContainerAndroidSignInInterceptionTest {
     private fun createAttachedHost(
         initialUrl: String,
         events: WebContainerEvents,
+        requestHeaderRule: WebRequestHeaderRule? = null,
     ): WebContainerAndroidView {
         val controller = Robolectric.buildActivity(Activity::class.java).create()
         val activity = controller.get()
@@ -77,6 +79,7 @@ class WebContainerAndroidSignInInterceptionTest {
                                 allowNavigation = true,
                                 allowedSchemes = setOf("http", "https"),
                                 allowNewWindows = false,
+                                requestHeaderRule = requestHeaderRule,
                             ),
                     ),
                 events = events,
@@ -361,5 +364,108 @@ class WebContainerAndroidSignInInterceptionTest {
         assertTrue(observedStates.last().isLoading)
         chromeClient.onProgressChanged(webView, 100)
         assertFalse(observedStates.last().isLoading)
+    }
+
+    @Test
+    fun stampGithubOAuthServerRedirectStaysInWebViewAndStripsRaftHostWhileDirectLinkRoutesOut() {
+        val stampOrigin = parseWebContainerOrigin("https://stamp.build")!!
+        val blocked = mutableListOf<Pair<String, String>>()
+        val settingsUrl = "https://stamp.build/settings"
+        val githubStartUrl = "https://stamp.build/auth/github/start"
+        val githubAuthorizeUrl = "https://github.com/login/oauth/authorize?client_id=stamp&state=csrf-token"
+        val githubSessionUrl = "https://github.com/session"
+        val stampCallbackUrl = "https://stamp.build/auth/github/callback?code=gh-code&state=csrf-token"
+        val externalRepoUrl = "https://github.com/botiverse/mobile/pull/5955"
+        val raftHostUrl = "https://app.raft.build/s/hq/c/general"
+
+        val host =
+            createAttachedHost(
+                initialUrl = settingsUrl,
+                requestHeaderRule =
+                    WebRequestHeaderRule(
+                        headerName = "Raft-Host",
+                        headerValue = "mobile-v1",
+                        allowedOrigin = stampOrigin,
+                        maxSameOriginReissues = 5,
+                    ),
+                events =
+                    WebContainerEvents(
+                        onNavigationBlocked = { url, reason -> blocked += url to reason },
+                        routesMainFrameNavigationWithContext = { ctx ->
+                            val targetOrigin = parseWebContainerOrigin(ctx.url)
+                            val isRaftHost = targetOrigin?.host == "app.raft.build" || targetOrigin?.host == "api.raft.build"
+                            if (isRaftHost) {
+                                true
+                            } else if (ctx.isRedirect) {
+                                false
+                            } else {
+                                parseWebContainerOrigin(ctx.committedDocumentUrl) == stampOrigin && targetOrigin != stampOrigin
+                            }
+                        },
+                    ),
+            )
+        val webView = host.getChildAt(0) as WebView
+        val client = shadowOf(webView).webViewClient
+
+        // 1) Commit https://stamp.build/settings.
+        client.onPageStarted(webView, settingsUrl, null)
+        client.onPageCommitVisible(webView, settingsUrl)
+        client.onPageFinished(webView, settingsUrl)
+
+        // 2) User taps "使用 GitHub 授权登录" -> same-origin /auth/github/start attaches Raft-Host and starts load.
+        assertTrue(client.shouldOverrideUrlLoading(webView, fakeRequest(githubStartUrl, hasGesture = true)))
+        assertEquals(githubStartUrl, shadowOf(webView).lastLoadedUrl)
+        assertEquals(mapOf("Raft-Host" to "mobile-v1"), shadowOf(webView).lastAdditionalHttpHeaders)
+        client.onPageStarted(webView, githubStartUrl, null)
+
+        // 3) Stamp responds 302 -> github.com/login/oauth/authorize: must stay in WebView & strip Raft-Host (NOT blocked/routed out!).
+        assertTrue(client.shouldOverrideUrlLoading(webView, fakeRequest(githubAuthorizeUrl, isRedirect = true)))
+        assertEquals(githubAuthorizeUrl, shadowOf(webView).lastLoadedUrl)
+        assertNull(shadowOf(webView).lastAdditionalHttpHeaders, "Cross-origin OAuth redirect must strip Raft-Host")
+        assertTrue(blocked.isEmpty(), "OAuth 302 redirect must never route out to external browser: $blocked")
+
+        // 4) Android onPageStarted for the redirected github.com URL must ALSO stay in WebView.
+        client.onPageStarted(webView, githubAuthorizeUrl, null)
+        assertTrue(blocked.isEmpty(), "onPageStarted for GitHub OAuth redirect must not route out: $blocked")
+        client.onPageCommitVisible(webView, githubAuthorizeUrl)
+        client.onPageFinished(webView, githubAuthorizeUrl)
+
+        // 5) Follow-up POST on github.com and callback back to stamp.build both stay in the same WebView.
+        assertFalse(
+            client.shouldOverrideUrlLoading(
+                webView,
+                fakeRequest(githubSessionUrl, hasGesture = true, isRedirect = false, method = "POST"),
+            ),
+        )
+        assertTrue(blocked.isEmpty())
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                fakeRequest(stampCallbackUrl, isRedirect = true),
+            ),
+        )
+        assertEquals(stampCallbackUrl, shadowOf(webView).lastLoadedUrl)
+        assertTrue(blocked.isEmpty())
+        client.onPageStarted(webView, stampCallbackUrl, null)
+        client.onPageCommitVisible(webView, stampCallbackUrl)
+        client.onPageFinished(webView, stampCallbackUrl)
+
+        // 6) Once committed back on stamp.build, a direct cross-origin link click DOES route out cleanly.
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                fakeRequest(externalRepoUrl, hasGesture = true, isRedirect = false),
+            ),
+        )
+        assertEquals(listOf(externalRepoUrl to "routed_externally"), blocked)
+
+        // 7) Server redirects to Raft own hosts are STILL routed out.
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                fakeRequest(raftHostUrl, isRedirect = true),
+            ),
+        )
+        assertEquals(raftHostUrl to "routed_externally", blocked.last())
     }
 }

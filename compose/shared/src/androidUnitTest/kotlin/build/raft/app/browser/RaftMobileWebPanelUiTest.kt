@@ -516,4 +516,59 @@ class RaftMobileWebPanelUiTest {
         onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
         assertEquals(1, clicks)
     }
+
+    @Test
+    fun raftAppTopBarHidesAppBrandingAndShowsDomainWhileOffOriginDuringOAuthRoundTrip() = runRobolectricComposeUiTest {
+        var currentUrl by mutableStateOf("https://stamp.build/settings")
+        var isOnAppOrigin by mutableStateOf(true)
+
+        setContent {
+            RaftDesignSystemTheme {
+                RaftAppBrowserTopBar(
+                    isRaftApp = true,
+                    isOutboundChild = false,
+                    currentUrl = currentUrl,
+                    appName = "Stamp",
+                    appLogoUrl = null,
+                    signedInAsName = "artin",
+                    isOnAppOrigin = isOnAppOrigin,
+                    onBack = {},
+                    onClosePage = {},
+                    onReload = {},
+                    onShare = {},
+                    onCopyLink = {},
+                    onOpenInBrowser = {},
+                )
+            }
+        }
+
+        // On Stamp's own origin: displays App identity and Raft sign-in badge.
+        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertIsDisplayed()
+        onNodeWithText("Stamp").assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
+        onNodeWithText("Signed in as artin").assertIsDisplayed()
+
+        // Temporarily on github.com during OAuth round trip: hide Stamp branding, show actual domain only.
+        runOnIdle {
+            currentUrl = "https://github.com/login/oauth/authorize?client_id=stamp"
+            isOnAppOrigin = false
+        }
+        onNodeWithTag(RAFT_WEB_PANEL_HOST_LABEL_TAG).assertIsDisplayed()
+        onNodeWithText("github.com").assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertDoesNotExist()
+        onNodeWithText("Stamp").assertDoesNotExist()
+        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertDoesNotExist()
+        onNodeWithText("Signed in as artin").assertDoesNotExist()
+
+        // Returning to stamp.build callback restores Stamp branding & Signed in as badge.
+        runOnIdle {
+            currentUrl = "https://stamp.build/auth/github/callback?code=ok"
+            isOnAppOrigin = true
+        }
+        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertIsDisplayed()
+        onNodeWithText("Stamp").assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
+        onNodeWithText("Signed in as artin").assertIsDisplayed()
+        onNodeWithText("github.com").assertDoesNotExist()
+    }
 }

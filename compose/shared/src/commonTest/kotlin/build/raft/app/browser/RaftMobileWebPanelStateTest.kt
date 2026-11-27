@@ -285,6 +285,7 @@ class RaftMobileWebPanelStateTest {
     @Test
     fun crossOriginOutboundFromInstalledAppRoutesThirdPartyDomainsAndSkipsSameOriginAndRaftHosts() {
         val appScope = "https://stamp.build"
+        val committedAppUrl = "https://stamp.build/s/raft/pull/42"
         val webBase = "https://app.raft.build"
         val apiBase = "https://api.raft.build"
 
@@ -297,9 +298,10 @@ class RaftMobileWebPanelStateTest {
                 activeApiBaseUrl = apiBase,
                 appStoreBillingRules = false,
                 appHosts = emptySet(),
+                committedDocumentUrl = committedAppUrl,
             ),
         )
-        // Cross-origin external link -> push unauthenticated domain-only child page.
+        // Cross-origin external link click from committed App origin -> push unauthenticated domain-only child page.
         assertTrue(
             raftAppShouldRouteCrossOriginOutbound(
                 candidateUrl = "https://github.com/botiverse/mobile/pull/42",
@@ -308,6 +310,8 @@ class RaftMobileWebPanelStateTest {
                 activeApiBaseUrl = apiBase,
                 appStoreBillingRules = false,
                 appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
             ),
         )
         // Raft own hosts and App Store restricted URLs stay handled by their dedicated guards.
@@ -319,6 +323,7 @@ class RaftMobileWebPanelStateTest {
                 activeApiBaseUrl = apiBase,
                 appStoreBillingRules = false,
                 appHosts = emptySet(),
+                committedDocumentUrl = committedAppUrl,
             ),
         )
         assertFalse(
@@ -329,6 +334,7 @@ class RaftMobileWebPanelStateTest {
                 activeApiBaseUrl = apiBase,
                 appStoreBillingRules = false,
                 appHosts = emptySet(),
+                committedDocumentUrl = committedAppUrl,
             ),
         )
         assertFalse(
@@ -339,6 +345,7 @@ class RaftMobileWebPanelStateTest {
                 activeApiBaseUrl = apiBase,
                 appStoreBillingRules = true,
                 appHosts = emptySet(),
+                committedDocumentUrl = committedAppUrl,
             ),
         )
         // Non-http(s) custom schemes stay handled by external app confirmation dialog.
@@ -350,6 +357,177 @@ class RaftMobileWebPanelStateTest {
                 activeApiBaseUrl = apiBase,
                 appStoreBillingRules = false,
                 appHosts = emptySet(),
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+    }
+
+    @Test
+    fun crossOriginOutboundPreservesServerRedirectsOffOriginOAuthRoundTripsAndPreCommitLoads() {
+        val appScope = "https://stamp.build"
+        val webBase = "https://app.raft.build"
+        val apiBase = "https://api.raft.build"
+
+        // 1. Cross-origin link click from committed stamp.build -> routes out.
+        assertTrue(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/botiverse/mobile/pull/1",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = "https://stamp.build/pr/1",
+            ),
+        )
+
+        // 2. Server 302 redirect from stamp.build to GitHub OAuth -> stays in same WebView (preserves CSRF state cookie).
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/login/oauth/authorize?client_id=stamp&state=csrf123",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = true,
+                committedDocumentUrl = "https://stamp.build/settings",
+            ),
+        )
+
+        // 3. Nothing committed yet (initial launch redirect) -> never routes out.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/login/oauth/authorize?client_id=stamp",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = "",
+            ),
+        )
+
+        // 4. Once off scopeOrigin on github.com, all follow-up OAuth/2FA/SSO navigations & callback stay in same WebView.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/session",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = "https://github.com/login/oauth/authorize?client_id=stamp",
+            ),
+        )
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://sso.corp.example/saml",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = "https://github.com/session",
+            ),
+        )
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://stamp.build/auth/github/callback?code=abc&state=csrf123",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = "https://github.com/login/oauth/authorize?client_id=stamp",
+            ),
+        )
+
+        // 5. Raft own hosts & App Store billing remain routed even on redirects.
+        assertTrue(
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "https://api.raft.build/api/oauth/authorize?client_id=stamp",
+                activeWebBaseUrl = webBase,
+                appStoreBillingRules = false,
+                useEphemeralStore = false,
+                activeApiBaseUrl = apiBase,
+                appHosts = emptySet(),
+            ),
+        )
+        assertTrue(
+            raftInAppBrowserShouldRouteNavigation(
+                candidateUrl = "https://app.raft.build/s/hq/c/general",
+                activeWebBaseUrl = webBase,
+                appStoreBillingRules = false,
+                useEphemeralStore = false,
+                activeApiBaseUrl = apiBase,
+                appHosts = emptySet(),
+            ),
+        )
+
+        // 6. Anti-spoofing origin check hides App branding off scopeOrigin and restores it back on scopeOrigin.
+        assertTrue(raftAppIsOnScopeOrigin("https://stamp.build/settings", appScope))
+        assertTrue(raftAppIsOnScopeOrigin("", appScope))
+        assertFalse(raftAppIsOnScopeOrigin("https://github.com/login/oauth/authorize", appScope))
+        assertFalse(raftAppIsOnScopeOrigin("about:blank", appScope))
+        assertTrue(raftAppIsOnScopeOrigin("https://stamp.build/auth/github/callback?code=abc", appScope))
+    }
+
+    @Test
+    fun declinedSignInCloseAndUncommittedReloadRecoverWithoutBlankWhiteScreen() {
+        assertEquals(
+            RaftMobileWebPanelDeclinedCloseAction.ClosePage,
+            resolveRaftMobileWebPanelDeclinedCloseAction(hasCommittedDocument = false),
+        )
+        assertEquals(
+            RaftMobileWebPanelDeclinedCloseAction.DismissNotice,
+            resolveRaftMobileWebPanelDeclinedCloseAction(hasCommittedDocument = true),
+        )
+
+        val launch = "https://stamp.build/pulls/42"
+        // Before any commit (or when live URL is blank / about:blank), Reload loads effectiveLaunchUrl directly.
+        assertEquals(
+            launch,
+            resolveRaftMobileWebPanelReloadTargetUrl(
+                currentUrl = launch,
+                effectiveLaunchUrl = launch,
+                hasCommittedDocument = false,
+            ),
+        )
+        assertEquals(
+            launch,
+            resolveRaftMobileWebPanelReloadTargetUrl(
+                currentUrl = "",
+                effectiveLaunchUrl = launch,
+                hasCommittedDocument = true,
+            ),
+        )
+        assertEquals(
+            launch,
+            resolveRaftMobileWebPanelReloadTargetUrl(
+                currentUrl = "about:blank",
+                effectiveLaunchUrl = launch,
+                hasCommittedDocument = true,
+            ),
+        )
+        // Once a real document committed on a live URL, normal WebView reload applies.
+        assertNull(
+            resolveRaftMobileWebPanelReloadTargetUrl(
+                currentUrl = "https://stamp.build/pulls/42",
+                effectiveLaunchUrl = launch,
+                hasCommittedDocument = true,
+            ),
+        )
+        assertNull(
+            resolveRaftMobileWebPanelReloadTargetUrl(
+                currentUrl = "about:blank",
+                effectiveLaunchUrl = null,
+                hasCommittedDocument = false,
             ),
         )
     }
