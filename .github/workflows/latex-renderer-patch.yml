@@ -195,7 +195,14 @@ jobs:
         working-directory: upstream
         run: |
           set -euo pipefail
-          rm -rf latex-renderer/build/test-results/iosSimulatorArm64Test latex-renderer/build/test-results/jvmTest
+          results=latex-renderer/build/test-results/iosSimulatorArm64Test
+          # The layout fingerprint runs alone, exactly like its unpatched baseline (no other test
+          # warms caches or counters first).
+          rm -rf "$results" latex-renderer/build/test-results/jvmTest
+          ./gradlew :latex-renderer:iosSimulatorArm64Test --tests "$TEST_CLASS.layoutFingerprint" $GRADLE_ARGS
+          mkdir -p "$OUT_DIR/patched/layoutFingerprint"
+          cp -R "$results"/. "$OUT_DIR/patched/layoutFingerprint/"
+          rm -rf "$results"
           ./gradlew :latex-renderer:iosSimulatorArm64Test \
             --tests "$TEST_CLASS" \
             --tests 'com.hrm.latex.renderer.SkiaPlatformRenderingTest' $GRADLE_ARGS
@@ -206,9 +213,9 @@ jobs:
         working-directory: upstream
         run: |
           set -euo pipefail
-          python3 -I - "$OUT_DIR/unpatched/layoutFingerprint" latex-renderer/build/test-results <<'PY'
+          python3 -I - "$OUT_DIR/unpatched/layoutFingerprint" "$OUT_DIR/patched/layoutFingerprint" latex-renderer/build/test-results <<'PY'
           import glob, sys, xml.etree.ElementTree as ET
-          baseline_dir, results = sys.argv[1], sys.argv[2]
+          baseline_dir, patched_dir, results = sys.argv[1], sys.argv[2], sys.argv[3]
 
           def cases(pattern):
               out = {}
@@ -235,7 +242,7 @@ jobs:
               if bad or skipped:
                   problems.append(f"{cls}.{name}")
           required_ios = {"multiCharAsciiDoesNotAbort", "bmpTextWhoseUtf8ReadsAsUnpairedSurrogateDoesNotAbort",
-                          "symbolsAndNonBmpDoNotAbort", "widthMatchesSkiaAdvanceSum", "layoutFingerprint"}
+                          "symbolsAndNonBmpDoNotAbort", "widthMatchesSkiaAdvanceSum"}
           ran_ios = {name.split("[")[0] for (cls, name) in ios if cls.endswith("GlyphBoundsTextEncodingTest")}
           if required_ios - ran_ios:
               problems.append(f"missing iOS cases {sorted(required_ios - ran_ios)}")
@@ -244,9 +251,12 @@ jobs:
           if not any(name.startswith("glyphAdvanceSumEqualsMeasureTextWidth") for (_, name) in jvm):
               problems.append("GlyphBoundsWidthJvmTest did not run")
 
-          after = sorted(set(lines(f"{results}/iosSimulatorArm64Test/**/TEST-*.xml", "LAYOUT_FINGERPRINT|")))
+          after = sorted(set(lines(f"{patched_dir}/**/TEST-*.xml", "LAYOUT_FINGERPRINT|")))
           before = sorted(set(lines(f"{baseline_dir}/**/TEST-*.xml", "LAYOUT_FINGERPRINT|")))
           print(f"layout fingerprints: {len(before)} unpatched, {len(after)} patched")
+          for (cls, name), case in cases(f"{patched_dir}/**/TEST-*.xml").items():
+              if case.find("failure") is not None or case.find("error") is not None:
+                  problems.append(f"patched {cls}.{name}")
           if not before or len(before) != 20:
               problems.append(f"expected 20 unpatched layout fingerprints, found {len(before)}")
           elif before != after:
@@ -357,6 +367,7 @@ jobs:
           name: latex-renderer-patch-test-reports
           path: |
             latex-patch-out/unpatched/**
+            latex-patch-out/patched/**
             upstream/latex-renderer/build/test-results/**
             upstream/latex-renderer/build/reports/tests/**
           if-no-files-found: ignore
