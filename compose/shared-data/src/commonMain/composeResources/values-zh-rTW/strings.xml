@@ -6901,7 +6901,7 @@
     <string name="in_app_browser_external_app_message">此頁面要求透過外部應用程式開啟「%1$s」。</string>
     <string name="in_app_browser_external_app_open">開啟</string>
     <string name="in_app_browser_close_page">關閉頁面</string>
-    <string name="in_app_browser_minimize_to_float">浮窗</string>
+    <string name="in_app_browser_minimize_to_float">浮動視窗</string>
     <string name="in_app_browser_open_pages_title">已開啟的頁面（%1$d）</string>
     <string name="in_app_browser_open_pages_a11y">已開啟 %1$d 個頁面</string>
     <string name="in_app_browser_close_all_pages">全部關閉</string>
