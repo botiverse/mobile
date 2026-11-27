@@ -40,9 +40,9 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 /**
- * botiverse/slock #16225 (menu order v4): "Mark channel as unread" and "Mark DM as unread" are
+ * botiverse/slock #16225 (menu order v4) & #17092: "Mark channel as unread" and "Mark DM as unread" are
  * gone from both the Compact and Classic message menus (the Home/sidebar row menu owns it); a
- * message whose thread is followed still offers "Mark thread as unread" in both menus.
+ * message whose thread is followed still offers "Mark thread unread" in both menus.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -78,12 +78,12 @@ class ThreadMarkConversationUnreadMenuUiTest {
             waitForIdle()
             onAllNodesWithText("Mark channel as unread", useUnmergedTree = true).assertCountEquals(0)
             onAllNodesWithText("Mark DM as unread", useUnmergedTree = true).assertCountEquals(0)
-            val items = onAllNodes(hasClickAction() and (hasText("Mark thread as unread") or hasContentDescription("Mark thread as unread")))
+            val items = onAllNodes(hasClickAction() and (hasText("Mark thread unread") or hasContentDescription("Mark thread unread")))
             items.assertCountEquals(2)
             items[0].performSemanticsAction(SemanticsActions.OnClick)
             items[1].performSemanticsAction(SemanticsActions.OnClick)
             waitForIdle()
-            assertEquals(2, markedThread, "each menu's Mark thread as unread runs it once")
+            assertEquals(2, markedThread, "each menu's Mark thread unread runs it once")
         }
 }
 

@@ -130,14 +130,14 @@ class ChannelAddMemberPanelUiTest {
             onAllNodesWithText("Joins #design automatically after creation").assertCountEquals(1)
             onNodeWithText("Add agent").assertExists()
             onNodeWithText("Create agent").assertDoesNotExist()
-            onNodeWithText("Connect an external agent").assertDoesNotExist()
+            onNodeWithText("Connect external agent").assertDoesNotExist()
 
             // Clicking the row opens the centered chooser dialog (no radios, no Next button).
             onNodeWithTag("add-member-create-agent-entry").performClick()
             onNodeWithTag("add-member-create-agent-chooser").assertExists()
             onNodeWithText("Create agent").assertExists()
             onNodeWithText("Runs on your computer or cloud").assertExists()
-            onNodeWithText("Connect an external agent").assertExists()
+            onNodeWithText("Connect external agent").assertExists()
             onNodeWithText("Runs elsewhere, connects to Raft").assertExists()
             onNodeWithText("Next").assertDoesNotExist()
             onAllNodes(isSelectable()).assertCountEquals(0)
@@ -147,7 +147,7 @@ class ChannelAddMemberPanelUiTest {
             assertEquals(listOf("" to MembersCreateAgentMode.Managed), calls.creates)
             onNodeWithTag("add-member-create-agent-chooser").assertDoesNotExist()
 
-            // Direct entry 2: Connect an external agent closes chooser and opens External create.
+            // Direct entry 2: Connect external agent closes chooser and opens External create.
             onNodeWithTag("add-member-create-agent-entry").performClick()
             onNodeWithTag("add-member-create-agent-chooser-external").performClick()
             assertEquals(
