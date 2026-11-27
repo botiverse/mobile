@@ -523,7 +523,7 @@ class SettingsFeedbackTicketsPageUiTest {
                 Host {
                     CompositionLocalProvider(LocalRaftBackSwipeRegions provides regions) {
                         dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-                        RaftBackHandler(enabled = true, label = "test_host_page") { hostPageBacks += 1 }
+                        RaftBackHandler(enabled = true, label = "test_host_page", blocksBackSwipe = false) { hostPageBacks += 1 }
                         SettingsFeedbackTicketsScreen(
                             state = state,
                             timeContext = timeContext,
