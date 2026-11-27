@@ -26,9 +26,9 @@ import build.raft.app.messages
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlin.math.roundToInt
 
 private const val ThreadFocusedMessageCenterAttempts = 6
@@ -349,7 +349,7 @@ internal suspend fun ThreadListViewport.awaitThreadMessagesLayoutFrame(): Boolea
         ) {
             return true
         }
-        delay(ThreadLayoutStabilityFrameDelayMs)
+        awaitNextThreadFrame()
     }
     return false
 }
@@ -400,7 +400,7 @@ internal suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
         if (item == null) {
             scrollToItem(itemIndex)
             if (!commandStillCurrent()) return false
-            delay(ThreadLayoutStabilityFrameDelayMs)
+            awaitNextThreadFrame()
             if (!commandStillCurrent()) return false
             return@repeat
         }
@@ -409,7 +409,7 @@ internal suspend fun ThreadListViewport.scrollThreadItemToFocusedViewport(
         scrollToItem(itemIndex, offset)
         if (!commandStillCurrent()) return false
         didScroll = true
-        delay(ThreadLayoutStabilityFrameDelayMs)
+        awaitNextThreadFrame()
         if (!commandStillCurrent()) return false
     }
     return didScroll
@@ -433,14 +433,14 @@ internal suspend fun ThreadListViewport.scrollThreadItemToRenderedBottom(
         if (offset == null) {
             scrollToItem(itemIndex)
             if (!commandStillCurrent()) return false
-            delay(ThreadLayoutStabilityFrameDelayMs)
+            awaitNextThreadFrame()
             if (!commandStillCurrent()) return false
             return@repeat
         }
         scrollToItem(itemIndex, offset)
         if (!commandStillCurrent()) return false
         didScroll = true
-        delay(ThreadLayoutStabilityFrameDelayMs)
+        awaitNextThreadFrame()
         if (!commandStillCurrent()) return false
     }
     return didScroll
@@ -485,7 +485,7 @@ internal suspend fun ThreadListViewport.awaitThreadMessagesLayoutStability(
             previous = current
             stableFrames = 0
         }
-        delay(ThreadLayoutStabilityFrameDelayMs)
+        awaitNextThreadFrame()
     }
     return false
 }
@@ -794,7 +794,6 @@ private const val ThreadInitialBottomAnchorAttempts = 12
 /** At least 80 ms each (plus the command settlement): the initial bottom anchor gives up after ~5 s. */
 internal const val ThreadInitialBottomAnchorMaxRetries = 60
 private const val ThreadInitialBottomAnchorMinimumConsumedDeltaPx = 0.5f
-internal const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
@@ -802,6 +801,19 @@ private const val ThreadKeyboardBottomAnchorAttempts = 8
 private const val ThreadOlderAutoLoadVisibleItemThreshold = 8
 internal const val ThreadShareCaptureTopScrollOffsetPx = -12
 internal const val ThreadShareCaptureScrollSettleMs = 96L
+
+/**
+ * Waits for the next live Compose frame (vsync-aligned on 60/90/120 Hz displays instead of a
+ * 60 Hz-assumed `delay(16L)`). Falls back to `yield()` in headless coroutine unit tests without a
+ * [MonotonicFrameClock].
+ */
+internal suspend fun awaitNextThreadFrame() {
+    if (currentCoroutineContext()[MonotonicFrameClock] != null) {
+        withFrameNanos { }
+    } else {
+        yield()
+    }
+}
 
 /**
  * Waits [frames] frames so capture-mode recomposition and relayout land before pixels are taken.

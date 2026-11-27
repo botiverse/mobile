@@ -11,7 +11,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import build.raft.app.messages
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -160,7 +159,7 @@ internal fun ThreadMessagesListPagingEffects(
                     firstViewportProbeActive = false
                 }
             }
-            delay(ThreadLayoutStabilityFrameDelayMs)
+            awaitNextThreadFrame()
         }
     }
     LaunchedEffect(

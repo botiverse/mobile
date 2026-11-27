@@ -1,8 +1,14 @@
 package build.raft.app.core.data.diagnostics
 
 import android.app.Activity
+import android.content.Context
+import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.view.Choreographer
+import android.view.Display
+import androidx.annotation.RequiresApi
 import build.raft.app.data.RaftFrameMetricsTraceReporter
 import build.raft.app.nav.RaftStackTransitionKind
 import build.raft.app.nav.RaftStackTransitionListener
@@ -35,15 +41,17 @@ class RaftNavTransitionFrameProbe(activity: Activity) : RaftStackTransitionListe
         // gesture preview at its first seek. A stale stamp (no transition followed it) is dropped.
         val requested = navigateNanos.takeIf { it >= 0L && kind != RaftStackTransitionKind.PredictiveBack && now - it < StaleNavigateNanos }
         navigateNanos = -1L
+        val initialInterval = frameIntervalNanos()
         val transition =
             ActiveTransition(
                 kind = kind,
                 fromPage = fromPage,
                 toPage = toPage,
-                stats = RaftScrollFrameStats(startNanos = requested ?: now, frameIntervalNanos = frameIntervalNanos()),
+                initialDisplayIntervalNanos = initialInterval,
+                stats = RaftScrollFrameStats(startNanos = requested ?: now, frameIntervalNanos = initialInterval),
             )
         active = transition
-        Choreographer.getInstance().postFrameCallback(transition)
+        transition.start()
     }
 
     override fun onTransitionEnded(outcome: RaftStackTransitionOutcome) {
@@ -66,26 +74,135 @@ class RaftNavTransitionFrameProbe(activity: Activity) : RaftStackTransitionListe
         private val kind: RaftStackTransitionKind,
         private val fromPage: String,
         private val toPage: String,
+        initialDisplayIntervalNanos: Long,
         private val stats: RaftScrollFrameStats,
-    ) : Choreographer.FrameCallback {
+    ) : Choreographer.FrameCallback, DisplayManager.DisplayListener {
         private var finished = false
         private var firstFrameNanos = -1L
+        private var displayListenerRegistered = false
+        private var trackedDisplayId: Int = Display.INVALID_DISPLAY
+        private var displayManager: DisplayManager? = null
+        private var displayFrameIntervalNanos: Long = initialDisplayIntervalNanos
+        private val vsyncCallback: Any? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                createVsyncCallback()
+            } else {
+                null
+            }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun createVsyncCallback(): Choreographer.VsyncCallback =
+            Choreographer.VsyncCallback { frameData ->
+                if (finished) return@VsyncCallback
+                val timelines = frameData.frameTimelines
+                val timelineIntervalNanos =
+                    raftFrameTimelineIntervalNanos(timelines.size) { index ->
+                        timelines[index].expectedPresentationTimeNanos
+                    }
+                val liveInterval = maxOf(displayFrameIntervalNanos, timelineIntervalNanos ?: 0L)
+                onVsyncSample(frameData.frameTimeNanos, liveInterval)
+            }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun postVsyncCallbackApi33(callback: Any) {
+            Choreographer.getInstance().postVsyncCallback(callback as Choreographer.VsyncCallback)
+        }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun removeVsyncCallbackApi33(callback: Any) {
+            Choreographer.getInstance().removeVsyncCallback(callback as Choreographer.VsyncCallback)
+        }
+
+        fun start() {
+            attachDisplayListener()
+            postNextFrame()
+        }
+
+        private fun postNextFrame() {
+            val cb = vsyncCallback
+            if (cb != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                postVsyncCallbackApi33(cb)
+            } else {
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+        }
+
+        private fun removeNextFrame() {
+            val cb = vsyncCallback
+            if (cb != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                removeVsyncCallbackApi33(cb)
+            } else {
+                Choreographer.getInstance().removeFrameCallback(this)
+            }
+        }
+
+        private fun attachDisplayListener() {
+            val currentActivity = activityRef.get() ?: return
+            val display =
+                currentActivity.window?.decorView?.display
+                    ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        runCatching { currentActivity.display }.getOrNull()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        currentActivity.windowManager?.defaultDisplay
+                    }
+                    ?: return
+            val manager =
+                currentActivity.applicationContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+                    ?: return
+            trackedDisplayId = display.displayId
+            runCatching {
+                manager.registerDisplayListener(this, Handler(Looper.getMainLooper()))
+                displayManager = manager
+                displayListenerRegistered = true
+            }
+        }
+
+        private fun detachDisplayListener() {
+            if (!displayListenerRegistered) return
+            displayListenerRegistered = false
+            val manager = displayManager
+            displayManager = null
+            if (manager != null) {
+                runCatching { manager.unregisterDisplayListener(this) }
+            }
+        }
+
+        override fun onDisplayAdded(displayId: Int) = Unit
+
+        override fun onDisplayRemoved(displayId: Int) = Unit
+
+        override fun onDisplayChanged(displayId: Int) {
+            if (finished || displayId != trackedDisplayId) return
+            val updated = frameIntervalNanos()
+            displayFrameIntervalNanos = updated
+            stats.onFrameIntervalChanged(updated)
+        }
 
         override fun doFrame(frameTimeNanos: Long) {
             if (finished) return
+            onVsyncSample(frameTimeNanos, displayFrameIntervalNanos)
+        }
+
+        private fun onVsyncSample(frameTimeNanos: Long, liveFrameIntervalNanos: Long) {
             if (firstFrameNanos < 0L) firstFrameNanos = frameTimeNanos
-            stats.onVsync(frameTimeNanos)
-            Choreographer.getInstance().postFrameCallback(this)
+            stats.onVsync(frameTimeNanos, liveFrameIntervalNanos)
+            postNextFrame()
         }
 
         fun finish(outcome: RaftStackTransitionOutcome) {
             if (finished) return
             finished = true
-            Choreographer.getInstance().removeFrameCallback(this)
+            removeNextFrame()
+            val hadLiveRateTracking = displayListenerRegistered || vsyncCallback != null
+            detachDisplayListener()
             if (active === this) active = null
+            if (!hadLiveRateTracking) {
+                stats.onFrameIntervalChanged(frameIntervalNanos())
+            }
             val firstFrameMs = raftNavTransitionFirstFrameMs(stats.startNanos, firstFrameNanos)
             val summary = stats.summary(System.nanoTime())
-            val endFrameIntervalNanos = frameIntervalNanos()
+            val endFrameIntervalNanos = summary.endFrameIntervalNanos
             RaftAppLog.w(
                 Tag,
                 raftNavTransitionFramesLine(
@@ -136,7 +253,7 @@ internal fun raftNavTransitionFramesLine(
     toPage: String,
     firstFrameMs: Long,
     summary: RaftScrollFrameStats.Summary,
-    endFrameIntervalNanos: Long = summary.frameIntervalNanos,
+    endFrameIntervalNanos: Long = summary.endFrameIntervalNanos,
 ): String =
     "nav_transition_frames kind=${kind.wire} outcome=${outcome.wire} from=$fromPage to=$toPage " +
         "firstFrameMs=$firstFrameMs " + summary.wireFields(endFrameIntervalNanos = endFrameIntervalNanos)

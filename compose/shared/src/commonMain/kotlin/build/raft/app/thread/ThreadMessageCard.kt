@@ -135,7 +135,6 @@ import build.raft.app.RaftType
 import build.raft.app.agentLoungeLabelOrNull
 import build.raft.app.currentRaftDateTimeContext
 import build.raft.app.currentRaftTimeContextProvider
-import kotlinx.coroutines.delay
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.tokens.RaftUiComponentTokens
 
@@ -960,15 +959,6 @@ private fun ThreadMessageCardContent(
     val locatedStrength = raftLocatedStrength(active = focused)
     val pressed = longPressGestureOwner.pressed
     val pressRippleOrigin = longPressGestureOwner.pressRippleOrigin
-    LaunchedEffect(longPressGestureOwner, pressed, pressRippleOrigin) {
-        if (!pressed && pressRippleOrigin != null) {
-            val rippleLease = longPressGestureOwner.captureActiveLease()
-            delay(ThreadMessageRippleFadeMs.toLong() + ThreadMessageRippleResetMarginMs)
-            if (rippleLease != null) {
-                longPressGestureOwner.clearReleasedPressRipple(rippleLease, pressRippleOrigin)
-            }
-        }
-    }
     val showAuthorChrome = !compactConsecutiveMessages || !suppressRepeatedAuthor
     val showTimestampInHeader = !compactConsecutiveMessages || showAuthorChrome
     val showTimestampInAvatarSlot =
@@ -2082,7 +2072,12 @@ private fun ThreadMessageCardContent(
         }
         ThreadMessagePressRipple(
             pressed = pressed,
-            origin = pressRippleOrigin
+            origin = pressRippleOrigin,
+            onFadeOutFinished = {
+                val releasedOrigin = pressRippleOrigin ?: return@ThreadMessagePressRipple
+                val rippleLease = longPressGestureOwner.captureActiveLease() ?: return@ThreadMessagePressRipple
+                longPressGestureOwner.clearReleasedPressRipple(rippleLease, releasedOrigin)
+            }
         )
         if (hoverToolbar != null) {
             val pendingReactionVisuals = LocalThreadPendingReactionVisuals.current
@@ -2126,8 +2121,6 @@ private fun Modifier.threadMessageContentWidth(maxWidthFraction: Float): Modifie
     } else {
         fillMaxWidth()
     }
-
-private const val ThreadMessageRippleResetMarginMs = 60L
 
 @Composable
 private fun ThreadMessageAuthorBadge(label: String) {

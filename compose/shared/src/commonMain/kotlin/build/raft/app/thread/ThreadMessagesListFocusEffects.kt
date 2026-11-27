@@ -8,8 +8,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import build.raft.designsystem.components.RaftLocatedMillis
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 /**
  * The thread list's local-send bottom session, route focused-message session, focused origin
@@ -103,27 +105,67 @@ internal fun ThreadMessagesListFocusEffects(
         listState.awaitThreadMessagesLayoutFrame()
         listState.awaitThreadMessagesLayoutStability(currentLatestItemIndexState.value)
         var attempt = 0
-        while (
-            shouldContinueLatestLocalSendBottomAnchor(
-                activeAnchorKey = latestLocalSendBottomAnchorActiveKey,
-                targetAnchorKey = anchorKey,
-                startUserScrollGeneration = startUserScrollGeneration,
-                currentUserScrollGeneration = userScrollGeneration.value,
-                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(
+        while (true) {
+            val isAtBottom =
+                listState.isLatestItemAtRenderedBottom(
                     latestItemIndex = currentLatestItemIndexState.value,
                     allowSparseTopFit = currentSparseTopAnchoredState.value,
-                ),
-                isSendingAnchorVisible = currentPayloadState.value.hasSendingLocalSendAnchor(anchorKey),
-                attempt = attempt
-            )
-        ) {
-            dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.Append))
-            val commandId = viewportControllerState.pendingCommand?.id
-            if (commandId != null) {
-                awaitViewportCommandSettlement(commandId)
+                )
+            val isSending = currentPayloadState.value.hasSendingLocalSendAnchor(anchorKey)
+            if (
+                !shouldContinueLatestLocalSendBottomAnchor(
+                    activeAnchorKey = latestLocalSendBottomAnchorActiveKey,
+                    targetAnchorKey = anchorKey,
+                    startUserScrollGeneration = startUserScrollGeneration,
+                    currentUserScrollGeneration = userScrollGeneration.value,
+                    isAtRenderedBottom = isAtBottom,
+                    isSendingAnchorVisible = isSending,
+                    attempt = attempt,
+                )
+            ) {
+                break
             }
-            delay(ThreadLayoutStabilityFrameDelayMs)
-            attempt += 1
+            if (!isAtBottom || attempt < ThreadBottomAnchorMinimumAttempts) {
+                if (!isAtBottom && attempt >= ThreadLocalSendBottomAnchorMaxImmediateAttempts) {
+                    if (!isSending) break
+                    val observedTotalItems = listState.layoutInfo.totalItemsCount
+                    val observedLastOffset = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.offset
+                    snapshotFlow {
+                        val info = listState.layoutInfo
+                        info.totalItemsCount != observedTotalItems ||
+                            info.visibleItemsInfo.lastOrNull()?.offset != observedLastOffset ||
+                            listState.isLatestItemAtRenderedBottom(
+                                latestItemIndex = currentLatestItemIndexState.value,
+                                allowSparseTopFit = currentSparseTopAnchoredState.value,
+                            ) ||
+                            !currentPayloadState.value.hasSendingLocalSendAnchor(anchorKey) ||
+                            latestLocalSendBottomAnchorActiveKey != anchorKey ||
+                            userScrollGeneration.observed != startUserScrollGeneration
+                    }.first { it }
+                    attempt = 0
+                    continue
+                }
+                dispatchViewportEvent(LazyViewportEvent.ContentMutated(LazyViewportMutation.Append))
+                val commandId = viewportControllerState.pendingCommand?.id
+                if (commandId != null) {
+                    awaitViewportCommandSettlement(commandId)
+                }
+                awaitNextThreadFrame()
+                attempt += 1
+            } else {
+                // Already anchored at bottom while the local send is still in flight: suspend on
+                // snapshot changes instead of polling per vsync so LTPO displays can downclock and
+                // headless coroutine tests never hot-spin.
+                snapshotFlow {
+                    !listState.isLatestItemAtRenderedBottom(
+                        latestItemIndex = currentLatestItemIndexState.value,
+                        allowSparseTopFit = currentSparseTopAnchoredState.value,
+                    ) ||
+                        !currentPayloadState.value.hasSendingLocalSendAnchor(anchorKey) ||
+                        latestLocalSendBottomAnchorActiveKey != anchorKey ||
+                        userScrollGeneration.observed != startUserScrollGeneration
+                }.first { it }
+            }
         }
         if (latestLocalSendBottomAnchorActiveKey == anchorKey) {
             latestLocalSendBottomAnchorActiveKey = null
@@ -577,3 +619,4 @@ internal fun ThreadMessagesListFocusEffects(
 
 // raft-ui located highlight (0.22.1 #719): the jumped-to row is located for LOCATED_MS.
 private const val ThreadFocusedMessageHighlightDurationMs = RaftLocatedMillis.toLong()
+private const val ThreadLocalSendBottomAnchorMaxImmediateAttempts = 12
