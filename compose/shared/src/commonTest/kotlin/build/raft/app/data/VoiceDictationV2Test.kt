@@ -1023,6 +1023,31 @@ class VoiceDictationV2Test {
         assertEquals(VoiceDictationGestureMode.Idle, gesture.mode)
         assertEquals(5, stopCount)
 
+        // 6. Trailing pointer click arriving up to <400 ms after pointerUp is still suppressed
+        //    (prevents double-toggle / stray empty WS on frame lag or desktop mouse release),
+        //    while a subsequent keyboard click after the 400 ms window still activates cleanly.
+        assertTrue(gesture.handlePointerDown(pointerId = 6L))
+        gesture.handlePointerUp(pointerId = 6L)
+        assertEquals(VoiceDictationGestureMode.Locked, gesture.mode)
+        assertEquals(6, startCount)
+        assertEquals(5, stopCount)
+        advanceTimeBy(VOICE_DICTATION_CLICK_SUPPRESSION_RESET_MS - 1L)
+        runCurrent()
+        gesture.handleClick()
+        assertEquals(VoiceDictationGestureMode.Locked, gesture.mode)
+        assertEquals(5, stopCount)
+
+        // Pointer drifts off without trailing click: keyboard activation works after 400 ms reset.
+        assertTrue(gesture.handlePointerDown(pointerId = 7L))
+        gesture.handlePointerUp(pointerId = 7L)
+        assertEquals(VoiceDictationGestureMode.Idle, gesture.mode)
+        assertEquals(6, stopCount)
+        advanceTimeBy(VOICE_DICTATION_CLICK_SUPPRESSION_RESET_MS)
+        runCurrent()
+        gesture.handleClick()
+        assertEquals(VoiceDictationGestureMode.Locked, gesture.mode)
+        assertEquals(7, startCount)
+
         gesture.dispose()
     }
 
