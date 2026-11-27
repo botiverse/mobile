@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.getBoundsInRoot
@@ -32,6 +33,7 @@ import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -516,6 +518,99 @@ class RaftMobileWebPanelUiTest {
         )
 
         // Clicking the pill after dragging + IME transitions still resumes cleanly.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
+        assertEquals(1, clicks)
+    }
+
+    @Test
+    fun floatingPillOverlayDragsHorizontallyAndDocksToLeftAndRightEdges() = runRobolectricComposeUiTest {
+        val tab =
+            RaftAppBrowserTab(
+                tabId = 1L,
+                launchUrl = "https://stamp.build/pulls/1",
+                currentUrl = "https://stamp.build/pulls/1",
+                pageTitle = "PR #1",
+                appEntryToken = "tok-1",
+                scopeOrigin = "https://stamp.build",
+                appName = "Stamp",
+                isLive = true,
+                lastUsedSeq = 1L,
+            )
+        var pillFraction by mutableFloatStateOf(RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION)
+        var pillEdge by mutableStateOf(RaftFloatingPillEdge.Right)
+        var clicks = 0
+
+        setContent {
+            RaftDesignSystemTheme {
+                Box(modifier = Modifier.fillMaxSize().testTag("floating-pill-overlay-host")) {
+                    RaftFloatingBrowserTabPillOverlay(
+                        tabs = listOf(tab),
+                        pillYFraction = pillFraction,
+                        onPillYFractionChange = { pillFraction = it },
+                        pillEdge = pillEdge,
+                        onPillDockPositionChange = { edge, y ->
+                            pillEdge = edge
+                            pillFraction = y
+                        },
+                        onClick = { clicks += 1 },
+                        topSafeArea = 44.dp,
+                        bottomSafeArea = 34.dp,
+                    )
+                }
+            }
+        }
+
+        val hostBounds = onNodeWithTag("floating-pill-overlay-host").getBoundsInRoot()
+        val initialBounds = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        assertTrue(
+            abs(initialBounds.right.value - hostBounds.right.value) <= 2f,
+            "Expected pill initially docked flush to right edge (${hostBounds.right}), got right=${initialBounds.right}",
+        )
+
+        val stepPx = 10f * density.density
+
+        // Drag horizontally past viewport midpoint from Right to Left -> docks flush to physical left edge.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performTouchInput {
+            down(center)
+            repeat(30) { moveBy(Offset(-stepPx, 0f)) }
+            up()
+        }
+        waitForIdle()
+        assertEquals(RaftFloatingPillEdge.Left, pillEdge)
+        val dockedLeft = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        assertTrue(
+            abs(dockedLeft.left.value - hostBounds.left.value) <= 2f,
+            "Expected pill docked flush to left edge (${hostBounds.left}), got left=${dockedLeft.left}",
+        )
+
+        // Short pull rightward without crossing midpoint snaps back cleanly to Left edge.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performTouchInput {
+            down(center)
+            repeat(6) { moveBy(Offset(stepPx, 0f)) }
+            up()
+        }
+        waitForIdle()
+        assertEquals(RaftFloatingPillEdge.Left, pillEdge)
+        val snappedBackLeft = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        assertTrue(
+            abs(snappedBackLeft.left.value - hostBounds.left.value) <= 2f,
+            "Expected short rightward pull to snap back to left edge (${hostBounds.left}), got left=${snappedBackLeft.left}",
+        )
+
+        // Drag horizontally past viewport midpoint from Left back to Right -> docks flush to right edge.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performTouchInput {
+            down(center)
+            repeat(30) { moveBy(Offset(stepPx, 0f)) }
+            up()
+        }
+        waitForIdle()
+        assertEquals(RaftFloatingPillEdge.Right, pillEdge)
+        val dockedRight = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        assertTrue(
+            abs(dockedRight.right.value - hostBounds.right.value) <= 2f,
+            "Expected pill docked flush back to right edge (${hostBounds.right}), got right=${dockedRight.right}",
+        )
+
         onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
         assertEquals(1, clicks)
     }

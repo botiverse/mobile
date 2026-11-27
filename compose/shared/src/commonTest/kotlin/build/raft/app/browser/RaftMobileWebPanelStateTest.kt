@@ -1,7 +1,10 @@
 package build.raft.app
 
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 import build.raft.app.thread.key
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
@@ -680,6 +683,244 @@ class RaftMobileWebPanelStateTest {
         assertEquals(0f, clampRaftFloatingPillYFraction(0f, viewport, pillHeight, topBound, bottomBound))
         assertEquals(1f, clampRaftFloatingPillYFraction(999f, viewport, pillHeight, topBound, bottomBound))
         assertEquals(0.5f, clampRaftFloatingPillYFraction(atMid, viewport, pillHeight, topBound, bottomBound))
+        assertEquals(
+            RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION,
+            clampRaftFloatingPillYFraction(Float.NaN, viewport, pillHeight, topBound, bottomBound),
+        )
+    }
+
+    @Test
+    fun floatingPillHorizontalDockRangeClampAndSnapEdgeHandleBothSidesNarrowViewportAndNonFiniteInputs() {
+        val viewportWidth = 400f
+        val pillWidth = 48f
+        val range = resolveRaftFloatingPillHorizontalRange(viewportWidth, pillWidth)
+        assertEquals(0f, range.minX)
+        assertEquals(352f, range.maxX)
+        assertEquals(0f, resolveRaftFloatingPillDockedOffsetXPx(RaftFloatingPillEdge.Left, viewportWidth, pillWidth))
+        assertEquals(352f, resolveRaftFloatingPillDockedOffsetXPx(RaftFloatingPillEdge.Right, viewportWidth, pillWidth))
+
+        // Midpoint is 176f: strictly left snaps Left, strictly right snaps Right, exact midpoint preserves currentEdge.
+        assertEquals(
+            RaftFloatingPillEdge.Left,
+            resolveRaftFloatingPillSnapEdge(175.5f, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Right),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Right,
+            resolveRaftFloatingPillSnapEdge(176.5f, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Left),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Right,
+            resolveRaftFloatingPillSnapEdge(176f, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Right),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Left,
+            resolveRaftFloatingPillSnapEdge(176f, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Left),
+        )
+        // Out-of-bounds drag coordinates clamp before resolving snap edge.
+        assertEquals(
+            RaftFloatingPillEdge.Left,
+            resolveRaftFloatingPillSnapEdge(-80f, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Right),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Right,
+            resolveRaftFloatingPillSnapEdge(900f, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Left),
+        )
+        assertEquals(0f, clampRaftFloatingPillOffsetXPx(-40f, viewportWidth, pillWidth))
+        assertEquals(352f, clampRaftFloatingPillOffsetXPx(600f, viewportWidth, pillWidth))
+        assertEquals(120f, clampRaftFloatingPillOffsetXPx(120f, viewportWidth, pillWidth))
+
+        // Landscape horizontal safe-area insets shift the dockable span symmetrically around its midpoint.
+        val landscapeRange =
+            resolveRaftFloatingPillHorizontalRange(
+                viewportWidthPx = 844f,
+                pillWidthPx = 48f,
+                leftSafeAreaPx = 44f,
+                rightSafeAreaPx = 0f,
+            )
+        assertEquals(44f, landscapeRange.minX)
+        assertEquals(796f, landscapeRange.maxX)
+        assertEquals(
+            44f,
+            resolveRaftFloatingPillDockedOffsetXPx(
+                RaftFloatingPillEdge.Left,
+                viewportWidthPx = 844f,
+                pillWidthPx = 48f,
+                leftSafeAreaPx = 44f,
+                rightSafeAreaPx = 0f,
+            ),
+        )
+        // Landscape midpoint = (44 + 796) / 2 = 420f.
+        assertEquals(
+            RaftFloatingPillEdge.Left,
+            resolveRaftFloatingPillSnapEdge(419f, 844f, 48f, leftSafeAreaPx = 44f, rightSafeAreaPx = 0f),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Right,
+            resolveRaftFloatingPillSnapEdge(421f, 844f, 48f, leftSafeAreaPx = 44f, rightSafeAreaPx = 0f),
+        )
+
+        // Narrow viewport where pillWidth >= viewportWidth collapses range to [0, 0] and preserves currentEdge.
+        val narrowRange = resolveRaftFloatingPillHorizontalRange(viewportWidthPx = 32f, pillWidthPx = 48f)
+        assertEquals(0f, narrowRange.minX)
+        assertEquals(0f, narrowRange.maxX)
+        assertEquals(
+            RaftFloatingPillEdge.Right,
+            resolveRaftFloatingPillSnapEdge(0f, 32f, 48f, currentEdge = RaftFloatingPillEdge.Right),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Left,
+            resolveRaftFloatingPillSnapEdge(0f, 32f, 48f, currentEdge = RaftFloatingPillEdge.Left),
+        )
+
+        // Non-finite inputs never leak NaN/Infinity and fall back cleanly.
+        assertEquals(
+            352f,
+            clampRaftFloatingPillOffsetXPx(Float.NaN, viewportWidth, pillWidth, fallbackEdge = RaftFloatingPillEdge.Right),
+        )
+        assertEquals(
+            0f,
+            clampRaftFloatingPillOffsetXPx(Float.POSITIVE_INFINITY, viewportWidth, pillWidth, fallbackEdge = RaftFloatingPillEdge.Left),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Right,
+            resolveRaftFloatingPillSnapEdge(Float.NaN, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Right),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Left,
+            resolveRaftFloatingPillSnapEdge(Float.NEGATIVE_INFINITY, viewportWidth, pillWidth, currentEdge = RaftFloatingPillEdge.Left),
+        )
+        assertEquals(
+            RaftFloatingPillEdge.Right,
+            resolveRaftFloatingPillSnapEdge(100f, Float.NaN, pillWidth, currentEdge = RaftFloatingPillEdge.Right),
+        )
+    }
+
+    @Test
+    fun floatingPillChromeSpecMirrorsDockedEdgesAndRoundsFullyWhileDetached() {
+        val rightDocked = resolveRaftFloatingPillChromeSpec(RaftFloatingPillEdge.Right, isDetached = false)
+        assertEquals(22.dp, rightDocked.topLeftDp)
+        assertEquals(22.dp, rightDocked.bottomLeftDp)
+        assertEquals(0.dp, rightDocked.topRightDp)
+        assertEquals(0.dp, rightDocked.bottomRightDp)
+        assertEquals(10.dp, rightDocked.leftPaddingDp)
+        assertEquals(8.dp, rightDocked.rightPaddingDp)
+        assertEquals(
+            RoundedCornerShape(topStart = 22.dp, topEnd = 0.dp, bottomEnd = 0.dp, bottomStart = 22.dp),
+            rightDocked.toShape(LayoutDirection.Ltr),
+        )
+        assertEquals(
+            RoundedCornerShape(topStart = 0.dp, topEnd = 22.dp, bottomEnd = 22.dp, bottomStart = 0.dp),
+            rightDocked.toShape(LayoutDirection.Rtl),
+        )
+
+        val leftDocked = resolveRaftFloatingPillChromeSpec(RaftFloatingPillEdge.Left, isDetached = false)
+        assertEquals(0.dp, leftDocked.topLeftDp)
+        assertEquals(0.dp, leftDocked.bottomLeftDp)
+        assertEquals(22.dp, leftDocked.topRightDp)
+        assertEquals(22.dp, leftDocked.bottomRightDp)
+        assertEquals(8.dp, leftDocked.leftPaddingDp)
+        assertEquals(10.dp, leftDocked.rightPaddingDp)
+        assertEquals(
+            RoundedCornerShape(topStart = 0.dp, topEnd = 22.dp, bottomEnd = 22.dp, bottomStart = 0.dp),
+            leftDocked.toShape(LayoutDirection.Ltr),
+        )
+        assertEquals(
+            RoundedCornerShape(topStart = 22.dp, topEnd = 0.dp, bottomEnd = 0.dp, bottomStart = 22.dp),
+            leftDocked.toShape(LayoutDirection.Rtl),
+        )
+
+        val detachedFromLeft = resolveRaftFloatingPillChromeSpec(RaftFloatingPillEdge.Left, isDetached = true)
+        val detachedFromRight = resolveRaftFloatingPillChromeSpec(RaftFloatingPillEdge.Right, isDetached = true)
+        assertEquals(detachedFromLeft, detachedFromRight)
+        assertEquals(22.dp, detachedFromLeft.topLeftDp)
+        assertEquals(22.dp, detachedFromLeft.topRightDp)
+        assertEquals(22.dp, detachedFromLeft.bottomRightDp)
+        assertEquals(22.dp, detachedFromLeft.bottomLeftDp)
+        assertEquals(9.dp, detachedFromLeft.leftPaddingDp)
+        assertEquals(9.dp, detachedFromLeft.rightPaddingDp)
+        assertEquals(RoundedCornerShape(22.dp), detachedFromLeft.toShape(LayoutDirection.Ltr))
+        assertEquals(RoundedCornerShape(22.dp), detachedFromLeft.toShape(LayoutDirection.Rtl))
+
+        // Total horizontal padding stays constant (18dp) across all three states so dragging never shifts pill width.
+        assertEquals(rightDocked.leftPaddingDp + rightDocked.rightPaddingDp, leftDocked.leftPaddingDp + leftDocked.rightPaddingDp)
+        assertEquals(rightDocked.leftPaddingDp + rightDocked.rightPaddingDp, detachedFromLeft.leftPaddingDp + detachedFromLeft.rightPaddingDp)
+    }
+
+    @Test
+    fun coordinatorPersistsPillEdgeAndDockPositionAcrossSuspendResumeTabChangesAndCloseAll() {
+        val coordinator =
+            RaftMobileWebPanelCoordinator(
+                releaseEntryToken = { _, _ -> },
+                evictKeepAlive = {},
+            )
+        // Defaults to Right edge and default Y fraction.
+        assertEquals(RaftFloatingPillEdge.Right, coordinator.state.value.pillEdge)
+        assertEquals(RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION, coordinator.state.value.pillYFraction)
+
+        // Dock to Left edge with custom vertical position.
+        coordinator.setPillDockPosition(RaftFloatingPillEdge.Left, 0.25f)
+        assertEquals(RaftFloatingPillEdge.Left, coordinator.state.value.pillEdge)
+        assertEquals(0.25f, coordinator.state.value.pillYFraction)
+
+        // Persists across opening, suspending, resuming, opening another tab, closing tabs, and session context switches.
+        val tab1 =
+            coordinator.openOrActivateApp(
+                launchUrl = "https://stamp.build/pulls/1",
+                appEntryToken = "tok-1",
+                request = RaftAppEntryRequest(scopeOrigin = "https://stamp.build", appName = "Stamp", preferredServerId = "srv-1"),
+                accountId = "acct-1",
+                serverId = "srv-1",
+                environmentKey = "prod",
+            ).tab
+        assertTrue(coordinator.suspendTab(tab1.tabId))
+        assertEquals(RaftFloatingPillEdge.Left, coordinator.state.value.pillEdge)
+        assertEquals(0.25f, coordinator.state.value.pillYFraction)
+
+        assertNotNull(coordinator.activateTab(tab1.tabId))
+        assertTrue(coordinator.suspendActive())
+        assertEquals(RaftFloatingPillEdge.Left, coordinator.state.value.pillEdge)
+
+        val tab2 =
+            coordinator.openOrActivateApp(
+                launchUrl = "https://deck.example/board",
+                appEntryToken = "tok-2",
+                request = RaftAppEntryRequest(scopeOrigin = "https://deck.example", appName = "Deck", preferredServerId = "srv-1"),
+                accountId = "acct-1",
+                serverId = "srv-1",
+                environmentKey = "prod",
+            ).tab
+        assertTrue(coordinator.closeTab(tab2.tabId))
+        assertEquals(RaftFloatingPillEdge.Left, coordinator.state.value.pillEdge)
+
+        coordinator.closeAll()
+        assertTrue(coordinator.state.value.tabs.isEmpty())
+        assertEquals(RaftFloatingPillEdge.Left, coordinator.state.value.pillEdge)
+        assertEquals(0.25f, coordinator.state.value.pillYFraction)
+
+        // Also retained across session context switches (e.g. server switch / logout).
+        coordinator.openOrActivateApp(
+            launchUrl = "https://stamp.build/pulls/2",
+            appEntryToken = "tok-3",
+            request = RaftAppEntryRequest(scopeOrigin = "https://stamp.build", appName = "Stamp", preferredServerId = "srv-1"),
+            accountId = "acct-1",
+            serverId = "srv-1",
+            environmentKey = "prod",
+        )
+        coordinator.onSessionContextChanged(accountId = "acct-2", serverId = "srv-2", environmentKey = "prod")
+        assertTrue(coordinator.state.value.tabs.isEmpty())
+        assertEquals(RaftFloatingPillEdge.Left, coordinator.state.value.pillEdge)
+        assertEquals(0.25f, coordinator.state.value.pillYFraction)
+
+        // setPillEdge updates edge independently; setPillYFraction clamps out-of-range and guards NaN.
+        coordinator.setPillEdge(RaftFloatingPillEdge.Right)
+        assertEquals(RaftFloatingPillEdge.Right, coordinator.state.value.pillEdge)
+        assertEquals(0.25f, coordinator.state.value.pillYFraction)
+
+        coordinator.setPillYFraction(Float.NaN)
+        assertEquals(RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION, coordinator.state.value.pillYFraction)
+        coordinator.setPillDockPosition(RaftFloatingPillEdge.Left, 1.5f)
+        assertEquals(RaftFloatingPillEdge.Left, coordinator.state.value.pillEdge)
+        assertEquals(1f, coordinator.state.value.pillYFraction)
     }
 
     @Test

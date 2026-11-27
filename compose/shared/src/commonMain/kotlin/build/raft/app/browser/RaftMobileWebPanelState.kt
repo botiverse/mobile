@@ -400,8 +400,124 @@ internal fun resolveRaftAppBrowserBackAction(
         else -> RaftAppBrowserBackAction.CloseAppPage
     }
 
+/** Physical screen edge where the magnetic floating browser tab pill docks. */
+internal enum class RaftFloatingPillEdge {
+    Left,
+    Right,
+}
+
+/** Clamped physical `[minX, maxX]` horizontal range (in px) for the floating tab pill. */
+internal data class RaftFloatingPillHorizontalRange(
+    val minX: Float,
+    val maxX: Float,
+)
+
+private fun Float.finiteNonNegativeOrZero(): Float = if (isFinite()) coerceAtLeast(0f) else 0f
+
 /**
- * Resolves the clamped vertical top offset (in px) for the right-edge floating tab pill within
+ * Resolves the clamped physical `[minX, maxX]` horizontal range (in px) for the floating tab pill
+ * within `[leftSafeAreaPx, viewportWidthPx - rightSafeAreaPx - pillWidthPx]`.
+ */
+internal fun resolveRaftFloatingPillHorizontalRange(
+    viewportWidthPx: Float,
+    pillWidthPx: Float,
+    leftSafeAreaPx: Float = 0f,
+    rightSafeAreaPx: Float = 0f,
+): RaftFloatingPillHorizontalRange {
+    val safeViewport = viewportWidthPx.finiteNonNegativeOrZero()
+    val safePillWidth = pillWidthPx.finiteNonNegativeOrZero()
+    val safeLeft = leftSafeAreaPx.finiteNonNegativeOrZero()
+    val safeRight = rightSafeAreaPx.finiteNonNegativeOrZero()
+    val maxPossibleLeft = (safeViewport - safePillWidth).coerceAtLeast(0f)
+    val minX = safeLeft.coerceAtMost(maxPossibleLeft)
+    val maxX = (safeViewport - safeRight - safePillWidth).coerceAtLeast(minX)
+    return RaftFloatingPillHorizontalRange(minX = minX, maxX = maxX)
+}
+
+/** Resolves the physical left offset (in px) where the floating tab pill docks for [edge]. */
+internal fun resolveRaftFloatingPillDockedOffsetXPx(
+    edge: RaftFloatingPillEdge,
+    viewportWidthPx: Float,
+    pillWidthPx: Float,
+    leftSafeAreaPx: Float = 0f,
+    rightSafeAreaPx: Float = 0f,
+): Float {
+    val range =
+        resolveRaftFloatingPillHorizontalRange(
+            viewportWidthPx = viewportWidthPx,
+            pillWidthPx = pillWidthPx,
+            leftSafeAreaPx = leftSafeAreaPx,
+            rightSafeAreaPx = rightSafeAreaPx,
+        )
+    return when (edge) {
+        RaftFloatingPillEdge.Left -> range.minX
+        RaftFloatingPillEdge.Right -> range.maxX
+    }
+}
+
+/** Clamps a dragged physical left offset [offsetXPx] within the safe horizontal pill range. */
+internal fun clampRaftFloatingPillOffsetXPx(
+    offsetXPx: Float,
+    viewportWidthPx: Float,
+    pillWidthPx: Float,
+    leftSafeAreaPx: Float = 0f,
+    rightSafeAreaPx: Float = 0f,
+    fallbackEdge: RaftFloatingPillEdge = RaftFloatingPillEdge.Right,
+): Float {
+    val range =
+        resolveRaftFloatingPillHorizontalRange(
+            viewportWidthPx = viewportWidthPx,
+            pillWidthPx = pillWidthPx,
+            leftSafeAreaPx = leftSafeAreaPx,
+            rightSafeAreaPx = rightSafeAreaPx,
+        )
+    if (!offsetXPx.isFinite()) {
+        return when (fallbackEdge) {
+            RaftFloatingPillEdge.Left -> range.minX
+            RaftFloatingPillEdge.Right -> range.maxX
+        }
+    }
+    return offsetXPx.coerceIn(range.minX, range.maxX)
+}
+
+/**
+ * Resolves which physical screen edge ([RaftFloatingPillEdge.Left] or [RaftFloatingPillEdge.Right])
+ * the floating tab pill should magnetically dock to when released at [offsetXPx].
+ *
+ * Compares the clamped pill position against the midpoint of its dockable horizontal span so the
+ * pill snaps to whichever edge is closer; exact midpoint ties, narrow viewports with zero span, and
+ * non-finite inputs preserve [currentEdge].
+ */
+internal fun resolveRaftFloatingPillSnapEdge(
+    offsetXPx: Float,
+    viewportWidthPx: Float,
+    pillWidthPx: Float,
+    leftSafeAreaPx: Float = 0f,
+    rightSafeAreaPx: Float = 0f,
+    currentEdge: RaftFloatingPillEdge = RaftFloatingPillEdge.Right,
+): RaftFloatingPillEdge {
+    if (!offsetXPx.isFinite() || !viewportWidthPx.isFinite() || !pillWidthPx.isFinite()) {
+        return currentEdge
+    }
+    val range =
+        resolveRaftFloatingPillHorizontalRange(
+            viewportWidthPx = viewportWidthPx,
+            pillWidthPx = pillWidthPx,
+            leftSafeAreaPx = leftSafeAreaPx,
+            rightSafeAreaPx = rightSafeAreaPx,
+        )
+    if (range.maxX <= range.minX) return currentEdge
+    val clampedX = offsetXPx.coerceIn(range.minX, range.maxX)
+    val midpoint = (range.minX + range.maxX) * 0.5f
+    return when {
+        clampedX < midpoint -> RaftFloatingPillEdge.Left
+        clampedX > midpoint -> RaftFloatingPillEdge.Right
+        else -> currentEdge
+    }
+}
+
+/**
+ * Resolves the clamped vertical top offset (in px) for the edge-docked floating tab pill within
  * safe viewport bounds `[topBoundPx, max(topBoundPx, viewportHeightPx - bottomBoundPx - pillHeightPx)]`.
  */
 internal fun resolveRaftFloatingPillOffsetYPx(
@@ -411,10 +527,14 @@ internal fun resolveRaftFloatingPillOffsetYPx(
     bottomBoundPx: Float,
     yFraction: Float,
 ): Float {
-    val safeTop = topBoundPx.coerceAtLeast(0f)
-    val safeMax = (viewportHeightPx - bottomBoundPx.coerceAtLeast(0f) - pillHeightPx.coerceAtLeast(0f)).coerceAtLeast(safeTop)
+    val safeTop = topBoundPx.finiteNonNegativeOrZero()
+    val safeViewport = viewportHeightPx.finiteNonNegativeOrZero()
+    val safeBottom = bottomBoundPx.finiteNonNegativeOrZero()
+    val safePillHeight = pillHeightPx.finiteNonNegativeOrZero()
+    val safeMax = (safeViewport - safeBottom - safePillHeight).coerceAtLeast(safeTop)
     val span = (safeMax - safeTop).coerceAtLeast(0f)
-    return safeTop + span * yFraction.coerceIn(0f, 1f)
+    val safeFraction = if (yFraction.isFinite()) yFraction.coerceIn(0f, 1f) else RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION
+    return safeTop + span * safeFraction
 }
 
 /** Converts a dragged vertical offset [offsetYPx] back into a clamped `[0f, 1f]` fraction. */
@@ -425,10 +545,13 @@ internal fun clampRaftFloatingPillYFraction(
     topBoundPx: Float,
     bottomBoundPx: Float,
 ): Float {
-    val safeTop = topBoundPx.coerceAtLeast(0f)
-    val safeMax = (viewportHeightPx - bottomBoundPx.coerceAtLeast(0f) - pillHeightPx.coerceAtLeast(0f)).coerceAtLeast(safeTop)
+    val safeTop = topBoundPx.finiteNonNegativeOrZero()
+    val safeViewport = viewportHeightPx.finiteNonNegativeOrZero()
+    val safeBottom = bottomBoundPx.finiteNonNegativeOrZero()
+    val safePillHeight = pillHeightPx.finiteNonNegativeOrZero()
+    val safeMax = (safeViewport - safeBottom - safePillHeight).coerceAtLeast(safeTop)
     val span = safeMax - safeTop
-    if (span <= 1f) return RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION
+    if (!offsetYPx.isFinite() || span <= 1f) return RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION
     return ((offsetYPx - safeTop) / span).coerceIn(0f, 1f)
 }
 
@@ -495,8 +618,10 @@ internal data class RaftAppBrowserTabsState(
     val tabs: List<RaftAppBrowserTab> = emptyList(),
     /** Currently visible foreground App tab id, or `null` when all open tabs are suspended. */
     val activeTabId: Long? = null,
-    /** Persisted vertical dock fraction `[0f, 1f]` of the right-edge floating tab pill. */
+    /** Persisted vertical dock fraction `[0f, 1f]` of the edge-docked floating tab pill. */
     val pillYFraction: Float = RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION,
+    /** Persisted physical horizontal dock edge of the floating tab pill (defaults to [RaftFloatingPillEdge.Right]). */
+    val pillEdge: RaftFloatingPillEdge = RaftFloatingPillEdge.Right,
 ) {
     val activeTab: RaftAppBrowserTab?
         get() = activeTabId?.let { id -> tabs.firstOrNull { it.tabId == id } }
@@ -504,7 +629,7 @@ internal data class RaftAppBrowserTabsState(
     val suspendedTabs: List<RaftAppBrowserTab>
         get() = if (activeTabId == null) tabs else tabs.filter { it.tabId != activeTabId }
 
-    /** The right-edge floating pill shows across Home & Chat whenever ≥1 tab is open and none is foreground. */
+    /** The edge-docked floating pill shows across Home & Chat whenever ≥1 tab is open and none is foreground. */
     val showFloatingPill: Boolean
         get() = activeTabId == null && tabs.isNotEmpty()
 
@@ -910,13 +1035,35 @@ internal class RaftMobileWebPanelCoordinator(
         removed.forEach(::releaseTabResources)
     }
 
-    /** Persists the user's vertical dock fraction for the right-edge magnetic floating pill. */
+    /** Persists the user's vertical dock fraction for the magnetic floating pill. */
     fun setPillYFraction(yFraction: Float) {
-        val clamped = yFraction.coerceIn(0f, 1f)
+        val clamped = if (yFraction.isFinite()) yFraction.coerceIn(0f, 1f) else RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION
         synchronized(lock) {
             val current = _state.value
             if (current.pillYFraction == clamped) return@synchronized
             _state.value = current.copy(pillYFraction = clamped)
+        }
+    }
+
+    /** Persists the user's physical horizontal dock edge for the magnetic floating pill. */
+    fun setPillEdge(edge: RaftFloatingPillEdge) {
+        synchronized(lock) {
+            val current = _state.value
+            if (current.pillEdge == edge) return@synchronized
+            _state.value = current.copy(pillEdge = edge)
+        }
+    }
+
+    /** Atomically persists both the docked edge and vertical fraction when a floating pill drag settles. */
+    fun setPillDockPosition(
+        edge: RaftFloatingPillEdge,
+        yFraction: Float,
+    ) {
+        val clampedY = if (yFraction.isFinite()) yFraction.coerceIn(0f, 1f) else RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION
+        synchronized(lock) {
+            val current = _state.value
+            if (current.pillEdge == edge && current.pillYFraction == clampedY) return@synchronized
+            _state.value = current.copy(pillEdge = edge, pillYFraction = clampedY)
         }
     }
 
