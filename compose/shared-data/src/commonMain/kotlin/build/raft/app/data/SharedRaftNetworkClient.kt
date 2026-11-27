@@ -378,7 +378,7 @@ import kotlin.time.TimeSource
                         "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                         "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
                         "result=${response.networkDiagnosticsResult()}" +
-                        response.errorBodyLogSuffix() +
+                        response.errorBodyLogSuffix(normalizedPath) +
                         response.requestIdLogSuffix() +
                         response.transportDiagnosticsLogSuffix()
                 if (response.code == 401) {
@@ -1332,13 +1332,12 @@ import kotlin.time.TimeSource
                 warningLogger(
                     "endpoint category=$category path=$diagnosticPath method=POST " +
                         "fieldKeys=${fields.networkDiagnosticsFieldKeys()} " +
-                        "fileCount=${files.size} fileFields=${files.networkDiagnosticsFileFields()} " +
                         "fileNameMeta=${files.networkDiagnosticsFileNameMeta()} requestBytes=$requestBytes " +
                         "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                         "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                         "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
                         "result=${response.networkDiagnosticsResult()}" +
-                        response.errorBodyLogSuffix() +
+                        response.errorBodyLogSuffix(diagnosticPath) +
                         response.requestIdLogSuffix() +
                         response.transportDiagnosticsLogSuffix()
                 )
@@ -1922,8 +1921,10 @@ private fun Map<String, List<String>>.requestIdLogSuffix(): String {
     return " requestId=$requestId"
 }
 
-private fun HomeNetworkResponse.errorBodyLogSuffix(): String {
+private fun HomeNetworkResponse.errorBodyLogSuffix(normalizedPath: String): String {
     if (isSuccessful) return ""
+    // Never echo raw permit refusal bodies into diagnostics logs (`#wg-call:#10` privacy boundary).
+    if (normalizedPath == VOICE_DICTATION_PERMITS_PATH) return ""
     val error = errorBodyText?.takeIf { it.isNotBlank() } ?: return ""
     return " errorBody=${error.toSafeDiagnosticsToken()}"
 }

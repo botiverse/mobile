@@ -3202,6 +3202,20 @@ internal class RaftSharedStoreProvider private constructor(
         }
 
     /**
+     * Synchronous non-creating read of an existing [SharedServerMembersStore] holding [serverId]
+     * for this shell (falling back to the process store without allocating a new shell store).
+     */
+    internal fun existingServerMembersStoreOrNull(
+        scope: RaftShellStoreScope,
+        serverId: ServerId,
+    ): SharedServerMembersStore? {
+        val shellStore = if (scope == RaftShellStoreScope.Legacy) null else shellServerMembersStores.get(scope)
+        if (shellStore?.state?.value?.entryFor(serverId) != null) return shellStore
+        if (serverMembersStore.state.value.entryFor(serverId) != null) return serverMembersStore
+        return shellStore ?: serverMembersStore
+    }
+
+    /**
      * The roster's cached projection is server keyed, but mutations such as an
      * agent update do not carry a server override. AppShell therefore must use
      * a repository bound to its own shell session instead of the process

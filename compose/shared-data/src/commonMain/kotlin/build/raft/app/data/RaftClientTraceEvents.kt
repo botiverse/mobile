@@ -22,6 +22,8 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -128,6 +130,68 @@ import kotlinx.serialization.json.JsonPrimitive
 @RaftCoreInternalApi fun raftClientTraceShouldResend(status: Int): Boolean = status == 0 || status in 500..599
 @RaftCoreInternalApi const val RaftWebTraceScope = "web-trace-batch:create"
 @RaftCoreInternalApi const val RaftStateTransitionTraceName = "slock.state.transition"
+
+/** Voice dictation caller-context trace keys dropped before export (`slock` `#wg-call:#9`). */
+@RaftCoreInternalApi
+val RaftClientTraceVoiceDictationDropKeys: Set<String> =
+    setOf(
+        "draft_before",
+        "draftBefore",
+        "contact_hints",
+        "contactHints",
+    )
+
+/** Content-safety trace attribute keys dropped before export (`slock` `TRACE_CONTENT_SAFETY_DROP_FIELD_KEYS`). */
+@RaftCoreInternalApi
+val RaftClientTraceContentSafetyDropKeys: Set<String> =
+    setOf("raw_payload", "token") + RaftClientTraceVoiceDictationDropKeys
+
+private val RaftClientTraceContentSafetyDropKeysLower: Set<String> =
+    RaftClientTraceContentSafetyDropKeys.mapTo(hashSetOf()) { it.lowercase() }
+
+private fun isDroppedRaftClientTraceKey(key: String): Boolean {
+    val lower = key.lowercase()
+    if (lower in RaftClientTraceContentSafetyDropKeysLower) return true
+    val dot = lower.lastIndexOf('.')
+    return dot >= 0 && lower.substring(dot + 1) in RaftClientTraceContentSafetyDropKeysLower
+}
+
+private fun sanitizeRaftClientTraceElement(element: JsonElement): JsonElement =
+    when (element) {
+        is JsonObject -> sanitizeRaftClientTraceAttrs(element)
+        is JsonArray -> {
+            var changed = false
+            val next = ArrayList<JsonElement>(element.size)
+            for (item in element) {
+                val sanitized = sanitizeRaftClientTraceElement(item)
+                if (sanitized !== item) changed = true
+                next += sanitized
+            }
+            if (changed) JsonArray(next) else element
+        }
+        else -> element
+    }
+
+/**
+ * Strips every content-safety drop attribute (`raw_payload`, `token`, `draft_before`, `draftBefore`,
+ * `contact_hints`, `contactHints`) from trace attributes, including dotted leaf keys and nested
+ * objects/arrays. Mirrors `slock` `sanitizeTraceContentSafetyAttrs`.
+ */
+@RaftCoreInternalApi
+fun sanitizeRaftClientTraceAttrs(attrs: JsonObject): JsonObject {
+    var changed = false
+    val out = LinkedHashMap<String, JsonElement>(attrs.size)
+    for ((key, value) in attrs) {
+        if (isDroppedRaftClientTraceKey(key)) {
+            changed = true
+            continue
+        }
+        val sanitized = sanitizeRaftClientTraceElement(value)
+        if (sanitized !== value) changed = true
+        out[key] = sanitized
+    }
+    return if (changed) JsonObject(out) else attrs
+}
 
 /** The web reuses an attestation until this long before it expires (ATTESTATION_REUSE_MARGIN_MS). */
 private const val AttestationReuseMarginMillis = 60_000L
@@ -528,13 +592,14 @@ private val clientTraceJson =
         try {
             val now = nowEpochMillis()
             val eventTimeMillis = occurredAtMillis ?: now
+            val safeAttrs = sanitizeRaftClientTraceAttrs(attrs)
             val record =
                 RaftWebEventRecord(
                     name = name,
                     time = raftEpochMillisUtcIso(eventTimeMillis),
                     traceId = traceId,
                     spanId = spanId,
-                    attrs = JsonObject(attrs + defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }),
+                    attrs = JsonObject(safeAttrs + defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }),
                 )
             enqueue { account -> listOf(Queued(ServerId(server), account, record = record, queuedAtMillis = now)) }
         } catch (_: Throwable) {
@@ -553,8 +618,8 @@ private val clientTraceJson =
             val now = nowEpochMillis()
             val defaults = defaultAttrs().mapValues { (_, value) -> JsonPrimitive(value) }
             val id = ServerId(server)
-            val withDefaults = span.copy(attrs = JsonObject(span.attrs + defaults))
-            val eventsWithDefaults = events.map { it.copy(attrs = JsonObject(it.attrs + defaults)) }
+            val withDefaults = span.copy(attrs = JsonObject(sanitizeRaftClientTraceAttrs(span.attrs) + defaults))
+            val eventsWithDefaults = events.map { it.copy(attrs = JsonObject(sanitizeRaftClientTraceAttrs(it.attrs) + defaults)) }
             enqueue { account ->
                 buildList {
                     add(Queued(id, account, span = withDefaults, queuedAtMillis = now))

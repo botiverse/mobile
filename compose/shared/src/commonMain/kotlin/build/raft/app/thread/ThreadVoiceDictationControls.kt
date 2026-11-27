@@ -301,6 +301,7 @@ internal class ThreadVoiceDictationHost(
     val controller: VoiceDictationV2Controller,
     val sampleFeedbackEnabled: Boolean = false,
     val onSubmitFeedback: (suspend (serverId: String, request: VoiceDictationFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? = null,
+    val collectContactHints: () -> List<String>? = { null },
 ) {
     fun canShow(composerEditable: Boolean): Boolean =
         canShowComposerVoiceDictation(
@@ -345,6 +346,7 @@ internal fun rememberComposerVoiceDictationHost(
     audioRecorderProvider: () -> RaftVoiceDictationAudioRecorder? =
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
     feedbackApi: VoiceFeedbackApi? = null,
+    collectContactHints: () -> List<String>? = { null },
 ): ThreadVoiceDictationHost {
     val flagRevision by key(serverFeatureFlags) { serverFeatureFlags.snapshotRevision.collectAsState() }
     val effectiveServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
@@ -441,6 +443,7 @@ internal fun rememberComposerVoiceDictationHost(
         controller,
         submitFeedbackHandler,
         surfaceEditable,
+        collectContactHints,
     ) {
         val dictationEligible = flagEnabled && surfaceEditable && effectiveServerId != null && signedInUserId != null
         ThreadVoiceDictationHost(
@@ -454,6 +457,7 @@ internal fun rememberComposerVoiceDictationHost(
             controller = controller,
             sampleFeedbackEnabled = sampleFeedbackEnabled && dictationEligible,
             onSubmitFeedback = submitFeedbackHandler,
+            collectContactHints = collectContactHints,
         )
     }
 }
@@ -480,6 +484,19 @@ internal fun rememberComposerVoiceDictationHost(
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val permitApi = remember(networkClient) { RaftVoiceDictationV2PermitApi(networkClient) }
     val feedbackApi = remember(networkClient) { RaftVoiceFeedbackNetworkApi(networkClient) }
+    val signedInUserId = currentSession?.user?.id
+    val collectContactHints: () -> List<String>? =
+        remember(sharedStores, storeScope, serverId, signedInUserId, channelId) {
+            {
+                collectLocalVoiceDictationContactHints(
+                    sharedStores = sharedStores,
+                    storeScope = storeScope,
+                    serverId = serverId,
+                    currentUserId = signedInUserId,
+                    activeChannelId = channelId,
+                )
+            }
+        }
     return rememberComposerVoiceDictationHost(
         serverFeatureFlags = sharedStores.serverFeatureFlags,
         permitApi = permitApi,
@@ -493,6 +510,7 @@ internal fun rememberComposerVoiceDictationHost(
         prefetchIfUnresolved = prefetchIfUnresolved,
         audioRecorderProvider = audioRecorderProvider,
         feedbackApi = feedbackApi,
+        collectContactHints = collectContactHints,
     )
 }
 

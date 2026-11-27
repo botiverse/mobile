@@ -26,6 +26,7 @@ import build.raft.app.ThreadComposerQuoteController
 import build.raft.app.ThreadComposerSuggestionSelectionDispatcher
 import build.raft.app.data.VoiceDictationTextRange
 import build.raft.app.data.VoiceDictationV2State
+import build.raft.app.data.extractVoiceDictationDraftBeforeCaret
 import build.raft.app.data.trimVoiceDictationProvisionalRange
 import build.raft.app.get
 import build.raft.designsystem.focus.RaftFocusCoordinator
@@ -446,6 +447,8 @@ internal fun startThreadComposerVoiceDictation(
         onRequestFocusWithoutKeyboard?.invoke(targetBlockId, selStart, selEnd)
     }
     val startSessionId = editorOwner.editorSessionId
+    val draftBefore = extractVoiceDictationDraftBeforeCaret(baseText, selStart)
+    val contactHints = host.collectContactHints()
 
     host.controller.start(
         serverId = serverId,
@@ -455,6 +458,8 @@ internal fun startThreadComposerVoiceDictation(
         baseText = baseText,
         insertStart = selStart,
         insertEnd = selEnd,
+        draftBefore = draftBefore,
+        contactHints = contactHints,
         onComposerUpdate = { update ->
             if (!editorOwner.isActiveSession(startSessionId)) return@start
             if (segmentedAtStart) {
