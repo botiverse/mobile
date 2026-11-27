@@ -511,18 +511,25 @@ class ActionCardQuestionModalUiTest {
         onNodeWithText("Answer").assertExists().assertIsEnabled()
 
         // Switching back to a regular option hides the primary commit button again (until submitting).
+        // The clock holds still here: the tap answers the form after QUESTION_CHOICE_PICK_HIGHLIGHT_MS,
+        // and the sheet's 200ms height change would otherwise run the clock past it.
+        mainClock.autoAdvance = false
         onNodeWithText("Choice A").performClick()
-        waitForIdle()
+        advance(16)
         onNodeWithText("Answer").assertDoesNotExist()
 
         // While submitting is true, the commit button appears to display the spinner.
         submitting = true
-        waitForIdle()
+        advance(16)
+        onNodeWithText("Answer").assertExists()
+        // The pending tap answer finds the form sending and does nothing.
+        advance(QUESTION_CHOICE_PICK_HIGHLIGHT_MS + 50)
         onNodeWithText("Answer").assertExists()
 
         // Non-question forms always show their commit button.
         submitting = false
         question = false
+        mainClock.autoAdvance = true
         waitForIdle()
         onNodeWithText("Answer").assertExists().assertIsEnabled()
     }
