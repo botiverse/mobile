@@ -2693,10 +2693,67 @@ internal fun ThreadComposerContentLeaf(
     frameEdge: (@Composable (composing: Boolean, focused: Boolean, stackedAbove: Dp) -> Unit)? = null,
     autofocusOnOpen: ComposerFocusOnOpen? = null,
 ) {
-    // #192 trace scope extension: wrap the full composer render. IME-lift / state
-    // updates / suggestion list filtering are all under this; per-phase breakdown
-    // can come later if this marker shows hot. bodyLength proxy uses seedText length.
+    // #192 trace scope extension: wrap the full composer render. Delegate to
+    // ThreadComposerContentLeafBody instead of capturing all parameters inside a
+    // giant non-inline @Composable lambda; keeping DEX register pressure well below
+    // 256 avoids an AGP/R8 high-register truncation VerifyError on Android release APKs.
     traceMarkdownSection(RaftComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
+        ThreadComposerContentLeafBody(
+            surface = surface,
+            state = state,
+            editorOwner = editorOwner,
+            onEvent = onEvent,
+            onSendRequest = onSendRequest,
+            onKeyboardHeightChange = onKeyboardHeightChange,
+            contentPaddingTop = contentPaddingTop,
+            contentPaddingBottom = contentPaddingBottom,
+            hostPaddingHorizontal = hostPaddingHorizontal,
+            hostPaddingTop = hostPaddingTop,
+            keyboardLiftBottomContentPadding = keyboardLiftBottomContentPadding,
+            composerSendKeyEnabled = composerSendKeyEnabled,
+            composerSendKey = composerSendKey,
+            hardwareKeyboardConnected = hardwareKeyboardConnected,
+            dismissKeyboardOnBlur = dismissKeyboardOnBlur,
+            attachmentPreviewEnabled = attachmentPreviewEnabled,
+            agentStatusResolver = agentStatusResolver,
+            insertMentionRequest = insertMentionRequest,
+            onInsertMentionConsumed = onInsertMentionConsumed,
+            onSuggestionDemandChanged = onSuggestionDemandChanged,
+            initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
+            externalNativeEditingStateReader = externalNativeEditingStateReader,
+            frameEdge = frameEdge,
+            autofocusOnOpen = autofocusOnOpen,
+        )
+    }
+}
+
+@Composable
+private fun ThreadComposerContentLeafBody(
+    surface: ThreadComposerSurface,
+    state: ThreadComposerUiState,
+    editorOwner: ThreadComposerEditorOwner,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onSendRequest: ((ThreadComposerSendRequest) -> ThreadComposerSendAdmission)?,
+    onKeyboardHeightChange: (Float) -> Unit,
+    contentPaddingTop: Dp,
+    contentPaddingBottom: Dp,
+    hostPaddingHorizontal: Dp,
+    hostPaddingTop: Dp,
+    keyboardLiftBottomContentPadding: Dp?,
+    composerSendKeyEnabled: Boolean,
+    composerSendKey: RaftComposerSendKey,
+    hardwareKeyboardConnected: Boolean,
+    dismissKeyboardOnBlur: Boolean,
+    attachmentPreviewEnabled: Boolean,
+    agentStatusResolver: RaftAgentStatusResolver,
+    insertMentionRequest: ThreadComposerInsertMentionRequest?,
+    onInsertMentionConsumed: (ThreadComposerInsertMentionRequest) -> Unit,
+    onSuggestionDemandChanged: (ThreadComposerSuggestionDemand) -> Unit,
+    initialMentionActionDetailsVisible: Boolean,
+    externalNativeEditingStateReader: RaftTextFieldNativeEditingStateReader?,
+    frameEdge: (@Composable (composing: Boolean, focused: Boolean, stackedAbove: Dp) -> Unit)?,
+    autofocusOnOpen: ComposerFocusOnOpen?,
+) {
     val fieldState = editorOwner.textFieldState
     val editorSessionId = editorOwner.editorSessionId
     val editorAsTask = editorOwner.asTask
@@ -3829,102 +3886,22 @@ internal fun ThreadComposerContentLeaf(
             // Everything stacked above the composer frame (status, attachment tray, mention
             // notice and cards): measured, so whatever sits on the frame's top edge (the otter)
             // can lie on top of any of it, clear of its buttons, without listing them (artin 11-02).
-            Column(
-                modifier = Modifier.fillMaxWidth().onSizeChanged { size ->
-                    if (contentAboveFrameHeight != size.height) contentAboveFrameHeight = size.height
+            ThreadComposerAboveFrameStack(
+                voiceDictationHost = voiceDictationHost,
+                composerEnabled = composerEnabled,
+                state = state,
+                attachmentPreviewEnabled = attachmentPreviewEnabled,
+                surface = surface,
+                initialMentionActionDetailsVisible = initialMentionActionDetailsVisible,
+                onEvent = onEvent,
+                onOpenMentionDetails = {
+                    currentDismissSuggestions()
+                    softwareKeyboardController?.hide()
                 },
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                ThreadVoiceDictationNoticeSlot(
-                    host = voiceDictationHost,
-                    composerEditable = composerEnabled,
-                )
-                state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
-                    Text(
-                        text = localizedThreadComposerStatusLabel(status),
-                        style = RaftType.Caption.copy(
-                            color = if (state.composerMode == "failed") RaftColor.DangerStrong else RaftColor.TextMutedGray
-                        ),
-                        color = if (state.composerMode == "failed") RaftColor.DangerStrong else RaftColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (state.pendingAttachments.isNotEmpty()) {
-                    ComposerAttachmentTray(
-                        attachments = state.pendingAttachments,
-                        enabled = state.enabled,
-                        previewEnabled = state.enabled && attachmentPreviewEnabled,
-                        reorderEnabled = state.attachmentReorderEnabled,
-                        onReorder = { order ->
-                            onEvent(
-                                ThreadComposerReorderAttachmentsAction,
-                                encodeThreadComposerAttachmentOrder(order),
-                                null,
-                                null
-                            )
-                        }
-                    ) { action, attachmentId ->
-                        onEvent(action, null, null, attachmentId)
-                    }
-                }
-                val localizedMentionActionNotice =
-                    state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
-                        if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
-                            stringResource(Res.string.thread_composer_mention_batch_error_member_authority)
-                        } else {
-                            notice
-                        }
-                    }
-                val localizedMentionActionNoticeTitle =
-                    state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
-                        if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
-                            stringResource(Res.string.thread_composer_mention_batch_result_summary, 1, 3)
-                        } else {
-                            title
-                        }
-                    }
-                localizedMentionActionNotice?.let { notice ->
-                    MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
-                }
-                // web MessageInput: `{!isDmComposer && unresolvedMentionHandles.length > 0 && <Banner …>}`,
-                // between the mention notice and the pending mention actions.
-                if (surface.showsUnresolvedMentionNotice() && state.unresolvedMentionHandles.isNotEmpty()) {
-                    UnresolvedMentionsNotice(
-                        handles = state.unresolvedMentionHandles,
-                        onDismiss = { onEvent(ThreadComposerDismissUnresolvedMentionsEvent, null, null, null) }
-                    )
-                }
-                if (state.pendingMentionActions.isNotEmpty()) {
-                    val localPendingMentionTargets = LocalPendingMentionTargetMap.current
-                    val pendingMentionTargetMap =
-                        remember(localPendingMentionTargets, state.pendingMentionTargets, state.memberSuggestions) {
-                            buildPendingMentionTargetMap(memberSuggestions = state.memberSuggestions)
-                                .mergedWith(state.pendingMentionTargets)
-                                .mergedWith(localPendingMentionTargets)
-                        }
-                    PendingMentionActionBanner(
-                        actions = state.pendingMentionActions,
-                        pendingMentionTargetMap = pendingMentionTargetMap,
-                        channelLabel = surface.localizedMentionScopeChannelLabel(),
-                        actionStates = state.mentionActionStates,
-                        removingIds = state.removingMentionActionIds.toSet(),
-                        executingIds = state.executingMentionActionIds.toSet(),
-                        executingStates = state.executingMentionActionStates,
-                        onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
-                        onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
-                        onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
-                        onAddAll = { onEvent("addAllMentions", null, null, null) },
-                        mentionActionNoticeTitle = localizedMentionActionNoticeTitle,
-                        mentionActionNotice = localizedMentionActionNotice,
-                        initialDetailsVisible = initialMentionActionDetailsVisible,
-                        onOpenDetails = {
-                            currentDismissSuggestions()
-                            softwareKeyboardController?.hide()
-                        }
-                    )
-                }
-            }
+                onHeightChanged = { nextHeight ->
+                    if (contentAboveFrameHeight != nextHeight) contentAboveFrameHeight = nextHeight
+                },
+            )
             Box(
                 modifier =
                     Modifier
@@ -4295,215 +4272,79 @@ internal fun ThreadComposerContentLeaf(
                         )
                     }
                     // raft-ui `ComposerToolbar`: its buttons are embedded in the composer's frame.
-                    RaftEmbeddedControls {
-                        Row(
-                            modifier =
-                                Modifier
-                                    .raftSlot("composer-toolbar")
-                                    .composerToolbarBleed()
-                                    .fillMaxWidth()
-                                    .heightIn(min = ThreadComposerToolbarMinHeight),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                modifier =
-                                    Modifier
-                                        .raftSlot("composer-actions")
-                                        .heightIn(min = ThreadComposerToolbarMinHeight),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
-                            ) {
-                                if (state.attachmentActionsEnabled) {
-                                    val cameraAvailable = remember { raftComposerCameraAvailable() }
-                                    // Gallery / camera / file, in that order (artin, task #1096). Camera
-                                    // used to exist only as this button's long-press, which meant nobody
-                                    // found it; the long-press stays so existing muscle memory keeps
-                                    // working, and the dedicated button is what makes it discoverable.
-                                    ComposerIconButton(
-                                        icon = RaftLucideIconName.ImagePlus,
-                                        enabled = composerEnabled,
-                                        contentDescription = stringResource(Res.string.composer_add_image),
-                                        longClickLabel = if (cameraAvailable) stringResource(Res.string.composer_take_photo) else null,
-                                        onLongClick = if (cameraAvailable) {
-                                            { onEvent(threadComposerImageAction(longPress = true), null, null, null) }
-                                        } else {
-                                            null
-                                        },
-                                        onClick = {
-                                            onEvent(threadComposerImageAction(longPress = false), null, null, null)
-                                        }
-                                    )
-                                    if (cameraAvailable) {
-                                        ComposerIconButton(
-                                            icon = RaftLucideIconName.Camera,
-                                            enabled = composerEnabled,
-                                            contentDescription = stringResource(Res.string.composer_take_photo),
-                                            onClick = {
-                                                // longPress = true is what makes this the camera: it emits
-                                                // captureImage, so capture keeps its existing confirm/cancel
-                                                // editor step and nothing reaches the pending tray until the
-                                                // user confirms. Flipping it to false silently turns this
-                                                // button into a second gallery entry.
-                                                //
-                                                // No test covers this call site. commonTest cannot drive
-                                                // Compose and the composer has no visual host, so nothing in
-                                                // the repo can reach ComposerIconButton. The helper's mapping
-                                                // is tested (ThreadPayloadTest), but the argument passed here
-                                                // is not -- do not read that test as guarding this line.
-                                                onEvent(threadComposerImageAction(longPress = true), null, null, null)
-                                            }
-                                        )
-                                    }
-                                    ComposerIconButton(
-                                        icon = RaftLucideIconName.Paperclip,
-                                        enabled = composerEnabled,
-                                        contentDescription = stringResource(Res.string.composer_attach_file),
-                                        onClick = { onEvent("attachFile", null, null, null) }
-                                    )
-                                }
+                    ThreadComposerToolbarRow(
+                        state = state,
+                        surface = surface,
+                        composerEnabled = composerEnabled,
+                        isSegmentedQuoteComposer = isSegmentedQuoteComposer,
+                        quoteCount = quoteController.quoteCount,
+                        hasReplyTextForSend = hasReplyTextForSend,
+                        hardwareKeyboardConnected = hardwareKeyboardConnected,
+                        composerExpanded = composerExpanded,
+                        composerSendKey = composerSendKey,
+                        activeComposerSendKey = activeComposerSendKey,
+                        asTask = asTask,
+                        onToggleAsTask = { newValue ->
+                            if (editorOwner.acceptAsTask(editorSessionId, newValue)) {
+                                onEvent("toggleAsTask", null, newValue, null)
                             }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(ThreadComposerRightActionGroupSpacing)
-                            ) {
-                                if (isSegmentedQuoteComposer) {
-                                    ThreadComposerQuoteCountBadge(count = quoteController.quoteCount)
-                                }
-                                val composingForChrome = hasReplyTextForSend || state.pendingAttachments.isNotEmpty()
-                                val modEnterKeyLabel = raftComposerModEnterKeyLabel(raftPlatformShortcutsUseCommand())
-                                if (
-                                    threadComposerShowsSendKeyHint(
-                                        showSendKeyHint = LocalThreadComposerShowSendKeyHint.current,
-                                        hardwareKeyboardConnected = hardwareKeyboardConnected,
-                                        expanded = composerExpanded,
-                                        composerSendKey = composerSendKey,
-                                        composing = composingForChrome,
-                                    )
-                                ) {
-                                    Text(
-                                        text =
-                                            stringResource(
-                                                Res.string.composer_send_key_hint,
-                                                modEnterKeyLabel,
-                                            ),
-                                        modifier = Modifier.testTag(ThreadComposerSendKeyHintTestTag),
-                                        style = RaftType.Caption.copy(color = RaftColor.ForegroundHint),
-                                        color = RaftColor.ForegroundHint,
-                                        maxLines = 1,
-                                    )
-                                }
-                                if (surface.showTaskButton) {
-                                    Row(
-                                        modifier = Modifier
-                                            .testTag("composer-as-task-toggle")
-                                            // The whole label row is the checkbox (one target, checkbox role).
-                                            .toggleable(value = asTask, enabled = composerEnabled, role = Role.Checkbox) { newValue ->
-                                                if (editorOwner.acceptAsTask(editorSessionId, newValue)) {
-                                                    onEvent("toggleAsTask", null, newValue, null)
-                                                }
-                                            }
-                                            .heightIn(min = 18.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(ThreadComposerToolbarLabelSpacing)
-                                    ) {
-                                        RaftCheckboxIndicator(checked = asTask, enabled = composerEnabled)
-                                        // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
-                                        // foreground, foreground-disabled when the composer is off.
-                                        val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
-                                        Text(
-                                            text = stringResource(Res.string.thread_composer_as_task),
-                                            style =
-                                                RaftType.Caption
-                                                    .withRaftFontWeight(FontWeight.SemiBold)
-                                                    .copy(fontSize = 14.sp, lineHeight = 20.sp, color = labelColor),
-                                            color = labelColor
-                                        )
-                                    }
-                                }
-                                ThreadVoiceDictationToolbarButton(
-                                    host = voiceDictationHost,
-                                    composerEditable = composerEnabled,
-                                    onStart = {
-                                        val host = currentVoiceDictationHost ?: return@ThreadVoiceDictationToolbarButton
-                                        val serverId = host.serverId ?: return@ThreadVoiceDictationToolbarButton
-                                        if (!host.canShow(composerEditable = composerEnabled)) return@ThreadVoiceDictationToolbarButton
-                                        val segmentedAtStart = quoteController.isSegmented
-                                        val liveState = currentActiveFieldState()
-                                        val baseText = liveState.text.toString()
-                                        val selStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, baseText.length)
-                                        val selEnd = maxOf(liveState.selection.start, liveState.selection.end).coerceIn(selStart, baseText.length)
-                                        val startSessionId = editorOwner.editorSessionId
-                                        host.controller.start(
-                                            serverId = serverId,
-                                            channelId = host.channelId,
-                                            threadId = host.threadId,
-                                            language = host.languageHint,
-                                            baseText = baseText,
-                                            insertStart = selStart,
-                                            insertEnd = selEnd,
-                                            onComposerUpdate = { update ->
-                                                if (segmentedAtStart && quoteController.isSegmented) {
-                                                    val serialized = quoteController.replaceActiveTextBlock(update.composerText, update.caretOffset)
-                                                    if (editorOwner.applyProgrammaticText(startSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) {
-                                                        suggestionSelectionDispatcher.updateDraft(
-                                                            text = update.composerText,
-                                                            selectionStart = update.caretOffset,
-                                                            selectionEnd = update.caretOffset,
-                                                        )
-                                                        currentOnEvent("change", serialized, currentAsTask, null)
-                                                    }
-                                                } else if (editorOwner.applyProgrammaticText(startSessionId, update.composerText, cursor = update.caretOffset, publishAsSynced = true)) {
-                                                    suggestionSelectionDispatcher.updateDraft(
-                                                        text = update.composerText,
-                                                        selectionStart = update.caretOffset,
-                                                        selectionEnd = update.caretOffset,
-                                                    )
-                                                    currentOnEvent("change", update.composerText, currentAsTask, null)
-                                                }
-                                            },
-                                        )
-                                    },
-                                    modifier = Modifier.threadComposerSuggestionKeepsEditorFocus(),
-                                )
-                                if (canExpandComposer && !composerExpanded) {
-                                    // Web ComposerExpandButton (slock #16670 / #16767): last before
-                                    // Send while collapsed; once expanded, Collapse sits at the end
-                                    // of ThreadComposerFormatBar at the top of the card.
-                                    ComposerIconButton(
-                                        icon = RaftLucideIconName.Maximize2,
-                                        enabled = composerEnabled,
-                                        modifier =
-                                            Modifier
-                                                .threadComposerSuggestionKeepsEditorFocus()
-                                                .testTag(ThreadComposerExpandToggleTestTag),
-                                        contentDescription = stringResource(Res.string.composer_expand),
-                                        onClick = {
-                                            expandState?.toggle(
-                                                conversationKey = expandConversationKey,
-                                                canExpand = canExpandComposer,
+                        },
+                        voiceDictationHost = voiceDictationHost,
+                        onStartVoiceDictation = {
+                            val host = currentVoiceDictationHost ?: return@ThreadComposerToolbarRow
+                            val serverId = host.serverId ?: return@ThreadComposerToolbarRow
+                            if (!host.canShow(composerEditable = composerEnabled)) return@ThreadComposerToolbarRow
+                            val segmentedAtStart = quoteController.isSegmented
+                            val liveState = currentActiveFieldState()
+                            val baseText = liveState.text.toString()
+                            val selStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, baseText.length)
+                            val selEnd = maxOf(liveState.selection.start, liveState.selection.end).coerceIn(selStart, baseText.length)
+                            val startSessionId = editorOwner.editorSessionId
+                            host.controller.start(
+                                serverId = serverId,
+                                channelId = host.channelId,
+                                threadId = host.threadId,
+                                language = host.languageHint,
+                                baseText = baseText,
+                                insertStart = selStart,
+                                insertEnd = selEnd,
+                                onComposerUpdate = { update ->
+                                    if (segmentedAtStart && quoteController.isSegmented) {
+                                        val serialized = quoteController.replaceActiveTextBlock(update.composerText, update.caretOffset)
+                                        if (editorOwner.applyProgrammaticText(startSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) {
+                                            suggestionSelectionDispatcher.updateDraft(
+                                                text = update.composerText,
+                                                selectionStart = update.caretOffset,
+                                                selectionEnd = update.caretOffset,
                                             )
-                                            if (!isSegmentedQuoteComposer) {
-                                                runCatching { composerFocusRequester.requestFocus() }
-                                            }
-                                        },
-                                    )
-                                }
-                                ComposerSendButton(
-                                    enabled = canSend,
-                                    sending = state.composerMode == "sending" || state.composerMode == "uploading" || voiceDictationAwaitingSubmitFinal,
-                                    tooltipShortcut =
-                                        if (hardwareKeyboardConnected && activeComposerSendKey == RaftComposerSendKey.ModEnter) {
-                                            modEnterKeyLabel
-                                        } else {
-                                            null
-                                        },
-                                ) {
-                                    sendComposerMessage()
-                                }
+                                            currentOnEvent("change", serialized, currentAsTask, null)
+                                        }
+                                    } else if (editorOwner.applyProgrammaticText(startSessionId, update.composerText, cursor = update.caretOffset, publishAsSynced = true)) {
+                                        suggestionSelectionDispatcher.updateDraft(
+                                            text = update.composerText,
+                                            selectionStart = update.caretOffset,
+                                            selectionEnd = update.caretOffset,
+                                        )
+                                        currentOnEvent("change", update.composerText, currentAsTask, null)
+                                    }
+                                },
+                            )
+                        },
+                        canExpandComposer = canExpandComposer,
+                        onExpandToggle = {
+                            expandState?.toggle(
+                                conversationKey = expandConversationKey,
+                                canExpand = canExpandComposer,
+                            )
+                            if (!isSegmentedQuoteComposer) {
+                                runCatching { composerFocusRequester.requestFocus() }
                             }
-                        }
-                    }
+                        },
+                        canSend = canSend,
+                        voiceDictationAwaitingSubmitFinal = voiceDictationAwaitingSubmitFinal,
+                        onSend = { sendComposerMessage() },
+                        onEvent = onEvent,
+                    )
                 }
                 // Web MessageInput `frameEdge`: drawn on the frame's top edge, after the frame (the
                 // assistant's otter). Neither this box nor its parents clip, so it reaches up over the list.
@@ -4517,6 +4358,292 @@ internal fun ThreadComposerContentLeaf(
             }
         }
     }
+}
+
+@Composable
+private fun ThreadComposerAboveFrameStack(
+    voiceDictationHost: ThreadVoiceDictationHost?,
+    composerEnabled: Boolean,
+    state: ThreadComposerUiState,
+    attachmentPreviewEnabled: Boolean,
+    surface: ThreadComposerSurface,
+    initialMentionActionDetailsVisible: Boolean,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onOpenMentionDetails: () -> Unit,
+    onHeightChanged: (Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().onSizeChanged { size -> onHeightChanged(size.height) },
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        ThreadVoiceDictationNoticeSlot(
+            host = voiceDictationHost,
+            composerEditable = composerEnabled,
+        )
+        state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
+            Text(
+                text = localizedThreadComposerStatusLabel(status),
+                style = RaftType.Caption.copy(
+                    color = if (state.composerMode == "failed") RaftColor.DangerStrong else RaftColor.TextMutedGray
+                ),
+                color = if (state.composerMode == "failed") RaftColor.DangerStrong else RaftColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (state.pendingAttachments.isNotEmpty()) {
+            ComposerAttachmentTray(
+                attachments = state.pendingAttachments,
+                enabled = state.enabled,
+                previewEnabled = state.enabled && attachmentPreviewEnabled,
+                reorderEnabled = state.attachmentReorderEnabled,
+                onReorder = { order ->
+                    onEvent(
+                        ThreadComposerReorderAttachmentsAction,
+                        encodeThreadComposerAttachmentOrder(order),
+                        null,
+                        null
+                    )
+                }
+            ) { action, attachmentId ->
+                onEvent(action, null, null, attachmentId)
+            }
+        }
+        val localizedMentionActionNotice =
+            state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
+                if (notice == ThreadComposerMentionBatchPartialNoticeVisualMarker) {
+                    stringResource(Res.string.thread_composer_mention_batch_error_member_authority)
+                } else {
+                    notice
+                }
+            }
+        val localizedMentionActionNoticeTitle =
+            state.mentionActionNoticeTitle?.takeIf { it.isNotBlank() }?.let { title ->
+                if (title == ThreadComposerMentionBatchPartialNoticeTitleVisualMarker) {
+                    stringResource(Res.string.thread_composer_mention_batch_result_summary, 1, 3)
+                } else {
+                    title
+                }
+            }
+        localizedMentionActionNotice?.let { notice ->
+            MentionActionNotice(title = localizedMentionActionNoticeTitle, detail = notice)
+        }
+        // web MessageInput: `{!isDmComposer && unresolvedMentionHandles.length > 0 && <Banner …>}`,
+        // between the mention notice and the pending mention actions.
+        if (surface.showsUnresolvedMentionNotice() && state.unresolvedMentionHandles.isNotEmpty()) {
+            UnresolvedMentionsNotice(
+                handles = state.unresolvedMentionHandles,
+                onDismiss = { onEvent(ThreadComposerDismissUnresolvedMentionsEvent, null, null, null) }
+            )
+        }
+        if (state.pendingMentionActions.isNotEmpty()) {
+            val localPendingMentionTargets = LocalPendingMentionTargetMap.current
+            val pendingMentionTargetMap =
+                remember(localPendingMentionTargets, state.pendingMentionTargets, state.memberSuggestions) {
+                    buildPendingMentionTargetMap(memberSuggestions = state.memberSuggestions)
+                        .mergedWith(state.pendingMentionTargets)
+                        .mergedWith(localPendingMentionTargets)
+                }
+            PendingMentionActionBanner(
+                actions = state.pendingMentionActions,
+                pendingMentionTargetMap = pendingMentionTargetMap,
+                channelLabel = surface.localizedMentionScopeChannelLabel(),
+                actionStates = state.mentionActionStates,
+                removingIds = state.removingMentionActionIds.toSet(),
+                executingIds = state.executingMentionActionIds.toSet(),
+                executingStates = state.executingMentionActionStates,
+                onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
+                onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
+                onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) },
+                onAddAll = { onEvent("addAllMentions", null, null, null) },
+                mentionActionNoticeTitle = localizedMentionActionNoticeTitle,
+                mentionActionNotice = localizedMentionActionNotice,
+                initialDetailsVisible = initialMentionActionDetailsVisible,
+                onOpenDetails = onOpenMentionDetails,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadComposerToolbarRow(
+    state: ThreadComposerUiState,
+    surface: ThreadComposerSurface,
+    composerEnabled: Boolean,
+    isSegmentedQuoteComposer: Boolean,
+    quoteCount: Int,
+    hasReplyTextForSend: Boolean,
+    hardwareKeyboardConnected: Boolean,
+    composerExpanded: Boolean,
+    composerSendKey: RaftComposerSendKey,
+    activeComposerSendKey: RaftComposerSendKey,
+    asTask: Boolean,
+    onToggleAsTask: (Boolean) -> Unit,
+    voiceDictationHost: ThreadVoiceDictationHost?,
+    onStartVoiceDictation: () -> Unit,
+    canExpandComposer: Boolean,
+    onExpandToggle: () -> Unit,
+    canSend: Boolean,
+    voiceDictationAwaitingSubmitFinal: Boolean,
+    onSend: () -> Unit,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+) {
+    RaftEmbeddedControls {
+        Row(
+            modifier =
+                Modifier
+                    .raftSlot("composer-toolbar")
+                    .composerToolbarBleed()
+                    .fillMaxWidth()
+                    .heightIn(min = ThreadComposerToolbarMinHeight),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier =
+                    Modifier
+                        .raftSlot("composer-actions")
+                        .heightIn(min = ThreadComposerToolbarMinHeight),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ThreadComposerLeftActionGroupSpacing)
+            ) {
+                if (state.attachmentActionsEnabled) {
+                    val cameraAvailable = remember { raftComposerCameraAvailable() }
+                    // Gallery / camera / file, in that order (artin, task #1096). Camera
+                    // used to exist only as this button's long-press, which meant nobody
+                    // found it; the long-press stays so existing muscle memory keeps
+                    // working, and the dedicated button is what makes it discoverable.
+                    ComposerIconButton(
+                        icon = RaftLucideIconName.ImagePlus,
+                        enabled = composerEnabled,
+                        contentDescription = stringResource(Res.string.composer_add_image),
+                        longClickLabel = if (cameraAvailable) stringResource(Res.string.composer_take_photo) else null,
+                        onLongClick = if (cameraAvailable) {
+                            { onEvent(threadComposerImageAction(longPress = true), null, null, null) }
+                        } else {
+                            null
+                        },
+                        onClick = {
+                            onEvent(threadComposerImageAction(longPress = false), null, null, null)
+                        }
+                    )
+                    if (cameraAvailable) {
+                        ComposerIconButton(
+                            icon = RaftLucideIconName.Camera,
+                            enabled = composerEnabled,
+                            contentDescription = stringResource(Res.string.composer_take_photo),
+                            onClick = {
+                                // longPress = true is what makes this the camera: it emits
+                                // captureImage, so capture keeps its existing confirm/cancel
+                                // editor step and nothing reaches the pending tray until the
+                                // user confirms. Flipping it to false silently turns this
+                                // button into a second gallery entry.
+                                //
+                                // No test covers this call site. commonTest cannot drive
+                                // Compose and the composer has no visual host, so nothing in
+                                // the repo can reach ComposerIconButton. The helper's mapping
+                                // is tested (ThreadPayloadTest), but the argument passed here
+                                // is not -- do not read that test as guarding this line.
+                                onEvent(threadComposerImageAction(longPress = true), null, null, null)
+                            }
+                        )
+                    }
+                    ComposerIconButton(
+                        icon = RaftLucideIconName.Paperclip,
+                        enabled = composerEnabled,
+                        contentDescription = stringResource(Res.string.composer_attach_file),
+                        onClick = { onEvent("attachFile", null, null, null) }
+                    )
+                }
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(ThreadComposerRightActionGroupSpacing)
+            ) {
+                if (isSegmentedQuoteComposer) {
+                    ThreadComposerQuoteCountBadge(count = quoteCount)
+                }
+                val composingForChrome = hasReplyTextForSend || state.pendingAttachments.isNotEmpty()
+                val modEnterKeyLabel = raftComposerModEnterKeyLabel(raftPlatformShortcutsUseCommand())
+                if (
+                    threadComposerShowsSendKeyHint(
+                        showSendKeyHint = LocalThreadComposerShowSendKeyHint.current,
+                        hardwareKeyboardConnected = hardwareKeyboardConnected,
+                        expanded = composerExpanded,
+                        composerSendKey = composerSendKey,
+                        composing = composingForChrome,
+                    )
+                ) {
+                    Text(
+                        text =
+                            stringResource(
+                                Res.string.composer_send_key_hint,
+                                modEnterKeyLabel,
+                            ),
+                        modifier = Modifier.testTag(ThreadComposerSendKeyHintTestTag),
+                        style = RaftType.Caption.copy(color = RaftColor.ForegroundHint),
+                        color = RaftColor.ForegroundHint,
+                        maxLines = 1,
+                    )
+                }
+                if (surface.showTaskButton) {
+                    Row(
+                        modifier = Modifier
+                            .testTag("composer-as-task-toggle")
+                            // The whole label row is the checkbox (one target, checkbox role).
+                            .toggleable(value = asTask, enabled = composerEnabled, role = Role.Checkbox, onValueChange = onToggleAsTask)
+                            .heightIn(min = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(ThreadComposerToolbarLabelSpacing)
+                    ) {
+                        RaftCheckboxIndicator(checked = asTask, enabled = composerEnabled)
+                        // raft-ui `ComposerToolbarLabel`: text-callout (14/20) semibold on
+                        // foreground, foreground-disabled when the composer is off.
+                        val labelColor = if (composerEnabled) RaftColor.TextBlack else RaftColor.ForegroundDisabled
+                        Text(
+                            text = stringResource(Res.string.thread_composer_as_task),
+                            style =
+                                RaftType.Caption
+                                    .withRaftFontWeight(FontWeight.SemiBold)
+                                    .copy(fontSize = 14.sp, lineHeight = 20.sp, color = labelColor),
+                            color = labelColor
+                        )
+                    }
+                }
+                ThreadVoiceDictationToolbarButton(
+                    host = voiceDictationHost,
+                    composerEditable = composerEnabled,
+                    onStart = onStartVoiceDictation,
+                    modifier = Modifier.threadComposerSuggestionKeepsEditorFocus(),
+                )
+                if (canExpandComposer && !composerExpanded) {
+                    // Web ComposerExpandButton (slock #16670 / #16767): last before
+                    // Send while collapsed; once expanded, Collapse sits at the end
+                    // of ThreadComposerFormatBar at the top of the card.
+                    ComposerIconButton(
+                        icon = RaftLucideIconName.Maximize2,
+                        enabled = composerEnabled,
+                        modifier =
+                            Modifier
+                                .threadComposerSuggestionKeepsEditorFocus()
+                                .testTag(ThreadComposerExpandToggleTestTag),
+                        contentDescription = stringResource(Res.string.composer_expand),
+                        onClick = onExpandToggle,
+                    )
+                }
+                ComposerSendButton(
+                    enabled = canSend,
+                    sending = state.composerMode == "sending" || state.composerMode == "uploading" || voiceDictationAwaitingSubmitFinal,
+                    tooltipShortcut =
+                        if (hardwareKeyboardConnected && activeComposerSendKey == RaftComposerSendKey.ModEnter) {
+                            modEnterKeyLabel
+                        } else {
+                            null
+                        },
+                    onClick = onSend,
+                )
+            }
+        }
     }
 }
 
