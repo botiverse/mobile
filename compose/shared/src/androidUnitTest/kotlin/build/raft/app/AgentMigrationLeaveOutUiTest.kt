@@ -123,8 +123,8 @@ class AgentMigrationLeaveOutUiTest {
             targetMachineId = targetId,
             transportErrorCode = "MIGRATION_OBJECT_STORE_BUNDLE_TOO_LARGE",
             transportErrorMessage =
-                "MIGRATION_OBJECT_STORE_BUNDLE_TOO_LARGE:sizeBytes=2147483648:maxBytes=1073741824:" +
-                    "topEntries=repos/=335544320,MEMORY.md=4096,datasets/raw.bin=125829120,other/=5000",
+                "sizeBytes=2147483648:maxBytes=1073741824:" +
+                    "topEntries=repos%2F,335544320;MEMORY.md,4096;datasets%2Fraw.bin,125829120",
         )
 
     private fun inputsFor(store: AgentMigrationStore, hostedAvailable: Boolean = true): AgentMigrationSectionInputs =
