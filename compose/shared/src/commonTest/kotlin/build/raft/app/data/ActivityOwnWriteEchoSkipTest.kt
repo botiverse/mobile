@@ -333,6 +333,7 @@ class ActivityOwnWriteEchoSkipTest {
                     storeRef?.dispatch(
                         SharedActivityIntent.ApplyRealtimeSummaryEvent(
                             event = ActivityChanged(serverId = serverId, source = "object", cause = "done", requestId = reqId),
+                            activeConversationId = null,
                             primarySurfaceVisible = false,
                         )
                     )
@@ -362,6 +363,7 @@ class ActivityOwnWriteEchoSkipTest {
         store.dispatch(
             SharedActivityIntent.ApplyRealtimeSummaryEvent(
                 event = ActivityChanged(serverId = serverId, source = "object", cause = "event", requestId = "remote-1"),
+                activeConversationId = null,
                 primarySurfaceVisible = false,
             )
         )
