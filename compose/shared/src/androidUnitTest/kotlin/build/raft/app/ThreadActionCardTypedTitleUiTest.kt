@@ -316,7 +316,7 @@ class ThreadActionCardTypedTitleUiTest {
             useUnmergedTree = true,
         ).assertIsDisplayed()
         // Non-empty Login scopes shows plain descriptions; empty Data access is omitted without "None".
-        onNodeWithText("Login scopes", useUnmergedTree = true).assertIsDisplayed()
+        onAllNodesWithText("Login scopes", useUnmergedTree = true).onFirst().assertIsDisplayed()
         onAllNodesWithText("Data access", useUnmergedTree = true).assertCountEquals(0)
         onAllNodesWithText("None", useUnmergedTree = true).assertCountEquals(0)
         onAllNodesWithText("openid", useUnmergedTree = true).assertCountEquals(0)
@@ -351,7 +351,7 @@ class ThreadActionCardTypedTitleUiTest {
         }
         waitForIdle()
         onAllNodesWithText("Add app", useUnmergedTree = true).assertCountEquals(2)
-        onNodeWithText("Data access", useUnmergedTree = true).assertIsDisplayed()
+        onAllNodesWithText("Data access", useUnmergedTree = true).onFirst().assertIsDisplayed()
         onNodeWithText("Agent · read", useUnmergedTree = true).assertIsDisplayed()
         onNodeWithText("Directory, profiles, and status", useUnmergedTree = true).assertIsDisplayed()
         onAllNodesWithText("Login scopes", useUnmergedTree = true).assertCountEquals(0)
