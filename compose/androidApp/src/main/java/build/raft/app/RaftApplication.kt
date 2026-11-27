@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.os.Bundle
+import build.raft.webcontainer.WebContainerAndroidAudioPermissionBridge
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.compat.pager.RaftPageRegistry
@@ -75,6 +76,10 @@ class RaftApplication : Application() {
         AndroidAgentVoiceCallEngine.install(this)
         // Native PCM16 microphone recorder for composer streaming voice dictation (#wg-mobile-sync:#334).
         AndroidVoiceDictationAudioRecorder.install(this)
+        // Own-origin Android WebView audio-capture permission hook (#proj-workspace:#463).
+        WebContainerAndroidAudioPermissionBridge.requester = { appContext ->
+            AndroidRecordAudioPermissionBridge.ensureRecordAudioPermission(appContext)
+        }
         // The Google Play rating prompt for RaftRatingPrompt (`play` builds only).
         RaftAndroidStoreReview.install(this)
         // The install channel the minimum build gate asks: Hands (APK builds) or Google Play (`play`).

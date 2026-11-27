@@ -330,6 +330,17 @@ internal fun RaftWebViewConfig.toWebContainerConfig(
         } else {
             null
         }
+    val effectiveAudioCaptureOrigin =
+        if (
+            !malformedMainFrameOrigin &&
+            effectiveStoragePartition != RaftWebViewStoragePartition.IsolatedThirdParty &&
+            parsedLockedOrigin != null &&
+            !audioCaptureAllowedOrigin.isNullOrBlank()
+        ) {
+            parseWebContainerOrigin(audioCaptureAllowedOrigin)?.takeIf { it == parsedLockedOrigin }
+        } else {
+            null
+        }
     return WebContainerConfig(
         url = url,
         surfaceId = diagnosticsSurface,
@@ -357,6 +368,7 @@ internal fun RaftWebViewConfig.toWebContainerConfig(
                 allowNewWindows = allowNewWindows && !malformedMainFrameOrigin,
                 requestHeaderRule = headerRule,
                 restoreBootstrapPathMarkers = setOf(RAFT_WEBVIEW_BOOTSTRAP_PATH),
+                audioCaptureAllowedOrigin = effectiveAudioCaptureOrigin,
             ),
         jsbPolicy = jsbPolicy,
         documentStartScripts = scripts,

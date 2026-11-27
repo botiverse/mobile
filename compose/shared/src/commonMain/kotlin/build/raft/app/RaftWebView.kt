@@ -290,6 +290,8 @@ internal fun RaftSandboxWebView(
     persistBackgroundAfterPaint: Boolean = false,
     /** [RaftWebViewConfig.androidInsetMode]. */
     androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
+    /** [RaftWebViewConfig.audioCaptureAllowedOrigin]. */
+    audioCaptureAllowedOrigin: String? = null,
 ) {
     val useWebContainer = rememberRaftWebContainerV1Enabled()
     val loadAttempt =
@@ -406,6 +408,7 @@ internal fun RaftSandboxWebView(
             coverActive,
             allowJsDialogs,
             allowNewWindows,
+            audioCaptureAllowedOrigin,
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -434,6 +437,7 @@ internal fun RaftSandboxWebView(
                 coverActive = coverActive,
                 allowJsDialogs = allowJsDialogs,
                 allowNewWindows = allowNewWindows,
+                audioCaptureAllowedOrigin = audioCaptureAllowedOrigin,
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
@@ -558,6 +562,8 @@ internal fun RaftWebView(
     androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
     /** [RaftWebViewConfig.keepAliveKey]. */
     keepAliveKey: String? = null,
+    /** [RaftWebViewConfig.audioCaptureAllowedOrigin]. */
+    audioCaptureAllowedOrigin: String? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -598,6 +604,7 @@ internal fun RaftWebView(
         backgroundArgb = backgroundArgb,
         persistBackgroundAfterPaint = persistBackgroundAfterPaint,
         androidInsetMode = androidInsetMode,
+        audioCaptureAllowedOrigin = audioCaptureAllowedOrigin,
     )
 }
 

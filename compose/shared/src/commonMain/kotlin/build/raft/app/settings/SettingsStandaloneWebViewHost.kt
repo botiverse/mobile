@@ -33,6 +33,7 @@ import build.raft.app.data.RaftAuthSessionEventSource
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.isArtifactContentHost
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.resolveAppLinkIconUrl
 import androidx.compose.foundation.background
@@ -706,6 +707,14 @@ internal fun StandaloneSettingsWebViewContent(
         remember(spec.lockToWebOrigin, webUrl) {
             if (spec.lockToWebOrigin) raftWebOriginOf(webUrl) else null
         }
+    val audioCaptureAllowedOrigin =
+        remember(spec.lockToWebOrigin, mainFrameOrigin, webBaseUrl) {
+            settingsWebViewAudioCaptureAllowedOrigin(
+                lockToWebOrigin = spec.lockToWebOrigin,
+                mainFrameOrigin = mainFrameOrigin,
+                webBaseUrl = webBaseUrl,
+            )
+        }
     val hostAuthBinding = rememberSettingsWebViewHostAuthBinding(authSnapshot, controller)
     val hostOpenExternalDeduper =
         remember(webUrl, hostAuthBinding?.webViewGeneration) {
@@ -797,6 +806,7 @@ internal fun StandaloneSettingsWebViewContent(
                 diagnosticsName = "settings_${spec.surface.diagnosticsName}",
                 allowedNavigationSchemes = spec.allowedNavigationSchemes,
                 mainFrameOrigin = mainFrameOrigin,
+                audioCaptureAllowedOrigin = audioCaptureAllowedOrigin,
                 frameHosts = spec.frameHosts,
                 allowNavigation = spec.allowNavigation,
                 hostEventsEnabled = spec.hostEventsEnabled,
@@ -887,6 +897,7 @@ internal fun SettingsWebViewContent(
     hostEventsEnabled: Boolean = false,
     allowedNavigationSchemes: Set<String> = setOf("http", "https"),
     mainFrameOrigin: String? = null,
+    audioCaptureAllowedOrigin: String? = null,
     frameHosts: Set<String> = emptySet(),
     allowNavigation: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
@@ -970,6 +981,7 @@ internal fun SettingsWebViewContent(
                     allowNavigation = allowNavigation,
                     allowedNavigationSchemes = allowedNavigationSchemes,
                     mainFrameOrigin = mainFrameOrigin,
+                    audioCaptureAllowedOrigin = audioCaptureAllowedOrigin,
                     frameHosts = frameHosts,
                     domStorageEnabled = true,
                     cacheEnabled = true,
@@ -1284,4 +1296,26 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
         body = "$writes;",
         errorTag = "slock_mobile_${surface.diagnosticsName}_injected_js_error",
     )
+}
+
+/**
+ * Resolves the Android WebView own-origin audio-capture allowlist for standalone Settings web
+ * surfaces (`#proj-workspace:#463`): admitted strictly when [lockToWebOrigin] is enabled AND
+ * [mainFrameOrigin] matches Raft's explicitly configured [webBaseUrl] origin (never an unlocked
+ * surface, never a non-Raft host such as Hands Release Notes, and never an Artifact content host).
+ */
+internal fun settingsWebViewAudioCaptureAllowedOrigin(
+    lockToWebOrigin: Boolean,
+    mainFrameOrigin: String?,
+    webBaseUrl: String?,
+): String? {
+    if (!lockToWebOrigin) return null
+    val locked = mainFrameOrigin?.let(::raftWebOriginOf) ?: return null
+    val ownRaftOrigin =
+        webBaseUrl?.trim()?.takeIf { it.isNotEmpty() }?.let(::raftWebOriginOf)
+            ?: return null
+    if (locked != ownRaftOrigin) return null
+    val host = locked.substringAfter("://").substringBefore(':').lowercase().trimEnd('.')
+    if (isArtifactContentHost(host)) return null
+    return locked
 }
