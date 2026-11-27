@@ -39,6 +39,7 @@ import build.raft.designsystem.components.raftPaneGridNoFade
  */
 internal class RaftArtifactViewerBarActions(
     val onToggleDesktopMode: (() -> Unit)? = null,
+    val onMinimizeToFloat: (() -> Unit)? = null,
 )
 
 /**
@@ -76,7 +77,7 @@ internal fun RaftArtifactViewerFrame(
     content: @Composable () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
-    val hasMenu = desktopMode != null && actions.onToggleDesktopMode != null
+    val hasMenu = (desktopMode != null && actions.onToggleDesktopMode != null) || actions.onMinimizeToFloat != null
     val topSafeArea =
         if (inColumn) {
             0.dp
@@ -191,6 +192,17 @@ internal fun ColumnScope.RaftArtifactViewerMenuItems(
             onClick = {
                 onDone()
                 toggleDesktopMode()
+            },
+        )
+    }
+    val minimizeToFloat = actions.onMinimizeToFloat
+    if (minimizeToFloat != null) {
+        RaftMenuItem(
+            text = stringResource(Res.string.in_app_browser_minimize_to_float),
+            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Minimize2) },
+            onClick = {
+                onDone()
+                minimizeToFloat()
             },
         )
     }

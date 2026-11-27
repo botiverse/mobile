@@ -7109,4 +7109,9 @@
     <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">Размер файла %1$s — %2$s, а у сервера %3$s осталось %4$s из месячного лимита загрузок (%5$s); лимит обновится %6$s. %7$s На Pro месячного лимита нет.</string>
     <string name="upgrade_dialog_upload_quota_hint_files">У сервера %1$s осталось %2$s из месячного лимита загрузок (%3$s) — этого не хватит для %4$d файлов; лимит обновится %5$s. На Pro месячного лимита нет.</string>
     <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">У сервера %1$s осталось %2$s из месячного лимита загрузок (%3$s) — этого не хватит для %4$d файлов; лимит обновится %5$s. %6$s На Pro месячного лимита нет.</string>
+    <string name="floating_mini_window_collapse_to_pill">Свернуть к краю</string>
+    <string name="floating_mini_window_expand_full_screen">Развернуть на весь экран</string>
+    <string name="floating_mini_window_resize_a11y">Изменить размер плавающего окна</string>
+    <string name="floating_mini_window_drag_a11y">Переместить плавающее окно</string>
+    <string name="floating_window_kind_artifact">Artifact</string>
 </resources>

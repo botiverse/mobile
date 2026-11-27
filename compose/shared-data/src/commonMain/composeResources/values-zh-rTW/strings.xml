@@ -6920,7 +6920,7 @@
     <string name="in_app_browser_external_app_message">此頁面要求透過外部應用程式開啟「%1$s」。</string>
     <string name="in_app_browser_external_app_open">開啟</string>
     <string name="in_app_browser_close_page">關閉頁面</string>
-    <string name="in_app_browser_minimize_to_float">浮窗</string>
+    <string name="in_app_browser_minimize_to_float">浮動視窗</string>
     <string name="in_app_browser_open_pages_title">已開啟的頁面（%1$d）</string>
     <string name="in_app_browser_open_pages_a11y">已開啟 %1$d 個頁面</string>
     <string name="in_app_browser_close_all_pages">全部關閉</string>
@@ -7109,4 +7109,9 @@
     <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s 的大小為 %2$s，但 %3$s 本月 %5$s 的上傳額度只剩 %4$s，%6$s 重設。%7$sPro 沒有每月上限。</string>
     <string name="upgrade_dialog_upload_quota_hint_files">%1$s 本月 %3$s 的上傳額度只剩 %2$s，不夠這 %4$d 個檔案使用，%5$s 重設。Pro 沒有每月上限。</string>
     <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s 本月 %3$s 的上傳額度只剩 %2$s，不夠這 %4$d 個檔案使用，%5$s 重設。%6$sPro 沒有每月上限。</string>
+    <string name="floating_mini_window_collapse_to_pill">收合到側邊</string>
+    <string name="floating_mini_window_expand_full_screen">展開全螢幕</string>
+    <string name="floating_mini_window_resize_a11y">調整浮窗大小</string>
+    <string name="floating_mini_window_drag_a11y">拖動浮窗</string>
+    <string name="floating_window_kind_artifact">Artifact</string>
 </resources>

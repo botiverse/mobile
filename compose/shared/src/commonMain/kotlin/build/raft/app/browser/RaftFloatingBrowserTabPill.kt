@@ -36,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,7 +63,9 @@ import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
+import build.raft.app.settings.rememberRaftPagerAppeared
 import build.raft.app.settings.rememberSettingsWebViewAuthSnapshot
 import build.raft.app.settings.settingsWebViewAuthEventSource
 import build.raft.app.shell.RaftAppBottomTabBarHostZIndex
@@ -83,6 +86,8 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftCloseButtonSize
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftIconButton
+import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.gesture.raftKeepsEdgeTouches
@@ -128,6 +133,12 @@ internal val RaftFloatingPillCornerRadius: Dp = 22.dp
 internal fun raftAppBrowserSwitcherRowTag(tabId: Long): String = "raft_app_browser_switcher_row_$tabId"
 
 internal fun raftAppBrowserSwitcherCloseTag(tabId: Long): String = "raft_app_browser_switcher_close_$tabId"
+
+internal fun raftFloatingArtifactSwitcherRowTag(windowKey: String): String = "raft_floating_artifact_switcher_row_$windowKey"
+
+internal fun raftFloatingArtifactSwitcherCloseTag(windowKey: String): String = "raft_floating_artifact_switcher_close_$windowKey"
+
+internal fun raftFloatingSwitcherExpandTag(idKey: String): String = "raft_floating_switcher_expand_$idKey"
 
 /** Physical corner radii and horizontal padding for [RaftFloatingBrowserTabPill] by dock/drag state. */
 internal data class RaftFloatingPillChromeSpec(
@@ -244,16 +255,18 @@ private data class RaftFloatingPillLiveYBounds(
 )
 
 /**
- * Window-level host installed by [ProvideRaftLinkOpening] on non-browser mobile pages. Observes
- * account/server/environment switches (clearing all tabs cleanly on any boundary change once auth
- * is hydrated, warming the installed-App origin cache on startup) and renders the edge-docked
- * magnetic floating tab pill + multi-page switcher sheet.
+ * Window-level host installed by [ProvideRaftLinkOpening] on non-browser/non-artifact mobile pages.
+ * Observes account/server/environment switches (clearing all floating Apps and Artifacts cleanly on
+ * any boundary change once auth is hydrated, warming the installed-App origin cache on startup) and
+ * renders EITHER the interactive resizable Mini-Window OR the bilateral magnetic Edge Pill +
+ * unified App/Artifact switcher sheet.
  */
 @Composable
 internal fun RaftFloatingBrowserTabPillHost(
     pager: Pager,
     bridge: BridgeModule,
-    coordinator: RaftMobileWebPanelCoordinator = RaftMobileWebPanelCoordinator.process,
+    floatingCoordinator: RaftFloatingWindowCoordinator = RaftFloatingWindowCoordinator.process,
+    coordinator: RaftMobileWebPanelCoordinator = floatingCoordinator.webPanelCoordinator,
 ) {
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
     val activeEnvironment by sharedStores.apiEnvironmentStore.state.collectAsState()
@@ -291,9 +304,9 @@ internal fun RaftFloatingBrowserTabPillHost(
     val accountId = authSnapshot.session?.user?.id
     val currentServerId = authSnapshot.session?.currentServerId
 
-    LaunchedEffect(coordinator, sharedStores, authSnapshot.hydrated, accountId, currentServerId, environmentKey) {
+    LaunchedEffect(floatingCoordinator, sharedStores, authSnapshot.hydrated, accountId, currentServerId, environmentKey) {
         if (!authSnapshot.hydrated) return@LaunchedEffect
-        coordinator.onSessionContextChanged(
+        floatingCoordinator.onSessionContextChanged(
             accountId = accountId,
             serverId = currentServerId,
             environmentKey = environmentKey,
@@ -312,66 +325,149 @@ internal fun RaftFloatingBrowserTabPillHost(
         }
     }
 
+    val pageVisible = rememberRaftPagerAppeared(pager)
     val tabsState by coordinator.state.collectAsState()
+    val windowState by floatingCoordinator.state.collectAsState()
+    val snapshot =
+        remember(tabsState, windowState) {
+            resolveRaftFloatingWindowSnapshot(tabsState, windowState)
+        }
     val activeVoiceCall by sharedStores.agentVoiceCallStore.call.collectAsState()
+    val coroutineScope = rememberCoroutineScope()
     var switcherOpen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(tabsState.tabs.isEmpty(), tabsState.activeTabId) {
-        if (tabsState.tabs.isEmpty() || tabsState.activeTabId != null) {
+    LaunchedEffect(snapshot.minimizedEntries.isEmpty(), snapshot.hasFullScreenSurface, snapshot.showMiniWindow) {
+        if (snapshot.minimizedEntries.isEmpty() || snapshot.hasFullScreenSurface || snapshot.showMiniWindow) {
             switcherOpen = false
         }
     }
 
-    if (!tabsState.showFloatingPill) return
+    if (!pageVisible) return
+    if (!snapshot.showMiniWindow && !snapshot.showEdgePill) return
 
-    fun resumeTab(tab: RaftAppBrowserTab) {
-        val activated = coordinator.activateTab(tab.tabId) ?: return
-        val opened =
-            pager.openRaftInAppBrowserTab(
-                tab = activated,
-                storeScopeOverride = storeScope,
-            )
-        if (!opened) {
-            coordinator.suspendTab(activated.tabId)
+    fun expandAppTabToFullScreen(tab: RaftAppBrowserTab) {
+        val activated = floatingCoordinator.prepareExpandAppTabToFullScreen(tab.tabId) ?: return
+        coroutineScope.launch {
+            // Wait 1 frame so any unmounting Mini-Window finishes parking its warm WebView before
+            // the full-screen page takes the same keepAliveKey.
+            withFrameNanos { }
+            val opened =
+                pager.openRaftInAppBrowserTab(
+                    tab = activated,
+                    storeScopeOverride = storeScope,
+                )
+            if (!opened) {
+                floatingCoordinator.floatAppTabInMiniWindow(activated.tabId)
+            }
         }
     }
 
-    RaftDesignSystemTheme {
-        RaftFloatingBrowserTabPillOverlay(
-            tabs = tabsState.tabs,
-            pillYFraction = tabsState.pillYFraction,
-            onPillYFractionChange = coordinator::setPillYFraction,
-            onClick = {
-                val tabs = tabsState.tabs
-                if (tabs.size == 1) {
-                    resumeTab(tabs.first())
-                } else if (tabs.size >= 2) {
-                    switcherOpen = true
-                }
-            },
-            pillEdge = tabsState.pillEdge,
-            onPillEdgeChange = coordinator::setPillEdge,
-            onPillDockPositionChange = coordinator::setPillDockPosition,
-            horizontalSafeArea = raftHorizontalSafeArea(),
-            voiceCallExtraDp = if (activeVoiceCall != null) 88.dp else 0.dp,
+    fun expandArtifactToFullScreen(artifact: RaftFloatingArtifactWindow) {
+        val promoted = floatingCoordinator.prepareExpandArtifactToFullScreen(artifact.windowKey) ?: return
+        RaftArtifactViewerMemory.cache.remember(
+            promoted.scope,
+            RaftArtifactViewerHeader(
+                id = promoted.artifactId,
+                title = promoted.title,
+                kind = promoted.kind,
+                version = promoted.version,
+            ),
         )
+        coroutineScope.launch {
+            withFrameNanos { }
+            val opened =
+                pager.openRaftArtifactViewerPage(
+                    target = promoted.target,
+                    storeScope = promoted.storeScope ?: storeScope,
+                    conversationId = promoted.conversationId,
+                )
+            if (!opened) {
+                floatingCoordinator.floatArtifactInMiniWindow(promoted)
+            }
+        }
+    }
 
-        if (switcherOpen && tabsState.tabs.isNotEmpty()) {
+    val voiceCallExtra = if (activeVoiceCall != null) 88.dp else 0.dp
+    val horizontalSafe = raftHorizontalSafeArea()
+
+    RaftDesignSystemTheme {
+        val activeMiniEntry = snapshot.activeMiniWindowEntry
+        if (snapshot.showMiniWindow && activeMiniEntry != null) {
+            RaftFloatingMiniWindowLiveHost(
+                entry = activeMiniEntry,
+                pager = pager,
+                bridge = bridge,
+                storeScope = storeScope,
+                floatingCoordinator = floatingCoordinator,
+                placement = snapshot.miniWindowPlacement,
+                onPlacementChange = floatingCoordinator::updateMiniWindowPlacement,
+                onCollapseToPill = { floatingCoordinator.collapseMiniWindowToEdgePill() },
+                onExpandToFullScreen = {
+                    when (activeMiniEntry) {
+                        is RaftFloatingWindowEntry.AppTab -> expandAppTabToFullScreen(activeMiniEntry.tab)
+                        is RaftFloatingWindowEntry.Artifact -> expandArtifactToFullScreen(activeMiniEntry.artifact)
+                    }
+                },
+                onClose = { floatingCoordinator.closeWindow(activeMiniEntry.id) },
+                horizontalSafeArea = horizontalSafe,
+                voiceCallExtraDp = voiceCallExtra,
+            )
+        } else if (snapshot.showEdgePill) {
+            RaftFloatingBrowserTabPillOverlay(
+                tabs = snapshot.appTabs,
+                artifacts = snapshot.artifacts,
+                leadIsArtifactOverride = snapshot.minimizedEntries.firstOrNull() is RaftFloatingWindowEntry.Artifact,
+                pillYFraction = snapshot.pillYFraction,
+                onPillYFractionChange = floatingCoordinator::setPillYFraction,
+                onClick = {
+                    val entries = snapshot.minimizedEntries
+                    if (entries.size == 1) {
+                        floatingCoordinator.openInMiniWindow(entries.first().id)
+                    } else if (entries.size >= 2) {
+                        switcherOpen = true
+                    }
+                },
+                pillEdge = snapshot.pillEdge,
+                onPillEdgeChange = floatingCoordinator::setPillEdge,
+                onPillDockPositionChange = floatingCoordinator::setPillDockPosition,
+                horizontalSafeArea = horizontalSafe,
+                voiceCallExtraDp = voiceCallExtra,
+            )
+        }
+
+        if (switcherOpen && snapshot.minimizedEntries.isNotEmpty()) {
             RaftAppBrowserSwitcherSheet(
-                tabs = tabsState.tabs,
-                activeTabId = tabsState.activeTabId,
+                tabs = snapshot.appTabs,
+                activeTabId = snapshot.activeFullScreenAppTabId,
                 onSelectTab = { tab ->
                     switcherOpen = false
-                    resumeTab(tab)
+                    floatingCoordinator.floatAppTabInMiniWindow(tab.tabId)
                 },
                 onCloseTab = { tabId ->
-                    coordinator.closeTab(tabId)
+                    floatingCoordinator.closeAppTab(tabId)
                 },
                 onCloseAll = {
                     switcherOpen = false
-                    coordinator.closeAll()
+                    floatingCoordinator.closeAll()
                 },
                 onDismiss = { switcherOpen = false },
+                artifacts = snapshot.artifacts,
+                orderedEntries = snapshot.minimizedEntries,
+                onSelectArtifact = { artifact ->
+                    switcherOpen = false
+                    floatingCoordinator.openInMiniWindow(artifact.windowId)
+                },
+                onExpandTab = { tab ->
+                    switcherOpen = false
+                    expandAppTabToFullScreen(tab)
+                },
+                onExpandArtifact = { artifact ->
+                    switcherOpen = false
+                    expandArtifactToFullScreen(artifact)
+                },
+                onCloseArtifact = { windowKey ->
+                    floatingCoordinator.closeArtifact(windowKey)
+                },
             )
         }
     }
@@ -398,6 +494,8 @@ internal fun RaftFloatingBrowserTabPillOverlay(
     bottomSafeArea: Dp = raftBottomSafeAreaPadding(),
     horizontalSafeArea: RaftHorizontalSafeArea = RaftHorizontalSafeArea.Zero,
     voiceCallExtraDp: Dp = 0.dp,
+    artifacts: List<RaftFloatingArtifactWindow> = emptyList(),
+    leadIsArtifactOverride: Boolean? = null,
 ) {
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
@@ -464,6 +562,8 @@ internal fun RaftFloatingBrowserTabPillOverlay(
             onClick = onClick,
             edge = localPillEdge,
             isDetached = dragging || snapAnimating,
+            artifacts = artifacts,
+            leadIsArtifactOverride = leadIsArtifactOverride,
             modifier =
                 Modifier
                     .align(AbsoluteAlignment.TopLeft)
@@ -676,9 +776,9 @@ internal fun RaftFloatingBrowserTabPillOverlay(
 }
 
 /**
- * Pure presentation for the edge-docked magnetic floating tab pill:
- * - 1 tab: compact App logo + subtle live-state indicator dot.
- * - ≥2 tabs: stacked App logo + crisp `[N]` count badge.
+ * Pure presentation for the edge-docked magnetic floating tab pill across Apps and Artifacts:
+ * - 1 minimized item: compact App logo or Artifact icon + subtle live-state indicator dot.
+ * - ≥2 minimized items: lead App/Artifact icon + crisp `[N]` count badge.
  * - Mirrors its flat edge and horizontal padding for [RaftFloatingPillEdge.Left] vs
  *   [RaftFloatingPillEdge.Right], and uses a fully rounded capsule while [isDetached] is true.
  */
@@ -689,18 +789,37 @@ internal fun RaftFloatingBrowserTabPill(
     modifier: Modifier = Modifier,
     edge: RaftFloatingPillEdge = RaftFloatingPillEdge.Right,
     isDetached: Boolean = false,
+    artifacts: List<RaftFloatingArtifactWindow> = emptyList(),
+    leadIsArtifactOverride: Boolean? = null,
 ) {
-    val leadTab = tabs.firstOrNull() ?: return
+    val totalCount = tabs.size + artifacts.size
+    if (totalCount == 0) return
+    val leadTab = tabs.firstOrNull()
+    val leadArtifact = artifacts.firstOrNull()
+    val leadIsArtifact =
+        when {
+            leadArtifact == null -> false
+            leadTab == null -> true
+            leadIsArtifactOverride != null -> leadIsArtifactOverride
+            else -> leadArtifact.lastUsedSeq > leadTab.lastUsedSeq
+        }
     val colors = RaftTheme.colors
     val dark = RaftTheme.isDark
     val layoutDirection = LocalLayoutDirection.current
     val chromeSpec = resolveRaftFloatingPillChromeSpec(edge = edge, isDetached = isDetached)
     val pillShape = chromeSpec.toShape(layoutDirection)
-    val a11yLabel =
-        if (tabs.size == 1) {
-            stringResource(Res.string.in_app_browser_floating_pill_single_a11y, leadTab.displayName)
+    val untitled = stringResource(Res.string.artifacts_activity_untitled)
+    val leadLabel =
+        if (leadIsArtifact) {
+            leadArtifact!!.displayTitle.ifBlank { untitled }
         } else {
-            stringResource(Res.string.in_app_browser_floating_pill_multi_a11y, tabs.size)
+            leadTab!!.displayName
+        }
+    val a11yLabel =
+        if (totalCount == 1) {
+            stringResource(Res.string.in_app_browser_floating_pill_single_a11y, leadLabel)
+        } else {
+            stringResource(Res.string.in_app_browser_floating_pill_multi_a11y, totalCount)
         }
 
     Row(
@@ -723,12 +842,31 @@ internal fun RaftFloatingBrowserTabPill(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box {
-            RaftConnectedAppLogo(
-                name = leadTab.displayName,
-                logoUrl = leadTab.appLogoUrl,
-                size = RaftAvatarSize.Xs,
-            )
-            if (tabs.size == 1) {
+            if (leadIsArtifact) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(24.dp)
+                            .clip(RoundedCornerShape(RaftRadius.Chip))
+                            .background(colors.fillSubtle)
+                            .border(RaftStroke.Hairline, colors.lineHairline, RoundedCornerShape(RaftRadius.Chip)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    RaftSlotIcon(
+                        name = leadArtifact!!.kind.lucideIcon(),
+                        size = 14.dp,
+                        color = colors.foreground,
+                    )
+                }
+            } else {
+                RaftConnectedAppLogo(
+                    name = leadTab!!.displayName,
+                    logoUrl = leadTab.appLogoUrl,
+                    size = RaftAvatarSize.Xs,
+                )
+            }
+            if (totalCount == 1) {
+                val isLive = if (leadIsArtifact) true else leadTab!!.isLive
                 Box(
                     modifier =
                         Modifier
@@ -739,15 +877,15 @@ internal fun RaftFloatingBrowserTabPill(
                             .padding(1.5.dp)
                             .clip(CircleShape)
                             .background(
-                                if (leadTab.isLive) RaftUiPalette.presenceOnline else colors.foregroundHint,
+                                if (isLive) RaftUiPalette.presenceOnline else colors.foregroundHint,
                                 CircleShape,
                             ),
                 )
             }
         }
-        if (tabs.size >= 2) {
+        if (totalCount >= 2) {
             RaftBadge(
-                text = tabs.size.toString(),
+                text = totalCount.toString(),
                 appearance = RaftBadgeAppearance.Solid,
                 variant = RaftBadgeVariant.Primary,
                 modifier = Modifier.testTag(RAFT_FLOATING_TAB_PILL_COUNT_TAG),
@@ -757,8 +895,8 @@ internal fun RaftFloatingBrowserTabPill(
 }
 
 /**
- * Multi-page switcher bottom sheet shared by the edge-docked floating pill (≥2 tabs) and the
- * top-bar `[N]` trigger inside an open Raft App page.
+ * Multi-page switcher bottom sheet shared by the edge-docked floating pill (≥2 minimized Apps and/or
+ * Artifacts) and the top-bar `[N]` trigger inside an open Raft App page.
  */
 @Composable
 internal fun RaftAppBrowserSwitcherSheet(
@@ -768,10 +906,28 @@ internal fun RaftAppBrowserSwitcherSheet(
     onCloseTab: (Long) -> Unit,
     onCloseAll: () -> Unit,
     onDismiss: () -> Unit,
+    artifacts: List<RaftFloatingArtifactWindow> = emptyList(),
+    orderedEntries: List<RaftFloatingWindowEntry>? = null,
+    onSelectArtifact: (RaftFloatingArtifactWindow) -> Unit = {},
+    onExpandTab: ((RaftAppBrowserTab) -> Unit)? = null,
+    onExpandArtifact: ((RaftFloatingArtifactWindow) -> Unit)? = null,
+    onCloseArtifact: (String) -> Unit = {},
 ) {
+    val mergedEntries =
+        remember(tabs, artifacts, orderedEntries) {
+            when {
+                orderedEntries != null -> orderedEntries
+                artifacts.isEmpty() -> tabs.map(RaftFloatingWindowEntry::AppTab)
+                else ->
+                    (tabs.map(RaftFloatingWindowEntry::AppTab) + artifacts.map(RaftFloatingWindowEntry::Artifact))
+                        .sortedByDescending { it.lastUsedSeq }
+            }
+        }
+    val totalCount = mergedEntries.size
+
     RaftSheet(
         onDismissRequest = onDismiss,
-        title = stringResource(Res.string.in_app_browser_open_pages_title, tabs.size),
+        title = stringResource(Res.string.in_app_browser_open_pages_title, totalCount),
         showClose = true,
         actions = {
             RaftButton(
@@ -793,13 +949,24 @@ internal fun RaftAppBrowserSwitcherSheet(
                     .testTag(RAFT_APP_BROWSER_SWITCHER_SHEET_TAG),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            tabs.forEach { tab ->
-                RaftAppBrowserSwitcherRow(
-                    tab = tab,
-                    isActive = tab.tabId == activeTabId,
-                    onSelect = { onSelectTab(tab) },
-                    onClose = { onCloseTab(tab.tabId) },
-                )
+            mergedEntries.forEach { entry ->
+                when (entry) {
+                    is RaftFloatingWindowEntry.AppTab ->
+                        RaftAppBrowserSwitcherRow(
+                            tab = entry.tab,
+                            isActive = entry.tab.tabId == activeTabId,
+                            onSelect = { onSelectTab(entry.tab) },
+                            onExpand = onExpandTab?.let { expand -> { expand(entry.tab) } },
+                            onClose = { onCloseTab(entry.tab.tabId) },
+                        )
+                    is RaftFloatingWindowEntry.Artifact ->
+                        RaftFloatingArtifactSwitcherRow(
+                            artifact = entry.artifact,
+                            onSelect = { onSelectArtifact(entry.artifact) },
+                            onExpand = onExpandArtifact?.let { expand -> { expand(entry.artifact) } },
+                            onClose = { onCloseArtifact(entry.artifact.windowKey) },
+                        )
+                }
             }
         }
     }
@@ -810,6 +977,7 @@ private fun RaftAppBrowserSwitcherRow(
     tab: RaftAppBrowserTab,
     isActive: Boolean,
     onSelect: () -> Unit,
+    onExpand: (() -> Unit)?,
     onClose: () -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -881,12 +1049,123 @@ private fun RaftAppBrowserSwitcherRow(
                 }
             }
         }
+        if (onExpand != null) {
+            RaftIconButton(
+                onClick = onExpand,
+                tooltip = stringResource(Res.string.floating_mini_window_expand_full_screen),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Sm,
+                modifier = Modifier.testTag(raftFloatingSwitcherExpandTag("app_${tab.tabId}")),
+            ) {
+                RaftSlotIcon(RaftLucideIconName.Maximize2, size = 16.dp)
+            }
+        }
         Spacer(Modifier.width(2.dp))
         RaftCloseButton(
             onClick = onClose,
             label = stringResource(Res.string.in_app_browser_close_page),
             size = RaftCloseButtonSize.Dialog,
             modifier = Modifier.testTag(raftAppBrowserSwitcherCloseTag(tab.tabId)),
+        )
+    }
+}
+
+@Composable
+private fun RaftFloatingArtifactSwitcherRow(
+    artifact: RaftFloatingArtifactWindow,
+    onSelect: () -> Unit,
+    onExpand: (() -> Unit)?,
+    onClose: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val shape = RoundedCornerShape(RaftRadius.Container)
+    val untitled = stringResource(Res.string.artifacts_activity_untitled)
+    val artifactKindLabel = stringResource(Res.string.floating_window_kind_artifact)
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .testTag(raftFloatingArtifactSwitcherRowTag(artifact.windowKey))
+                .clip(shape)
+                .background(colors.layerCard, shape)
+                .border(RaftStroke.Hairline, colors.lineHairline, shape)
+                .padding(end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .clip(shape)
+                    .raftClickable(onClick = onSelect, shape = shape, tier = RaftHoverTier.Subtle)
+                    .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(RaftRadius.Chip))
+                        .background(colors.fillSubtle)
+                        .border(RaftStroke.Hairline, colors.lineHairline, RoundedCornerShape(RaftRadius.Chip)),
+                contentAlignment = Alignment.Center,
+            ) {
+                RaftSlotIcon(
+                    name = artifact.kind.lucideIcon(),
+                    size = 16.dp,
+                    color = colors.foregroundMuted,
+                )
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    RaftText(
+                        text = artifact.displayTitle.ifBlank { untitled },
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    RaftBadge(
+                        text = artifact.kind.badge ?: artifactKindLabel,
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = RaftBadgeVariant.Muted,
+                    )
+                }
+                RaftText(
+                    text = artifactKindLabel,
+                    style = RaftTheme.typography.caption,
+                    color = colors.foregroundMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (onExpand != null) {
+            RaftIconButton(
+                onClick = onExpand,
+                tooltip = stringResource(Res.string.floating_mini_window_expand_full_screen),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Sm,
+                modifier = Modifier.testTag(raftFloatingSwitcherExpandTag("artifact_${artifact.windowKey}")),
+            ) {
+                RaftSlotIcon(RaftLucideIconName.Maximize2, size = 16.dp)
+            }
+        }
+        Spacer(Modifier.width(2.dp))
+        RaftCloseButton(
+            onClick = onClose,
+            label = stringResource(Res.string.in_app_browser_close_page),
+            size = RaftCloseButtonSize.Dialog,
+            modifier = Modifier.testTag(raftFloatingArtifactSwitcherCloseTag(artifact.windowKey)),
         )
     }
 }

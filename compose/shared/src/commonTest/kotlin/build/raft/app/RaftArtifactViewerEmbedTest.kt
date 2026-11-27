@@ -31,11 +31,11 @@ import kotlinx.serialization.json.JsonObject
 class RaftArtifactViewerEmbedTest {
     private val web = "https://raft-app-staging.botiverse.dev"
     private val id = "pt_c82e597f-5434-4741-909b-d1c8a7a531c8"
-    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link&hostOpen=message"
+    private val embed = "embed=raft-settings-v1&shell=host&back=host&hostMenu=desktop-mode,copy-link,share-link,float-window&hostOpen=message"
 
     @Test
     fun theViewerOpensThePageUnderTheAppTitleBar() {
-        assertEquals("desktop-mode,copy-link,share-link", RAFT_ARTIFACT_VIEWER_HOST_MENU)
+        assertEquals("desktop-mode,copy-link,share-link,float-window", RAFT_ARTIFACT_VIEWER_HOST_MENU)
         assertFalse("open-in-browser" in RAFT_ARTIFACT_VIEWER_HOST_MENU)
         assertEquals("$web/artifacts/$id?$embed", raftArtifactViewerEmbeddedPageUrl(web, ArtifactLinkTarget(id)))
         // A pinned version keeps its address.
@@ -97,6 +97,8 @@ class RaftArtifactViewerEmbedTest {
         assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=copy-link", web, id))
         assertEquals(RaftArtifactViewerHostAction.ShareLink, raftArtifactViewerHostAction("$page#host=share-link"))
         assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=share-link", web, id))
+        assertEquals(RaftArtifactViewerHostAction.FloatWindow, raftArtifactViewerHostAction("$page#host=float-window"))
+        assertEquals(RaftArtifactViewerNavigation.Stay(3), raftArtifactViewerNavigation("$page#host=float-window", web, id))
         // Back's `#host=close` still closes, and is no menu item; removed `open-in-browser` and unknown fragments are none either.
         assertEquals(null, raftArtifactViewerHostAction("$page#host=close"))
         assertEquals(RaftArtifactViewerNavigation.Close, raftArtifactViewerNavigation("$page#host=close", web, id))

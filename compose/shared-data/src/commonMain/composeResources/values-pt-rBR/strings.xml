@@ -7109,4 +7109,9 @@
     <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s tem %2$s, e %3$s tem só %4$s restantes dos %5$s de envios deste mês; o limite é renovado em %6$s. %7$s O Pro não tem limite mensal.</string>
     <string name="upgrade_dialog_upload_quota_hint_files">%1$s tem só %2$s restantes dos %3$s de envios deste mês, o que não basta para estes %4$d arquivos; o limite é renovado em %5$s. O Pro não tem limite mensal.</string>
     <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s tem só %2$s restantes dos %3$s de envios deste mês, o que não basta para estes %4$d arquivos; o limite é renovado em %5$s. %6$s O Pro não tem limite mensal.</string>
+    <string name="floating_mini_window_collapse_to_pill">Minimizar na borda</string>
+    <string name="floating_mini_window_expand_full_screen">Expandir para tela cheia</string>
+    <string name="floating_mini_window_resize_a11y">Redimensionar janela flutuante</string>
+    <string name="floating_mini_window_drag_a11y">Arrastar janela flutuante</string>
+    <string name="floating_window_kind_artifact">Artifact</string>
 </resources>
