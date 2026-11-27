@@ -285,3 +285,50 @@ fun Modifier.raftMaskFadeX(start: Boolean, end: Boolean, length: Dp = RaftMaskFa
 /** [raftMaskFadeX] for a [ScrollState] scrolled sideways: a fade on each side that has more. */
 fun Modifier.raftMaskFadeX(state: ScrollState, length: Dp = RaftMaskFadeLength): Modifier =
     raftMaskFadeX(start = state.value > 0, end = state.value < state.maxValue, length = length)
+
+/**
+ * raft-ui ScrollArea `fade` (`--r-scroll-area-fade-top` / `-bottom`): how far the content fades
+ * at the top and the bottom edge of a vertical scroller, in px: the content left past the edge
+ * ([scrolled] above, [maxScroll] − [scrolled] below), at most [fadeSize]. So the fade grows in as
+ * the content leaves an edge, and an edge with nothing past it has none.
+ */
+internal fun raftOverflowFadeY(scrolled: Int, maxScroll: Int, fadeSize: Float): Pair<Float, Float> {
+    if (maxScroll <= 0 || maxScroll == Int.MAX_VALUE) return 0f to 0f
+    val top = scrolled.coerceIn(0, maxScroll).toFloat().coerceAtMost(fadeSize)
+    val bottom = (maxScroll - scrolled).coerceIn(0, maxScroll).toFloat().coerceAtMost(fadeSize)
+    return top to bottom
+}
+
+/**
+ * raft-ui 0.106.0 popup scroller (`useOverflowFade` + ScrollArea `fade`): a vertical scroller's
+ * content fades out toward the top and bottom edges with more past them, over the px left there
+ * and at most [length] (24dp, `--r-scroll-area-fade-size`) ([raftOverflowFadeY]). A mask, so
+ * whatever is behind the content shows through. Only while [state] has something to scroll: a
+ * scroller that fits draws exactly as before (no offscreen layer). Put it before
+ * `verticalScroll(state)`, on the scroller's box. Call it in composition: whether it overflows is
+ * read there, so a menu that starts or stops overflowing recomposes.
+ */
+fun Modifier.raftScrollFadeY(state: ScrollState, length: Dp = RaftMaskFadeLength): Modifier {
+    val overflows = state.maxValue in 1 until Int.MAX_VALUE
+    if (!overflows) return this
+    return graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+        .drawWithContent {
+            drawContent()
+            val (top, bottom) = raftOverflowFadeY(state.value, state.maxValue, length.toPx().coerceAtMost(size.height / 2f))
+            if (top > 0f) {
+                drawRect(
+                    Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = 0f, endY = top),
+                    size = Size(size.width, top),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+            if (bottom > 0f) {
+                drawRect(
+                    Brush.verticalGradient(listOf(Color.Black, Color.Transparent), startY = size.height - bottom, endY = size.height),
+                    topLeft = Offset(0f, size.height - bottom),
+                    size = Size(size.width, bottom),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+        }
+}

@@ -680,6 +680,15 @@
       "divergences": []
     },
     {
+      "id": "ds.menu.long-scroll",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/MenuScrollCases.kt:28",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": []
+    },
+    {
       "id": "ds.message-action-card.content",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/MessageActionCardCases.kt:89",
