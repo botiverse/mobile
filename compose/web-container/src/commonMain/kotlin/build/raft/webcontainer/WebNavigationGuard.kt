@@ -51,12 +51,16 @@ class WebNavigationChainState(
         carriesHeader: Boolean,
         reissueBudget: Int,
         starter: WebNavigationStarter,
+        initialHop: String? = null,
     ) {
         defaultReissueBudget = reissueBudget.coerceAtLeast(0)
         carriesScopedHeader = carriesHeader
         remainingReissues = defaultReissueBudget
         this.starter = starter
         hops.clear()
+        if (initialHop != null) {
+            recordHop(initialHop)
+        }
     }
 
     fun recordHop(url: String) {
@@ -76,6 +80,7 @@ class WebNavigationChainState(
         hasCommittedDocument = true
         carriesScopedHeader = false
         remainingReissues = defaultReissueBudget
+        starter = WebNavigationStarter.Page
         hops.clear()
     }
 
@@ -106,6 +111,7 @@ fun evaluateMainFrameNavigation(
     isRedirect: Boolean = false,
     catchesMainFrameNavigation: ((WebMainFrameInterceptContext) -> Boolean)? = null,
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    mutateChainState: Boolean = true,
 ): WebNavigationDecision {
     val trimmed = targetUrl.trim()
     if (trimmed.isEmpty()) {
@@ -154,6 +160,10 @@ fun evaluateMainFrameNavigation(
     // 6. Host external router (e.g., open external link in system browser).
     if (routesMainFrameNavigation != null && routesMainFrameNavigation(trimmed)) {
         return WebNavigationDecision.Block(url = trimmed, reason = "routed_externally")
+    }
+
+    if (!mutateChainState) {
+        return WebNavigationDecision.Allow
     }
 
     // 7. Origin-scoped header attachment and cross-origin redirect stripping (GET only).

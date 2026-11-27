@@ -570,6 +570,7 @@ internal actual fun WebContainerPlatformHost(
 
 private const val ABOUT_BLANK_URL = "about:blank"
 private const val WATCHDOG_TICK_MS = 500L
+private const val HOST_CANCELLED_WINDOW_MS = 1_500L
 private val SubframeSecFetchDestinations = setOf("iframe", "frame", "fencedframe")
 private val SubresourceSafeBuiltInSchemes = setOf("data", "blob", "about")
 
@@ -617,8 +618,14 @@ internal class WebContainerAndroidView(
     private var currentProgress: Int = 0
     private var currentLoading: Boolean = false
     private var loadGeneration: Int = 0
+    private data class HostCancellation(val url: String, val atMs: Long)
+
     private var mainFrameLoadFailed: Boolean = false
     private var lastSuccessfulUrl: String = ""
+    private var committedDocumentUrl: String = ""
+    @Volatile private var lastHostCancellation: HostCancellation? = null
+    private var hostCancelledLoadGeneration: Int = -1
+    private var hostCancelledIntermediateUrl: String = ""
     private var pagePainted: Boolean = false
     private var desktopModeScaleApplied: Boolean = false
     private var desktopModeScaleRetryScheduled: Boolean = false
@@ -905,6 +912,7 @@ internal class WebContainerAndroidView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        clearHostCancellationState()
         boundController?.unbindDispatcher(this)
         boundController = null
         events = WebContainerEvents()
@@ -1047,6 +1055,8 @@ internal class WebContainerAndroidView(
         }
         loadedSrc = ""
         lastSuccessfulUrl = ""
+        committedDocumentUrl = ""
+        clearHostCancellationState()
         mainFrameLoadFailed = false
         currentTitle = ""
         currentProgress = 0
@@ -1359,6 +1369,12 @@ internal class WebContainerAndroidView(
                         currentLoading = false
                         return
                     }
+                    if (isRecentlyHostCancelled(target)) {
+                        view?.stopLoading()
+                        currentLoading = false
+                        notifyNavigationState()
+                        return
+                    }
                     jsDialogTracker.cancelActive()
                     fullscreenController.hide()
                     jsbDispatcher?.cancelInFlight("main_frame_navigation")
@@ -1372,10 +1388,11 @@ internal class WebContainerAndroidView(
                                 policy = config.navigationPolicy,
                                 method = "GET",
                                 requestCarriesScopedHeader = chainState.carriesScopedHeader,
-                                chainState = null,
+                                chainState = chainState,
                                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                                 routesMainFrameNavigation =
                                     events.routesMainFrameNavigation.takeUnless { isConfiguredInitialDocument },
+                                mutateChainState = false,
                             )
                         when (fence) {
                             is WebNavigationDecision.Block -> {
@@ -1386,14 +1403,17 @@ internal class WebContainerAndroidView(
                                 return
                             }
                             is WebNavigationDecision.InterceptedByHost -> {
-                                view?.stopLoading()
-                                currentLoading = false
-                                notifyNavigationState()
+                                markHostCancelledNavigation(view = view, targetUrl = fence.url, stopLoading = true)
                                 return
                             }
                             else -> Unit
                         }
                     }
+                    if (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) {
+                        chainState.recordHop(target)
+                    }
+                    hostCancelledLoadGeneration = -1
+                    hostCancelledIntermediateUrl = ""
                     currentUrl = target
                     currentTitle = ""
                     currentProgress = 0
@@ -1417,10 +1437,16 @@ internal class WebContainerAndroidView(
                         currentLoading = false
                         return
                     }
+                    if (isCurrentLoadHostCancelled(target)) {
+                        currentLoading = false
+                        notifyNavigationState()
+                        return
+                    }
                     currentUrl = target.ifBlank { currentUrl }
                     currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                     events.onUrlChange(currentUrl)
                     if (!mainFrameLoadFailed) {
+                        committedDocumentUrl = currentUrl
                         markPagePainted()
                         chainState.markCommitted()
                         watchdog.onEvent(
@@ -1440,11 +1466,17 @@ internal class WebContainerAndroidView(
                         currentLoading = false
                         return
                     }
+                    if (isCurrentLoadHostCancelled(target)) {
+                        currentLoading = false
+                        notifyNavigationState()
+                        return
+                    }
                     currentUrl = target.ifBlank { currentUrl }
                     currentTitle = view?.title.orEmpty().ifBlank { currentTitle }
                     currentProgress = 100
                     currentLoading = false
                     if (!mainFrameLoadFailed) {
+                        committedDocumentUrl = currentUrl
                         markPagePainted()
                         chainState.markCommitted()
                         val action =
@@ -1511,6 +1543,7 @@ internal class WebContainerAndroidView(
                     super.doUpdateVisitedHistory(view, url, isReload)
                     val target = url.orEmpty()
                     if (target.isBlank() || target.equals(ABOUT_BLANK_URL, ignoreCase = true)) return
+                    if (isRecentlyHostCancelled(target) || isHostCancelledIntermediate(target)) return
                     val scheme = extractUrlScheme(target) ?: return
                     val allowedSchemes = config.navigationPolicy.normalizedAllowedSchemes
                     if (allowedSchemes.isNotEmpty() && scheme !in allowedSchemes) return
@@ -1533,6 +1566,9 @@ internal class WebContainerAndroidView(
                     if (request.isForMainFrame) {
                         if (url.equals(ABOUT_BLANK_URL, ignoreCase = true)) {
                             return super.shouldInterceptRequest(view, request)
+                        }
+                        if (isRecentlyHostCancelled(url)) {
+                            return emptyBlockedResponse()
                         }
                         val decision =
                             evaluateMainFrameNavigation(
@@ -1599,6 +1635,11 @@ internal class WebContainerAndroidView(
                     if (destroyed) return
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
+                        if (isCurrentLoadHostCancelled(request.url?.toString().orEmpty())) {
+                            currentLoading = false
+                            notifyNavigationState()
+                            return
+                        }
                         mainFrameLoadFailed = true
                         lastSuccessfulUrl = ""
                         currentLoading = false
@@ -1675,6 +1716,48 @@ internal class WebContainerAndroidView(
         )
     }
 
+    private fun isRecentlyHostCancelled(url: String): Boolean {
+        val recent = lastHostCancellation ?: return false
+        return url.isNotEmpty() &&
+            url == recent.url &&
+            (nowMs() - recent.atMs) in 0L..HOST_CANCELLED_WINDOW_MS
+    }
+
+    private fun isHostCancelledIntermediate(url: String): Boolean =
+        hostCancelledLoadGeneration > 0 &&
+            hostCancelledLoadGeneration == loadGeneration &&
+            hostCancelledIntermediateUrl.isNotEmpty() &&
+            url == hostCancelledIntermediateUrl
+
+    private fun isCurrentLoadHostCancelled(url: String): Boolean =
+        isRecentlyHostCancelled(url) ||
+            (hostCancelledLoadGeneration > 0 && hostCancelledLoadGeneration == loadGeneration)
+
+    private fun clearHostCancellationState() {
+        lastHostCancellation = null
+        hostCancelledLoadGeneration = -1
+        hostCancelledIntermediateUrl = ""
+    }
+
+    private fun markHostCancelledNavigation(
+        view: WebView?,
+        targetUrl: String,
+        stopLoading: Boolean,
+    ) {
+        if (stopLoading) view?.stopLoading()
+        lastHostCancellation = HostCancellation(url = targetUrl, atMs = nowMs())
+        if (currentLoading && loadGeneration > 0) {
+            hostCancelledLoadGeneration = loadGeneration
+            hostCancelledIntermediateUrl = currentUrl.takeUnless { it == committedDocumentUrl }.orEmpty()
+            watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), nowMs())
+            if (committedDocumentUrl.isNotEmpty()) {
+                currentUrl = committedDocumentUrl
+            }
+        }
+        currentLoading = false
+        notifyNavigationState()
+    }
+
     private fun evaluateAndApplyOverride(
         view: WebView?,
         target: String,
@@ -1688,7 +1771,12 @@ internal class WebContainerAndroidView(
             chainState.startChain(
                 carriesHeader = carriesHeader,
                 reissueBudget = budget,
-                starter = if (isUserGesture) WebNavigationStarter.Link else WebNavigationStarter.Page,
+                starter =
+                    when {
+                        isUserGesture -> WebNavigationStarter.Link
+                        chainState.hasCommittedDocument -> WebNavigationStarter.Page
+                        else -> WebNavigationStarter.Other
+                    },
             )
         }
         val decision =
@@ -1706,7 +1794,10 @@ internal class WebContainerAndroidView(
             )
         return when (decision) {
             WebNavigationDecision.Allow -> false
-            is WebNavigationDecision.InterceptedByHost -> true
+            is WebNavigationDecision.InterceptedByHost -> {
+                markHostCancelledNavigation(view = view, targetUrl = decision.url, stopLoading = false)
+                true
+            }
             is WebNavigationDecision.Block -> {
                 notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = isUserGesture)
                 true
@@ -1767,7 +1858,8 @@ internal class WebContainerAndroidView(
             is WebNavigationDecision.ReissueWithHeader ->
                 configuredWebView.loadUrl(decision.url, mapOf(decision.headerName to decision.headerValue))
             is WebNavigationDecision.ReissueWithoutHeader -> configuredWebView.loadUrl(decision.url)
-            is WebNavigationDecision.InterceptedByHost -> Unit
+            is WebNavigationDecision.InterceptedByHost ->
+                markHostCancelledNavigation(view = configuredWebView, targetUrl = decision.url, stopLoading = false)
             is WebNavigationDecision.Block ->
                 notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = true)
         }
@@ -2221,14 +2313,28 @@ internal class WebContainerAndroidView(
             is WebNavigationDecision.InterceptedByHost -> return
             is WebNavigationDecision.ReissueWithHeader -> {
                 loadedSrc = target
+                committedDocumentUrl = ""
+                clearHostCancellationState()
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-                chainState.startChain(carriesHeader = true, reissueBudget = budget, starter = WebNavigationStarter.Launch)
+                chainState.startChain(
+                    carriesHeader = true,
+                    reissueBudget = budget,
+                    starter = WebNavigationStarter.Launch,
+                    initialHop = target,
+                )
                 webView.loadUrl(target, mapOf(decision.headerName to decision.headerValue))
             }
             else -> {
                 loadedSrc = target
+                committedDocumentUrl = ""
+                clearHostCancellationState()
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Launch)
+                chainState.startChain(
+                    carriesHeader = false,
+                    reissueBudget = budget,
+                    starter = WebNavigationStarter.Launch,
+                    initialHop = target,
+                )
                 webView.loadUrl(target)
             }
         }
@@ -2237,9 +2343,27 @@ internal class WebContainerAndroidView(
     private fun executeCommand(command: WebContainerCommand) {
         if (destroyed) return
         when (command) {
-            WebContainerCommand.GoBack -> if (webView.canGoBack()) webView.goBack()
-            WebContainerCommand.GoForward -> if (webView.canGoForward()) webView.goForward()
+            WebContainerCommand.GoBack ->
+                if (webView.canGoBack()) {
+                    hostCancelledLoadGeneration = -1
+                    hostCancelledIntermediateUrl = ""
+                    val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                    chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
+                    webView.goBack()
+                }
+            WebContainerCommand.GoForward ->
+                if (webView.canGoForward()) {
+                    hostCancelledLoadGeneration = -1
+                    hostCancelledIntermediateUrl = ""
+                    val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                    chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
+                    webView.goForward()
+                }
             WebContainerCommand.Reload -> {
+                hostCancelledLoadGeneration = -1
+                hostCancelledIntermediateUrl = ""
+                val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Reload)
                 mainFrameLoadFailed = false
                 webView.reload()
             }
@@ -2251,6 +2375,7 @@ internal class WebContainerAndroidView(
             is WebContainerCommand.LoadUrl -> {
                 val target = command.url.trim()
                 if (target.isEmpty()) return
+                clearHostCancellationState()
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                 chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Page)
                 val decision =
@@ -2270,7 +2395,8 @@ internal class WebContainerAndroidView(
                     is WebNavigationDecision.ReissueWithoutHeader -> webView.loadUrl(decision.url)
                     is WebNavigationDecision.Block ->
                         notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = false)
-                    is WebNavigationDecision.InterceptedByHost -> Unit
+                    is WebNavigationDecision.InterceptedByHost ->
+                        markHostCancelledNavigation(view = webView, targetUrl = decision.url, stopLoading = false)
                 }
             }
             is WebContainerCommand.EvaluateJavaScript -> {
