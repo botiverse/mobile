@@ -626,7 +626,7 @@
     <string name="thread_action_remove_from_saved">저장한 메시지에서 제거</string>
     <string name="thread_action_save_message">저장</string>
     <string name="thread_action_unfollow_thread">스레드 팔로우 취소</string>
-    <string name="thread_action_mark_thread_unread">스레드를 읽지 않음으로 표시</string>
+    <string name="thread_action_mark_thread_unread">스레드 읽지 않음 표시</string>
     <string name="thread_action_follow_thread">스레드 팔로우</string>
     <string name="thread_action_reopen_task">작업 다시 열기</string>
     <string name="thread_action_mark_done">완료로 표시</string>
@@ -1414,7 +1414,7 @@
     <string name="thread_files_load_more">더 불러오기</string>
     <string name="thread_files_artifacts_show_more">Artifact 더 보기</string>
     <string name="thread_files_file_actions">%1$s 옵션</string>
-    <string name="thread_files_jump_to_message">원본 메시지로 이동</string>
+    <string name="thread_files_jump_to_message">메시지로 이동</string>
     <string name="thread_files_download_file">파일 다운로드</string>
     <string name="thread_state_note">메모</string>
     <string name="thread_placeholder_search">이 스레드 검색</string>

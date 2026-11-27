@@ -1414,7 +1414,7 @@
     <string name="thread_files_load_more">Cargar más</string>
     <string name="thread_files_artifacts_show_more">Mostrar más Artifacts</string>
     <string name="thread_files_file_actions">Acciones de %1$s</string>
-    <string name="thread_files_jump_to_message">Ir al mensaje original</string>
+    <string name="thread_files_jump_to_message">Ir al mensaje</string>
     <string name="thread_files_download_file">Descargar archivo</string>
     <string name="thread_state_note">NOTA</string>
     <string name="thread_placeholder_search">Buscar en este hilo</string>
@@ -2576,7 +2576,7 @@
     <string name="members_scope_label">Mostrar</string>
     <string name="members_create_agent">Crear agente</string>
     <string name="members_create_agent_more">Más formas de agregar un agente</string>
-    <string name="members_create_agent_external">Conectar un agente externo</string>
+    <string name="members_create_agent_external">Conectar agente externo</string>
     <string name="members_counts_working_one">%1$d agente trabajando</string>
     <string name="members_counts_working_other">%1$d agentes trabajando</string>
     <string name="members_counts_members_one">%1$d miembro</string>

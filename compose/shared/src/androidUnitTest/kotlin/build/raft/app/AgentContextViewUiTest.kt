@@ -430,7 +430,7 @@ class AgentContextViewUiTest {
         entryState = AgentContextViewMenuEntryState.ShowRetry(retrying = false)
         waitForIdle()
         onNodeWithTag(THREAD_MESSAGE_MENU_VIEW_CONTEXT_RETRY_TAG).assertIsDisplayed()
-        onNodeWithText("Retry View context").assertIsDisplayed()
+        onNodeWithText("Retry view context").assertIsDisplayed()
         onNodeWithText("Couldn't check").assertIsDisplayed()
         onNodeWithTag(THREAD_MESSAGE_MENU_VIEW_CONTEXT_RETRY_TAG).performClick()
         assertEquals(1, retryClicks)

@@ -1414,7 +1414,7 @@
     <string name="thread_files_load_more">さらに読み込む</string>
     <string name="thread_files_artifacts_show_more">Artifact をさらに表示</string>
     <string name="thread_files_file_actions">%1$s の操作</string>
-    <string name="thread_files_jump_to_message">元のメッセージに移動</string>
+    <string name="thread_files_jump_to_message">メッセージに移動</string>
     <string name="thread_files_download_file">ファイルをダウンロード</string>
     <string name="thread_state_note">メモ</string>
     <string name="thread_placeholder_search">このスレッド内を検索</string>

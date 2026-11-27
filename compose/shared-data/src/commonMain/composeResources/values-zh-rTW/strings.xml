@@ -614,7 +614,7 @@
     <string name="thread_text_selection_select_all">全選</string>
     <string name="thread_new_message_menu_reply">回覆</string>
     <string name="thread_new_message_menu_more">更多</string>
-    <string name="thread_action_reply_in_thread">在討論串中回覆</string>
+    <string name="thread_action_reply_in_thread">在討論串回覆</string>
     <string name="thread_action_add_reaction">新增回應</string>
     <string name="thread_quick_reaction_like">按讚</string>
     <string name="thread_quick_reaction_unlike">收回讚</string>
@@ -626,7 +626,7 @@
     <string name="thread_action_remove_from_saved">從「已儲存」中移除</string>
     <string name="thread_action_save_message">儲存</string>
     <string name="thread_action_unfollow_thread">取消追蹤討論串</string>
-    <string name="thread_action_mark_thread_unread">將討論串標示為未讀</string>
+    <string name="thread_action_mark_thread_unread">討論串標為未讀</string>
     <string name="thread_action_follow_thread">追蹤討論串</string>
     <string name="thread_action_reopen_task">重新開啟任務</string>
     <string name="thread_action_mark_done">標示為已完成</string>
@@ -1414,7 +1414,7 @@
     <string name="thread_files_load_more">載入更多</string>
     <string name="thread_files_artifacts_show_more">顯示更多 Artifact</string>
     <string name="thread_files_file_actions">%1$s 的操作</string>
-    <string name="thread_files_jump_to_message">跳至原始訊息</string>
+    <string name="thread_files_jump_to_message">跳至訊息</string>
     <string name="thread_files_download_file">下載檔案</string>
     <string name="thread_state_note">備註</string>
     <string name="thread_placeholder_search">搜尋此討論串</string>
