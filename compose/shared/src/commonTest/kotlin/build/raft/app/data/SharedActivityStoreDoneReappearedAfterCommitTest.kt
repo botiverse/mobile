@@ -42,6 +42,7 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
             channelId = ChannelId(channelId),
             channelName = channelId,
             channelKind = ConversationKind.Channel,
+            channelType = "channel",
             unreadCount = unread,
             firstUnreadMessageId = if (unread > 0) MessageId("m-$latestActivitySeq") else null,
             lastMessageId = MessageId("m-$latestActivitySeq"),
@@ -89,7 +90,8 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
             inboxInPlaceEnabled = { true },
             inboxRowPositionEnabled = { true },
             localMutationHoldMillis = holdMillis,
-            realtimeBackgroundRefreshIntervalMillis = 0L,
+            nowMillis = { testScheduler.currentTime },
+            realtimeBackgroundRefreshIntervalMillis = 60_000L,
             activityDoneTraceSink = { sid, event -> traces += sid to event },
         )
 
@@ -310,23 +312,22 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
         assertEquals(true, rereadEvent.wasUnreadAtClick)
         assertEquals(ActivitySeqChange.None, rereadEvent.seqChanged)
 
-        // 2) Catch-up failure: fails on the catch-up re-Done -> done_failed preserves ORIGINAL wasUnreadAtClick=true, no after_commit_*.
+        // 2) Catch-up failure (fresh store): fails on catch-up re-Done -> done_failed preserves ORIGINAL wasUnreadAtClick=true, no after_commit_*.
         val failInitial = storageRow(channelId = "ch-2", unread = 1, latestActivitySeq = "20", readStateSeq = "20", doneFrontierSeq = "20")
-        inbox.serving = snapshot(listOf(failInitial))
-        store.dispatch(SharedActivityIntent.PullRefresh)
+        val failInbox = MutableInboxRepository(snapshot(listOf(failInitial)), failOnDoneCallNumber = 2)
+        val failTraces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val failStore = testStore(failInbox, failTraces)
+        failStore.dispatch(SharedActivityIntent.LoadInitial)
         runCurrent()
-        traces.clear()
-        inbox.doneCalls.clear()
-        inbox.failOnDoneCallNumber = 2
 
-        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("msg-22", channelId = "ch-2", seq = 22L))))
+        failStore.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("msg-22", channelId = "ch-2", seq = 22L))))
         val failCaughtUp = storageRow(channelId = "ch-2", unread = 0, latestActivitySeq = "22", readStateSeq = "22", doneFrontierSeq = "22")
-        inbox.serving = snapshot(listOf(failCaughtUp))
-        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        failInbox.serving = snapshot(listOf(failCaughtUp))
+        failStore.dispatch(SharedActivityIntent.MarkDone(failStore.state.value.items.single()))
         runCurrent()
 
-        assertEquals(2, inbox.doneCalls.size)
-        val failEvents = traces.reappeared()
+        assertEquals(2, failInbox.doneCalls.size)
+        val failEvents = failTraces.reappeared()
         assertEquals(1, failEvents.size)
         assertEquals(ActivityReappearCause.DoneFailed, failEvents.single().cause)
         assertEquals(true, failEvents.single().wasUnreadAtClick)
