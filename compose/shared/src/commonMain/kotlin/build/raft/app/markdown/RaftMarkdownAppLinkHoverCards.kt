@@ -94,6 +94,7 @@ internal class RaftMarkdownAppLinkHoverCards(
                     RaftAppLinkCardView(
                         card = card,
                         onAction = {},
+                        showFooterIcon = false,
                         buttons =
                             listOf(
                                 raftAppLinkCardOpenButton(card, leavesRaft = leavesRaft) { address ->

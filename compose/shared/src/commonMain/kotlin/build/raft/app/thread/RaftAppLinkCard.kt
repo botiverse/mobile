@@ -22,6 +22,7 @@ import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.appLinkDomain
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.designsystem.components.RaftAppLinkCardBadgeSurface
+import build.raft.designsystem.components.RaftAppLinkCardIcon
 import build.raft.designsystem.components.RaftMessageEmbedDefaults
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftPreviewCardBody
@@ -52,12 +53,14 @@ import build.raft.designsystem.theme.RaftTheme
  *   [RaftPreviewCardItemActions]: at most two on one row at the card's end (the App's first two
  *   actions, else the first link; frameless first, the bordered one last), everything else in the
  *   More menu (⋯) to their left.
- * - Footer: under a hairline, the App's name and the link's domain. No App icon: raft-ui keeps
- *   it on the chip, the App's only mark of its own.
+ * - Footer: under a hairline, the App's 16dp icon (4dp gap), its name and the link's domain —
+ *   mobile adds the icon because the phone popover covers the chip that shows it on the web.
  *
  * Render only: no reading, no actions run here. [onAction] is for v2's Buttons (RFC 076), which
- * report their element id; the v1 catalog has none, so it is never called yet. Width: the
- * incoming constraints ([RaftPreviewCardDefaults.ItemWidth], 400dp, where there is room).
+ * report their element id; the v1 catalog has none, so it is never called yet. When [onTitleClick]
+ * is given (a phone popover covering the chip), tapping the title itself opens the item, matching
+ * a block card's title. Width: the incoming constraints ([RaftPreviewCardDefaults.ItemWidth],
+ * 400dp, where there is room).
  */
 @Composable
 internal fun RaftAppLinkCardView(
@@ -67,6 +70,8 @@ internal fun RaftAppLinkCardView(
     buttons: List<RaftPreviewCardButton> = emptyList(),
     eyebrow: String? = null,
     details: List<RaftPreviewCardDetail> = emptyList(),
+    onTitleClick: (() -> Unit)? = null,
+    showFooterIcon: Boolean = true,
 ) {
     RaftPopoverSurface(modifier = modifier, width = null, contentPadding = PaddingValues(0.dp)) {
         // Body and actions scroll when the card is held shorter than they are (a popover in a
@@ -83,7 +88,7 @@ internal fun RaftAppLinkCardView(
                         color = RaftTheme.colors.foregroundMuted,
                     )
                 } else {
-                    RaftPreviewCardItemTitle(card.title)
+                    RaftPreviewCardItemTitle(card.title, onClick = onTitleClick)
                     RaftPreviewCardMeta(details)
                     card.card?.let { RaftAppLinkCardBody(it, onAction) }
                     card.cardV2?.let { RaftAppLinkCardV2Body(it, surface = RaftAppLinkCardBadgeSurface.Popover) }
@@ -91,7 +96,11 @@ internal fun RaftAppLinkCardView(
             }
             RaftPreviewCardItemActions(buttons)
         }
-        RaftAppLinkCardFooter(appName = card.app.name, domain = appLinkDomain(card.url).orEmpty())
+        RaftAppLinkCardFooter(
+            appName = card.app.name,
+            domain = appLinkDomain(card.url).orEmpty(),
+            icon = if (showFooterIcon) ({ ThreadAppLinkCardHeaderIcon(card.app.icon) }) else null,
+        )
     }
 }
 
@@ -202,11 +211,16 @@ internal fun RaftAppLinkCardBody(
 
 /**
  * PreviewCardFooter (raft-ui 0.84.0 `messageCard` `sourceFooter`): a caption under a hairline,
- * px-3 py-2: the App's name, then the link's domain. The name gives way first; a domain too long
- * loses its start, never its end.
+ * px-3 py-2: optional 16dp App icon (4dp gap, mobile only so a phone popover that covers the chip
+ * still identifies the App), the App's name, then the link's domain. The name gives way first; a
+ * domain too long loses its start, never its end.
  */
 @Composable
-private fun RaftAppLinkCardFooter(appName: String, domain: String) {
+private fun RaftAppLinkCardFooter(
+    appName: String,
+    domain: String,
+    icon: (@Composable () -> Unit)? = null,
+) {
     val muted = RaftTheme.colors.foregroundMuted
     val caption = RaftTheme.typography.caption
     RaftSeparator()
@@ -215,6 +229,9 @@ private fun RaftAppLinkCardFooter(appName: String, domain: String) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (icon != null) {
+            RaftAppLinkCardIcon { icon() }
+        }
         RaftText(
             text = appName,
             modifier = Modifier.weight(1f, fill = false),

@@ -53,10 +53,10 @@ import org.robolectric.annotation.GraphicsMode
  * issue (a column of a Badge, a default and a muted Text) with Open Link ↗ alone at the card's
  * end, a Stamp pull request with its id line, state chip and "·" details and the App's buttons
  * (raft-design #939: the ⋯ with Refresh and the links, then frameless Approve and the bordered
- * Merge at the end), a pull request with only its title and a disabled action whose reason is a
- * caption under the row, and a long title cut at 2 lines over a long App name and domain. The
- * footer has no App icon (raft-ui keeps it on the chip). Reports land in
- * `build/reports/home-screenshots/`.
+ * Merge at the end), a pull request with only its title and a disabled action (its reason shows
+ * in its long-press tooltip, not a caption under the row), and a long title cut at 2 lines over a
+ * long App name and domain. The footer leads the App name with its 16dp icon (4dp gap) because a
+ * phone popover covers the chip. Reports land in `build/reports/home-screenshots/`.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

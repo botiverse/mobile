@@ -1,5 +1,7 @@
 package build.raft.designsystem.components
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,8 +43,8 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -637,26 +639,41 @@ fun RaftPreviewCardEyebrow(
 
 /**
  * raft-ui `PreviewCardTitle` in `PreviewCardBody` (0.84.0: `messageCard` `title`): the app's title, `text-subhead` bold in ink
- * (never `foreground-link`: the card is not a link, its buttons and the chip are), up to
+ * (never `foreground-link`: keeps the title's ink even when tappable on a phone popover), up to
  * [RaftPreviewCardDefaults.ItemTitleMaxLines] lines, then an ellipsis. Only when it is cut off,
  * the whole title is in a [RaftTooltip] (a pointer resting on it; a long press on touch).
+ *
+ * When [onClick] is given (a phone popover covering the chip that opens the link on the web),
+ * tapping the title itself opens the item, matching [RaftAppLinkCardTitle].
  */
 @Composable
 fun RaftPreviewCardItemTitle(
     text: String,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
 ) {
     var cut by remember(text) { mutableStateOf(false) }
+    val source = remember { MutableInteractionSource() }
     val title: @Composable (Modifier) -> Unit = { titleModifier ->
-        RaftText(
-            text = text,
-            modifier = titleModifier,
-            style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Bold),
-            color = RaftTheme.colors.foreground,
-            maxLines = RaftPreviewCardDefaults.ItemTitleMaxLines,
-            overflow = TextOverflow.Ellipsis,
-            onTextLayout = { cut = it.hasVisualOverflow },
-        )
+        Box(
+            titleModifier.then(
+                if (onClick != null) {
+                    Modifier.fillMaxWidth().clickable(source, indication = null, role = Role.Button, onClickLabel = onClickLabel, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            ),
+        ) {
+            RaftText(
+                text = text,
+                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Bold),
+                color = RaftTheme.colors.foreground,
+                maxLines = RaftPreviewCardDefaults.ItemTitleMaxLines,
+                overflow = TextOverflow.Ellipsis,
+                onTextLayout = { cut = it.hasVisualOverflow },
+            )
+        }
     }
     if (cut) RaftTooltip(text = text, modifier = modifier) { title(Modifier) } else title(modifier)
 }
@@ -780,8 +797,8 @@ enum class RaftPreviewCardButtonKind {
  * - [leavesRaft]: a link out of Raft ends in the leaving mark (↗), in the row and in the menu;
  *   false for a link Raft opens itself (an Artifact's viewer).
  * - [disabledReason]: the app's reason it can't be used now; the button is disabled and says why
- *   (in the row, a caption under the buttons and the tooltip on a long press; in the menu, the
- *   item's second line). A link with a reason is no link: no ↗.
+ *   (in the row, the tooltip on hover or a touch long press; in the menu, the item's second
+ *   line). A link with a reason is no link: no ↗.
  * - [enabled] false: disabled without a reason of the app's (the card is busy; say so elsewhere).
  * - [loading]: this button's work is running.
  * - [opensItem]: a link to the item the card is about (Stamp's Open in Stamp, Raft's Open Link): a
@@ -874,10 +891,9 @@ fun raftPreviewCardButtonLayout(
  * are cut with an ellipsis rather than wrapping; the whole label is in each button's
  * [RaftTooltip]. The menu opens aligned to the ⋯'s end, so it stays over the card.
  *
- * A row button with a `disabledReason` is disabled, and the reason (the first one) is a caption
- * under the row, `text-footnote` `foreground-muted`, at the end under the buttons: touch has no
- * hover to show the web's tooltip, so the reason is always in sight (it is in the long-press
- * tooltip too). Nothing when [buttons] is empty.
+ * A row button with a `disabledReason` is disabled, and its label and reason show in its
+ * [RaftTooltip] on hover or a touch long press (matching web `LinkCardActions` `openOnLongPress`).
+ * Nothing when [buttons] is empty.
  */
 @Composable
 fun RaftPreviewCardItemActions(
@@ -900,29 +916,16 @@ internal fun RaftPreviewCardLaidOutActions(
     moreLabel: String = RaftTheme.strings.moreActions,
 ) {
     if (layout.row.isEmpty() && layout.more.isEmpty()) return
-    val reason = layout.row.firstNotNullOfOrNull { it.disabledReason }
     // `messageCard` `actions` (raft-ui 0.84.0): `px-3 pb-3`, a card's inset.
-    Column(
-        modifier.fillMaxWidth().padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, bottom = RaftMessageEmbedDefaults.Inset),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, bottom = RaftMessageEmbedDefaults.Inset),
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (layout.more.isNotEmpty()) RaftPreviewCardMoreMenu(layout.more, moreLabel)
-            layout.row.forEach { button -> RaftPreviewCardRowButton(button, Modifier.weight(1f, fill = false)) }
-        }
-        if (reason != null) {
-            RaftText(
-                text = reason,
-                modifier = Modifier.fillMaxWidth(),
-                style = RaftTheme.typography.footnote,
-                color = RaftTheme.colors.foregroundMuted,
-                textAlign = TextAlign.End,
-            )
-        }
+        if (layout.more.isNotEmpty()) RaftPreviewCardMoreMenu(layout.more, moreLabel)
+        layout.row.forEach { button -> RaftPreviewCardRowButton(button, Modifier.weight(1f, fill = false)) }
     }
 }
 
