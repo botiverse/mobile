@@ -43,6 +43,8 @@ import build.raft.app.postChannelMemberRemovedToast
 import build.raft.app.settings.raftFeedbackCardEntryOrNull
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.model.ServerId
+import build.raft.app.model.providerLabel
+import build.raft.app.members.toExternalPreviewAuthor
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
@@ -488,6 +490,30 @@ internal fun ThreadRouteEventHandler.handleOpenMarkdownUrl(itemId: String) {
 
 internal fun ThreadRouteEventHandler.handleOpenActionCardChannel(itemId: String) {
                     openThreadWebLinkTargetInApp(RaftThreadWebLinkTarget(channelId = itemId))
+}
+
+internal fun ThreadRouteEventHandler.handleOpenExternalMention(
+    projectionId: String,
+    fallbackLabel: String?,
+) {
+    val externalMember =
+        if (serverMembersStore != null && threadMembersServerId != null && threadMembersChannelId != null) {
+            serverMembersStore
+                .currentChannelExternalMembers(threadMembersServerId, threadMembersChannelId)
+                .firstOrNull { it.id == projectionId }
+        } else {
+            null
+        }
+    val shownFallback = fallbackLabel?.takeIf { it.isNotBlank() } ?: projectionId
+    val author = externalMember.toExternalPreviewAuthor(fallbackLabel = shownFallback, projectionId = projectionId)
+    val provider = author.providerLabel()
+    val hint =
+        if (provider != null) {
+            "${author.displayName} ($provider)"
+        } else {
+            author.displayName
+        }
+    bridge.toast(hint)
 }
 
 internal fun ThreadRouteEventHandler.handleOpenMarkdownTag(itemId: String): Unit = run ThreadPageContent@{

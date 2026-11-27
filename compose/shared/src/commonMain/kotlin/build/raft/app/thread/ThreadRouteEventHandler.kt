@@ -464,6 +464,9 @@ internal class ThreadRouteEventHandler(
                 action == "openMarkdownTag" && !itemId.isNullOrBlank() -> {
                     handleOpenMarkdownTag(itemId)
                 }
+                action == "openExternalMention" && !itemId.isNullOrBlank() -> {
+                    handleOpenExternalMention(projectionId = itemId, fallbackLabel = tab)
+                }
                 (action == "openMarkdownChannel" || action == "openMarkdownDirectMessage" || action == "openMarkdownLounge") &&
                     !itemId.isNullOrBlank() -> {
                     handleOpenMarkdownChannel(action, itemId, markdownActionId)

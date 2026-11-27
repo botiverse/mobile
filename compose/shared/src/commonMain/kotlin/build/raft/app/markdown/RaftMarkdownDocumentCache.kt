@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.model.ExternalMentionSpan
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -119,6 +120,7 @@ internal class RaftMarkdownDocumentWarmContext(
 internal data class RaftMarkdownDocumentWarmRequest(
     val body: String,
     val inlineContentScope: String?,
+    val externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
 )
 
 internal data class RaftMarkdownDocumentWarmResult(
@@ -153,7 +155,10 @@ internal suspend fun warmRaftMarkdownRichTextDocuments(
                     context.highlightedMentions,
                     context.isTagValid,
                     resolveTagLabel = context.resolveTagLabel,
-                    inlineContentScope = request.inlineContentScope
+                    inlineContentScope = request.inlineContentScope,
+                    rawBody = request.body,
+                    normalizedBody = content,
+                    externalMentionSpans = request.externalMentionSpans,
                 )
             val (_, hit) =
                 RaftMarkdownRenderInputCache.documentWithHit(

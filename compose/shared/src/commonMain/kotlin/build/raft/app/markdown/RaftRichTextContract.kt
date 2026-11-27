@@ -1,5 +1,6 @@
 package build.raft.app.markdown
 
+import build.raft.app.model.ExternalMentionSpan
 import com.tencent.kuiklybase.markdown.model.MarkdownParserContent
 
 data class RaftRichTextDocument(
@@ -220,6 +221,7 @@ enum class RaftRichTextRefKind(val wireValue: String) {
     Task("task"),
     Message("message"),
     UserMention("userMention"),
+    ExternalMention("externalMention"),
     Lounge("lounge"),
     LoungeThread("loungeThread")
 }
@@ -233,7 +235,9 @@ data class RaftRichTextAction(
     val threadShortId: String? = null,
     val directMessagePeerName: String? = null,
     /** The agent whose Lounge a `lounge:@agent…` ref names (a Lounge, a thread, task or message in it). */
-    val loungeAgentName: String? = null
+    val loungeAgentName: String? = null,
+    /** The external projection id of a Slack-bridged `externalMentionSpans` chip (`ExternalMention`). */
+    val externalProjectionId: String? = null
 )
 
 enum class RaftRichTextActionKind(val wireValue: String) {
@@ -258,7 +262,9 @@ data class RaftRichTextContext(
     val inlineContentScope: String? = null,
     val knownDirectMessagePeers: Set<String> = emptySet(),
     /** This server's agents by current name: a `lounge:@agent…` ref resolves among them ([resolveRaftLoungeRefAgent]). */
-    val knownLoungeAgents: Set<String> = emptySet()
+    val knownLoungeAgents: Set<String> = emptySet(),
+    /** Slack-bridge external mention spans for the message body (UTF-16 offsets into raw `body`). */
+    val externalMentionSpans: List<ExternalMentionSpan> = emptyList()
 )
 
 /**
@@ -300,7 +306,10 @@ fun buildRaftRichTextDocument(
             parserContent,
             highlightedMentions = context.viewerScopedHighlightedMentions(),
             isTagValid = validator,
-            inlineContentScope = context.inlineContentScope
+            inlineContentScope = context.inlineContentScope,
+            rawBody = body,
+            normalizedBody = content,
+            externalMentionSpans = context.externalMentionSpans
         )
     return buildRaftRichTextDocumentFromMarkdownPlan(
         source = body,
@@ -458,6 +467,7 @@ private fun RaftRichTextContext.toMarkdownTagValidator(): (ThreadMarkdownTag) ->
                 }
             ThreadMarkdownTagKind.UserMention ->
                 mentionKeys.contains(tag.label.removePrefix("@").trim().lowercase())
+            ThreadMarkdownTagKind.ExternalMention -> true
             ThreadMarkdownTagKind.Message ->
                 if (tag.loungeAgentName != null) {
                     tag.loungeResolves()
@@ -506,7 +516,8 @@ private fun ThreadMarkdownTag.toRichTextAction(id: String): RaftRichTextAction =
         channelName = channelName,
         threadShortId = threadShortId,
         directMessagePeerName = directMessagePeerName,
-        loungeAgentName = loungeAgentName
+        loungeAgentName = loungeAgentName,
+        externalProjectionId = externalProjectionId
     )
 
 private fun ThreadMarkdownTag.toRichTextChromeKind(
@@ -514,6 +525,7 @@ private fun ThreadMarkdownTag.toRichTextChromeKind(
     active: Boolean
 ): RaftRichTextChromeKind =
     when {
+        kind == ThreadMarkdownTagKind.ExternalMention -> RaftRichTextChromeKind.OrdinaryMention
         active &&
             (
                 kind == ThreadMarkdownTagKind.ChannelThread ||
@@ -547,6 +559,7 @@ private fun ThreadMarkdownTagKind.toRichTextRefKind(): RaftRichTextRefKind =
         ThreadMarkdownTagKind.Task -> RaftRichTextRefKind.Task
         ThreadMarkdownTagKind.Message -> RaftRichTextRefKind.Message
         ThreadMarkdownTagKind.UserMention -> RaftRichTextRefKind.UserMention
+        ThreadMarkdownTagKind.ExternalMention -> RaftRichTextRefKind.ExternalMention
         ThreadMarkdownTagKind.Lounge -> RaftRichTextRefKind.Lounge
         ThreadMarkdownTagKind.LoungeThread -> RaftRichTextRefKind.LoungeThread
     }
@@ -630,6 +643,10 @@ private fun RaftRichTextAction.toGoldenJson(): String =
         loungeAgentName?.let {
             append(",")
             appendJsonField("loungeAgentName", it)
+        }
+        externalProjectionId?.let {
+            append(",")
+            appendJsonField("externalProjectionId", it)
         }
         append("}")
     }

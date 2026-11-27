@@ -650,17 +650,23 @@ internal fun List<RaftThreadMessageItem>.withUniqueMessageListKeys(): ThreadMess
 internal data class ThreadMessageMarkdownRenderSignature(
     val renderIdentity: String,
     val bodyLength: Int,
-    val bodyHash: Int
+    val bodyHash: Int,
+    val externalMentionSpansHash: Int = 0
 ) {
     val inlineContentScope: String =
-        "$renderIdentity:$bodyLength:${bodyHash.toString(16)}"
+        if (externalMentionSpansHash == 0) {
+            "$renderIdentity:$bodyLength:${bodyHash.toString(16)}"
+        } else {
+            "$renderIdentity:$bodyLength:${bodyHash.toString(16)}:${externalMentionSpansHash.toString(16)}"
+        }
 }
 
 internal fun RaftThreadMessageItem.threadMarkdownRenderSignature(): ThreadMessageMarkdownRenderSignature =
     ThreadMessageMarkdownRenderSignature(
         renderIdentity = threadMessageRenderIdentity(),
         bodyLength = body.length,
-        bodyHash = body.hashCode()
+        bodyHash = body.hashCode(),
+        externalMentionSpansHash = if (externalMentionSpans.isEmpty()) 0 else externalMentionSpans.hashCode()
     )
 
 internal data class ThreadMessageActionCardSignature(

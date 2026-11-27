@@ -19,11 +19,17 @@ import build.raft.app.raftArgbHex
 import build.raft.app.raftMultiWeightFontFamily
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
+import build.raft.app.model.ExternalMentionSpan
 import build.raft.app.model.TaskStatus
 import build.raft.app.RaftAppSpacing
+import build.raft.app.members.LocalRaftExternalMentionPinRegistry
+import build.raft.app.members.RaftExternalMentionPinRegistry
+import build.raft.app.members.RaftMarkdownExternalMentionAnnotationTag
 import build.raft.app.members.RaftMarkdownMentionAnnotationTag
 import build.raft.app.members.RaftMarkdownMentionPreviewCardHost
+import build.raft.app.members.encodeRaftExternalMentionAnnotation
 import build.raft.app.members.rememberRaftMarkdownMentionPreviewCards
+import com.tencent.kuiklybase.markdown.utils.EntityConverter
 import build.raft.app.RaftType
 import build.raft.app.withRaftUserContentLocale
 import build.raft.app.ReplyCacheProvenance
@@ -39,6 +45,7 @@ import build.raft.app.withResolvedRaftFontFamily
 import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import build.raft.app.base.Utils
 import build.raft.designsystem.tokens.RaftOpacity
 import androidx.compose.runtime.LaunchedEffect
@@ -213,7 +220,12 @@ data class ThreadMarkdownTag(
      * [ThreadMarkdownTagKind.Lounge] / [ThreadMarkdownTagKind.LoungeThread], and on a task or message
      * in a Lounge.
      */
-    val loungeAgentName: String? = null
+    val loungeAgentName: String? = null,
+    /**
+     * Slack-bridge external mention span projection id (slock #17299): set on
+     * [ThreadMarkdownTagKind.ExternalMention] chips.
+     */
+    val externalProjectionId: String? = null
 )
 
 internal typealias RaftMessagePermalinkLabelResolver =
@@ -287,6 +299,8 @@ enum class ThreadMarkdownTagKind {
     Task,
     Message,
     UserMention,
+    /** Slack-bridged external member picked in Slack (`externalMentionSpans`, slock #17299). */
+    ExternalMention,
     /** `lounge:@agent`: the agent's Lounge. */
     Lounge,
     /** `lounge:@agent:<short id>`: a thread in the agent's Lounge. */
@@ -313,6 +327,7 @@ internal enum class MarkdownInlineTokenKind {
     Task,
     Message,
     UserMention,
+    ExternalMention,
     Lounge,
     LoungeThread
 }
@@ -407,7 +422,9 @@ internal data class MarkdownInlineTokenPlan(
 private data class MarkdownInlineSyntaxCacheKey(
     val content: String,
     val inlineContentScope: String?,
-    val baseOffset: Int
+    val baseOffset: Int,
+    val rawBody: String = "",
+    val externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
 )
 
 private data class MarkdownInlineTokenState(
@@ -443,20 +460,28 @@ internal class RaftMarkdownInlineTokenPlanner(
         isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultRaftMarkdownTagValidity,
         resolveTagLabel: ((ThreadMarkdownTag) -> String?)? = null,
         inlineContentScope: String? = null,
-        baseOffset: Int = 0
+        baseOffset: Int = 0,
+        rawBody: String = content,
+        normalizedBody: String = rawBody,
+        externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
     ): MarkdownInlineTokenPlan {
         val syntaxKey =
             MarkdownInlineSyntaxCacheKey(
                 content = content,
                 inlineContentScope = inlineContentScope,
-                baseOffset = baseOffset
+                baseOffset = baseOffset,
+                rawBody = if (externalMentionSpans.isEmpty()) "" else rawBody,
+                externalMentionSpans = externalMentionSpans,
             )
         val tokenInputs =
             synchronized(lock) {
                 syntaxEntries.remove(syntaxKey)?.also { cached -> syntaxEntries[syntaxKey] = cached }
             } ?: content.markdownInlineTokenInputs(
                 baseOffset = baseOffset,
-                inlineContentScope = inlineContentScope
+                inlineContentScope = inlineContentScope,
+                rawBody = rawBody,
+                normalizedBody = normalizedBody,
+                externalMentionSpans = externalMentionSpans,
             ).also { computed ->
                 synchronized(lock) {
                     syntaxEntries.remove(syntaxKey)?.let { cached ->
@@ -471,7 +496,8 @@ internal class RaftMarkdownInlineTokenPlanner(
             highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
         val tokenStates =
             tokenInputs.validatedTagMatches.map { match ->
-                val valid = isTagValid(match.tag)
+                val isExternal = match.tag.kind == ThreadMarkdownTagKind.ExternalMention
+                val valid = isExternal || isTagValid(match.tag)
                 MarkdownInlineTokenState(
                     valid = valid,
                     highlighted =
@@ -479,14 +505,15 @@ internal class RaftMarkdownInlineTokenPlanner(
                             match.tag.kind == ThreadMarkdownTagKind.UserMention &&
                             highlightedMentionKeys.containsThreadMention(match.tag.label),
                     resolvedLabel =
-                        if (valid) {
-                            resolveTagLabel
-                                ?.invoke(match.tag)
-                                ?.trim()
-                                ?.takeIf { it.isNotBlank() }
-                                ?: threadMarkdownTagDisplayLabel(match.tag.label)
-                        } else {
-                            null
+                        when {
+                            !valid -> null
+                            isExternal -> match.tag.label
+                            else ->
+                                resolveTagLabel
+                                    ?.invoke(match.tag)
+                                    ?.trim()
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?: threadMarkdownTagDisplayLabel(match.tag.label)
                         }
                 )
             }
@@ -547,7 +574,10 @@ internal object RaftMarkdownInlineTokenRegistry {
         isTagValid: (ThreadMarkdownTag) -> Boolean = ::defaultRaftMarkdownTagValidity,
         resolveTagLabel: ((ThreadMarkdownTag) -> String?)? = null,
         inlineContentScope: String? = null,
-        baseOffset: Int = 0
+        baseOffset: Int = 0,
+        rawBody: String = content,
+        normalizedBody: String = rawBody,
+        externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
     ): MarkdownInlineTokenPlan =
         planner.plan(
             content = content,
@@ -555,7 +585,10 @@ internal object RaftMarkdownInlineTokenRegistry {
             isTagValid = isTagValid,
             resolveTagLabel = resolveTagLabel,
             inlineContentScope = inlineContentScope,
-            baseOffset = baseOffset
+            baseOffset = baseOffset,
+            rawBody = rawBody,
+            normalizedBody = normalizedBody,
+            externalMentionSpans = externalMentionSpans,
         )
 }
 
@@ -576,6 +609,7 @@ private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTok
         ThreadMarkdownTagKind.Task -> MarkdownInlineTokenKind.Task
         ThreadMarkdownTagKind.Message -> MarkdownInlineTokenKind.Message
         ThreadMarkdownTagKind.UserMention -> MarkdownInlineTokenKind.UserMention
+        ThreadMarkdownTagKind.ExternalMention -> MarkdownInlineTokenKind.ExternalMention
         ThreadMarkdownTagKind.Lounge -> MarkdownInlineTokenKind.Lounge
         ThreadMarkdownTagKind.LoungeThread -> MarkdownInlineTokenKind.LoungeThread
     }
@@ -613,7 +647,7 @@ private fun String.decodeThreadEscapedLineBreaks(): String =
  * Markdown parser finds (same rules as rendering). A `$$` span whose text starts with an
  * escaped line break is left out: once decoded it is a `$$` block, whose lines are decoded.
  */
-private fun String.threadEscapedLineBreakLiteralRanges(): List<IntRange> {
+internal fun String.threadEscapedLineBreakLiteralRanges(): List<IntRange> {
     if (!contains('$') && !contains('`')) return emptyList()
     val tree = MarkdownParser(RaftGFMFlavourDescriptor()).buildMarkdownTreeOrPlainText(this, source = "escaped_line_breaks")
     val ranges = mutableListOf<IntRange>()
@@ -650,15 +684,49 @@ private data class MarkdownInlineTokenInputs(
 
 private fun String.markdownInlineTokenInputs(
     baseOffset: Int = 0,
-    inlineContentScope: String? = null
+    inlineContentScope: String? = null,
+    rawBody: String = this,
+    normalizedBody: String = rawBody,
+    externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
 ): MarkdownInlineTokenInputs {
     val inlineSyntax = parseMarkdownInlineSyntax(this)
     val inlineContentIdPrefix = inlineContentScope.toRaftMarkdownInlineContentIdPrefix()
+    // slock #17299: Slack-bridge external mention spans run before pattern matchers so text
+    // inside a picked member's label (or a whole code-span label like `` `+slack:www.example.com` ``)
+    // is never turned into a Raft ref or rendered with inline-code chrome.
+    val resolvedExternalSpans =
+        if (externalMentionSpans.isEmpty()) {
+            emptyList()
+        } else {
+            resolveExternalMentionSpansInMarkdown(
+                rawBody = rawBody,
+                normalizedBody = normalizedBody,
+                parserContent = this,
+                spans = externalMentionSpans,
+            )
+        }
+    fun overlapsExternalSpan(startOffset: Int, endOffset: Int): Boolean =
+        resolvedExternalSpans.any { span -> startOffset < span.range.last + 1 && endOffset > span.range.first }
+
+    val externalTagMatches =
+        resolvedExternalSpans.map { span ->
+            ThreadInlineTagMatch(
+                id = "$inlineContentIdPrefix:ext:${baseOffset + span.range.first}",
+                tag =
+                    ThreadMarkdownTag(
+                        label = span.visibleText,
+                        kind = ThreadMarkdownTagKind.ExternalMention,
+                        externalProjectionId = span.projectionId,
+                    ),
+                range = span.range,
+            )
+        }
     // slock #14349: an `@handle` inside a block quote is someone else's words, drawn as text
     // (the Server does not notify it). Other refs in a quote stay chips.
     val quotes = if (inlineSyntax.raftRefs.isEmpty()) emptyList() else raftMarkdownQuoteRanges(this)
-    val validatedTagMatches =
+    val validatedRaftRefMatches =
         inlineSyntax.raftRefs.mapNotNull { ref ->
+            if (overlapsExternalSpan(ref.startOffset, ref.endOffset)) return@mapNotNull null
             ref.sourceText.toThreadMarkdownTagOrNull()?.takeUnless { tag ->
                 tag.kind == ThreadMarkdownTagKind.UserMention && quotes.quotes(ref.startOffset, ref.endOffset)
             }?.let { tag ->
@@ -670,14 +738,22 @@ private fun String.markdownInlineTokenInputs(
                 )
             }
         }
-    val inlineCodeMatches =
-        inlineSyntax.inlineCodeSpans.map { span ->
-            ThreadInlineCodeMatch(
-                id = "slock-code:${baseOffset + span.startOffset}",
-                code = span.codeText,
-                range = span.startOffset until span.endOffset,
-            )
+    val validatedTagMatches =
+        if (externalTagMatches.isEmpty()) {
+            validatedRaftRefMatches
+        } else {
+            (externalTagMatches + validatedRaftRefMatches).sortedBy { it.range.first }
         }
+    val inlineCodeMatches =
+        inlineSyntax.inlineCodeSpans
+            .filterNot { span -> overlapsExternalSpan(span.startOffset, span.endOffset) }
+            .map { span ->
+                ThreadInlineCodeMatch(
+                    id = "slock-code:${baseOffset + span.startOffset}",
+                    code = span.codeText,
+                    range = span.startOffset until span.endOffset,
+                )
+            }
     return MarkdownInlineTokenInputs(
         inlineCodeMatches = inlineCodeMatches,
         validatedTagMatches = validatedTagMatches
@@ -874,18 +950,24 @@ internal fun raftMarkdownAnnotator(
     softLineBreaksAsNewLines: Boolean = true,
     taskStatuses: Map<Int, TaskStatus>? = null,
     taskStatusesPending: Boolean = false,
+    rawBody: String = content,
+    normalizedBody: String = rawBody,
+    externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
     tokenPlan: MarkdownInlineTokenPlan =
         RaftMarkdownInlineTokenRegistry.plan(
             content,
             highlightedMentions,
             isTagValid,
             resolveTagLabel = resolveTagLabel,
-            inlineContentScope = inlineContentScope
+            inlineContentScope = inlineContentScope,
+            rawBody = rawBody,
+            normalizedBody = normalizedBody,
+            externalMentionSpans = externalMentionSpans,
         )
 ): MarkdownAnnotator {
     val document =
         buildRaftRichTextDocumentFromMarkdownPlan(
-            source = content,
+            source = rawBody,
             content = content,
             tokenPlan = tokenPlan,
             activeTagKey = activeTagKey
@@ -937,14 +1019,27 @@ internal fun raftMarkdownAnnotator(
     }
     return markdownAnnotator(
         annotateSequence = { markdownContent, children, startIndex, _ ->
-            consumeRaftRichTextSplitTagSequence(
-                markdownContent = markdownContent,
-                children = children,
-                startIndex = startIndex,
-                rendererInput = rendererInput,
-                onOpenAction = onOpenAction,
-                resolveActionLabel = resolveActionLabel
-            )
+            val externalConsumed =
+                consumeRaftRichTextExternalMentionSequence(
+                    markdownContent = markdownContent,
+                    children = children,
+                    startIndex = startIndex,
+                    rendererInput = rendererInput,
+                    onOpenAction = onOpenAction,
+                    resolveActionLabel = resolveActionLabel,
+                )
+            if (externalConsumed > 0) {
+                externalConsumed
+            } else {
+                consumeRaftRichTextSplitTagSequence(
+                    markdownContent = markdownContent,
+                    children = children,
+                    startIndex = startIndex,
+                    rendererInput = rendererInput,
+                    onOpenAction = onOpenAction,
+                    resolveActionLabel = resolveActionLabel
+                )
+            }
         },
         annotate = { markdownContent, child, _ ->
             if (child.parent?.type == MarkdownElementTypes.CODE_SPAN) {
@@ -990,6 +1085,15 @@ private data class RaftRichTextRendererInput(
         document.inlineTokens
             .filter { token -> token.kind == RaftRichTextInlineKind.RaftRef && token.actionId != null }
             .sortedBy { token -> token.range.start }
+    val externalMentionTokens: List<RaftRichTextInlineToken> =
+        raftRefTokens.filter { token -> token.refKind == RaftRichTextRefKind.ExternalMention }
+    val hasExternalMentionTokens: Boolean = externalMentionTokens.isNotEmpty()
+    private val nonExternalRaftRefTokens: List<RaftRichTextInlineToken> =
+        if (hasExternalMentionTokens) {
+            raftRefTokens.filter { token -> token.refKind != RaftRichTextRefKind.ExternalMention }
+        } else {
+            raftRefTokens
+        }
     private val actionsById: Map<String, RaftRichTextAction> =
         document.actions.associateBy { action -> action.id }
 
@@ -1026,23 +1130,33 @@ private data class RaftRichTextRendererInput(
     fun mentionReadInlineContent(): Map<String, InlineTextContent> =
         if (hasMentionRefs && mentionReadStates() != null) raftMarkdownMentionReadInlineContent(mentionReadFontSize) else emptyMap()
 
+    fun externalMentionTokenAtExactRange(start: Int, endExclusive: Int): RaftRichTextInlineToken? =
+        externalMentionTokens.firstOrNull { token ->
+            token.range.start == start && token.range.endExclusive == endExclusive
+        }
+
+    fun firstExternalMentionTokenStartingInRange(start: Int, endExclusive: Int): RaftRichTextInlineToken? =
+        externalMentionTokens.firstOrNull { token ->
+            token.range.start >= start && token.range.start < endExclusive
+        }
+
     fun raftRefTokensStartingInRange(start: Int, endExclusive: Int): List<RaftRichTextInlineToken> =
-        raftRefTokens.filter { token ->
+        nonExternalRaftRefTokens.filter { token ->
             token.range.start >= start && token.range.start < endExclusive && token.range.endExclusive <= endExclusive
         }
 
     fun raftRefTokensStartingInTextNode(start: Int, endExclusive: Int): List<RaftRichTextInlineToken> =
-        raftRefTokens.filter { token ->
+        nonExternalRaftRefTokens.filter { token ->
             token.range.start >= start && token.range.start < endExclusive
         }
 
     fun raftRefTokensMatchingText(text: String, minStart: Int): List<RaftRichTextInlineToken> {
         val matches =
-            raftRefTokens.filter { token ->
+            nonExternalRaftRefTokens.filter { token ->
                 token.range.start >= minStart && token.sourceText.isNotEmpty() && text.contains(token.sourceText)
             }
         return matches.ifEmpty {
-            raftRefTokens.filter { token -> token.sourceText.isNotEmpty() && text.contains(token.sourceText) }
+            nonExternalRaftRefTokens.filter { token -> token.sourceText.isNotEmpty() && text.contains(token.sourceText) }
         }
     }
 }
@@ -1067,6 +1181,161 @@ private data class RaftRichTextSplitTagStart(
     val relativeStart: Int,
     val consumedPrefix: String
 )
+
+private data class PlannedExternalMentionEmit(
+    val token: RaftRichTextInlineToken,
+    val startChildIndex: Int,
+    val endChildIndex: Int,
+)
+
+/**
+ * Consumes Slack-bridge `externalMentionSpans` tokens in `annotateSequence` before normal node
+ * rendering: handles both whole `CODE_SPAN` labels (e.g. `` `+slack:www.example.com` ``, skipping
+ * inline-code chrome) and phrasing leaf runs spanning one or more sibling tokens (including
+ * adjacent spans sharing a boundary `TEXT` node). Strictly matches exact document offsets only.
+ */
+private fun AnnotatedString.Builder.consumeRaftRichTextExternalMentionSequence(
+    markdownContent: String,
+    children: List<ASTNode>,
+    startIndex: Int,
+    rendererInput: RaftRichTextRendererInput,
+    onOpenAction: (RaftRichTextAction) -> Unit,
+    resolveActionLabel: ((RaftRichTextAction) -> String?)?,
+): Int {
+    if (!rendererInput.hasExternalMentionTokens) return 0
+    val firstChild = children.getOrNull(startIndex) ?: return 0
+    if (firstChild.parent?.type == MarkdownElementTypes.CODE_SPAN) return 0
+
+    if (firstChild.type == MarkdownElementTypes.CODE_SPAN) {
+        val token = rendererInput.externalMentionTokenAtExactRange(firstChild.startOffset, firstChild.endOffset)
+            ?: return 0
+        appendRaftRichTextToken(
+            token = token,
+            rendererInput = rendererInput,
+            onOpenAction = onOpenAction,
+            resolveActionLabel = resolveActionLabel,
+        )
+        return 1
+    }
+
+    if (!firstChild.isExternalMentionPhrasingLeaf(children, startIndex)) return 0
+    val firstToken =
+        rendererInput.firstExternalMentionTokenStartingInRange(firstChild.startOffset, firstChild.endOffset)
+            ?: return 0
+
+    // Pre-plan every sibling consumed before mutating the builder so an unexpected range mismatch
+    // never leaves partial output behind.
+    val planned = mutableListOf<PlannedExternalMentionEmit>()
+    var scanChildIndex = startIndex
+    var scanToken: RaftRichTextInlineToken? = firstToken
+    while (scanToken != null) {
+        var endIndex = scanChildIndex
+        while (
+            endIndex < children.size &&
+            children[endIndex].isExternalMentionPhrasingLeaf(children, endIndex) &&
+            children[endIndex].endOffset < scanToken.range.endExclusive
+        ) {
+            endIndex++
+        }
+        if (
+            endIndex >= children.size ||
+            !children[endIndex].isExternalMentionPhrasingLeaf(children, endIndex) ||
+            children[endIndex].endOffset < scanToken.range.endExclusive
+        ) {
+            break
+        }
+        planned += PlannedExternalMentionEmit(scanToken, scanChildIndex, endIndex)
+        scanChildIndex = endIndex
+        val cursorOffset = scanToken.range.endExclusive
+        val boundaryChild = children[scanChildIndex]
+        scanToken =
+            if (cursorOffset < boundaryChild.endOffset) {
+                rendererInput.firstExternalMentionTokenStartingInRange(cursorOffset, boundaryChild.endOffset)
+            } else {
+                null
+            }
+    }
+    if (planned.isEmpty()) return 0
+
+    var cursorOffset = firstChild.startOffset
+    planned.forEach { emit ->
+        val startLeaf = children[emit.startChildIndex]
+        if (emit.token.range.start > cursorOffset) {
+            appendExternalMentionHostLeafSlice(
+                markdownContent = markdownContent,
+                leaf = startLeaf,
+                sliceStart = cursorOffset,
+                sliceEnd = emit.token.range.start,
+                rendererInput = rendererInput,
+                onOpenAction = onOpenAction,
+                resolveActionLabel = resolveActionLabel,
+            )
+        }
+        appendRaftRichTextToken(
+            token = emit.token,
+            rendererInput = rendererInput,
+            onOpenAction = onOpenAction,
+            resolveActionLabel = resolveActionLabel,
+        )
+        cursorOffset = emit.token.range.endExclusive
+    }
+
+    val lastIndex = planned.last().endChildIndex
+    val lastLeaf = children[lastIndex]
+    if (cursorOffset < lastLeaf.endOffset) {
+        appendExternalMentionHostLeafSlice(
+            markdownContent = markdownContent,
+            leaf = lastLeaf,
+            sliceStart = cursorOffset,
+            sliceEnd = lastLeaf.endOffset,
+            rendererInput = rendererInput,
+            onOpenAction = onOpenAction,
+            resolveActionLabel = resolveActionLabel,
+        )
+    }
+    return lastIndex - startIndex + 1
+}
+
+private fun AnnotatedString.Builder.appendExternalMentionHostLeafSlice(
+    markdownContent: String,
+    leaf: ASTNode,
+    sliceStart: Int,
+    sliceEnd: Int,
+    rendererInput: RaftRichTextRendererInput,
+    onOpenAction: (RaftRichTextAction) -> Unit,
+    resolveActionLabel: ((RaftRichTextAction) -> String?)?,
+) {
+    if (sliceEnd <= sliceStart) return
+    val rawSlice = markdownContent.substring(sliceStart, sliceEnd)
+    when (leaf.type) {
+        MarkdownTokenTypes.TEXT,
+        RaftMarkdownTokenTypes.REFERENCE -> {
+            val plainText: (String) -> String = { plain ->
+                EntityConverter.replaceEntities(
+                    plain,
+                    processEntities = false,
+                    processEscapes = true,
+                ).withRaftWebTextBreaks(leaf)
+            }
+            if (!appendRaftRichTextSegment(
+                    text = rawSlice,
+                    documentOffset = sliceStart,
+                    rendererInput = rendererInput,
+                    onOpenAction = onOpenAction,
+                    resolveActionLabel = resolveActionLabel,
+                    allowLocalFallback = false,
+                    plainText = plainText,
+                )
+            ) {
+                append(plainText(rawSlice))
+            }
+        }
+        MarkdownTokenTypes.ESCAPED_BACKTICKS ->
+            append(EntityConverter.replaceEntities(rawSlice, processEntities = false, processEscapes = true))
+        MarkdownTokenTypes.WHITE_SPACE -> if (length > 0) append(' ')
+        else -> append(rawSlice)
+    }
+}
 
 private fun AnnotatedString.Builder.consumeRaftRichTextSplitTagSequence(
     markdownContent: String,
@@ -1256,7 +1525,13 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
     resolveActionLabel: ((RaftRichTextAction) -> String?)?
 ) {
     val action = rendererInput.actionFor(token) ?: return append(token.text)
-    val label = resolveRaftRichTextTokenLabel(token, resolveActionLabel?.invoke(action))
+    val externalMention = action.refKind == RaftRichTextRefKind.ExternalMention
+    val label =
+        if (externalMention) {
+            token.text
+        } else {
+            resolveRaftRichTextTokenLabel(token, resolveActionLabel?.invoke(action))
+        }
     if (action.refKind == RaftRichTextRefKind.Task) {
         val taskStatuses = rendererInput.taskStatusesOrNull()
         if (taskStatuses != null) {
@@ -1283,6 +1558,13 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
         // An @mention's words, for its profile preview card (RaftMarkdownMentionPreviewCards).
         val mention = action.refKind == RaftRichTextRefKind.UserMention
         if (mention) pushStringAnnotation(tag = RaftMarkdownMentionAnnotationTag, annotation = action.label)
+        val externalProjectionId = action.externalProjectionId?.takeIf { externalMention && it.isNotEmpty() }
+        if (externalProjectionId != null) {
+            pushStringAnnotation(
+                tag = RaftMarkdownExternalMentionAnnotationTag,
+                annotation = encodeRaftExternalMentionAnnotation(action.id, externalProjectionId, label)
+            )
+        }
         withLink(
             LinkAnnotation.Clickable(
                 tag = action.id,
@@ -1306,6 +1588,7 @@ private fun AnnotatedString.Builder.appendRaftRichTextToken(
                 if (fontSizeStyle == null) appendChipText() else withStyle(fontSizeStyle) { appendChipText() }
             }
         }
+        if (externalProjectionId != null) pop()
         if (mention) pop()
         pop()
     }
@@ -1375,13 +1658,15 @@ private fun RaftRichTextAction.toThreadMarkdownTag(): ThreadMarkdownTag =
                 RaftRichTextRefKind.Task -> ThreadMarkdownTagKind.Task
                 RaftRichTextRefKind.Message -> ThreadMarkdownTagKind.Message
                 RaftRichTextRefKind.UserMention -> ThreadMarkdownTagKind.UserMention
+                RaftRichTextRefKind.ExternalMention -> ThreadMarkdownTagKind.ExternalMention
                 RaftRichTextRefKind.Lounge -> ThreadMarkdownTagKind.Lounge
                 RaftRichTextRefKind.LoungeThread -> ThreadMarkdownTagKind.LoungeThread
             },
         channelName = channelName,
         threadShortId = threadShortId,
         directMessagePeerName = directMessagePeerName,
-        loungeAgentName = loungeAgentName
+        loungeAgentName = loungeAgentName,
+        externalProjectionId = externalProjectionId
     )
 
 /**
@@ -1672,6 +1957,13 @@ private object RaftMarkdownTextProvider : TextProvider {
         // An @mention's profile card under a mouse or trackpad pointer (web MentionLink), where the
         // page provides who mentions are (the Thread message list); otherwise the text as it was.
         val mentionCards = rememberRaftMarkdownMentionPreviewCards(resolvedText)
+        val externalMentionPinRegistry = LocalRaftExternalMentionPinRegistry.current
+        if (externalMentionPinRegistry != null && mentionCards != null && mentionCards.hasExternalSpans) {
+            DisposableEffect(externalMentionPinRegistry, mentionCards) {
+                externalMentionPinRegistry.register(mentionCards)
+                onDispose { externalMentionPinRegistry.unregister(mentionCards) }
+            }
+        }
         // An App link card chip's item card under a mouse or trackpad pointer (web AppLinkHoverCard).
         val appLinkCards = rememberRaftMarkdownAppLinkHoverCards(resolvedText)
         // The hovered link's destination in the page's link status (a browser's status bar).
@@ -2544,7 +2836,11 @@ fun RaftMarkdownBody(
     // The floor under the text's line height that keeps inline chips (mentions, refs) clear of
     // the next line. Surfaces whose web line box is tighter than the chips (attachment comment
     // cards, footnote 13/18) pass their own line height.
-    minInlineLineHeight: TextUnit = RaftMarkdownMinimumInlineLineHeight
+    minInlineLineHeight: TextUnit = RaftMarkdownMinimumInlineLineHeight,
+    // Slack-bridge external mention spans (`externalMentionSpans`, slock #17299): UTF-16 offsets
+    // into the raw `body` passed above. Only the message's own body passes these (never quotes,
+    // translations, or forward notes).
+    externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
 ) {
     // task #441: print the factual renderer-capability marker so visual capture
     // records this platform's caps (collector: scripts/collect_richtext_caps.py;
@@ -2673,18 +2969,24 @@ fun RaftMarkdownBody(
         }
     val tokenPlan =
         remember(
+            body,
+            content,
             markdownParserContent,
             highlightedMentions,
             isTagValid,
             resolveTagLabel,
-            inlineContentScope
+            inlineContentScope,
+            externalMentionSpans,
         ) {
             RaftMarkdownInlineTokenRegistry.plan(
                 parserContent,
                 highlightedMentions,
                 isTagValid,
                 resolveTagLabel = resolveTagLabel,
-                inlineContentScope = inlineContentScope
+                inlineContentScope = inlineContentScope,
+                rawBody = body,
+                normalizedBody = content,
+                externalMentionSpans = externalMentionSpans,
             )
         }
     val bodyActiveActionId =
@@ -2738,11 +3040,18 @@ fun RaftMarkdownBody(
             }
         )
     }
+    val externalMentionPinRegistry =
+        remember(externalMentionSpans.isNotEmpty()) {
+            if (externalMentionSpans.isNotEmpty()) RaftExternalMentionPinRegistry() else null
+        }
     val mentionReadFontSize = markdownTextStyle.fontSize.takeIf { it.isSp } ?: RaftMarkdownBodyFontSize
-    val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey, softLineBreaksAsNewLines, mentionReadFontSize) {
+    val annotator: MarkdownAnnotator = remember(richTextDocument, performanceKey, softLineBreaksAsNewLines, mentionReadFontSize, externalMentionPinRegistry) {
         raftMarkdownAnnotator(
             document = richTextDocument,
             onOpenAction = { action: RaftRichTextAction ->
+                if (action.refKind == RaftRichTextRefKind.ExternalMention) {
+                    externalMentionPinRegistry?.pin(action.id)
+                }
                 val tag = action.toThreadMarkdownTag()
                 currentOnOpenTagAction?.invoke(tag, action.id) ?: currentOnOpenTag(tag)
             },
@@ -2808,6 +3117,9 @@ fun RaftMarkdownBody(
             // read_receipts_v0 mention badges read the provided states at annotation time.
             if (mentionReadStates != null) {
                 addAll(raftMarkdownMentionReadRevision(richTextDocument.actions, mentionReadStates))
+            }
+            if (externalMentionSpans.isNotEmpty()) {
+                add("extSpans:${externalMentionSpans.hashCode().toString(16)}")
             }
         }
     val padding = remember {
@@ -2972,7 +3284,8 @@ fun RaftMarkdownBody(
                     annotationRevision = annotationRevision,
                     onClick = onClick,
                     uriHandler = uriHandler,
-                    rowCensusToken = rowCensusToken
+                    rowCensusToken = rowCensusToken,
+                    externalMentionPinRegistry = externalMentionPinRegistry,
                 )
             }
         }
@@ -2980,7 +3293,7 @@ fun RaftMarkdownBody(
         // OFF-zero-work provider set (reviewed round 4): with diagnostics OFF the
         // census Local is NOT part of the vararg at all — the base array is used
         // by identity, so the production provider scope is unchanged by P1.
-        val markdownProvidedValues = raftMarkdownProvidedValuesWith(
+        val baseProvidedValues =
             arrayOf(
                 LocalTextProvider provides RaftMarkdownTextProvider,
                 LocalUriHandler provides uriHandler,
@@ -2992,6 +3305,12 @@ fun RaftMarkdownBody(
                 LocalRaftMarkdownBlockMargins provides blockMargins,
                 LocalRaftMarkdownBlockCards provides blockCards,
                 LocalRaftMarkdownAfterListParagraph provides listParagraphCards
+            )
+        val markdownProvidedValues = raftMarkdownProvidedValuesWith(
+            raftMarkdownProvidedValuesWith(
+                baseProvidedValues,
+                LocalRaftExternalMentionPinRegistry,
+                externalMentionPinRegistry,
             ),
             LocalRaftMarkdownRowRenderCostSink,
             rowCensusToken
@@ -3085,6 +3404,7 @@ private fun RaftMarkdownSingleParagraphLightBody(
     onClick: (() -> Unit)?,
     uriHandler: UriHandler,
     rowCensusToken: RaftMarkdownRowCensusToken?,
+    externalMentionPinRegistry: RaftExternalMentionPinRegistry? = null,
 ) {
     val referenceLinkHandler = remember(paragraphNode) { ReferenceLinkHandlerImpl() }
     val extendedSpans = markdownExtendedSpans()
@@ -3098,21 +3418,25 @@ private fun RaftMarkdownSingleParagraphLightBody(
             "contentLength=${content.length} nodeListSize=1"
     }
     val lightProvidedValues = raftMarkdownProvidedValuesWith(
-        arrayOf(
-            LocalMarkdownColors provides colors,
-            LocalMarkdownTypography provides typography,
-            LocalMarkdownExtendedSpans provides extendedSpans,
-            LocalMarkdownAnimations provides animations,
-            LocalImageTransformer provides imageTransformer,
-            LocalImageLinkHandler provides imageLinkHandler,
-            LocalMarkdownAnnotator provides annotator,
-            LocalReferenceLinkHandler provides referenceLinkHandler,
-            LocalTextProvider provides RaftMarkdownTextProvider,
-            LocalUriHandler provides uriHandler,
-            LocalRaftMarkdownBodyClick provides onClick,
-            LocalRaftMarkdownAnnotationRevision provides annotationRevision,
-            LocalRaftMarkdownParagraphFillWidth provides fillWidth,
-            LocalRaftMarkdownRenderTiming provides nodeTiming
+        raftMarkdownProvidedValuesWith(
+            arrayOf(
+                LocalMarkdownColors provides colors,
+                LocalMarkdownTypography provides typography,
+                LocalMarkdownExtendedSpans provides extendedSpans,
+                LocalMarkdownAnimations provides animations,
+                LocalImageTransformer provides imageTransformer,
+                LocalImageLinkHandler provides imageLinkHandler,
+                LocalMarkdownAnnotator provides annotator,
+                LocalReferenceLinkHandler provides referenceLinkHandler,
+                LocalTextProvider provides RaftMarkdownTextProvider,
+                LocalUriHandler provides uriHandler,
+                LocalRaftMarkdownBodyClick provides onClick,
+                LocalRaftMarkdownAnnotationRevision provides annotationRevision,
+                LocalRaftMarkdownParagraphFillWidth provides fillWidth,
+                LocalRaftMarkdownRenderTiming provides nodeTiming
+            ),
+            LocalRaftExternalMentionPinRegistry,
+            externalMentionPinRegistry,
         ),
         LocalRaftMarkdownRowRenderCostSink,
         rowCensusToken
@@ -3622,7 +3946,7 @@ internal fun raftMarkdownInlineTagWidthSp(
     kind: ThreadMarkdownTagKind,
     highlighted: Boolean = false
 ) =
-    if (kind == ThreadMarkdownTagKind.UserMention && !highlighted) {
+    if ((kind == ThreadMarkdownTagKind.UserMention || kind == ThreadMarkdownTagKind.ExternalMention) && !highlighted) {
         raftMarkdownPlainMentionWidthSp(label)
     } else {
         raftMarkdownInlineChipWidthSp(label, kind)
@@ -3753,6 +4077,10 @@ internal fun threadMarkdownTagActivationKey(tag: ThreadMarkdownTag): String =
             append(":lounge=")
             append(agentName)
         }
+        tag.externalProjectionId?.trim()?.takeIf { it.isNotBlank() }?.let { projectionId ->
+            append(":external=")
+            append(projectionId)
+        }
     }
 
 // Reference styling mirrors raft-ui (message-reference.recipe.ts, lib/inline-chip.ts):
@@ -3824,6 +4152,7 @@ private fun raftRichTextChromeKind(
     active: Boolean = false
 ): RaftRichTextChromeKind =
     when {
+        kind == ThreadMarkdownTagKind.ExternalMention -> RaftRichTextChromeKind.OrdinaryMention
         active &&
             (
                 kind == ThreadMarkdownTagKind.ChannelThread ||

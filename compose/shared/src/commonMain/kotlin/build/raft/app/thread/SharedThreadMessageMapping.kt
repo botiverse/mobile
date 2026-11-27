@@ -490,6 +490,7 @@ internal fun RaftThreadMessageItem.toMessage(
         isSaved = isSaved,
         reactions = reactions.toMessageReactions(currentUserId, currentUserName),
         commentRef = commentRef?.toMessageCommentRef(),
+        externalMentionSpans = if (authorMemberKind == MemberKind.External) externalMentionSpans else emptyList(),
         resolvedQuotes = resolvedQuotes
     )
 }
@@ -666,6 +667,7 @@ internal fun Message.toRaftThreadMessageItem(currentUserId: String?): RaftThread
         commentRef = commentRef?.toRaftThreadCommentRef(),
         forwardBundle = forwardBundle,
         mentions = mentions,
+        externalMentionSpans = externalMentionSpans,
         resolvedQuotes = resolvedQuotes,
         pendingSendContext = pendingSendContext,
         pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() },

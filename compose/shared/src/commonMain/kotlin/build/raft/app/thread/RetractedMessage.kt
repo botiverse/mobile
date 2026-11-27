@@ -34,10 +34,10 @@ internal val Message.isRetracted: Boolean
  * renders its own localized words instead. Returns this item itself when nothing changes.
  */
 internal fun RaftThreadMessageItem.withoutRetractedContent(): RaftThreadMessageItem =
-    if (!isRetracted || (attachments.isEmpty() && reactions.isEmpty() && forwardBundle == null)) {
+    if (!isRetracted || (attachments.isEmpty() && reactions.isEmpty() && forwardBundle == null && externalMentionSpans.isEmpty())) {
         this
     } else {
-        copy(attachments = emptyList(), reactions = emptyList(), forwardBundle = null)
+        copy(attachments = emptyList(), reactions = emptyList(), forwardBundle = null, externalMentionSpans = emptyList())
     }
 
 /** Whether this payload's timeline or origin message [messageId] is retracted. */
@@ -46,10 +46,10 @@ internal fun RaftThreadScreenPayload.isRetractedMessage(messageId: String): Bool
 
 /** The domain-message form of [withoutRetractedContent] (shared thread message cache). */
 internal fun Message.withoutRetractedContent(): Message =
-    if (!isRetracted || (attachments.isEmpty() && reactions.isNullOrEmpty() && forwardBundle == null)) {
+    if (!isRetracted || (attachments.isEmpty() && reactions.isNullOrEmpty() && forwardBundle == null && externalMentionSpans.isEmpty())) {
         this
     } else {
-        copy(attachments = emptyList(), reactions = emptyList(), forwardBundle = null)
+        copy(attachments = emptyList(), reactions = emptyList(), forwardBundle = null, externalMentionSpans = emptyList())
     }
 
 /** [incoming] as retracted when [known] (the same message) already is; otherwise [incoming]. */

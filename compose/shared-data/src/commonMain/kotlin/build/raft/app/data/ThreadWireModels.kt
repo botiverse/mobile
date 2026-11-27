@@ -91,6 +91,8 @@ private val threadMessagesJson = Json {
     val systemSubtype: String? = null,
     /** Resolved mention facts; see [WireMessageMention]. */
     val mentions: List<WireMessageMention> = emptyList(),
+    /** Slack-bridge external mention spans (`ExternalMentionSpan[]`, slock #17299), read leniently. */
+    val externalMentionSpans: JsonElement? = null,
     /**
      * Quote replies verified for this viewer (`ResolvedInlineQuotesMap`, [decodeResolvedInlineQuotes]):
      * on the pages, the sync page and the sender's own send this client reads with this row.

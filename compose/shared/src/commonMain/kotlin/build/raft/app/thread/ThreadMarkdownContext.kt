@@ -20,6 +20,7 @@ import build.raft.app.markdown.threadMarkdownTagDisplayLabel
 import build.raft.app.mentionVisibleLabel
 import build.raft.app.messages
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ExternalMentionSpan
 import build.raft.app.model.TaskSummary
 import build.raft.app.nonBlank
 import build.raft.app.origin
@@ -93,6 +94,7 @@ internal fun resolveThreadMarkdownTagDisplayLabel(
 ): String =
     when (tag.kind) {
         ThreadMarkdownTagKind.UserMention -> labels.labelFor(tag) ?: threadMarkdownTagDisplayLabel(tag.label)
+        ThreadMarkdownTagKind.ExternalMention -> tag.label
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
 
@@ -221,6 +223,7 @@ internal fun ThreadMarkdownTag.isKnownThreadMarkdownTag(
                 else -> label.removePrefix("#").toIntOrNull()?.let { knownTaskNumbers?.contains(it) } == true
             }
         ThreadMarkdownTagKind.UserMention -> label.normalizedThreadMentionLookupKey() in knownMentionNames
+        ThreadMarkdownTagKind.ExternalMention -> true
         // A channel or DM the reader cannot resolve keeps the ref as plain text (Web MessageItem).
         ThreadMarkdownTagKind.Message ->
             if (loungeAgentName != null) {
@@ -536,7 +539,8 @@ internal data class ThreadMarkdownPreparseCandidate(
     val messageId: String? = id,
     // The scope the message row passes to RaftMarkdownBody, so the rich-text document warmed
     // off-main has the row's exact cache key. Null = parse warm only.
-    val inlineContentScope: String? = null
+    val inlineContentScope: String? = null,
+    val externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
 )
 
 private const val ThreadMarkdownPriorityPreparseMessageCount = 4
@@ -726,7 +730,8 @@ internal fun ThreadTimelineSlice.threadVisibleMarkdownPreparsePlan(
                             id = message.threadMessageRenderIdentity(),
                             body = message.body,
                             messageId = message.id,
-                            inlineContentScope = message.threadMarkdownRenderSignature().inlineContentScope
+                            inlineContentScope = message.threadMarkdownRenderSignature().inlineContentScope,
+                            externalMentionSpans = if (message.externalAuthor != null) message.externalMentionSpans else emptyList(),
                         )
                     )
                 }

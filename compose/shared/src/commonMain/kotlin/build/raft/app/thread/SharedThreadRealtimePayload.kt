@@ -213,6 +213,7 @@ private fun RaftThreadScreenPayload.applyRealtimeMessages(
     val baseMessages =
         this.messages.absorbingCanonicalSendEchoes(incoming)
             .withIncomingDelegatedLabels(incoming)
+            .withIncomingExternalMentionSpans(incoming)
             // RFC 077 PR 2b: a resumed retracted copy replaces the loaded copy's content.
             .withKnownRetractionsFrom(incoming)
     val merged =
@@ -296,6 +297,7 @@ internal fun RaftThreadScreenPayload.mergePagedMessages(
     val baseMessages =
         messages.absorbingCanonicalSendEchoes(pageMessages)
             .withIncomingDelegatedLabels(pageMessages)
+            .withIncomingExternalMentionSpans(pageMessages)
             .withKnownRetractionsFrom(pageMessages)
             .withNewerServerCopiesFrom(pageMessages)
     val incoming = pageMessages.filterNot { pageMessage -> baseMessages.any { it.id == pageMessage.id } }

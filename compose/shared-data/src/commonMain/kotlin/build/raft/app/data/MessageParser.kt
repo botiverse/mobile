@@ -146,6 +146,8 @@ private data class MessagesWireMessage(
     val systemSubtype: String? = null,
     /** Resolved mention facts (`ResolvedMentionFact[]`). */
     val mentions: List<WireMessageMention> = emptyList(),
+    /** Slack-bridge external mention spans (`ExternalMentionSpan[]`, slock #17299), read leniently. */
+    val externalMentionSpans: JsonElement? = null,
     /**
      * Quote replies verified for this viewer (`ResolvedInlineQuotesMap`, [decodeResolvedInlineQuotes]),
      * read leniently so a drifted entry never drops the row.
@@ -652,6 +654,7 @@ private fun MessagesWireMessage.toDomain(
         deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         systemSubtype = systemSubtype?.trim()?.takeIf { it.isNotEmpty() },
         mentions = mentions.toMessageMentions(),
+        externalMentionSpans = decodeExternalMentionSpans(externalMentionSpans, authorKind),
         resolvedQuotes =
             decodeResolvedInlineQuotes(
                 element = resolvedQuotes,

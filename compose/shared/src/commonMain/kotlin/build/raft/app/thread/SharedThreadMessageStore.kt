@@ -12,6 +12,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.resolve
 import build.raft.app.thread.withKnownDelegatedByFrom
 import build.raft.app.withKnownDelegatedByFrom
+import build.raft.app.withKnownExternalMentionSpansFrom
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
@@ -84,7 +85,10 @@ internal class SharedThreadMessageStore(
             } else {
                 // RFC 077: a copy without `delegatedBy` never clears the known label, and an older
                 // copy never brings back a retracted message's words or attachments.
-                message.withKnownDelegatedByFrom(existing).withKnownRetractionFrom(existing)
+                message
+                    .withKnownDelegatedByFrom(existing)
+                    .withKnownExternalMentionSpansFrom(existing)
+                    .withKnownRetractionFrom(existing)
             }
         messages.remove(key)
         messages[key] = selected

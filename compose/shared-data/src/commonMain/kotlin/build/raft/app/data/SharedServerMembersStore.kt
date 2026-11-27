@@ -1573,6 +1573,14 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             .withServerMemberPresenceFacts(presenceFactsNow(serverId))
     }
 
+    @RaftCoreInternalApi fun currentChannelExternalMembers(
+        serverId: ServerId,
+        channelId: ChannelId
+    ): List<ChannelExternalMemberProfile> {
+        val binding = currentChannelMembersOwner(serverId) ?: return emptyList()
+        return _state.value.channelMemberSlice(binding, channelId).externalMembers
+    }
+
     @RaftCoreInternalApi fun currentChannelMemberSlice(
         owner: AuthenticatedRouteOwner,
         channelId: ChannelId

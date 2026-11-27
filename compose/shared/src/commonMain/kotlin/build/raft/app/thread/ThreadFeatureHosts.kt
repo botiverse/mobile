@@ -348,6 +348,15 @@ internal fun rememberThreadFeatureHosts(
                         }
                     currentMentionThread.resolveMarkdownMentionOpenTarget(label, serverMembers)?.identity
                 },
+                resolveExternalMember = { projectionId ->
+                    if (serverMembersStore == null || threadMembersServerId == null || threadMembersChannelId == null) {
+                        null
+                    } else {
+                        serverMembersStore
+                            .currentChannelExternalMembers(threadMembersServerId, threadMembersChannelId)
+                            .firstOrNull { it.id == projectionId }
+                    }
+                },
             )
         }
     // Member labels (web #14535/#15817): viewer's joined servers overlaid with this external

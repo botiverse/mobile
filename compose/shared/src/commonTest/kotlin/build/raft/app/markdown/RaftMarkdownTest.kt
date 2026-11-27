@@ -475,6 +475,7 @@ class RaftMarkdownTest {
                     knownTaskNumbers?.contains(tag.label.removePrefix("#").toIntOrNull()) ?: true
                 ThreadMarkdownTagKind.UserMention ->
                     tag.label.removePrefix("@").trim().lowercase() in mentionKeys
+                ThreadMarkdownTagKind.ExternalMention -> true
                 ThreadMarkdownTagKind.Message ->
                     tag.directMessagePeerName?.let { it.trim().lowercase() in directMessagePeerKeys }
                         ?: (tag.channelName.orEmpty().trim().lowercase() in channelKeys)
