@@ -182,6 +182,7 @@ private fun RaftInAppBrowserScreen() {
     val tabsState by coordinator.state.collectAsState()
     var currentTabId by remember(pager.pagerId, initialTabId) { mutableStateOf(initialTabId) }
     var explicitlyClosed by remember(pager.pagerId) { mutableStateOf(false) }
+    var explicitlySuspended by remember(pager.pagerId) { mutableStateOf(false) }
     var switcherOpen by remember(pager.pagerId) { mutableStateOf(false) }
     var inColumnOutboundUrl by remember(pager.pagerId, currentTabId) { mutableStateOf<String?>(null) }
 
@@ -191,16 +192,22 @@ private fun RaftInAppBrowserScreen() {
         } else {
             null
         }
+    val missingManagedTab = !isOutboundChild && currentTabId != null && activeTab == null
+    val isClosing = explicitlyClosed || missingManagedTab
+    var lastKeepAliveKey by remember(pager.pagerId, currentTabId) { mutableStateOf(activeTab?.keepAliveKey) }
+    if (activeTab?.keepAliveKey != null && lastKeepAliveKey != activeTab.keepAliveKey) {
+        lastKeepAliveKey = activeTab.keepAliveKey
+    }
 
     fun closePage() {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
-    // Keep coordinator activeTabId synced while this App stack page is mounted; if popped by iOS
-    // swipe-back or wide column replacement without explicit close, suspend cleanly to floating pill.
-    // Declared before the WebView body so onDispose runs after child onRelease: if the tab was
-    // explicitly closed or became ineligible for keep-alive, immediately evict any container parked
-    // by WebContainerPlatformHost on release.
+    // Keep coordinator activeTabId synced while this App stack page is mounted. Under default-close
+    // semantics, popping without an explicit Float action closes the tab cleanly (iOS left-edge
+    // swipe-back at root never auto-floats); explicit Float sets [explicitlySuspended] and parks the
+    // warm WebView in the keep-alive pool. Declared before the WebView body so onDispose runs after
+    // child onRelease and immediately evicts any container parked by WebContainerPlatformHost.
     val activeTabKeepAliveKey = activeTab?.keepAliveKey
     DisposableEffect(isOutboundChild, currentTabId) {
         val tabId = if (!isOutboundChild) currentTabId else null
@@ -210,13 +217,25 @@ private fun RaftInAppBrowserScreen() {
         }
         onDispose {
             if (tabId != null) {
-                if (!explicitlyClosed) {
+                if (explicitlySuspended) {
                     coordinator.suspendTab(tabId)
+                } else if (!explicitlyClosed && coordinator.state.value.activeTabId == tabId) {
+                    coordinator.closeTab(tabId)
                 }
-                if (keepAliveKey != null && (explicitlyClosed || !coordinator.isKeepAliveEligible(keepAliveKey))) {
+                if (
+                    keepAliveKey != null &&
+                    !explicitlySuspended &&
+                    (explicitlyClosed || !coordinator.isKeepAliveEligible(keepAliveKey))
+                ) {
                     raftWebViewKeepAliveEvict(keepAliveKey)
                 }
             }
+        }
+    }
+
+    LaunchedEffect(isClosing, lastKeepAliveKey) {
+        if (isClosing) {
+            lastKeepAliveKey?.let(::raftWebViewKeepAliveEvict)
         }
     }
 
@@ -306,55 +325,61 @@ private fun RaftInAppBrowserScreen() {
                 if (topSafeArea > 0.dp) {
                     Spacer(modifier = Modifier.fillMaxWidth().height(topSafeArea).background(RaftTheme.colors.layerCanvas))
                 }
-                key(effectiveSessionKey) {
-                    RaftMobileWebPanelBrowserBody(
-                        pager = pager,
-                        bridge = bridge,
-                        launchUrl = effectiveLaunchUrl,
-                        appEntryToken = effectiveEntryToken,
-                        entryClaimUrl = effectiveClaimUrl,
-                        fallbackAppName = activeTab?.appName,
-                        fallbackAppLogoUrl = activeTab?.appLogoUrl,
-                        storeScope = storeScope,
-                        sessionKey = effectiveSessionKey,
-                        entryOwnerId = effectiveEntryOwnerId,
-                        isOutboundChild = isOutboundChild,
-                        inColumn = inColumn,
-                        keepAliveKey = activeTab?.takeIf { !explicitlyClosed && it.isLive }?.keepAliveKey,
-                        openTabCount = if (isOutboundChild) 1 else tabsState.tabs.size,
-                        onOpenSwitcher =
-                            if (!isOutboundChild && tabsState.tabs.size >= 2) {
-                                { switcherOpen = true }
-                            } else {
-                                null
-                            },
-                        onPushOutboundChild = ::openOutboundChild,
-                        onOpenInstalledApp = ::openAnotherInstalledApp,
-                        onNavigationMetadataChanged = { url, title ->
-                            activeTab?.let { tab ->
-                                coordinator.updateTabNavigation(tab.tabId, currentUrl = url, pageTitle = title)
-                            }
-                        },
-                        onSuspend =
-                            if (!isOutboundChild) {
-                                {
-                                    activeTab?.let { coordinator.suspendTab(it.tabId) }
-                                    closePage()
+                if (isClosing) {
+                    Spacer(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftTheme.colors.layerCanvas))
+                } else {
+                    key(effectiveSessionKey) {
+                        RaftMobileWebPanelBrowserBody(
+                            pager = pager,
+                            bridge = bridge,
+                            launchUrl = effectiveLaunchUrl,
+                            appEntryToken = effectiveEntryToken,
+                            entryClaimUrl = effectiveClaimUrl,
+                            fallbackAppName = activeTab?.appName,
+                            fallbackAppLogoUrl = activeTab?.appLogoUrl,
+                            storeScope = storeScope,
+                            sessionKey = effectiveSessionKey,
+                            entryOwnerId = effectiveEntryOwnerId,
+                            isOutboundChild = isOutboundChild,
+                            inColumn = inColumn,
+                            closing = isClosing,
+                            keepAliveKey = activeTab?.takeIf { !explicitlyClosed && it.isLive }?.keepAliveKey,
+                            openTabCount = if (isOutboundChild) 1 else tabsState.tabs.size,
+                            onOpenSwitcher =
+                                if (!isOutboundChild && tabsState.tabs.size >= 2) {
+                                    { switcherOpen = true }
+                                } else {
+                                    null
+                                },
+                            onPushOutboundChild = ::openOutboundChild,
+                            onOpenInstalledApp = ::openAnotherInstalledApp,
+                            onNavigationMetadataChanged = { url, title ->
+                                activeTab?.let { tab ->
+                                    coordinator.updateTabNavigation(tab.tabId, currentUrl = url, pageTitle = title)
                                 }
-                            } else {
-                                null
                             },
-                        onClose = {
-                            explicitlyClosed = true
-                            activeTab?.let { coordinator.closeTab(it.tabId) }
-                            closePage()
-                        },
-                        onContentProcessGone = {
-                            activeTab?.let { coordinator.onTabContentProcessGone(it.tabId) }
-                        },
-                        bottomInsetDp = maxOf(imeBottomDp, bottomSafeArea),
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
+                            onSuspend =
+                                if (!isOutboundChild && !inColumn) {
+                                    {
+                                        explicitlySuspended = true
+                                        activeTab?.let { coordinator.suspendTab(it.tabId) }
+                                        closePage()
+                                    }
+                                } else {
+                                    null
+                                },
+                            onClose = {
+                                explicitlyClosed = true
+                                activeTab?.let { coordinator.closeTab(it.tabId) }
+                                closePage()
+                            },
+                            onContentProcessGone = {
+                                activeTab?.let { coordinator.onTabContentProcessGone(it.tabId) }
+                            },
+                            bottomInsetDp = maxOf(imeBottomDp, bottomSafeArea),
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                        )
+                    }
                 }
             }
 
@@ -362,7 +387,7 @@ private fun RaftInAppBrowserScreen() {
             // parent App inside the side column so the parent App stays mounted underneath.
             val columnChildUrl = inColumnOutboundUrl
             AnimatedVisibility(
-                visible = inColumn && !isOutboundChild && columnChildUrl != null,
+                visible = !isClosing && inColumn && !isOutboundChild && columnChildUrl != null,
                 enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
                 exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
                 modifier = Modifier.fillMaxSize(),
@@ -387,7 +412,7 @@ private fun RaftInAppBrowserScreen() {
                             onPushOutboundChild = { nestedUrl -> inColumnOutboundUrl = nestedUrl },
                             onOpenInstalledApp = ::openAnotherInstalledApp,
                             onNavigationMetadataChanged = { _, _ -> },
-                            onSuspend = { inColumnOutboundUrl = null },
+                            onSuspend = null,
                             onClose = { inColumnOutboundUrl = null },
                             onContentProcessGone = null,
                             bottomInsetDp = 0.dp,
@@ -397,7 +422,7 @@ private fun RaftInAppBrowserScreen() {
                 }
             }
 
-            if (switcherOpen && !isOutboundChild && tabsState.tabs.isNotEmpty()) {
+            if (!isClosing && switcherOpen && !isOutboundChild && tabsState.tabs.isNotEmpty()) {
                 RaftAppBrowserSwitcherSheet(
                     tabs = tabsState.tabs,
                     activeTabId = currentTabId,
@@ -411,6 +436,10 @@ private fun RaftInAppBrowserScreen() {
                     },
                     onCloseTab = { tabId ->
                         val closingCurrent = tabId == currentTabId
+                        if (closingCurrent && tabsState.tabs.size <= 1) {
+                            switcherOpen = false
+                            explicitlyClosed = true
+                        }
                         coordinator.closeTab(tabId)
                         if (closingCurrent) {
                             val nextTab = coordinator.state.value.tabs.firstOrNull()

@@ -102,7 +102,17 @@ internal fun rememberInAppBrowserSignInHost(
         remember(authStore, sharedStores.authStore) {
             settingsWebViewAuthEventSource(authStore, sharedStores.authStore)
         }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, authEvents)
+    val initialSession =
+        remember(sharedStores.authStore, storeScope) {
+            val committed = runCatching { sharedStores.authStore.readCommittedSessionSnapshot() }.getOrNull()
+            val expectedServerId = storeScope?.initialServerId?.trim()?.takeIf { it.isNotEmpty() }
+            if (committed != null && (expectedServerId == null || committed.currentServerId == expectedServerId)) {
+                committed
+            } else {
+                null
+            }
+        }
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, authEvents, initialSession = initialSession)
     val authSession = authSnapshot.session
     val flagServerId =
         remember(entryContext?.preferredServerId, authSession?.currentServerId) {
@@ -171,7 +181,8 @@ internal fun rememberInAppBrowserSignInHost(
             )
         }
 
-    LaunchedEffect(authSession?.user?.id, environmentKey) {
+    LaunchedEffect(authSnapshot.hydrated, authSession?.user?.id, environmentKey) {
+        if (!authSnapshot.hydrated) return@LaunchedEffect
         signInSession.onAccountOrEnvironmentChanged(authSession?.user?.id, environmentKey)
     }
     DisposableEffect(signInSession) {

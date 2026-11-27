@@ -306,4 +306,60 @@ class WebContainerAndroidSignInInterceptionTest {
         client.doUpdateVisitedHistory(webView, spaNextUrl, false)
         assertEquals(spaNextUrl, observedStateUrls.last())
     }
+
+    @Test
+    fun speculativeLinkLoadingStartsImmediatelyOnUserLinkClickAndClearsOnHashRedirectOrCompletion() {
+        val observedStates = mutableListOf<WebNavigationState>()
+        val pageUrl = "https://stamp.build/pulls"
+        val nextUrl = "https://stamp.build/pulls/42"
+        val intermediateLoginUrl = "https://stamp.build/api/auth/raft"
+        val authorizeUrl = "https://api.raft.build/api/oauth/authorize?client_id=stamp&redirect_uri=https%3A%2F%2Fstamp.build%2Fcb"
+
+        val host =
+            createAttachedHost(
+                initialUrl = pageUrl,
+                events =
+                    WebContainerEvents(
+                        onNavigationStateChange = { observedStates += it },
+                        catchesMainFrameNavigation = { ctx -> ctx.url == authorizeUrl },
+                        routesMainFrameNavigation = { url -> url.startsWith("https://api.raft.build/") },
+                    ),
+            )
+        val webView = host.getChildAt(0) as WebView
+        val client = shadowOf(webView).webViewClient
+        val chromeClient = shadowOf(webView).webChromeClient
+
+        client.onPageStarted(webView, pageUrl, null)
+        client.onPageCommitVisible(webView, pageUrl)
+        client.onPageFinished(webView, pageUrl)
+        assertFalse(observedStates.last().isLoading)
+
+        // 1) Fragment-only link tap on the same document must NOT start speculative loading.
+        val countBeforeHash = observedStates.size
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest("$pageUrl#comments", hasGesture = true)))
+        assertEquals(countBeforeHash, observedStates.size)
+        assertFalse(observedStates.last().isLoading)
+
+        // 2) Normal user-gesture link tap immediately marks isLoading=true before onPageStarted fires.
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest(nextUrl, hasGesture = true)))
+        assertTrue(observedStates.last().isLoading, "User link tap should immediately show loading state")
+        assertEquals(0, observedStates.last().progress)
+        client.onPageStarted(webView, nextUrl, null)
+        client.onPageFinished(webView, nextUrl)
+        assertFalse(observedStates.last().isLoading)
+        assertEquals(100, observedStates.last().progress)
+
+        // 3) User link tap whose 302 redirect is intercepted by host BEFORE onPageStarted clears loading cleanly.
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest(intermediateLoginUrl, hasGesture = true)))
+        assertTrue(observedStates.last().isLoading)
+        assertTrue(client.shouldOverrideUrlLoading(webView, fakeRequest(authorizeUrl, isRedirect = true)))
+        assertFalse(observedStates.last().isLoading, "Host-intercepted redirect must clear speculative loading")
+        assertEquals(nextUrl, observedStates.last().url)
+
+        // 4) User link tap that finishes without onPageStarted (e.g. HTTP 204 reporting progress=100) clears loading.
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest("https://stamp.build/no-content", hasGesture = true)))
+        assertTrue(observedStates.last().isLoading)
+        chromeClient.onProgressChanged(webView, 100)
+        assertFalse(observedStates.last().isLoading)
+    }
 }

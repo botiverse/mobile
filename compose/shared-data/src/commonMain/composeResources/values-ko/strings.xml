@@ -6892,6 +6892,7 @@
     <string name="in_app_browser_external_app_message">이 페이지가 다른 앱에서 "%1$s"을(를) 열려고 합니다.</string>
     <string name="in_app_browser_external_app_open">열기</string>
     <string name="in_app_browser_close_page">페이지 닫기</string>
+    <string name="in_app_browser_minimize_to_float">플로팅 창</string>
     <string name="in_app_browser_open_pages_title">열린 페이지 (%1$d)</string>
     <string name="in_app_browser_open_pages_a11y">열린 페이지 %1$d개</string>
     <string name="in_app_browser_close_all_pages">모두 닫기</string>

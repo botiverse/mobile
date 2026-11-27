@@ -12,10 +12,11 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,25 +33,27 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.pager.Pager
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
@@ -76,12 +79,14 @@ import build.raft.designsystem.components.RaftCloseButtonSize
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.gesture.raftKeepsBackSwipe
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -114,10 +119,33 @@ internal fun raftAppBrowserSwitcherRowTag(tabId: Long): String = "raft_app_brows
 
 internal fun raftAppBrowserSwitcherCloseTag(tabId: Long): String = "raft_app_browser_switcher_close_$tabId"
 
+private class RaftFloatingPillMeasuredHeightBox(
+    var valuePx: Float,
+)
+
+private data class RaftFloatingPillHostMetrics(
+    val viewportHeightPx: Float,
+    val topBoundPx: Float,
+    val bottomSafeAreaPx: Float,
+    val bottomExtraPx: Float,
+    val maxPullLeftPx: Float,
+    val density: Density,
+) {
+    fun resolveBottomBoundPx(imeBottomPx: Float): Float =
+        maxOf(imeBottomPx.coerceAtLeast(0f), bottomSafeAreaPx.coerceAtLeast(0f)) + bottomExtraPx.coerceAtLeast(0f)
+}
+
+private data class RaftFloatingPillLiveYBounds(
+    val minY: Float,
+    val maxY: Float,
+    val bottomBoundPx: Float,
+)
+
 /**
  * Window-level host installed by [ProvideRaftLinkOpening] on non-browser mobile pages. Observes
- * account/server/environment switches (clearing all tabs cleanly on any boundary change) and
- * renders the right-edge magnetic floating tab pill + multi-page switcher sheet.
+ * account/server/environment switches (clearing all tabs cleanly on any boundary change once auth
+ * is hydrated, warming the installed-App origin cache on startup) and renders the right-edge
+ * magnetic floating tab pill + multi-page switcher sheet.
  */
 @Composable
 internal fun RaftFloatingBrowserTabPillHost(
@@ -138,7 +166,22 @@ internal fun RaftFloatingBrowserTabPillHost(
         remember(authStore, sharedStores.authStore) {
             settingsWebViewAuthEventSource(authStore, sharedStores.authStore)
         }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, authEvents)
+    val initialSession =
+        remember(sharedStores.authStore, storeScope) {
+            val committed = runCatching { sharedStores.authStore.readCommittedSessionSnapshot() }.getOrNull()
+            val expectedServerId = storeScope?.initialServerId?.trim()?.takeIf { it.isNotEmpty() }
+            if (committed != null && (expectedServerId == null || committed.currentServerId == expectedServerId)) {
+                committed
+            } else {
+                null
+            }
+        }
+    val authSnapshot =
+        rememberSettingsWebViewAuthSnapshot(
+            shellAuthStore = authStore,
+            processAuthEvents = authEvents,
+            initialSession = initialSession,
+        )
     val environmentKey =
         remember(activeEnvironment.webUrl, activeEnvironment.apiBaseUrl) {
             "${activeEnvironment.webUrl}|${activeEnvironment.apiBaseUrl}"
@@ -146,13 +189,25 @@ internal fun RaftFloatingBrowserTabPillHost(
     val accountId = authSnapshot.session?.user?.id
     val currentServerId = authSnapshot.session?.currentServerId
 
-    LaunchedEffect(coordinator, sharedStores, accountId, currentServerId, environmentKey) {
+    LaunchedEffect(coordinator, sharedStores, authSnapshot.hydrated, accountId, currentServerId, environmentKey) {
+        if (!authSnapshot.hydrated) return@LaunchedEffect
         coordinator.onSessionContextChanged(
             accountId = accountId,
             serverId = currentServerId,
             environmentKey = environmentKey,
         )
         sharedStores.onInstalledAppAccountOrEnvironmentChanged(accountId, environmentKey)
+        val cleanAccountId = accountId?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanServerId = currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+        if (cleanAccountId != null && cleanServerId != null && raftPlatformSupportsInAppBrowser()) {
+            sharedStores.installedAppOriginsCache.warm(
+                RaftInstalledAppScope(
+                    accountId = cleanAccountId,
+                    environmentKey = environmentKey,
+                    serverId = cleanServerId,
+                ),
+            )
+        }
     }
 
     val tabsState by coordinator.state.collectAsState()
@@ -167,17 +222,6 @@ internal fun RaftFloatingBrowserTabPillHost(
 
     if (!tabsState.showFloatingPill) return
 
-    val density = LocalDensity.current
-    val reducedMotion = rememberRaftReducedMotion()
-    val coroutineScope = rememberCoroutineScope()
-    val topSafeArea = raftWindowTopSafeAreaPadding()
-    val bottomSafeArea = raftBottomSafeAreaPadding()
-    val imeBottomDp = with(density) { raftImeBottomPx(density).toDp() }
-    val voiceCallExtraDp = if (activeVoiceCall != null) 88.dp else 0.dp
-    val topBoundPx = with(density) { (topSafeArea + 64.dp).toPx() }
-    val bottomBoundPx = with(density) { (maxOf(imeBottomDp, bottomSafeArea) + 84.dp + voiceCallExtraDp).toPx() }
-    val maxPullLeftPx = with(density) { 24.dp.toPx() }
-
     fun resumeTab(tab: RaftAppBrowserTab) {
         val activated = coordinator.activateTab(tab.tabId) ?: return
         val opened =
@@ -191,95 +235,20 @@ internal fun RaftFloatingBrowserTabPillHost(
     }
 
     RaftDesignSystemTheme {
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxSize().zIndex(RaftFloatingBrowserTabPillZIndex),
-        ) {
-            val viewportHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
-            var pillHeightPx by remember { mutableFloatStateOf(with(density) { 48.dp.toPx() }) }
-            val dockedYPx =
-                resolveRaftFloatingPillOffsetYPx(
-                    viewportHeightPx = viewportHeightPx,
-                    pillHeightPx = pillHeightPx,
-                    topBoundPx = topBoundPx,
-                    bottomBoundPx = bottomBoundPx,
-                    yFraction = tabsState.pillYFraction,
-                )
-            var dragging by remember { mutableStateOf(false) }
-            var dragYPx by remember { mutableFloatStateOf(dockedYPx) }
-            val pullOffsetX = remember { Animatable(0f) }
-
-            val effectiveYPx =
-                if (dragging) {
-                    dragYPx
-                } else {
-                    dockedYPx
+        RaftFloatingBrowserTabPillOverlay(
+            tabs = tabsState.tabs,
+            pillYFraction = tabsState.pillYFraction,
+            onPillYFractionChange = coordinator::setPillYFraction,
+            onClick = {
+                val tabs = tabsState.tabs
+                if (tabs.size == 1) {
+                    resumeTab(tabs.first())
+                } else if (tabs.size >= 2) {
+                    switcherOpen = true
                 }
-
-            RaftFloatingBrowserTabPill(
-                tabs = tabsState.tabs,
-                onClick = {
-                    val tabs = tabsState.tabs
-                    if (tabs.size == 1) {
-                        resumeTab(tabs.first())
-                    } else if (tabs.size >= 2) {
-                        switcherOpen = true
-                    }
-                },
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .onSizeChanged { size ->
-                            if (size.height > 0) pillHeightPx = size.height.toFloat()
-                        }
-                        .offset { IntOffset(0, effectiveYPx.roundToInt()) }
-                        .graphicsLayer { translationX = pullOffsetX.value }
-                        .pointerInput(viewportHeightPx, pillHeightPx, topBoundPx, bottomBoundPx, reducedMotion) {
-                            detectDragGestures(
-                                onDragStart = {
-                                    dragging = true
-                                    dragYPx = dockedYPx
-                                },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val minY = topBoundPx.coerceAtLeast(0f)
-                                    val maxY = (viewportHeightPx - bottomBoundPx - pillHeightPx).coerceAtLeast(minY)
-                                    dragYPx = (dragYPx + dragAmount.y).coerceIn(minY, maxY)
-                                    val nextX = (pullOffsetX.value + dragAmount.x * 0.45f).coerceIn(-maxPullLeftPx, 0f)
-                                    coroutineScope.launch { pullOffsetX.snapTo(nextX) }
-                                },
-                                onDragEnd = {
-                                    dragging = false
-                                    val fraction =
-                                        clampRaftFloatingPillYFraction(
-                                            offsetYPx = dragYPx,
-                                            viewportHeightPx = viewportHeightPx,
-                                            pillHeightPx = pillHeightPx,
-                                            topBoundPx = topBoundPx,
-                                            bottomBoundPx = bottomBoundPx,
-                                        )
-                                    coordinator.setPillYFraction(fraction)
-                                    coroutineScope.launch {
-                                        if (reducedMotion) {
-                                            pullOffsetX.snapTo(0f)
-                                        } else {
-                                            pullOffsetX.animateTo(
-                                                targetValue = 0f,
-                                                animationSpec = spring(
-                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                                                    stiffness = Spring.StiffnessMedium,
-                                                ),
-                                            )
-                                        }
-                                    }
-                                },
-                                onDragCancel = {
-                                    dragging = false
-                                    coroutineScope.launch { pullOffsetX.snapTo(0f) }
-                                },
-                            )
-                        },
-            )
-        }
+            },
+            voiceCallExtraDp = if (activeVoiceCall != null) 88.dp else 0.dp,
+        )
 
         if (switcherOpen && tabsState.tabs.isNotEmpty()) {
             RaftAppBrowserSwitcherSheet(
@@ -299,6 +268,182 @@ internal fun RaftFloatingBrowserTabPillHost(
                 onDismiss = { switcherOpen = false },
             )
         }
+    }
+}
+
+/**
+ * Draggable overlay surface hosting [RaftFloatingBrowserTabPill] on the right viewport edge.
+ * Placement reads live IME, drag, and spring state inside `.layout` so keyboard and drag frames
+ * skip composition/measurement, while `.pointerInput(Unit)` + `.raftKeepsBackSwipe()` keep drags
+ * immune to IME updates and system edge back-swipe gestures.
+ */
+@Composable
+internal fun RaftFloatingBrowserTabPillOverlay(
+    tabs: List<RaftAppBrowserTab>,
+    pillYFraction: Float,
+    onPillYFractionChange: (Float) -> Unit,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    topSafeArea: Dp = raftWindowTopSafeAreaPadding(),
+    bottomSafeArea: Dp = raftBottomSafeAreaPadding(),
+    voiceCallExtraDp: Dp = 0.dp,
+) {
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val hostImeInsets = LocalRaftHostImeInsets.current
+    val reducedMotion = rememberRaftReducedMotion()
+    val coroutineScope = rememberCoroutineScope()
+    val topBoundPx = with(density) { (topSafeArea.coerceAtLeast(0.dp) + 64.dp).toPx() }
+    val bottomSafeAreaPx = with(density) { bottomSafeArea.coerceAtLeast(0.dp).toPx() }
+    val bottomExtraPx = with(density) { (84.dp + voiceCallExtraDp.coerceAtLeast(0.dp)).toPx() }
+    val maxPullLeftPx = with(density) { 24.dp.toPx() }
+    val defaultPillHeightPx = with(density) { 48.dp.toPx() }
+
+    val measuredPillHeight = remember { RaftFloatingPillMeasuredHeightBox(defaultPillHeightPx) }
+    var dragging by remember { mutableStateOf(false) }
+    var dragYPx by remember { mutableFloatStateOf(0f) }
+    var dragPullXPx by remember { mutableFloatStateOf(0f) }
+    val pullOffsetX = remember { Animatable(0f) }
+
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize().zIndex(RaftFloatingBrowserTabPillZIndex),
+    ) {
+        val viewportHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        val hostMetrics =
+            RaftFloatingPillHostMetrics(
+                viewportHeightPx = viewportHeightPx,
+                topBoundPx = topBoundPx,
+                bottomSafeAreaPx = bottomSafeAreaPx,
+                bottomExtraPx = bottomExtraPx,
+                maxPullLeftPx = maxPullLeftPx,
+                density = density,
+            )
+        val latestMetrics by rememberUpdatedState(hostMetrics)
+        val latestPillYFraction by rememberUpdatedState(pillYFraction)
+        val latestReducedMotion by rememberUpdatedState(reducedMotion)
+        val latestOnPillYFractionChange by rememberUpdatedState(onPillYFractionChange)
+
+        RaftFloatingBrowserTabPill(
+            tabs = tabs,
+            onClick = onClick,
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        if (placeable.height > 0) {
+                            measuredPillHeight.valuePx = placeable.height.toFloat()
+                        }
+                        layout(placeable.width, placeable.height) {
+                            // Read live IME, drag, and spring state strictly in placement so drag
+                            // and keyboard frames skip composition and measurement.
+                            val liveImeBottomPx = raftImeBottomPx(imeInsets, hostImeInsets, hostMetrics.density).toFloat()
+                            val liveBottomBoundPx = hostMetrics.resolveBottomBoundPx(liveImeBottomPx)
+                            val pillHeightPx = placeable.height.toFloat()
+                            val minY = hostMetrics.topBoundPx.coerceAtLeast(0f)
+                            val maxY = (hostMetrics.viewportHeightPx - liveBottomBoundPx - pillHeightPx).coerceAtLeast(minY)
+                            val yPx =
+                                if (dragging) {
+                                    dragYPx.coerceIn(minY, maxY)
+                                } else {
+                                    resolveRaftFloatingPillOffsetYPx(
+                                        viewportHeightPx = hostMetrics.viewportHeightPx,
+                                        pillHeightPx = pillHeightPx,
+                                        topBoundPx = hostMetrics.topBoundPx,
+                                        bottomBoundPx = liveBottomBoundPx,
+                                        yFraction = pillYFraction,
+                                    )
+                                }
+                            val xPx = if (dragging) dragPullXPx else pullOffsetX.value
+                            placeable.place(
+                                x = xPx.roundToInt(),
+                                y = yPx.roundToInt(),
+                            )
+                        }
+                    }
+                    .raftKeepsBackSwipe()
+                    .pointerInput(Unit) {
+                        fun resolveLiveYBounds(): RaftFloatingPillLiveYBounds {
+                            val metrics = latestMetrics
+                            val liveImeBottomPx = raftImeBottomPx(imeInsets, hostImeInsets, metrics.density).toFloat()
+                            val bottomBoundPx = metrics.resolveBottomBoundPx(liveImeBottomPx)
+                            val minY = metrics.topBoundPx.coerceAtLeast(0f)
+                            val maxY =
+                                (metrics.viewportHeightPx - bottomBoundPx - measuredPillHeight.valuePx)
+                                    .coerceAtLeast(minY)
+                            return RaftFloatingPillLiveYBounds(
+                                minY = minY,
+                                maxY = maxY,
+                                bottomBoundPx = bottomBoundPx,
+                            )
+                        }
+
+                        fun finishDrag(animatePullBack: Boolean) {
+                            val metrics = latestMetrics
+                            val bounds = resolveLiveYBounds()
+                            val finalY = dragYPx.coerceIn(bounds.minY, bounds.maxY)
+                            val releasePullX = dragPullXPx
+                            val fraction =
+                                clampRaftFloatingPillYFraction(
+                                    offsetYPx = finalY,
+                                    viewportHeightPx = metrics.viewportHeightPx,
+                                    pillHeightPx = measuredPillHeight.valuePx,
+                                    topBoundPx = metrics.topBoundPx,
+                                    bottomBoundPx = bounds.bottomBoundPx,
+                                )
+                            latestOnPillYFractionChange(fraction)
+                            dragging = false
+                            dragPullXPx = 0f
+                            if (releasePullX != 0f || pullOffsetX.value != 0f) {
+                                coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                    pullOffsetX.snapTo(releasePullX)
+                                    if (!animatePullBack || latestReducedMotion) {
+                                        pullOffsetX.snapTo(0f)
+                                    } else {
+                                        pullOffsetX.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec =
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                    stiffness = Spring.StiffnessMedium,
+                                                ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        detectDragGestures(
+                            onDragStart = {
+                                val metrics = latestMetrics
+                                val bounds = resolveLiveYBounds()
+                                val currentDockedY =
+                                    resolveRaftFloatingPillOffsetYPx(
+                                        viewportHeightPx = metrics.viewportHeightPx,
+                                        pillHeightPx = measuredPillHeight.valuePx,
+                                        topBoundPx = metrics.topBoundPx,
+                                        bottomBoundPx = bounds.bottomBoundPx,
+                                        yFraction = latestPillYFraction,
+                                    )
+                                dragYPx = currentDockedY.coerceIn(bounds.minY, bounds.maxY)
+                                dragPullXPx = pullOffsetX.value.coerceIn(-metrics.maxPullLeftPx, 0f)
+                                dragging = true
+                                if (pullOffsetX.isRunning) {
+                                    coroutineScope.launch { pullOffsetX.stop() }
+                                }
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val metrics = latestMetrics
+                                val bounds = resolveLiveYBounds()
+                                dragYPx = (dragYPx + dragAmount.y).coerceIn(bounds.minY, bounds.maxY)
+                                dragPullXPx = (dragPullXPx + dragAmount.x * 0.45f).coerceIn(-metrics.maxPullLeftPx, 0f)
+                            },
+                            onDragEnd = { finishDrag(animatePullBack = true) },
+                            onDragCancel = { finishDrag(animatePullBack = false) },
+                        )
+                    },
+        )
     }
 }
 

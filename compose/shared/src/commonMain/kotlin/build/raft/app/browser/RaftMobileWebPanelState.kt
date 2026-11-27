@@ -129,9 +129,67 @@ internal fun raftMobileWebPanelDisplayHost(rawUrl: String): String {
     return if (showPort) "$withoutWww:$portPart" else withoutWww
 }
 
+/** Defensive fail-closed action when isolated third-party storage is unavailable on pre-119 Android. */
+internal enum class RaftMobileWebPanelFailClosedAction {
+    None,
+    HandoffToSystemBrowser,
+    CloseSilently,
+}
+
+/**
+ * Decides whether a [RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser] resolution may
+ * hand off to the external system browser. An already-closing panel or one that was previously
+ * authorized as an installed Raft App must NEVER launch the external system browser (e.g. during
+ * tear-down recomposition after its entry token is released).
+ */
+internal fun resolveRaftMobileWebPanelFailClosedAction(
+    storageResolution: RaftMobileWebPanelLaunchResolution,
+    effectiveLaunchUrl: String?,
+    closing: Boolean,
+    wasAuthorizedAppEntry: Boolean,
+): RaftMobileWebPanelFailClosedAction {
+    if (storageResolution != RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser) {
+        return RaftMobileWebPanelFailClosedAction.None
+    }
+    if (closing) {
+        return RaftMobileWebPanelFailClosedAction.None
+    }
+    if (wasAuthorizedAppEntry) {
+        return RaftMobileWebPanelFailClosedAction.CloseSilently
+    }
+    return if (!effectiveLaunchUrl.isNullOrBlank()) {
+        RaftMobileWebPanelFailClosedAction.HandoffToSystemBrowser
+    } else {
+        RaftMobileWebPanelFailClosedAction.None
+    }
+}
+
+/**
+ * Whether [RaftMobileWebPanelBrowserBody] should show its immediate centered loading indicator
+ * over the initial canvas before the document visually commits. Never covers error/sign-in UI or
+ * warm keep-alive pages that already finished loading.
+ */
+internal fun shouldShowRaftMobileWebPanelLoadingPlaceholder(
+    hasLaunchUrl: Boolean,
+    hasVisualCommit: Boolean,
+    hasLoadError: Boolean,
+    isSignInResolving: Boolean,
+    hasDeclinedSignIn: Boolean,
+    isLoading: Boolean,
+    progress: Int,
+): Boolean =
+    hasLaunchUrl &&
+        !hasVisualCommit &&
+        !hasLoadError &&
+        !isSignInResolving &&
+        !hasDeclinedSignIn &&
+        isLoading &&
+        progress < 25
+
 /** Actions offered in the in-app browser's `⋮` overflow menu. */
 internal enum class RaftMobileWebPanelMenuAction {
     Reload,
+    MinimizeToFloat,
     ForwardToRaft,
     Share,
     CopyLink,
@@ -141,15 +199,20 @@ internal enum class RaftMobileWebPanelMenuAction {
 
 /**
  * Overflow menu items by page mode:
- * - Installed Raft App page: Reload, Forward to Raft, Share, Copy link, Open in browser, Close page.
+ * - Installed Raft App page: Reload, (optional) Float window, Forward to Raft, Share, Copy link,
+ *   Open in browser, Close page.
  * - Cross-origin unauthenticated child page: Reload, Forward to Raft, Share, Copy link, Open in browser.
  */
 internal fun raftMobileWebPanelMenuActions(
     isRaftApp: Boolean,
     isOutboundChild: Boolean = false,
+    canMinimizeToFloat: Boolean = false,
 ): List<RaftMobileWebPanelMenuAction> =
     buildList {
         add(RaftMobileWebPanelMenuAction.Reload)
+        if (isRaftApp && !isOutboundChild && canMinimizeToFloat) {
+            add(RaftMobileWebPanelMenuAction.MinimizeToFloat)
+        }
         add(RaftMobileWebPanelMenuAction.ForwardToRaft)
         add(RaftMobileWebPanelMenuAction.Share)
         add(RaftMobileWebPanelMenuAction.CopyLink)
@@ -191,19 +254,19 @@ internal fun raftAppShouldRouteCrossOriginOutbound(
     return true
 }
 
-/** System Back / edge-swipe resolution while an in-app browser page is visible. */
+/** System Back / top-bar ← resolution while an in-app browser page is visible. */
 internal enum class RaftAppBrowserBackAction {
     WebGoBack,
     PopOutboundChild,
-    SuspendAppToPill,
+    CloseAppPage,
 }
 
 /**
- * Resolves system Back inside an in-app browser stack page:
+ * Resolves system Back / top-bar ← inside an in-app browser stack page:
  * - When the WebView has back history (`canGoBack == true`): go back within WebView history.
  * - On an outbound cross-origin child page at its first history entry: pop back to the parent App.
- * - On an installed Raft App page at its first history entry: suspend into the right-edge floating
- *   pill (keeping warm WebView intact) and pop back to the underlying screen.
+ * - On an installed Raft App page at its first history entry: close cleanly (no auto-floating pill;
+ *   minimizing to the right-edge floating pill is an explicit opt-in action in the `⋮` menu).
  */
 internal fun resolveRaftAppBrowserBackAction(
     canGoBack: Boolean,
@@ -212,7 +275,7 @@ internal fun resolveRaftAppBrowserBackAction(
     when {
         canGoBack -> RaftAppBrowserBackAction.WebGoBack
         isOutboundChild -> RaftAppBrowserBackAction.PopOutboundChild
-        else -> RaftAppBrowserBackAction.SuspendAppToPill
+        else -> RaftAppBrowserBackAction.CloseAppPage
     }
 
 /**

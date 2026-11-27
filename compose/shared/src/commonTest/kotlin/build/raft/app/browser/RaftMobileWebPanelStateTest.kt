@@ -64,6 +64,156 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
+    fun failClosedActionNeverHandsOffToSystemBrowserWhenClosingOrPreviouslyAuthorizedApp() {
+        val openInPanel =
+            RaftMobileWebPanelLaunchResolution.OpenInPanel(
+                storagePartition = RaftWebViewStoragePartition.Default,
+                isRaftApp = true,
+            )
+        assertEquals(
+            RaftMobileWebPanelFailClosedAction.None,
+            resolveRaftMobileWebPanelFailClosedAction(
+                storageResolution = openInPanel,
+                effectiveLaunchUrl = "https://stamp.build/pulls/1",
+                closing = false,
+                wasAuthorizedAppEntry = true,
+            ),
+        )
+        // Closing an authorized App page must never trigger a system-browser handoff even if the token is gone.
+        assertEquals(
+            RaftMobileWebPanelFailClosedAction.None,
+            resolveRaftMobileWebPanelFailClosedAction(
+                storageResolution = RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser,
+                effectiveLaunchUrl = "https://stamp.build/pulls/1",
+                closing = true,
+                wasAuthorizedAppEntry = true,
+            ),
+        )
+        // If an authorized App loses its token while mounted on pre-119 Android, close silently instead of launching external browser.
+        assertEquals(
+            RaftMobileWebPanelFailClosedAction.CloseSilently,
+            resolveRaftMobileWebPanelFailClosedAction(
+                storageResolution = RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser,
+                effectiveLaunchUrl = "https://stamp.build/pulls/1",
+                closing = false,
+                wasAuthorizedAppEntry = true,
+            ),
+        )
+        // Genuine unauthenticated third-party launch without MULTI_PROFILE still fails closed to system browser.
+        assertEquals(
+            RaftMobileWebPanelFailClosedAction.HandoffToSystemBrowser,
+            resolveRaftMobileWebPanelFailClosedAction(
+                storageResolution = RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser,
+                effectiveLaunchUrl = "https://third-party.example/docs",
+                closing = false,
+                wasAuthorizedAppEntry = false,
+            ),
+        )
+        assertEquals(
+            RaftMobileWebPanelFailClosedAction.None,
+            resolveRaftMobileWebPanelFailClosedAction(
+                storageResolution = RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser,
+                effectiveLaunchUrl = null,
+                closing = false,
+                wasAuthorizedAppEntry = false,
+            ),
+        )
+    }
+
+    @Test
+    fun loadingPlaceholderShowsOnlyBeforeInitialVisualCommitAndNeverCoversWarmOrErrorStates() {
+        assertTrue(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = true,
+                hasVisualCommit = false,
+                hasLoadError = false,
+                isSignInResolving = false,
+                hasDeclinedSignIn = false,
+                isLoading = true,
+                progress = 0,
+            ),
+        )
+        assertFalse(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = true,
+                hasVisualCommit = true,
+                hasLoadError = false,
+                isSignInResolving = false,
+                hasDeclinedSignIn = false,
+                isLoading = true,
+                progress = 0,
+            ),
+        )
+        assertFalse(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = true,
+                hasVisualCommit = false,
+                hasLoadError = false,
+                isSignInResolving = false,
+                hasDeclinedSignIn = false,
+                isLoading = true,
+                progress = 25,
+            ),
+        )
+        // Warm keep-alive reuse reports !isLoading immediately and must not flash a loading cover.
+        assertFalse(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = true,
+                hasVisualCommit = false,
+                hasLoadError = false,
+                isSignInResolving = false,
+                hasDeclinedSignIn = false,
+                isLoading = false,
+                progress = 0,
+            ),
+        )
+        assertFalse(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = true,
+                hasVisualCommit = false,
+                hasLoadError = true,
+                isSignInResolving = false,
+                hasDeclinedSignIn = false,
+                isLoading = true,
+                progress = 0,
+            ),
+        )
+        assertFalse(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = true,
+                hasVisualCommit = false,
+                hasLoadError = false,
+                isSignInResolving = true,
+                hasDeclinedSignIn = false,
+                isLoading = true,
+                progress = 0,
+            ),
+        )
+        assertFalse(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = true,
+                hasVisualCommit = false,
+                hasLoadError = false,
+                isSignInResolving = false,
+                hasDeclinedSignIn = true,
+                isLoading = true,
+                progress = 0,
+            ),
+        )
+        assertFalse(
+            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                hasLaunchUrl = false,
+                hasVisualCommit = false,
+                hasLoadError = false,
+                isSignInResolving = false,
+                hasDeclinedSignIn = false,
+                isLoading = true,
+                progress = 0,
+            ),
+        )
+    }
+
+    @Test
     fun displayHostStripsWwwConvertsIdnToPunycodeAndPreservesNonDefaultPorts() {
         assertEquals("docs.example.com", raftMobileWebPanelDisplayHost("https://docs.example.com/push/ios-setup?k=v#top"))
         assertEquals("docs.example.com", raftMobileWebPanelDisplayHost("https://www.docs.example.com/push"))
@@ -96,7 +246,19 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
-    fun overflowMenuOffersOpenInBrowserForAllModesAndClosePageForInstalledApps() {
+    fun overflowMenuOffersOpenInBrowserForAllModesAndFloatAndCloseForInstalledApps() {
+        assertEquals(
+            listOf(
+                RaftMobileWebPanelMenuAction.Reload,
+                RaftMobileWebPanelMenuAction.MinimizeToFloat,
+                RaftMobileWebPanelMenuAction.ForwardToRaft,
+                RaftMobileWebPanelMenuAction.Share,
+                RaftMobileWebPanelMenuAction.CopyLink,
+                RaftMobileWebPanelMenuAction.OpenInBrowser,
+                RaftMobileWebPanelMenuAction.ClosePage,
+            ),
+            raftMobileWebPanelMenuActions(isRaftApp = true, isOutboundChild = false, canMinimizeToFloat = true),
+        )
         assertEquals(
             listOf(
                 RaftMobileWebPanelMenuAction.Reload,
@@ -106,7 +268,7 @@ class RaftMobileWebPanelStateTest {
                 RaftMobileWebPanelMenuAction.OpenInBrowser,
                 RaftMobileWebPanelMenuAction.ClosePage,
             ),
-            raftMobileWebPanelMenuActions(isRaftApp = true, isOutboundChild = false),
+            raftMobileWebPanelMenuActions(isRaftApp = true, isOutboundChild = false, canMinimizeToFloat = false),
         )
         assertEquals(
             listOf(
@@ -116,7 +278,7 @@ class RaftMobileWebPanelStateTest {
                 RaftMobileWebPanelMenuAction.CopyLink,
                 RaftMobileWebPanelMenuAction.OpenInBrowser,
             ),
-            raftMobileWebPanelMenuActions(isRaftApp = false, isOutboundChild = true),
+            raftMobileWebPanelMenuActions(isRaftApp = false, isOutboundChild = true, canMinimizeToFloat = true),
         )
     }
 
@@ -193,7 +355,7 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
-    fun backActionResolvesWebHistoryOutboundPopAndAppSuspendToPill() {
+    fun backActionResolvesWebHistoryOutboundPopAndAppCloseAtRoot() {
         assertEquals(
             RaftAppBrowserBackAction.WebGoBack,
             resolveRaftAppBrowserBackAction(canGoBack = true, isOutboundChild = false),
@@ -207,7 +369,7 @@ class RaftMobileWebPanelStateTest {
             resolveRaftAppBrowserBackAction(canGoBack = false, isOutboundChild = true),
         )
         assertEquals(
-            RaftAppBrowserBackAction.SuspendAppToPill,
+            RaftAppBrowserBackAction.CloseAppPage,
             resolveRaftAppBrowserBackAction(canGoBack = false, isOutboundChild = false),
         )
     }
