@@ -253,4 +253,44 @@ class WebNavigationGuardTest {
             sanitizeUrlForTelemetry("https://app.raft.build/doc/42?token=secret#hash"),
         )
     }
+
+    @Test
+    fun launchInitialHopAndCommittedStarterTransitionPreserveSignInInterceptContext() {
+        val chain = WebNavigationChainState()
+        chain.startChain(
+            carriesHeader = false,
+            reissueBudget = 2,
+            starter = WebNavigationStarter.Launch,
+            initialHop = "https://stamp.build/",
+        )
+        assertEquals(WebNavigationStarter.Launch, chain.starter)
+        assertEquals(listOf("https://stamp.build/"), chain.currentHops())
+
+        var observedStarter: WebNavigationStarter? = null
+        var observedHops: List<String> = emptyList()
+        val decision =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://api.raft.build/api/oauth/authorize?client_id=stamp",
+                initialUrl = "https://stamp.build/",
+                policy = WebNavigationPolicy(allowNavigation = true),
+                chainState = chain,
+                isRedirect = true,
+                catchesMainFrameNavigation = { ctx ->
+                    observedStarter = ctx.starter
+                    observedHops = ctx.priorHops
+                    ctx.url.contains("/api/oauth/authorize")
+                },
+                mutateChainState = false,
+            )
+        assertIs<WebNavigationDecision.InterceptedByHost>(decision)
+        assertEquals(WebNavigationStarter.Launch, observedStarter)
+        assertEquals(listOf("https://stamp.build/"), observedHops)
+        assertEquals(2, chain.remainingReissues)
+
+        // Once a document commits, subsequent navigations without a fresh Launch belong to the Page.
+        chain.markCommitted()
+        assertTrue(chain.hasCommittedDocument)
+        assertEquals(WebNavigationStarter.Page, chain.starter)
+        assertTrue(chain.currentHops().isEmpty())
+    }
 }
