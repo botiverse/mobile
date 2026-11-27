@@ -26,9 +26,10 @@ import build.raft.app.messages
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.yield
 import kotlin.math.roundToInt
 
 private const val ThreadFocusedMessageCenterAttempts = 6
@@ -801,18 +802,26 @@ private const val ThreadKeyboardBottomAnchorAttempts = 8
 private const val ThreadOlderAutoLoadVisibleItemThreshold = 8
 internal const val ThreadShareCaptureTopScrollOffsetPx = -12
 internal const val ThreadShareCaptureScrollSettleMs = 96L
+private const val ThreadFallbackFrameDelayMs = 16L
 
 /**
  * Waits for the next live Compose frame (vsync-aligned on 60/90/120 Hz displays instead of a
- * 60 Hz-assumed `delay(16L)`). Falls back to `yield()` in headless coroutine unit tests without a
- * [MonotonicFrameClock].
+ * 60 Hz-assumed `delay(16L)`). Falls back to a single 16 ms virtual-frame delay in headless
+ * coroutine tests without a [MonotonicFrameClock].
+ *
+ * Re-checks [ensureActive] after `withFrameNanos` returns: when a frame-clock awaiter is
+ * registered before the Recomposer's frame callback on the same vsync, `withFrameNanos` can
+ * resume its continuation just before the Recomposer cancels the owning `LaunchedEffect` on that
+ * same frame (both in Compose's `TestMonotonicFrameClock` and on Android's `AndroidUiFrameClock`),
+ * which would otherwise return normally into a cancelled effect.
  */
 internal suspend fun awaitNextThreadFrame() {
     if (currentCoroutineContext()[MonotonicFrameClock] != null) {
         withFrameNanos { }
     } else {
-        yield()
+        delay(ThreadFallbackFrameDelayMs)
     }
+    currentCoroutineContext().ensureActive()
 }
 
 /**
@@ -821,6 +830,9 @@ internal suspend fun awaitNextThreadFrame() {
  */
 internal suspend fun awaitThreadShareCaptureFrames(frames: Int = 2): Boolean {
     if (currentCoroutineContext()[MonotonicFrameClock] == null) return false
-    repeat(frames) { withFrameNanos { } }
+    repeat(frames) {
+        withFrameNanos { }
+        currentCoroutineContext().ensureActive()
+    }
     return true
 }
