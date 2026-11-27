@@ -861,6 +861,18 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Stamp's `ci report` (slowest test files, costly never-failing files, flaky cases)
+      # reads JUnit XML from artifacts named stamp-test-report*. Upload on both pass and
+      # failure so Stamp sees every run attempt; skip only when the run was cancelled.
+      - name: Upload JUnit report for Stamp
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: stamp-test-report-android-unit-${{ github.run_attempt }}
+          path: compose/*/build/test-results/*/*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Upload unit test reports
         if: failure()
         uses: actions/upload-artifact@v7
@@ -1467,6 +1479,15 @@ jobs:
           summary_rc=$?
           [ "$gradle_rc" -eq 0 ] && [ "$summary_rc" -eq 0 ]
 
+      - name: Upload JUnit report for Stamp
+        if: ${{ !cancelled() && needs.plan.outputs.run_ios_tests == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: stamp-test-report-ios-${{ matrix.lane }}-${{ github.run_attempt }}
+          path: compose/shared/build/test-results/iosSimulatorArm64Test/*.xml
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Upload xcodebuild log
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -1526,7 +1547,12 @@ jobs:
   # the candidate run to succeed; only queue-ci-reuse may skip.)
   ci-gate:
     name: CI gate
-    if: ${{ always() }}
+    # Run on every non-cancelled completion (including upstream failures and skipped
+    # non-selected tiers), but skip when the workflow run itself is cancelled (e.g.
+    # concurrency.cancel-in-progress on a newer PR push). Previously `if: always()`
+    # ran verify_test_tier_results.mjs on cancelled runs, saw `got cancelled`, and
+    # exited 1 — turning superseded runs into fake `CI gate` failures / Stamp flakes.
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs:
