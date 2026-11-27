@@ -5,9 +5,9 @@
 
 🔧 Improved
 - Computers Needs attention, diagnostics & delete alerts
-- Copy env vars, model/quota status & external invites
-- Live Done & Tasks sync, Mermaid diagrams & Share icons
+- Copy env vars, clearer status & simpler external invites
+- Live Done sync, more Mermaid charts & Settings search
 
 🐛 Fixed
 - Cleaner timelines, cached screens & idle media release
-- Artifact retry, browser timeouts, 403 sign-outs & toasts
+- Artifact retry, browser timeouts, false sign-outs & toasts
