@@ -878,10 +878,20 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
         measureMetricsIfNeeded(reason: reason)
         applyMirror()
         if reason == "appear" {
-            // A pushed page appears while the push still runs: measure once it has settled.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                self?.measureMetricsIfNeeded(reason: "settled")
-                self?.applyMirror()
+            // A pushed page appears while the push still runs: measure once the transition settles
+            // rather than guessing with a fixed wall-clock delay.
+            if let coordinator = controller.navigationController?.transitionCoordinator ?? controller.transitionCoordinator {
+                coordinator.animate(alongsideTransition: nil) { [weak self] _ in
+                    DispatchQueue.main.async {
+                        self?.measureMetricsIfNeeded(reason: "settled")
+                        self?.applyMirror()
+                    }
+                }
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.measureMetricsIfNeeded(reason: "settled")
+                    self?.applyMirror()
+                }
             }
         }
     }
