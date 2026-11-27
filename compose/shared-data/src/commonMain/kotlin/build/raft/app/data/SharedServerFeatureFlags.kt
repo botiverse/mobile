@@ -363,6 +363,15 @@ const val PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY: String = "private_mention_add_v0
 @RaftCoreInternalApi const val VOICE_DICTATION_V1_FEATURE_FLAG_KEY: String = "voice_dictation_v1"
 
 /**
+ * Internal-only voice dictation bad-case sample opt-in (`#wg-call:#7`, botiverse/slock `#17246`
+ * `VOICE_FEEDBACK_SAMPLE_FLAG_KEY`): per server, default OFF (unresolved or missing evaluates false;
+ * non-last-known). When ON, members may explicitly opt in on a negative dictation feedback
+ * submission (`rating: "bad"`, `sample.consent: true`) to forward that single raw/refined/sent
+ * sample to `holt-live`'s 7-day internal review store.
+ */
+@RaftCoreInternalApi const val VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY: String = "voice_feedback_sample_v0"
+
+/**
  * Pro seat add, non-owner seat-request cards, and seat-join-blocked notices (botiverse/slock
  * `#11507 #11576` `PRO_SEAT_ADD_FEATURE_FLAG_KEY`): per server, default OFF (unresolved or
  * missing evaluates false; non-last-known).
@@ -455,6 +464,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY,
     // Composer streaming voice dictation (#wg-mobile-sync:#334, default OFF).
     VOICE_DICTATION_V1_FEATURE_FLAG_KEY,
+    // Internal-only voice dictation bad-case sample opt-in (#wg-call:#7, slock #17246, default OFF).
+    VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY,
     // Pro seat add, non-owner seat requests, and seat-join-blocked notices (botiverse/slock #11507 #11576, default OFF).
     PRO_SEAT_ADD_FEATURE_FLAG_KEY,
     // Minimum supported build (RaftMinBuildGate): the threshold is the flag's variant.
@@ -863,6 +874,14 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isVoiceDictationEnabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, VOICE_DICTATION_V1_FEATURE_FLAG_KEY)
+
+    /**
+     * Internal-only voice dictation bad-case sample opt-in gate (`#wg-call:#7`, botiverse/slock
+     * `#17246` `voice_feedback_sample_v0`): per server, default OFF (unresolved or missing evaluates
+     * false).
+     */
+    @RaftCoreInternalApi fun isVoiceFeedbackSampleEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY)
 
 /**
      * Pro seat add, seat-join-blocked notices, and non-owner seat requests (`#wg-mobile-sync:#335`,

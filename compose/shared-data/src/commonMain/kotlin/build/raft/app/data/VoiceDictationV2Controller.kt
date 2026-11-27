@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
+import build.raft.realtime.socket.RaftWebSocketSession
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -35,6 +36,31 @@ const val VOICE_DICTATION_MAX_PRE_READY_CHUNKS: Int = 100
 /** Max time composer Send waits for a post-stop final snapshot before sending current text (1 s). */
 @RaftCoreInternalApi
 const val VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS: Long = 1_000L
+
+/** Explicit short ASCII RFC 6455 close reasons sent with `NORMAL_CLOSURE` (1000) across the dictation lifecycle. */
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_DONE: String = "done"
+
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_USER_CANCEL: String = "user_cancel"
+
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_OWNER_CHANGED: String = "owner_changed"
+
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_DRAIN_TIMEOUT: String = "drain_timeout"
+
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_PRE_READY_OVERFLOW: String = "pre_ready_overflow"
+
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_SUBMIT: String = "submit"
+
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_SUPERSEDED: String = "superseded"
+
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLOSE_REASON_ERROR: String = "error"
 
 /** Outcome of starting native microphone PCM16 capture. */
 @RaftCoreInternalApi
@@ -414,6 +440,11 @@ data class VoiceDictationV2State(
      * a manual user edit. Mirrors web `VoiceDictationState.provisionalRange`.
      */
     val provisionalRange: VoiceDictationTextRange? = null,
+    /**
+     * Most recent completed dictation snapshot eligible for internal-only opt-in bad-case reporting
+     * (`voice_feedback_sample_v0`, `#wg-call:#7`). Mirrors web `VoiceDictationState.recentFeedbackTarget`.
+     */
+    val recentFeedbackTarget: VoiceDictationFeedbackTarget? = null,
 ) {
     val isActive: Boolean
         get() = phase == VoiceDictationV2Phase.Connecting || phase == VoiceDictationV2Phase.Listening
@@ -454,6 +485,9 @@ class VoiceDictationV2Controller(
     private val stopDrainTimeoutMs: Long = VOICE_DICTATION_DEFAULT_STOP_DRAIN_TIMEOUT_MS,
     private val submitFinalWaitMs: Long = VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS,
     private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val onOutcomeReport: ((VoiceDictationOutcomeReport) -> Unit)? = null,
+    private val privacyModeProvider: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
+    private val clientPlatformProvider: () -> VoiceFeedbackClientPlatform = ::currentVoiceFeedbackClientPlatform,
 ) {
     private inner class Session(
         val id: Long,
@@ -461,6 +495,7 @@ class VoiceDictationV2Controller(
         val language: String?,
         val recorder: RaftVoiceDictationAudioRecorder,
         val span: VoiceDictationComposerSpan,
+        val startedAtMs: Long,
         val onComposerUpdate: (VoiceDictationComposerUpdate) -> Unit,
     ) {
         val liveAudioChannel: Channel<ByteArray> = Channel(Channel.UNLIMITED)
@@ -478,6 +513,14 @@ class VoiceDictationV2Controller(
         var recorderNeedsStop: Boolean = false
         var recorderStopped: Boolean = false
         var micFlushed: Boolean = false
+        var sessionId: String? = null
+        var traceId: String? = null
+        var streamUrlSource: VoiceStreamUrlSource? = null
+        var connectedAtMs: Long? = null
+        var firstPartialAtMs: Long? = null
+        var transcriptCapture: DictationTranscriptCapture = DictationTranscriptCapture()
+        var closeReason: String = VOICE_DICTATION_CLOSE_REASON_DONE
+        var closeReasonLatched: Boolean = false
         var connection: VoiceDictationV2StreamConnection? = null
         var connectionClosed: Boolean = false
         var runJob: Job? = null
@@ -488,6 +531,15 @@ class VoiceDictationV2Controller(
         fun markRecorderNeedsStop() {
             synchronized(stateLock) { recorderNeedsStop = true }
         }
+
+        fun recordCloseReasonLocked(reason: String) {
+            if (!closeReasonLatched) {
+                closeReasonLatched = true
+                closeReason = reason
+            }
+        }
+
+        fun resolvedCloseReason(): String = synchronized(stateLock) { closeReason }
 
         fun attachConnection(conn: VoiceDictationV2StreamConnection): Boolean =
             synchronized(stateLock) {
@@ -523,22 +575,33 @@ class VoiceDictationV2Controller(
             }
         }
 
-        suspend fun cleanupResources() {
-            val connectionToClose =
+        suspend fun closeConnectionOnce() {
+            val (connectionToClose, reason) =
                 synchronized(stateLock) {
-                    preReadyQueue.clear()
                     if (!connectionClosed && connection != null) {
                         connectionClosed = true
-                        connection
+                        connection to closeReason
                     } else {
-                        null
+                        null to closeReason
                     }
                 }
+            if (connectionToClose != null) {
+                runCatching {
+                    connectionToClose.close(
+                        code = RaftWebSocketSession.NORMAL_CLOSURE,
+                        reason = reason,
+                    )
+                }
+            }
+        }
+
+        suspend fun cleanupResources() {
+            synchronized(stateLock) {
+                preReadyQueue.clear()
+            }
             liveAudioChannel.close()
             stopRecorderOnce()
-            if (connectionToClose != null) {
-                runCatching { connectionToClose.close() }
-            }
+            closeConnectionOnce()
         }
     }
 
@@ -548,6 +611,14 @@ class VoiceDictationV2Controller(
     private var backgroundSession: Session? = null
     private var pendingSubmitWait: CompletableDeferred<Boolean>? = null
     private var pendingRecorderCleanupJob: Job? = null
+
+    private val outcomeTracker =
+        VoiceDictationOutcomeTracker(
+            nowMillis = nowMillis,
+            clientPlatformProvider = clientPlatformProvider,
+            privacyModeProvider = privacyModeProvider,
+            onOutcomeReport = { report -> onOutcomeReport?.invoke(report) },
+        )
 
     private val stateFlow = MutableStateFlow(VoiceDictationV2State())
 
@@ -615,7 +686,13 @@ class VoiceDictationV2Controller(
                 threadId = cleanThreadId,
             )
 
-        val previousCleanup = abortAllSessionsLocked(resetState = false)
+        val now = nowMillis()
+        outcomeTracker.onStartNewSession(now)
+        val previousCleanup =
+            abortAllSessionsLocked(
+                resetState = false,
+                closeReason = VOICE_DICTATION_CLOSE_REASON_SUPERSEDED,
+            )
 
         if (cleanServerId.isEmpty()) {
             synchronized(stateLock) {
@@ -655,7 +732,6 @@ class VoiceDictationV2Controller(
             return
         }
 
-        val now = nowMillis()
         val session =
             synchronized(stateLock) {
                 nextSessionId += 1L
@@ -666,6 +742,7 @@ class VoiceDictationV2Controller(
                         language = language,
                         recorder = recorder,
                         span = VoiceDictationComposerSpan(baseText = baseText, insertStart = insertStart, insertEnd = insertEnd),
+                        startedAtMs = now,
                         onComposerUpdate = onComposerUpdate,
                     )
                 val prev = stateFlow.value
@@ -781,6 +858,9 @@ class VoiceDictationV2Controller(
                             if (session.aborted || !isLiveLocked(session)) {
                                 false
                             } else {
+                                session.sessionId = permit.sessionId
+                                session.traceId = permit.traceId
+                                session.streamUrlSource = permit.streamUrlSource
                                 if (activeSession === session || (activeSession == null && backgroundSession === session)) {
                                     val quotaAvailable = permit.quota.remainingSeconds > 0
                                     stateFlow.value =
@@ -800,10 +880,14 @@ class VoiceDictationV2Controller(
                         }
                     if (!updatedPermitState) return@launch
 
-                    // Step 3: Connect WebSocket with `Authorization: Bearer <permit>` and send `start`.
+                    // Step 3: Connect WebSocket with `Authorization: Bearer <permit>` (and optional `?tp=`) and send `start`.
                     val connection =
                         try {
-                            streamConnector.connect(url = permit.url, permit = permit.permit)
+                            streamConnector.connect(
+                                url = permit.url,
+                                permit = permit.permit,
+                                traceId = permit.traceId,
+                            )
                         } catch (cancellation: CancellationException) {
                             throw cancellation
                         } catch (error: Throwable) {
@@ -812,7 +896,14 @@ class VoiceDictationV2Controller(
                         }
 
                     if (!session.attachConnection(connection)) {
-                        withContext(NonCancellable) { runCatching { connection.close() } }
+                        withContext(NonCancellable) {
+                            runCatching {
+                                connection.close(
+                                    code = RaftWebSocketSession.NORMAL_CLOSURE,
+                                    reason = session.resolvedCloseReason(),
+                                )
+                            }
+                        }
                         return@launch
                     }
 
@@ -899,8 +990,9 @@ class VoiceDictationV2Controller(
         var sessionToDrain: Session? = null
         var abortImmediately = false
         var previousBg: Session? = null
-        var previousBgJobs: List<Job> = emptyList()
+        var previousBgHelperJobs: List<Job> = emptyList()
         var previousBgRunJob: Job? = null
+        var previousBgHasConnection = false
 
         synchronized(stateLock) {
             val session = activeSession ?: return
@@ -911,16 +1003,12 @@ class VoiceDictationV2Controller(
                 // Defensive: abort any lingering background session before attaching this one.
                 val existingBg = backgroundSession
                 if (existingBg != null && existingBg !== session) {
+                    existingBg.recordCloseReasonLocked(VOICE_DICTATION_CLOSE_REASON_SUPERSEDED)
                     existingBg.aborted = true
                     previousBg = existingBg
                     previousBgRunJob = existingBg.runJob
-                    previousBgJobs =
-                        listOfNotNull(
-                            existingBg.drainTimeoutJob,
-                            existingBg.stopJob,
-                            existingBg.senderJob,
-                            existingBg.runJob,
-                        )
+                    previousBgHasConnection = existingBg.connection != null
+                    previousBgHelperJobs = collectHelperJobsLocked(existingBg)
                 }
 
                 session.stopping = true
@@ -941,8 +1029,16 @@ class VoiceDictationV2Controller(
 
         previousBg?.let { stale ->
             stale.liveAudioChannel.close()
-            previousBgJobs.forEach { it.cancel() }
-            scheduleCleanup(stale, previousBgRunJob, trackRecorderCleanup = false)
+            previousBgHelperJobs.forEach { it.cancel() }
+            if (!previousBgHasConnection) {
+                previousBgRunJob?.cancel()
+            }
+            scheduleCleanup(
+                session = stale,
+                runJob = previousBgRunJob,
+                cancelRunJobAfterClose = previousBgHasConnection,
+                trackRecorderCleanup = false,
+            )
         }
 
         if (abortImmediately) {
@@ -955,7 +1051,7 @@ class VoiceDictationV2Controller(
         val timeoutJob =
             scope.launch {
                 delay(stopDrainTimeoutMs.coerceAtLeast(0L))
-                completeSession(session)
+                completeSession(session, closeReason = VOICE_DICTATION_CLOSE_REASON_DRAIN_TIMEOUT)
             }
         val stopJob =
             scope.launch {
@@ -1047,9 +1143,50 @@ class VoiceDictationV2Controller(
      * Ends any active or background dictation session right before sending a composer message so
      * late post-stop frames never write into the freshly cleared composer, while preserving
      * already-landed text and quota state.
+     *
+     * When an active or background-draining session is still open at submit time, captures its
+     * pending outcome with `sentBeforeRefineDone = true` so a subsequent [reportComposerSubmitted]
+     * records accurate edit metrics.
      */
     fun finishForSubmit() {
-        abortAllSessionsLocked(resetState = true, clearQuotaAndOwner = false)
+        val sessionToCapture =
+            synchronized(stateLock) {
+                activeSession?.takeIf { !it.aborted } ?: backgroundSession?.takeIf { !it.aborted }
+            }
+        if (sessionToCapture != null) {
+            captureSessionOutcome(sessionToCapture, sentBeforeRefineDone = true)
+        }
+        abortAllSessionsLocked(
+            resetState = true,
+            clearQuotaAndOwner = false,
+            closeReason = VOICE_DICTATION_CLOSE_REASON_SUBMIT,
+        )
+    }
+
+    /**
+     * Records that the user submitted [sentText] in the composer, emitting numeric-only implicit
+     * edit metrics (when `RAFT_PRIVACY_MODE` is off) and returning the updated feedback target.
+     */
+    fun reportComposerSubmitted(sentText: String): VoiceDictationFeedbackTarget? {
+        val updatedTarget = outcomeTracker.reportSubmitted(sentText) ?: return null
+        synchronized(stateLock) {
+            stateFlow.value = stateFlow.value.copy(recentFeedbackTarget = updatedTarget)
+        }
+        return updatedTarget
+    }
+
+    /** Flushes any pending post-dictation outcome as abandoned (`reRecorded = false`) when the composer is cleared. */
+    fun onComposerCleared() {
+        outcomeTracker.flushAbandoned(reRecorded = false)
+    }
+
+    /** Clears the in-memory [VoiceDictationV2State.recentFeedbackTarget] (e.g. after dismissal or submission). */
+    fun clearRecentFeedbackTarget() {
+        synchronized(stateLock) {
+            if (stateFlow.value.recentFeedbackTarget != null) {
+                stateFlow.value = stateFlow.value.copy(recentFeedbackTarget = null)
+            }
+        }
     }
 
     /**
@@ -1059,10 +1196,12 @@ class VoiceDictationV2Controller(
      * yet) while preserving already-confirmed utterances.
      */
     fun cancel(discardProvisional: Boolean = false) {
+        outcomeTracker.clear()
         var discardCallback: Pair<(VoiceDictationComposerUpdate) -> Unit, VoiceDictationComposerUpdate>? = null
         abortAllSessionsLocked(
             resetState = true,
             clearQuotaAndOwner = false,
+            closeReason = VOICE_DICTATION_CLOSE_REASON_USER_CANCEL,
             onBeforeAbortActiveLocked =
                 if (discardProvisional) {
                     { active ->
@@ -1087,9 +1226,11 @@ class VoiceDictationV2Controller(
      */
     fun onUserEditedComposer(currentComposerText: String? = null) {
         var releaseSubmitWait = false
+        var hasLiveSession = false
         synchronized(stateLock) {
             val active = activeSession?.takeIf { !it.aborted }
             if (active != null) {
+                hasLiveSession = true
                 val wasIgnored = active.span.ignoreSubsequentText
                 active.span.onUserEditedComposer(currentComposerText)
                 if (active.span.ignoreSubsequentText && (!wasIgnored || stateFlow.value.provisionalRange != null)) {
@@ -1098,6 +1239,7 @@ class VoiceDictationV2Controller(
             }
             val bg = backgroundSession?.takeIf { !it.aborted }
             if (bg != null) {
+                hasLiveSession = true
                 val wasIgnored = bg.span.ignoreSubsequentText
                 bg.span.onUserEditedComposer(currentComposerText)
                 if (!wasIgnored && bg.span.ignoreSubsequentText) {
@@ -1110,6 +1252,9 @@ class VoiceDictationV2Controller(
         }
         if (releaseSubmitWait) {
             resolveSubmitWait(target = null, proceed = true)
+        }
+        if (!hasLiveSession && currentComposerText != null) {
+            outcomeTracker.onComposerTextChanged(currentComposerText)
         }
     }
 
@@ -1130,6 +1275,7 @@ class VoiceDictationV2Controller(
                     threadId = threadId?.trim()?.takeIf { it.isNotEmpty() },
                 )
             }
+        var ownerChanged = false
         val shouldAbort =
             synchronized(stateLock) {
                 val active = activeSession
@@ -1138,29 +1284,39 @@ class VoiceDictationV2Controller(
                     (active != null && active.owner != nextOwner) ||
                         (bg != null && bg.owner != nextOwner)
                 if (anySessionMismatch) {
+                    ownerChanged = true
                     true
                 } else if (active == null && bg == null) {
                     val current = stateFlow.value
-                    if (
-                        current.owner != nextOwner &&
-                        (
+                    if (current.owner != nextOwner) {
+                        ownerChanged = true
+                        if (
                             current.error != null ||
-                                current.lastUpdate != null ||
-                                current.provisionalRange != null ||
-                                current.quota != null ||
-                                current.quotaExhausted ||
-                                current.quotaExhaustedResetsAtIso != null
-                        )
-                    ) {
-                        stateFlow.value = VoiceDictationV2State(phase = VoiceDictationV2Phase.Idle, owner = nextOwner)
+                            current.lastUpdate != null ||
+                            current.provisionalRange != null ||
+                            current.quota != null ||
+                            current.quotaExhausted ||
+                            current.quotaExhaustedResetsAtIso != null ||
+                            current.recentFeedbackTarget != null
+                        ) {
+                            stateFlow.value = VoiceDictationV2State(phase = VoiceDictationV2Phase.Idle, owner = nextOwner)
+                        }
                     }
                     false
                 } else {
                     false
                 }
             }
+        if (ownerChanged) {
+            outcomeTracker.clear()
+        }
         if (shouldAbort) {
-            abortAllSessionsLocked(resetState = true, clearQuotaAndOwner = true, nextOwner = nextOwner)
+            abortAllSessionsLocked(
+                resetState = true,
+                clearQuotaAndOwner = true,
+                nextOwner = nextOwner,
+                closeReason = VOICE_DICTATION_CLOSE_REASON_OWNER_CHANGED,
+            )
         }
     }
 
@@ -1204,6 +1360,7 @@ class VoiceDictationV2Controller(
             failSession(
                 session,
                 error = VoiceDictationV2Error.ConnectionLost("Pre-ready audio buffer exceeded 10 s limit"),
+                closeReason = VOICE_DICTATION_CLOSE_REASON_PRE_READY_OVERFLOW,
             )
         }
     }
@@ -1212,9 +1369,13 @@ class VoiceDictationV2Controller(
         when (frame) {
             VoiceDictationV2ServerFrame.Ready -> {
                 var triggerStopSend = false
+                val readyAt = nowMillis()
                 synchronized(stateLock) {
                     if (session.aborted || !isLiveLocked(session) || session.transportReady) return
                     session.transportReady = true
+                    if (session.connectedAtMs == null) {
+                        session.connectedAtMs = readyAt
+                    }
                     while (session.preReadyQueue.isNotEmpty()) {
                         session.liveAudioChannel.trySend(session.preReadyQueue.removeFirst())
                     }
@@ -1244,11 +1405,16 @@ class VoiceDictationV2Controller(
 
             is VoiceDictationV2ServerFrame.Text -> {
                 var releaseSubmitWait = false
+                val textAt = nowMillis()
                 val update =
                     synchronized(stateLock) {
                         if (session.aborted || !isLiveLocked(session)) {
                             null
                         } else {
+                            if (frame.text.isNotBlank() && session.firstPartialAtMs == null) {
+                                session.firstPartialAtMs = textAt
+                            }
+                            session.transcriptCapture = session.transcriptCapture.recordSnapshot(frame.text, frame.refined)
                             val applied = session.span.applyFrame(frame)
                             if (applied != null) {
                                 if (activeSession === session) {
@@ -1286,13 +1452,14 @@ class VoiceDictationV2Controller(
             }
 
             VoiceDictationV2ServerFrame.Done -> {
-                completeSession(session)
+                completeSession(session, closeReason = VOICE_DICTATION_CLOSE_REASON_DONE)
             }
 
             is VoiceDictationV2ServerFrame.Error -> {
                 failSession(
                     session,
                     error = VoiceDictationV2Error.StreamError(code = frame.code, message = frame.message),
+                    closeReason = VOICE_DICTATION_CLOSE_REASON_ERROR,
                 )
             }
         }
@@ -1309,9 +1476,13 @@ class VoiceDictationV2Controller(
                 }
             }
         if (shouldFail) {
-            failSession(session, error = VoiceDictationV2Error.ConnectionLost(closed.causeMessage))
+            failSession(
+                session,
+                error = VoiceDictationV2Error.ConnectionLost(closed.causeMessage),
+                closeReason = VOICE_DICTATION_CLOSE_REASON_ERROR,
+            )
         } else {
-            completeSession(session)
+            completeSession(session, closeReason = VOICE_DICTATION_CLOSE_REASON_DONE)
         }
     }
 
@@ -1342,11 +1513,15 @@ class VoiceDictationV2Controller(
     private fun isActiveForeground(session: Session): Boolean =
         synchronized(stateLock) { !session.aborted && activeSession === session }
 
-    private fun completeSession(session: Session) {
+    private fun completeSession(
+        session: Session,
+        closeReason: String = VOICE_DICTATION_CLOSE_REASON_DONE,
+    ) {
         var releaseSubmitWait = false
-        val (jobsToCancel, runJob) =
+        val termination =
             synchronized(stateLock) {
                 if (session.aborted) return
+                session.recordCloseReasonLocked(closeReason)
                 session.aborted = true
                 when {
                     activeSession === session -> {
@@ -1369,24 +1544,41 @@ class VoiceDictationV2Controller(
                             )
                     }
                 }
-                collectSessionJobsLocked(session) to session.runJob
+                Triple(collectHelperJobsLocked(session), session.runJob, session.connection != null)
             }
+        val feedbackTarget = captureSessionOutcome(session, sentBeforeRefineDone = false)
+        if (feedbackTarget != null) {
+            synchronized(stateLock) {
+                stateFlow.value = stateFlow.value.copy(recentFeedbackTarget = feedbackTarget)
+            }
+        }
+        val (helperJobs, runJob, hasConnection) = termination
         session.liveAudioChannel.close()
-        jobsToCancel.forEach { it.cancel() }
+        helperJobs.forEach { it.cancel() }
+        if (!hasConnection) {
+            runJob?.cancel()
+        }
         if (releaseSubmitWait) {
             resolveSubmitWait(target = null, proceed = true)
         }
-        scheduleCleanup(session, runJob, trackRecorderCleanup = !session.recorderReleased.isCompleted)
+        scheduleCleanup(
+            session = session,
+            runJob = runJob,
+            cancelRunJobAfterClose = hasConnection,
+            trackRecorderCleanup = !session.recorderReleased.isCompleted,
+        )
     }
 
     private fun failSession(
         session: Session,
         error: VoiceDictationV2Error,
+        closeReason: String = VOICE_DICTATION_CLOSE_REASON_ERROR,
     ) {
         var releaseSubmitWait = false
-        val (jobsToCancel, runJob) =
+        val termination =
             synchronized(stateLock) {
                 if (session.aborted) return
+                session.recordCloseReasonLocked(closeReason)
                 session.aborted = true
                 val wasActive = activeSession === session
                 val wasBackground = backgroundSession === session
@@ -1419,14 +1611,49 @@ class VoiceDictationV2Controller(
                             surfaceErrorBanner = surfaceBanner,
                         )
                 }
-                collectSessionJobsLocked(session) to session.runJob
+                Triple(collectHelperJobsLocked(session), session.runJob, session.connection != null)
             }
+        val (helperJobs, runJob, hasConnection) = termination
         session.liveAudioChannel.close()
-        jobsToCancel.forEach { it.cancel() }
+        helperJobs.forEach { it.cancel() }
+        if (!hasConnection) {
+            runJob?.cancel()
+        }
         if (releaseSubmitWait) {
             resolveSubmitWait(target = null, proceed = true)
         }
-        scheduleCleanup(session, runJob, trackRecorderCleanup = !session.recorderReleased.isCompleted)
+        scheduleCleanup(
+            session = session,
+            runJob = runJob,
+            cancelRunJobAfterClose = hasConnection,
+            trackRecorderCleanup = !session.recorderReleased.isCompleted,
+        )
+    }
+
+    private fun captureSessionOutcome(
+        session: Session,
+        sentBeforeRefineDone: Boolean,
+    ): VoiceDictationFeedbackTarget? {
+        val input =
+            synchronized(stateLock) {
+                val sid = session.sessionId ?: return null
+                val hasSpokenContent =
+                    session.span.hasAppliedText ||
+                        session.transcriptCapture.v2LastRawText.isNotBlank() ||
+                        !session.transcriptCapture.v2LastRefinedText.isNullOrBlank()
+                if (!hasSpokenContent) return null
+                VoiceDictationOutcomeCaptureInput(
+                    serverId = session.owner.serverId,
+                    sessionId = sid,
+                    composerText = session.span.lastComposerText,
+                    transcript = session.transcriptCapture,
+                    startedAtMs = session.startedAtMs,
+                    connectedAtMs = session.connectedAtMs,
+                    firstPartialAtMs = session.firstPartialAtMs,
+                    sentBeforeRefineDone = sentBeforeRefineDone,
+                )
+            }
+        return outcomeTracker.capture(input)
     }
 
     private fun applyErrorToStateLocked(
@@ -1474,10 +1701,12 @@ class VoiceDictationV2Controller(
         resetState: Boolean,
         clearQuotaAndOwner: Boolean = false,
         nextOwner: VoiceDictationV2Owner? = null,
+        closeReason: String = VOICE_DICTATION_CLOSE_REASON_USER_CANCEL,
         onBeforeAbortActiveLocked: ((Session) -> VoiceDictationComposerUpdate?)? = null,
     ): Job? {
-        val sessionsToClean = mutableListOf<Pair<Session, Job?>>()
-        val jobsToCancel = mutableListOf<Job>()
+        val sessionsToClean = mutableListOf<Triple<Session, Job?, Boolean>>()
+        val helperJobsToCancel = mutableListOf<Job>()
+        val immediateRunJobsToCancel = mutableListOf<Job>()
         var existingRecorderCleanup: Job? = null
         var submitWaitToCancel: CompletableDeferred<Boolean>? = null
 
@@ -1491,17 +1720,27 @@ class VoiceDictationV2Controller(
                 if (!active.aborted && onBeforeAbortActiveLocked != null) {
                     discardUpdate = onBeforeAbortActiveLocked(active)
                 }
+                active.recordCloseReasonLocked(closeReason)
                 active.aborted = true
                 activeSession = null
-                jobsToCancel += collectSessionJobsLocked(active)
-                sessionsToClean += active to active.runJob
+                helperJobsToCancel += collectHelperJobsLocked(active)
+                val hasConn = active.connection != null
+                if (!hasConn) {
+                    active.runJob?.let { immediateRunJobsToCancel += it }
+                }
+                sessionsToClean += Triple(active, active.runJob, hasConn)
             }
             val bg = backgroundSession
             if (bg != null) {
+                bg.recordCloseReasonLocked(closeReason)
                 bg.aborted = true
                 backgroundSession = null
-                jobsToCancel += collectSessionJobsLocked(bg)
-                sessionsToClean += bg to bg.runJob
+                helperJobsToCancel += collectHelperJobsLocked(bg)
+                val hasConn = bg.connection != null
+                if (!hasConn) {
+                    bg.runJob?.let { immediateRunJobsToCancel += it }
+                }
+                sessionsToClean += Triple(bg, bg.runJob, hasConn)
             }
 
             if (resetState) {
@@ -1539,13 +1778,20 @@ class VoiceDictationV2Controller(
         if (sessionsToClean.isEmpty()) {
             return existingRecorderCleanup
         }
-        sessionsToClean.forEach { (session, _) -> session.liveAudioChannel.close() }
-        jobsToCancel.forEach { it.cancel() }
+        sessionsToClean.forEach { (session, _, _) -> session.liveAudioChannel.close() }
+        helperJobsToCancel.forEach { it.cancel() }
+        immediateRunJobsToCancel.forEach { it.cancel() }
 
         var lastRecorderCleanup: Job? = existingRecorderCleanup
-        sessionsToClean.forEach { (session, runJob) ->
+        sessionsToClean.forEach { (session, runJob, hasConnection) ->
             val needsRecorderWait = !session.recorderReleased.isCompleted
-            val cleanup = scheduleCleanup(session, runJob, trackRecorderCleanup = needsRecorderWait)
+            val cleanup =
+                scheduleCleanup(
+                    session = session,
+                    runJob = runJob,
+                    cancelRunJobAfterClose = hasConnection,
+                    trackRecorderCleanup = needsRecorderWait,
+                )
             if (needsRecorderWait) {
                 lastRecorderCleanup = cleanup
             }
@@ -1567,27 +1813,38 @@ class VoiceDictationV2Controller(
         deferred.complete(proceed)
     }
 
-    private fun collectSessionJobsLocked(session: Session): List<Job> =
+    private fun collectHelperJobsLocked(session: Session): List<Job> =
         listOfNotNull(
             session.drainTimeoutJob,
             session.stopJob,
             session.senderJob,
-            session.runJob,
         )
 
     private fun scheduleCleanup(
         session: Session,
         runJob: Job?,
+        cancelRunJobAfterClose: Boolean,
         trackRecorderCleanup: Boolean,
     ): Job {
         val cleanupJob =
             scope.launch {
                 withContext(NonCancellable) {
-                    session.cleanupResources()
+                    session.stopRecorderOnce()
+                    // Flush WebSocket close(1000, reason) BEFORE cancelling runJob so the reader
+                    // loop and Ktor session complete normal close instead of aborting with 1011.
+                    session.closeConnectionOnce()
+                    if (cancelRunJobAfterClose) {
+                        runJob?.cancel()
+                    }
                     runCatching { runJob?.join() }
                     session.cleanupResources()
                 }
             }
+        if (cancelRunJobAfterClose && cleanupJob.isCancelled) {
+            // Fallback when `scope` itself was already cancelled: cancel runJob so its
+            // NonCancellable finally block still flushes close(1000, reason).
+            runJob?.cancel()
+        }
         if (trackRecorderCleanup) {
             synchronized(stateLock) {
                 pendingRecorderCleanupJob = cleanupJob

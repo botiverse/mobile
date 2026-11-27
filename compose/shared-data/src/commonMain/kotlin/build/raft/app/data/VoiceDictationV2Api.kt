@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
 import build.raft.app.model.ServerId
+import build.raft.app.network.raftValidTraceIdOrNull
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
@@ -133,6 +134,12 @@ data class VoiceDictationV2Permit(
     val quota: VoiceDictationV2Quota,
     /** True when `holt-live` `DictationQuota` failed open under the 180 s cap (`quota_degraded: true`). */
     val quotaDegraded: Boolean = false,
+    /** Server-authoritative dictation session ID (`permit.jti`) for feedback correlation (`slock#17246`). */
+    val sessionId: String? = null,
+    /** Server-generated 32-hex W3C trace ID forwarded via `?tp=` on `/v1/stream` (`slock#17246`). */
+    val traceId: String? = null,
+    /** Which stream route the server issued (`direct` vs `raft_edge`; `slock#17246`). */
+    val streamUrlSource: VoiceStreamUrlSource? = null,
 )
 
 /** Typed refusals and transport/contract failures for `POST /api/voice/dictation/permits` (`v: 2`). */
@@ -240,6 +247,13 @@ fun parseVoiceDictationV2Permit(bodyText: String): VoiceDictationV2Permit? {
             ?: root.strictBoolean("quotaDegraded")
             ?: false
 
+    // Optional feedback & trace-stitching metadata introduced in slock#17246 (absent on older servers).
+    val sessionId =
+        root.strictString("sessionId")
+            ?.takeIf { it.isNotBlank() && it.length <= VOICE_FEEDBACK_SESSION_ID_MAX_CHARS }
+    val traceId = raftValidTraceIdOrNull(root.strictString("traceId"))
+    val streamUrlSource = VoiceStreamUrlSource.fromWireOrNull(root.strictString("streamUrlSource"))
+
     return VoiceDictationV2Permit(
         permit = permit,
         url = url,
@@ -255,6 +269,9 @@ fun parseVoiceDictationV2Permit(bodyText: String): VoiceDictationV2Permit? {
                 resetsAtEpochMs = resetsAtEpochMs,
             ),
         quotaDegraded = quotaDegraded,
+        sessionId = sessionId,
+        traceId = traceId,
+        streamUrlSource = streamUrlSource,
     )
 }
 
