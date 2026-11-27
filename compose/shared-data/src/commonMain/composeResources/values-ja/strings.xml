@@ -679,6 +679,14 @@
     <string name="thread_title_original_a11y">スレッド：%1$s：%2$s</string>
     <string name="thread_title_original_deleted_a11y">スレッド：元のメッセージは削除されました</string>
     <string name="thread_title_original_unavailable_a11y">スレッド：元のメッセージを表示できません</string>
+    <string name="thread_header_summary_tasks_one">1 件のタスク</string>
+    <string name="thread_header_summary_tasks_many">%1$d 件のタスク</string>
+    <string name="thread_header_summary_tasks_done">すべてのタスクが完了</string>
+    <string name="thread_header_summary_waiting_on_you">%1$d 件が対応待ち</string>
+    <string name="thread_header_show_original">最初のメッセージとタスクを表示</string>
+    <string name="thread_header_original_panel_a11y">最初のメッセージとタスク</string>
+    <string name="thread_header_original_no_tasks">このメッセージからのタスクはまだありません</string>
+    <string name="thread_header_jump_to_original">このメッセージへ移動</string>
     <string name="thread_channel_title">チャンネル</string>
     <string name="thread_channel_access_lost">このチャンネルのメンバーではなくなりました</string>
     <string name="thread_direct_message_title">ダイレクトメッセージ</string>
@@ -2309,6 +2317,7 @@
     <string name="tasks_source_list_open_no_number">タスクを開く：%1$s</string>
     <string name="tasks_source_list_reply_count_one">このタスクに 1 件のメッセージ</string>
     <string name="tasks_source_list_reply_count_many">このタスクに %1$d 件のメッセージ</string>
+    <string name="tasks_source_list_done_fold">%1$d 件完了</string>
     <string name="task_conversation_follow">タスクをフォロー</string>
     <string name="task_conversation_unfollow">タスクのフォローを解除</string>
     <string name="task_conversation_deleted">このタスクは削除されました</string>

@@ -882,23 +882,35 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
         shareState.forwardNote = TextFieldValue()
         activeModal = "forwardTargets"
     }
+    val composerKeyboardInsetDpState = remember(threadInstanceKey) { mutableStateOf(0f) }
+    var composerKeyboardInsetDp by composerKeyboardInsetDpState
+    val isReplyThread = payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread && !payload.isTaskConversationSurface()
+    val originalPullController =
+        rememberThreadOriginalPullController(
+            threadInstanceKey = threadInstanceKey,
+            isReplyThread = isReplyThread,
+            selectedTab = selectedTab,
+            timelineSlice = timelineSlice,
+            linkedTasksProjection = linkedTasksProjection,
+            keyboardUp = composerKeyboardInsetDp > 0f,
+        )
     val transientBackTarget =
         threadTransientBackTarget(
             activeModal = activeModal,
             shareSelectionActive = shareSelectionActive,
             inlineSearchVisible = inlineSearchVisible,
             // Beside the conversation the cards cover nothing: Back is the page's (web: only a phone's Back closes them).
-            sideCardsOpen = sideCards.anyOpen && !sideCardsBeside
+            sideCardsOpen = sideCards.anyOpen && !sideCardsBeside,
+            originalPullDownOpen = originalPullController.isOpen,
         )
     ThreadTransientBackHandler(transientBackTarget) { target ->
         when (target) {
+            ThreadTransientBackTarget.OriginalPullDown -> originalPullController.state.close()
             ThreadTransientBackTarget.SideCards -> sideCardsStore.closeAll()
             ThreadTransientBackTarget.ShareSelection -> clearShareSelection()
             ThreadTransientBackTarget.InlineSearch -> threadFind.store.dispatch(ThreadFindIntent.Close)
         }
     }
-    val composerKeyboardInsetDpState = remember(threadInstanceKey) { mutableStateOf(0f) }
-    var composerKeyboardInsetDp by composerKeyboardInsetDpState
     val composerBottomSafeArea = raftBottomSafeAreaPadding()
     val composerKeyboardInsetExcludesBottomSafeArea = raftKeyboardInsetExcludesBottomSafeArea()
     val primaryFooterReady =
@@ -1080,9 +1092,16 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                 agentLoungeComposerName = conversationLounge?.let { agentLoungeTitle(it.displayAgentName) },
                 dmAgentPeerId = headerDisplay.composerDmAgentPeerId(),
                 onFocusChanged =
-                    // Task v2: focus in the composer puts the pulled-down head back up.
-                    data.taskConversationHead?.let { taskHead ->
-                        { hasFocus -> if (hasFocus) taskHead.closeFloat() }
+                    // Task v2 and reply thread pull-down: focus in the composer puts the pulled-down panel back up.
+                    if (data.taskConversationHead != null || isReplyThread) {
+                        { hasFocus ->
+                            if (hasFocus) {
+                                data.taskConversationHead?.closeFloat()
+                                originalPullController.state.close()
+                            }
+                        }
+                    } else {
+                        null
                     },
             )
         } else {
@@ -1107,7 +1126,8 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                 onLayoutGeneration(coordinates.size.width, coordinates.size.height)
                 val pageWidthDp = coordinates.size.width / sideCardsDensity
                 if (pageWidthDp != sideCardsPageWidthDp) sideCardsPageWidthDp = pageWidthDp
-            }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier),
+            }.then(data.taskConversationHead?.let { Modifier.taskHeadFloatOutsidePress(it) } ?: Modifier)
+                .then(if (isReplyThread) Modifier.threadOriginalPullOutsidePress(originalPullController.state) else Modifier),
             header = {
                 // task #180: computed once per header composition, outside the header's own scope.
                 // The slice keeps reply facts out of its rows: the origin's thread channel and follow
@@ -1168,15 +1188,25 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                     agentStatusResolver = agentStatusResolver,
                     memberAvatarResolver = memberAvatarResolver,
                     showBack = !threadInSplitDetailPane(),
-                    // Task v2 on a phone: the header's Back closes the cards covering the conversation
-                    // first (web `headerMobileBack`), then leaves the page.
-                    onBack = if (sideCards.anyOpen && !sideCardsBeside) sideCardsStore::closeAll else onBack,
-                    nativeBackIntercepts = sideCards.anyOpen && !sideCardsBeside,
+                    // Task v2 & reply thread pull-down: header Back closes the covering panel first, then leaves the page.
+                    onBack =
+                        when {
+                            originalPullController.isOpen -> {
+                                {
+                                    originalPullController.state.close()
+                                    Unit
+                                }
+                            }
+                            sideCards.anyOpen && !sideCardsBeside -> sideCardsStore::closeAll
+                            else -> onBack
+                        },
+                    nativeBackIntercepts = originalPullController.isOpen || (sideCards.anyOpen && !sideCardsBeside),
                     onOpenInChannel = {
                         onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                     },
                     onOpenMemberProfile = onOpenMemberProfile,
                     onOpenSearch = {
+                        originalPullController.state.close()
                         when (payload.threadHeaderSearchAction()) {
                             ThreadHeaderSearchAction.ChannelSearch ->
                                 onThreadEvent("openChannelSearch", payload.threadChannelSearchChannelId(), null, null)
@@ -1265,6 +1295,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                         } else {
                             null
                         },
+                    originalPull = originalPullController.headerChrome,
                 )
             },
             bodyCover =
@@ -1286,6 +1317,21 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                             filesContent = {
                                 renderThreadTabContent(RaftThreadTab.Files, Modifier.fillMaxSize(), true)
                             }
+                        )
+                    }
+                } else if (isReplyThread) {
+                    // Web #17200: hangs directly under the thread header over the search bar, replies, and composer.
+                    cover@{
+                        val origin = originalPullController.origin ?: return@cover
+                        ThreadOriginalPullDown(
+                            state = originalPullController.state,
+                            origin = origin,
+                            tasks = originalPullController.tasks,
+                            onOpenTask = { taskId -> onThreadEvent("openSourceTask", taskId, null, null) },
+                            onJumpToOriginal = { threadHeaderScrollToTopRequest += 1 },
+                            avatarServerId = forwardServerId?.value,
+                            memberAvatarResolver = memberAvatarResolver,
+                            agentStatusResolver = agentStatusResolver,
                         )
                     }
                 } else {
@@ -1388,8 +1434,9 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                     // Task v2 cards: the page under them is always the conversation.
                     if (sideCardsEnabled) RaftThreadTab.Chat else selectedTab,
                     Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)
-                        // Task v2 on a phone: scrolling the messages puts the pulled-down head back up.
-                        .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier),
+                        // Task v2 & reply thread pull-down: user scrolling the messages puts the pulled-down panel back up.
+                        .then(data.taskConversationHead?.let { Modifier.nestedScroll(it.connection) } ?: Modifier)
+                        .then(if (isReplyThread) Modifier.nestedScroll(originalPullController.state.scrollCloseConnection) else Modifier),
                     true
                 )
             }

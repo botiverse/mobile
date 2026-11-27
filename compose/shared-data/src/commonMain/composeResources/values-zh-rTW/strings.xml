@@ -679,6 +679,14 @@
     <string name="thread_title_original_a11y">討論串：%1$s：%2$s</string>
     <string name="thread_title_original_deleted_a11y">討論串：原訊息已刪除</string>
     <string name="thread_title_original_unavailable_a11y">討論串：無法查看原訊息</string>
+    <string name="thread_header_summary_tasks_one">1 個任務</string>
+    <string name="thread_header_summary_tasks_many">%1$d 個任務</string>
+    <string name="thread_header_summary_tasks_done">任務都已完成</string>
+    <string name="thread_header_summary_waiting_on_you">%1$d 個等你</string>
+    <string name="thread_header_show_original">展開第一則訊息和它的任務</string>
+    <string name="thread_header_original_panel_a11y">第一則訊息和它的任務</string>
+    <string name="thread_header_original_no_tasks">這則訊息還沒有任務</string>
+    <string name="thread_header_jump_to_original">跳到這則訊息</string>
     <string name="thread_channel_title">頻道</string>
     <string name="thread_channel_access_lost">你已不在這個頻道中</string>
     <string name="thread_direct_message_title">私訊</string>
@@ -2306,6 +2314,7 @@
     <string name="tasks_source_list_open_no_number">開啟任務：%1$s</string>
     <string name="tasks_source_list_reply_count_one">此任務有 1 則訊息</string>
     <string name="tasks_source_list_reply_count_many">此任務有 %1$d 則訊息</string>
+    <string name="tasks_source_list_done_fold">%1$d 個已完成</string>
     <string name="task_conversation_follow">追蹤任務</string>
     <string name="task_conversation_unfollow">取消追蹤任務</string>
     <string name="task_conversation_deleted">此任務已刪除</string>

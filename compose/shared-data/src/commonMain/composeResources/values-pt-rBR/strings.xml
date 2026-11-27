@@ -679,6 +679,14 @@
     <string name="thread_title_original_a11y">Thread: %1$s: %2$s</string>
     <string name="thread_title_original_deleted_a11y">Thread: mensagem original excluída</string>
     <string name="thread_title_original_unavailable_a11y">Thread: não é possível ver a mensagem original</string>
+    <string name="thread_header_summary_tasks_one">1 tarefa</string>
+    <string name="thread_header_summary_tasks_many">%1$d tarefas</string>
+    <string name="thread_header_summary_tasks_done">Todas as tarefas concluídas</string>
+    <string name="thread_header_summary_waiting_on_you">%1$d aguardando você</string>
+    <string name="thread_header_show_original">Mostrar a primeira mensagem e suas tarefas</string>
+    <string name="thread_header_original_panel_a11y">Primeira mensagem e suas tarefas</string>
+    <string name="thread_header_original_no_tasks">Ainda não há tarefas desta mensagem</string>
+    <string name="thread_header_jump_to_original">Ir para esta mensagem</string>
     <string name="thread_channel_title">Canal</string>
     <string name="thread_channel_access_lost">Você não está mais neste canal</string>
     <string name="thread_direct_message_title">Mensagem direta</string>
@@ -2306,6 +2314,7 @@
     <string name="tasks_source_list_open_no_number">Abrir tarefa: %1$s</string>
     <string name="tasks_source_list_reply_count_one">1 mensagem nesta tarefa</string>
     <string name="tasks_source_list_reply_count_many">%1$d mensagens nesta tarefa</string>
+    <string name="tasks_source_list_done_fold">%1$d concluídas</string>
     <string name="task_conversation_follow">Seguir tarefa</string>
     <string name="task_conversation_unfollow">Deixar de seguir tarefa</string>
     <string name="task_conversation_deleted">Esta tarefa foi excluída</string>

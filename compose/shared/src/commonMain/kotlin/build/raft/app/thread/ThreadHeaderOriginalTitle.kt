@@ -2,6 +2,9 @@ package build.raft.app.thread
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.material3.Text
@@ -17,11 +20,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.text
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -30,6 +38,11 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftTooltip
+import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.tokens.RaftRadius
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.AdaptiveParentFocusRequest
@@ -406,6 +419,9 @@ internal fun ThreadHeaderTitleText(
     style: TextStyle,
     color: Color,
     modifier: Modifier = Modifier,
+    pullable: Boolean = false,
+    pullOpen: Boolean = false,
+    onTogglePull: (() -> Unit)? = null,
 ) {
     val original = state?.original
     val shown = (original as? ThreadHeaderOriginal.Shown)?.takeIf { state.swapped }
@@ -418,21 +434,18 @@ internal fun ThreadHeaderTitleText(
         }
     val separator = stringResource(Res.string.thread_title_original_separator)
     val visibleText = shown?.let { threadHeaderOriginalTitleText(it, separator) } ?: normalTitle
-    val titleModifier =
-        modifier
-            .testTag(ThreadHeaderTitleTestTag)
-            // One node for both faces: the words shown, named with "Thread:" before them. Not a
-            // live region, so the change is not announced while the replies scroll.
-            .clearAndSetSemantics {
-                contentDescription = accessibleName
-                text = AnnotatedString(visibleText)
-            }
     if (state == null) {
         // Channels and DMs never crossfade; drawing Text directly preserves FirstBaseline so wide
         // headers align the subtitle on the title's exact typographic baseline.
         Text(
             text = normalTitle,
-            modifier = titleModifier,
+            modifier =
+                modifier
+                    .testTag(ThreadHeaderTitleTestTag)
+                    .clearAndSetSemantics {
+                        contentDescription = accessibleName
+                        text = AnnotatedString(visibleText)
+                    },
             style = style,
             color = color,
             maxLines = 1,
@@ -440,19 +453,84 @@ internal fun ThreadHeaderTitleText(
         )
         return
     }
-    Crossfade(
-        targetState = shown,
-        animationSpec = tween(ThreadHeaderTitleFadeMillis),
-        label = "threadHeaderTitle",
-        modifier = titleModifier,
-    ) { face ->
-        Text(
-            text = face?.let { threadHeaderOriginalTitleAnnotated(it, separator) } ?: AnnotatedString(normalTitle),
-            style = style,
-            color = color,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+    if (!pullable) {
+        Crossfade(
+            targetState = shown,
+            animationSpec = tween(ThreadHeaderTitleFadeMillis),
+            label = "threadHeaderTitle",
+            modifier =
+                modifier
+                    .testTag(ThreadHeaderTitleTestTag)
+                    // One node for both faces: the words shown, named with "Thread:" before them. Not a
+                    // live region, so the change is not announced while the replies scroll.
+                    .clearAndSetSemantics {
+                        contentDescription = accessibleName
+                        text = AnnotatedString(visibleText)
+                    },
+        ) { face ->
+            Text(
+                text = face?.let { threadHeaderOriginalTitleAnnotated(it, separator) } ?: AnnotatedString(normalTitle),
+                style = style,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        return
+    }
+    val showOriginalHint = stringResource(Res.string.thread_header_show_original)
+    RaftTooltip(text = showOriginalHint, modifier = modifier, openOnLongPress = false) {
+        Row(
+            modifier =
+                Modifier
+                    .then(
+                        onTogglePull?.let { toggle ->
+                            Modifier.raftClickable(
+                                onClick = toggle,
+                                role = Role.Button,
+                                onClickLabel = showOriginalHint,
+                                shape = RoundedCornerShape(RaftRadius.Control),
+                                tier = RaftHoverTier.Subtle,
+                            )
+                        } ?: Modifier
+                    )
+                    .testTag(ThreadHeaderTitleTestTag)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = accessibleName
+                        text = AnnotatedString(visibleText)
+                        onTogglePull?.let { toggle ->
+                            if (pullOpen) {
+                                collapse {
+                                    toggle()
+                                    true
+                                }
+                            } else {
+                                expand {
+                                    toggle()
+                                    true
+                                }
+                            }
+                        }
+                    },
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Crossfade(
+                targetState = shown,
+                animationSpec = tween(ThreadHeaderTitleFadeMillis),
+                label = "threadHeaderTitle",
+                modifier = Modifier.weight(1f, fill = false).clearAndSetSemantics {},
+            ) { face ->
+                Text(
+                    text = face?.let { threadHeaderOriginalTitleAnnotated(it, separator) } ?: AnnotatedString(normalTitle),
+                    style = style,
+                    color = color,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            ThreadHeaderTitleChevron(open = pullOpen)
+        }
     }
 }
 

@@ -679,6 +679,14 @@
     <string name="thread_title_original_a11y">Hilo: %1$s: %2$s</string>
     <string name="thread_title_original_deleted_a11y">Hilo: mensaje original eliminado</string>
     <string name="thread_title_original_unavailable_a11y">Hilo: no puedes ver el mensaje original</string>
+    <string name="thread_header_summary_tasks_one">1 tarea</string>
+    <string name="thread_header_summary_tasks_many">%1$d tareas</string>
+    <string name="thread_header_summary_tasks_done">Todas las tareas listas</string>
+    <string name="thread_header_summary_waiting_on_you">%1$d esperando tu respuesta</string>
+    <string name="thread_header_show_original">Mostrar el primer mensaje y sus tareas</string>
+    <string name="thread_header_original_panel_a11y">Primer mensaje y sus tareas</string>
+    <string name="thread_header_original_no_tasks">Todavía no hay tareas de este mensaje</string>
+    <string name="thread_header_jump_to_original">Ir a este mensaje</string>
     <string name="thread_channel_title">Canal</string>
     <string name="thread_channel_access_lost">Ya no estás en este canal</string>
     <string name="thread_direct_message_title">Mensaje directo</string>
@@ -2306,6 +2314,7 @@
     <string name="tasks_source_list_open_no_number">Abrir tarea: %1$s</string>
     <string name="tasks_source_list_reply_count_one">1 mensaje en esta tarea</string>
     <string name="tasks_source_list_reply_count_many">%1$d mensajes en esta tarea</string>
+    <string name="tasks_source_list_done_fold">%1$d completadas</string>
     <string name="task_conversation_follow">Seguir tarea</string>
     <string name="task_conversation_unfollow">Dejar de seguir tarea</string>
     <string name="task_conversation_deleted">Esta tarea se eliminó</string>

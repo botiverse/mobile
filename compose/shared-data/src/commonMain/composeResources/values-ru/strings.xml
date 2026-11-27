@@ -679,6 +679,14 @@
     <string name="thread_title_original_a11y">Ветка: %1$s: %2$s</string>
     <string name="thread_title_original_deleted_a11y">Ветка: исходное сообщение удалено</string>
     <string name="thread_title_original_unavailable_a11y">Ветка: исходное сообщение недоступно</string>
+    <string name="thread_header_summary_tasks_one">1 задача</string>
+    <string name="thread_header_summary_tasks_many">Задач: %1$d</string>
+    <string name="thread_header_summary_tasks_done">Все задачи выполнены</string>
+    <string name="thread_header_summary_waiting_on_you">Ждут вас: %1$d</string>
+    <string name="thread_header_show_original">Показать первое сообщение и его задачи</string>
+    <string name="thread_header_original_panel_a11y">Первое сообщение и его задачи</string>
+    <string name="thread_header_original_no_tasks">Из этого сообщения пока нет задач</string>
+    <string name="thread_header_jump_to_original">Перейти к этому сообщению</string>
     <string name="thread_channel_title">Канал</string>
     <string name="thread_channel_access_lost">Вы больше не состоите в этом канале</string>
     <string name="thread_direct_message_title">Личный чат</string>
@@ -2306,6 +2314,7 @@
     <string name="tasks_source_list_open_no_number">Открыть задачу: %1$s</string>
     <string name="tasks_source_list_reply_count_one">1 сообщение в задаче</string>
     <string name="tasks_source_list_reply_count_many">Сообщений в задаче: %1$d</string>
+    <string name="tasks_source_list_done_fold">Выполнено: %1$d</string>
     <string name="task_conversation_follow">Подписаться на задачу</string>
     <string name="task_conversation_unfollow">Отписаться от задачи</string>
     <string name="task_conversation_deleted">Задача удалена</string>

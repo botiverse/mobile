@@ -697,6 +697,7 @@ internal fun ThreadOriginCard(
                                 messageBodyTextStyle = messageBodyTextStyle,
                                 hasReplyDraft = false,
                                 sourceTasks = originSourceTasks,
+                                foldDoneTasks = true,
                                 onOpenSourceTask = { onThreadEvent("openSourceTask", it, null, null) },
                                 actionCard = originActionCard,
                                 highlightedMentions = highlightedMentions,

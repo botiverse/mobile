@@ -679,6 +679,14 @@
     <string name="thread_title_original_a11y">Thread: %1$s: %2$s</string>
     <string name="thread_title_original_deleted_a11y">Thread: original message deleted</string>
     <string name="thread_title_original_unavailable_a11y">Thread: can't view the original message</string>
+    <string name="thread_header_summary_tasks_one">1 task</string>
+    <string name="thread_header_summary_tasks_many">%1$d tasks</string>
+    <string name="thread_header_summary_tasks_done">All tasks done</string>
+    <string name="thread_header_summary_waiting_on_you">%1$d waiting on you</string>
+    <string name="thread_header_show_original">Show the first message and its tasks</string>
+    <string name="thread_header_original_panel_a11y">First message and its tasks</string>
+    <string name="thread_header_original_no_tasks">No tasks from this message yet</string>
+    <string name="thread_header_jump_to_original">Jump to this message</string>
     <string name="thread_channel_title">Channel</string>
     <string name="thread_channel_access_lost">You're no longer in this channel</string>
     <string name="thread_direct_message_title">Direct message</string>
@@ -2310,6 +2318,7 @@
     <string name="tasks_source_list_open_no_number">Open task: %1$s</string>
     <string name="tasks_source_list_reply_count_one">1 message in this task</string>
     <string name="tasks_source_list_reply_count_many">%1$d messages in this task</string>
+    <string name="tasks_source_list_done_fold">%1$d completed</string>
     <string name="task_conversation_follow">Follow task</string>
     <string name="task_conversation_unfollow">Unfollow task</string>
     <string name="task_conversation_deleted">This task was deleted</string>
