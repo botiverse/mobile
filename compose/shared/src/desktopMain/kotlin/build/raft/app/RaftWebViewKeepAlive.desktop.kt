@@ -16,6 +16,12 @@ internal actual fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocumen
 
 internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, script: String): Boolean = false
 
+internal actual fun raftWebViewKeepAliveDrop(key: String) = Unit
+
+internal actual fun raftWebViewKeepAliveHasPrefix(prefix: String): Boolean = false
+
+internal actual fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String): Boolean = false
+
 internal actual fun raftWebViewKeepAliveClear() = Unit
 
 /**

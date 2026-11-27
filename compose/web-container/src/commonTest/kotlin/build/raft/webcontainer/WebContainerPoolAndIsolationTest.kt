@@ -177,6 +177,86 @@ class WebContainerPoolAndIsolationTest {
     }
 
     @Test
+    fun keepAlivePoolSupportsMultiSlotLruDropPrefixMatchingAndPromotion() {
+        var now = 1_000L
+        val actions = mutableListOf<String>()
+        val pool =
+            WebContainerKeepAlivePool<FakePooledContainer>(
+                maxEntries = 3,
+                ttlMs = 10 * 60_000L,
+                nowMs = { now },
+                telemetrySink = { event ->
+                    if (event is build.raft.webcontainer.pool.WebContainerTelemetryEvent.PoolEvent) {
+                        actions += "${event.action}:${event.keepAliveKey}:${event.poolSizeAfter}"
+                    }
+                },
+            )
+        val scope = WebIsolationScope.Default
+        val keyA = WebContainerPoolKey("artifact-viewer|s1|artifact=pt_a", scope, isDarkTheme = false)
+        val keyB = WebContainerPoolKey("artifact-viewer|s1|artifact=pt_b", scope, isDarkTheme = false)
+        val keyC = WebContainerPoolKey("artifact-viewer|s1|artifact=pt_c", scope, isDarkTheme = false)
+        val keyD = WebContainerPoolKey("artifact-viewer|s1|artifact=pt_d", scope, isDarkTheme = false)
+        val prewarmKey = WebContainerPoolKey("artifact-viewer|s1", scope, isDarkTheme = false)
+        val otherServerKey = WebContainerPoolKey("artifact-viewer|s10|artifact=pt_x", scope, isDarkTheme = false)
+
+        // Promote prewarm slot atomically to keyA without destroying it or consuming a second slot.
+        val warm = FakePooledContainer(scope)
+        assertTrue(pool.park(prewarmKey, warm))
+        assertSame(warm, pool.promote(prewarmKey, keyA))
+        assertFalse(warm.destroyed)
+        assertNull(pool.peek(prewarmKey))
+        assertSame(warm, pool.peek(keyA))
+        assertEquals(1, pool.size)
+        assertTrue("promoted:${keyA.keepAliveKey}:1" in actions)
+
+        // Promote rejects theme/scope mismatch cleanly.
+        assertNull(pool.promote(keyA, WebContainerPoolKey("artifact-viewer|s1|artifact=pt_dark", scope, isDarkTheme = true)))
+        assertSame(warm, pool.peek(keyA))
+
+        // Park B and C -> pool holds [A, B, C]. Take & re-park A -> MRU order becomes [B, C, A].
+        val viewB = FakePooledContainer(scope)
+        val viewC = FakePooledContainer(scope)
+        val viewD = FakePooledContainer(scope)
+        assertTrue(pool.park(keyB, viewB))
+        assertTrue(pool.park(keyC, viewC))
+        actions.clear()
+        val reusedA = assertNotNull(pool.take(keyA, emitReusedEvent = false))
+        assertSame(warm, reusedA)
+        assertTrue(actions.isEmpty(), "emitReusedEvent=false suppresses duplicate reused telemetry")
+        assertTrue(pool.park(keyA, reusedA))
+
+        // Parking a 4th artifact D evicts LRU B (not recently reused A) and destroys B.
+        assertTrue(pool.park(keyD, viewD))
+        assertTrue(viewB.destroyed)
+        assertFalse(warm.destroyed)
+        assertFalse(viewC.destroyed)
+        assertFalse(viewD.destroyed)
+        assertEquals(3, pool.size)
+        assertTrue("evict_lru:${keyB.keepAliveKey}:2" in actions)
+
+        // Surgical drop removes only C and preserves A and D.
+        assertTrue(pool.drop(keyC))
+        assertFalse(pool.drop(keyC))
+        assertTrue(viewC.destroyed)
+        assertFalse(warm.destroyed)
+        assertFalse(viewD.destroyed)
+        assertEquals(2, pool.size)
+
+        // hasAnyMatching detects real artifacts under s1 prefix and skips unhealthy entries.
+        assertTrue(pool.hasAnyMatching { it.keepAliveKey.startsWith("artifact-viewer|s1|artifact=") })
+        assertFalse(pool.hasAnyMatching { it.keepAliveKey.startsWith("artifact-viewer|s2|artifact=") })
+
+        // evictByKeyPrefix respects the `|` boundary so s1 does not evict s10.
+        val otherServer = FakePooledContainer(scope)
+        assertTrue(pool.park(otherServerKey, otherServer))
+        assertEquals(2, pool.evictByKeyPrefix("artifact-viewer|s1"))
+        assertTrue(warm.destroyed && viewD.destroyed)
+        assertFalse(otherServer.destroyed)
+        assertEquals(1, pool.size)
+        assertSame(otherServer, pool.take(otherServerKey))
+    }
+
+    @Test
     fun isolationScopeManagerEvictsPooledBeforeDeleteAndDefersWhileForegroundActive() {
         val pool = WebContainerKeepAlivePool<FakePooledContainer>(maxEntries = 4, ttlMs = 60_000L, nowMs = { 0L })
         val manager = WebIsolationScopeManager()

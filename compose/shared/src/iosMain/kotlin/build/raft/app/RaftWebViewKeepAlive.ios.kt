@@ -4,8 +4,10 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import build.raft.webcontainer.IosWebContainerDataStoreRegistry
+import build.raft.webcontainer.WebContainerIosKeepAlive
 import build.raft.webcontainer.WebContainerIosSparePool
 import build.raft.webcontainer.WebIsolationScope
+import build.raft.webcontainer.parseWebContainerOrigin
 import kotlin.coroutines.resume
 import kotlin.time.TimeSource
 import kotlinx.cinterop.useContents
@@ -37,13 +39,67 @@ import platform.WebKit.WKWebsiteDataRecord
 import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
 
-// No document keep-alive here yet (the Artifact viewer's parked WebView is Android only): every
-// page creates and destroys its own WebView, taking the spare one (RaftIosWebViewSpare) when it can.
-internal actual fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocument? = null
+// Legacy RaftIosSandboxWebView has no document keep-alive (uses RaftIosWebViewSpare only);
+// `compose/web-container` backs multi-slot keep-alive on iOS via WebContainerIosKeepAlive.
+internal actual fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocument? =
+    if (!NSThread.isMainThread) {
+        null
+    } else {
+        WebContainerIosKeepAlive.keptDocument(
+            keepAliveKey = key,
+            isolationScope = WebIsolationScope.Default,
+            isDarkTheme = RaftAppThemeState.isDark,
+        )?.let { snapshot ->
+            RaftWebViewKeptDocument(
+                src = snapshot.configuredUrl,
+                currentUrl = snapshot.currentUrl,
+                loaded = snapshot.loaded,
+            )
+        }
+    }
 
-internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, script: String): Boolean = false
+internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, script: String): Boolean {
+    if (!NSThread.isMainThread) return false
+    val expectedOrigin = parseWebContainerOrigin(origin) ?: return false
+    return WebContainerIosKeepAlive.evaluateInKept(
+        keepAliveKey = key,
+        expectedOrigin = expectedOrigin,
+        script = script,
+        isolationScope = WebIsolationScope.Default,
+        isDarkTheme = RaftAppThemeState.isDark,
+    )
+}
 
-internal actual fun raftWebViewKeepAliveClear() = Unit
+internal actual fun raftWebViewKeepAliveDrop(key: String) {
+    runCatching { WebContainerIosKeepAlive.dropAllThemes(key, WebIsolationScope.Default) }
+}
+
+internal actual fun raftWebViewKeepAliveHasPrefix(prefix: String): Boolean =
+    if (!NSThread.isMainThread) {
+        false
+    } else {
+        WebContainerIosKeepAlive.hasAnyWithPrefix(
+            prefix = prefix,
+            isolationScope = WebIsolationScope.Default,
+            isDarkTheme = RaftAppThemeState.isDark,
+        )
+    }
+
+internal actual fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String): Boolean =
+    if (!NSThread.isMainThread) {
+        false
+    } else {
+        WebContainerIosKeepAlive.promote(
+            fromKey = fromKey,
+            toKey = toKey,
+            isolationScope = WebIsolationScope.Default,
+            isDarkTheme = RaftAppThemeState.isDark,
+        )
+    }
+
+internal actual fun raftWebViewKeepAliveClear() {
+    runCatching { WebContainerIosKeepAlive.clearAll() }
+}
 
 internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
     val hosts =
@@ -55,6 +111,7 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
     val runOnMain: suspend () -> Unit = {
         runCatching { RaftIosWebViewSpare.drop("logout") }
         runCatching { WebContainerIosSparePool.drop("logout") }
+        runCatching { WebContainerIosKeepAlive.clearAll() }
         val epoch = NSDate.dateWithTimeIntervalSince1970(0.0)
         val allTypes = WKWebsiteDataStore.allWebsiteDataTypes()
         withTimeoutOrNull(2_000L) {

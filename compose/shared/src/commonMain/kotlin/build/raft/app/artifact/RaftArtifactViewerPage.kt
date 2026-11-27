@@ -110,6 +110,7 @@ internal fun raftArtifactViewerWebViewConfig(
     backgroundArgb: Int = 0,
     persistBackgroundAfterPaint: Boolean = true,
     androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
+    keepAliveKeyOverride: String? = null,
 ): RaftWebViewConfig =
     RaftWebViewConfig(
         url = url,
@@ -126,7 +127,7 @@ internal fun raftArtifactViewerWebViewConfig(
         // Rule 2: top-level documents stay on the web origin.
         mainFrameOrigin = scope.webOrigin,
         frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
-        keepAliveKey = scope.keepAliveKey,
+        keepAliveKey = keepAliveKeyOverride ?: scope.keepAliveKey,
         backgroundArgb = backgroundArgb,
         persistBackgroundAfterPaint = persistBackgroundAfterPaint,
         androidInsetMode = androidInsetMode,
@@ -158,6 +159,18 @@ private class RaftArtifactViewerHost(
 
     fun scope(): RaftArtifactViewerScope? =
         RaftArtifactViewerScope.of(webBaseUrl, sharedStores.currentAuthenticatedRouteOwner(storeScope))
+
+    /**
+     * Lock-free, zero-I/O in-memory session matching [scope] for Frame-1 composition so a warm
+     * parked Artifact WebView attaches immediately without a 1-frame empty-session splash flash.
+     */
+    fun inMemorySessionForScope(scope: RaftArtifactViewerScope): StoredAuthSession? {
+        val raw = runCatching { sharedStores.authStore.readInMemorySessionSnapshot()?.session }.getOrNull() ?: return null
+        if (raw.user.id.trim() != scope.accountId) return null
+        if (raw.currentServerId?.trim() == scope.serverId) return raw
+        val server = raw.servers.firstOrNull { it.id.trim() == scope.serverId } ?: return null
+        return raw.copy(selectedServerId = server.id, selectedServerSlug = server.slug)
+    }
 }
 
 /**
@@ -311,7 +324,8 @@ internal fun rememberRaftArtifactOpener(
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
     // The head height the viewer opened from here sends (the split pane's; none elsewhere), as at the tap.
     val currentHostHead by rememberUpdatedState(raftArtifactViewerHostHead(openInColumn, RaftTheme.controls.headHeight))
-    return remember(host, coroutineScope, conversation) {
+    val useMultiSlot = rememberRaftWebContainerV1Enabled()
+    return remember(host, coroutineScope, conversation, useMultiSlot) {
         RaftArtifactOpener { target, header, source ->
             RaftArtifactOpenTrace.tap(source, target.id)
             if (host == null) {
@@ -324,33 +338,81 @@ internal fun rememberRaftArtifactOpener(
             }
             val scope = host.scope()
             header?.let { RaftArtifactViewerMemory.cache.remember(scope, it) }
-            // Start the web viewer's reads now, in a kept (booted) document, while the page opens.
-            if (scope != null && !RaftArtifactViewerMemory.cache.keptDocumentShows(scope, target)) {
+            if (scope != null) {
                 val hostHead = currentHostHead
-                coroutineScope.launch {
-                    val session =
-                        runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }.getOrNull()
-                    if (session == null || session.user.id.trim() != scope.accountId) return@launch
-                    // Only with the session it was parked with, and booted for this conversation and head height (else
-                    // the page loads a new one).
-                    if (!RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversation, hostHead)) return@launch
-                    val script =
-                        raftArtifactViewerNavigateScript(
-                            scope.webOrigin,
-                            settingsWebViewAuthStorageJavaScript(session, null),
-                            target,
-                            conversation,
-                            hostHead,
-                            raftEmbeddedWebLangTag(),
-                        )
-                    if (raftWebViewEvaluateInKept(scope.keepAliveKey, scope.webOrigin, script)) {
-                        RaftArtifactViewerMemory.cache.rememberKeptDocument(
-                            scope,
-                            target,
-                            raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, raftEmbeddedWebLangTag()),
-                            session.accessToken,
-                        )
-                        RaftArtifactOpenTrace.mark("viewer_nav_started", "where=tap")
+                val langTag = raftEmbeddedWebLangTag()
+                if (useMultiSlot) {
+                    // Multi-slot keep-alive (`compose/web-container`): NEVER navigate another parked
+                    // Artifact's WebView on tap. Only promote & pre-navigate a compatible shared
+                    // `raft-app-warm` prewarm slot when this Artifact does not yet have its own slot.
+                    val slotKey = scope.artifactKeepAliveKey(target, conversation, hostHead, langTag)
+                    val prewarmKey = scope.keepAliveKey
+                    if (raftWebViewKeptDocument(slotKey) == null) {
+                        val warmKept = raftWebViewKeptDocument(prewarmKey)
+                        if (
+                            warmKept != null &&
+                            raftArtifactViewerIsWarmUrl(warmKept.currentUrl, scope.webOrigin) &&
+                            raftArtifactViewerKeptDocumentHasEmbedContract(warmKept)
+                        ) {
+                            coroutineScope.launch {
+                                val session =
+                                    runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }.getOrNull()
+                                if (session == null || session.user.id.trim() != scope.accountId) return@launch
+                                if (raftWebViewKeptDocument(slotKey) != null) return@launch
+                                if (!RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversation, hostHead, langTag, prewarmKey)) {
+                                    return@launch
+                                }
+                                if (!raftWebViewKeepAlivePromote(prewarmKey, slotKey)) return@launch
+                                RaftArtifactViewerMemory.cache.promoteKeptSlot(scope, prewarmKey, slotKey)
+                                val script =
+                                    raftArtifactViewerNavigateScript(
+                                        scope.webOrigin,
+                                        settingsWebViewAuthStorageJavaScript(session, null),
+                                        target,
+                                        conversation,
+                                        hostHead,
+                                        langTag,
+                                    )
+                                if (raftWebViewEvaluateInKept(slotKey, scope.webOrigin, script)) {
+                                    RaftArtifactViewerMemory.cache.rememberKeptDocument(
+                                        scope,
+                                        target,
+                                        raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, langTag),
+                                        session.accessToken,
+                                        slotKey = slotKey,
+                                        renderedArtifact = false,
+                                    )
+                                    RaftArtifactOpenTrace.mark("viewer_nav_started", "where=tap_promoted")
+                                }
+                            }
+                        }
+                    }
+                } else if (!RaftArtifactViewerMemory.cache.keptDocumentShows(scope, target)) {
+                    // Legacy single-slot keep-alive: start the web viewer's reads now while the page opens.
+                    coroutineScope.launch {
+                        val session =
+                            runCatchingPreservingCancellation { host.sharedStores.authStore(host.storeScope).readSession() }.getOrNull()
+                        if (session == null || session.user.id.trim() != scope.accountId) return@launch
+                        // Only with the session it was parked with, and booted for this conversation, head height, and language.
+                        if (!RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversation, hostHead, langTag)) return@launch
+                        val script =
+                            raftArtifactViewerNavigateScript(
+                                scope.webOrigin,
+                                settingsWebViewAuthStorageJavaScript(session, null),
+                                target,
+                                conversation,
+                                hostHead,
+                                langTag,
+                            )
+                        if (raftWebViewEvaluateInKept(scope.keepAliveKey, scope.webOrigin, script)) {
+                            RaftArtifactViewerMemory.cache.rememberKeptDocument(
+                                scope,
+                                target,
+                                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, langTag),
+                                session.accessToken,
+                            )
+                            RaftArtifactOpenTrace.mark("viewer_nav_started", "where=tap")
+                        }
                     }
                 }
             }
@@ -421,6 +483,7 @@ internal fun RaftArtifactViewerPrewarmRuntime(
     hostHead: Int? = null,
     desktopModeOverride: Boolean? = null,
     keptDocumentPresent: (String) -> Boolean = { key -> raftWebViewKeptDocument(key) != null },
+    hasKeptArtifactPresent: (String) -> Boolean = { prefix -> raftWebViewKeepAliveHasPrefix("$prefix|artifact=") },
     prewarmEffect: @Composable (RaftWebViewConfig?) -> Unit = { config -> RaftWebViewPrewarmEffect(config) },
 ) {
     if (!enabled) return
@@ -452,19 +515,22 @@ internal fun RaftArtifactViewerPrewarmRuntime(
     }
     val conversation = raftArtifactViewerHostConversationOrNull(conversationId)
     val head = raftArtifactViewerHostHeadOrNull(hostHead)
+    val langTag = raftEmbeddedWebLangTag()
     val canvasBackgroundArgb = RaftColor.Canvas.toArgb()
     val insetMode = rememberRaftArtifactWebViewInsetMode()
     val config =
-        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation, head, canvasBackgroundArgb, insetMode) {
+        remember(settled, scope, snapshot.session?.accessToken, binding?.webViewGeneration, desktopMode, conversation, head, langTag, canvasBackgroundArgb, insetMode) {
             val session = snapshot.session
             if (!settled || scope == null || session == null || session.user.id.trim() != scope.accountId) {
                 null
-            } else if (keptDocumentPresent(scope.keepAliveKey)) {
+            } else if (keptDocumentPresent(scope.keepAliveKey) || hasKeptArtifactPresent(scope.keepAliveKey)) {
+                // Skip prewarm when a warm slot OR any real parked Artifact already exists for
+                // this scope so prewarm never steals a multi-slot LRU slot or evicts a live Artifact.
                 null
             } else {
-                RaftArtifactViewerMemory.cache.markKeptWarm(scope, session.accessToken, conversation, head)
+                RaftArtifactViewerMemory.cache.markKeptWarm(scope, session.accessToken, conversation, head, langTag, slotKey = scope.keepAliveKey)
                 raftArtifactViewerWebViewConfig(
-                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation, head, raftEmbeddedWebLangTag()),
+                    url = raftArtifactViewerWarmUrl(webBaseUrl, conversation, head, langTag),
                     scope = scope,
                     injectedJavaScript =
                         raftArtifactViewerInjectedScript(scope.webOrigin, raftArtifactViewerSessionScript(scope, session, binding), desktopMode),
@@ -622,10 +688,13 @@ private fun RaftArtifactViewerScreen() {
     // What a WebView body is opened on: [shown] when it is made (the open, or a new one after Retry or a
     // fresh reload); a move in place changes [shown] only, never the document.
     val bodyTarget = remember(params.toString(), webRetry) { shown }
+    val useMultiSlot = rememberRaftWebContainerV1Enabled()
+    val langTag = remember(params.toString()) { raftEmbeddedWebLangTag() }
+    val initialSession = remember(params.toString(), host, scope) { scope?.let(host::inMemorySessionForScope) }
     // With Desktop Mode's state and the head height at open; the App keeps both current in the address afterwards.
     val embeddedPageUrl =
-        remember(webBaseUrl, bodyTarget) {
-            raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId, hostHead, raftEmbeddedWebLangTag()), hostDesktop)
+        remember(webBaseUrl, bodyTarget, conversationId, langTag) {
+            raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId, hostHead, langTag), hostDesktop)
         }
     var freshReloadUsed by remember(params.toString()) { mutableStateOf(false) }
     // #300: one session recovery reload a minute at most ([RaftArtifactViewerSessionRecoveryGuard]).
@@ -650,11 +719,37 @@ private fun RaftArtifactViewerScreen() {
     // cycles takes over at the next cycle, never mid-cycle (Kirby, #301).
     val splashKinds = remember(params.toString()) { RaftArtifactSplashKindState(header?.kind) }
     LaunchedEffect(splashKinds, header?.kind) { splashKinds.update(header?.kind, splashOpenedAt) }
+    // When returning to an already-loaded parked Artifact slot that drew its own bar (`hostToolbar=1`),
+    // start with `pageDrawsBar = true` on Frame 1 so neither the native header nor a loading cover flashes.
+    val initialWarmBarReady =
+        remember(params.toString(), scope, target, initialSession?.accessToken, conversationId, hostHead, langTag, useMultiSlot) {
+            raftArtifactViewerInitialWarmBarReady(
+                scope = scope,
+                target = target,
+                accessToken = initialSession?.accessToken,
+                conversationId = conversationId,
+                hostHead = hostHead,
+                langTag = langTag,
+                useMultiSlot = useMultiSlot,
+            )
+        }
     // The page draws the only bar (`hostToolbar=1`, shown, no load error): this one is left out.
-    var pageDrawsBar by remember(params.toString()) { mutableStateOf(false) }
+    var pageDrawsBar by remember(params.toString()) { mutableStateOf(initialWarmBarReady) }
     // Keeps the WebView at its final full height under the native bar from frame 0 while loading so
     // the handoff to `hostToolbar=1` never resizes the WebView or flashes white.
     var webOverlayHeader by remember(params.toString()) { mutableStateOf(true) }
+    val bootHostHead = remember(embeddedPageUrl) { raftArtifactViewerHostHeadIn(embeddedPageUrl) }
+    val activeSlotKey =
+        scope?.let {
+            raftArtifactViewerSlotKey(
+                scope = it,
+                target = shown,
+                conversationId = conversationId,
+                hostHead = bootHostHead,
+                langTag = langTag,
+                useMultiSlot = useMultiSlot,
+            )
+        }
 
     // Revalidate (never trusting the cached header for access): a fresh summary; unavailable (403/404)
     // replaces the screen and drops the cached copy.
@@ -677,20 +772,24 @@ private fun RaftArtifactViewerScreen() {
         raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_summary result=${raftArtifactViewerSummaryLogToken(answer)}")
     }
     LaunchedEffect(bodyState) {
-        // After the WebView left the screen (and was parked), so the eviction destroys it too.
+        // After the WebView left the screen (and was parked), so surgical eviction destroys only this slot.
         if (bodyState == RaftArtifactViewerBodyState.Unavailable) {
             RaftArtifactViewerMemory.cache.evict(scope, shown.canonicalId)
-            raftWebViewKeepAliveClear()
+            activeSlotKey?.let(::raftWebViewKeepAliveDrop)
             host.bridge.log("artifact_viewer_unavailable action=replace_and_evict")
         }
         // The page went somewhere that is not this Artifact: the viewer closes (after the WebView
         // left the screen, so the document, which no longer shows an Artifact, is not kept), and its
         // original message opens natively, as a message link from outside the app does.
         (bodyState as? RaftArtifactViewerBodyState.ReloadingFresh)?.let { reloading ->
-            // The WebView left the screen (and was parked): dropping it destroys it, so the next
-            // body finds nothing kept and loads the Artifact's page in a new one.
-            RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
-            raftWebViewKeepAliveClear()
+            // Drop only this Artifact's broken slot so other healthy parked Artifacts stay warm.
+            if (activeSlotKey != null) {
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope, activeSlotKey)
+                raftWebViewKeepAliveDrop(activeSlotKey)
+            } else {
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+                raftWebViewKeepAliveClear()
+            }
             host.bridge.log("artifact_viewer_kept_reload reason=self_navigation to=${reloading.to}")
             // A new load: a new opening for the splash, as the page's own starts again.
             splashOpenedAt = kotlin.time.TimeSource.Monotonic.markNow()
@@ -706,8 +805,8 @@ private fun RaftArtifactViewerScreen() {
             // The token the page held: when the App already has a newer one (the refresh-ahead timer),
             // nothing is sent and the new WebView boots with that one.
             val refreshed = accessTokenRefresher.refresh("artifact_viewer_session_lost", expiringAccessToken = recovering.pageToken)
-            // The signed-out document (its storage cleared by the web) is dropped, never kept.
-            RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+            // The signed-out session invalidates every parked document of this session.
+            RaftArtifactViewerMemory.clear()
             raftWebViewKeepAliveClear()
             raftLogWarn(
                 RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG,
@@ -719,7 +818,12 @@ private fun RaftArtifactViewerScreen() {
             return@LaunchedEffect
         }
         val leaving = bodyState as? RaftArtifactViewerBodyState.Left ?: return@LaunchedEffect
-        RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+        if (activeSlotKey != null) {
+            RaftArtifactViewerMemory.cache.forgetKeptDocument(scope, activeSlotKey)
+            raftWebViewKeepAliveDrop(activeSlotKey)
+        } else {
+            RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
+        }
         host.bridge.log("artifact_viewer_left action=${leaving.navigation.logToken()} to=${leaving.to}")
         closePage()
         when (val navigation = leaving.navigation) {
@@ -819,13 +923,16 @@ private fun RaftArtifactViewerScreen() {
                         }
                     }
                 } else {
-                    key(webRetry) {
+                    key(params.toString(), webRetry) {
                         RaftArtifactViewerWebBody(
                             host = host,
                             scope = scope,
                             target = bodyTarget,
                             conversationId = conversationId,
                             hostHead = hostHead,
+                            langTag = langTag,
+                            useMultiSlot = useMultiSlot,
+                            initialSession = initialSession,
                             pageUrl = embeddedPageUrl,
                             controller = controller,
                             desktopMode = desktopMode,
@@ -920,6 +1027,9 @@ private fun RaftArtifactViewerWebBody(
      * the current one ([raftArtifactViewerHostHeadScript]).
      */
     hostHead: Int?,
+    langTag: String?,
+    useMultiSlot: Boolean,
+    initialSession: StoredAuthSession?,
     pageUrl: String,
     controller: RaftWebViewController,
     desktopMode: Boolean,
@@ -954,7 +1064,7 @@ private fun RaftArtifactViewerWebBody(
     onSessionLost: (to: String, recover: Boolean, pageToken: String) -> Unit,
 ) {
     val authStore = remember(host) { host.sharedStores.authStore(host.storeScope) }
-    val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore)
+    val snapshot = rememberSettingsWebViewAuthSnapshot(authStore, host.sharedStores.authStore, initialSession = initialSession)
     val binding = rememberSettingsWebViewHostAuthBinding(snapshot, controller)
     val session = snapshot.session?.takeIf { it.user.id.trim() == scope.accountId }
     // Nothing is attached until the session is read: a new document needs it before it loads, and a
@@ -974,34 +1084,52 @@ private fun RaftArtifactViewerWebBody(
         RaftArtifactViewerSplashCover(splashKinds, splashOpenedAt, desktopMode, headerOverlaid = true)
         return
     }
-    // A kept document of this scope and session is shown as it is (the same Artifact: at once;
-    // another: the web app routes to it); otherwise the viewer's page loads. One kept under an older
-    // session (a token refresh while it was parked) is dropped before the WebView is attached, so
-    // it is not taken either.
-    val kept =
-        remember(scope) {
-            val candidate = raftWebViewKeptDocument(scope.keepAliveKey) ?: return@remember null
-            if (!raftArtifactViewerKeptDocumentHasEmbedContract(candidate)) {
-                raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=embed_contract_missing")
-                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
-                raftWebViewKeepAliveClear()
-                null
-            } else if (RaftArtifactViewerMemory.cache.keptDocumentUsable(scope, session.accessToken, conversationId, hostHead)) {
-                candidate
-            } else {
-                // Another session, or booted for another conversation or head height (the page latched those).
-                raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=session_conversation_or_head_changed")
-                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
-                raftWebViewKeepAliveClear()
-                null
-            }
+    // Resolve this Artifact's keep-alive slot (or promote a compatible shared prewarm slot in
+    // multi-slot mode). A stale/unusable slot is dropped surgically without disturbing other parked
+    // Artifacts in the LRU pool.
+    val keptResolution =
+        remember(scope, target, useMultiSlot) {
+            resolveRaftArtifactViewerKeptSlot(
+                scope = scope,
+                target = target,
+                accessToken = session.accessToken,
+                conversationId = conversationId,
+                hostHead = hostHead,
+                langTag = langTag,
+                useMultiSlot = useMultiSlot,
+                onDroppedReason = { reason ->
+                    if (reason.contains("embed_contract_missing")) {
+                        raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=$reason")
+                    } else {
+                        raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=$reason")
+                    }
+                },
+            )
         }
-    // A rotation synced into the shown document: it is parked with this session.
-    LaunchedEffect(session.accessToken) { RaftArtifactViewerMemory.cache.noteKeptSession(scope, session.accessToken) }
+    val kept = keptResolution.document
+    val showsTarget = keptResolution.showsTarget
+    val promotedPrewarm = keptResolution.promotedPrewarm
     val src = kept?.src ?: pageUrl
     // The head height the document read as it booted (the web reads `hostHead` once per document): a kept one's is the
     // one asked for now (keptDocumentUsable), a new one's is in its first address.
     val documentHostHead = remember { if (kept != null) hostHead else raftArtifactViewerHostHeadIn(pageUrl) }
+    // The Artifact the page shows: [target], then one it moved to in place (its title's menu).
+    var shownTarget by remember { mutableStateOf<ArtifactLinkTarget>(target) }
+    // Exact target + version currently shown in the page's address (tracks version picker & View latest).
+    var latestAddressedTarget by remember { mutableStateOf<ArtifactLinkTarget>(target) }
+    val activeSlotKey =
+        raftArtifactViewerSlotKey(
+            scope = scope,
+            target = shownTarget,
+            conversationId = conversationId,
+            hostHead = documentHostHead,
+            langTag = langTag,
+            useMultiSlot = useMultiSlot,
+        )
+    // A rotation synced into the shown document: it is parked with this session.
+    LaunchedEffect(session.accessToken, activeSlotKey) {
+        RaftArtifactViewerMemory.cache.noteKeptSession(scope, session.accessToken, activeSlotKey)
+    }
     // The input changed while it was shown (a mouse used, then a finger): the address follows it, but what the page
     // read (at boot, or again if it reloaded where it is: Desktop Mode on Android) is no longer known, so the
     // document is not kept for the next open, which loads one with its own head height.
@@ -1012,23 +1140,19 @@ private fun RaftArtifactViewerWebBody(
     val loadError = raftArtifactViewerHasLoadError(platformLoadError = platformLoadError, watchdogShowsError = loadWatchdog.showsError)
     LaunchedEffect(loadError) {
         if (!loadError) return@LaunchedEffect
-        // The WebView left the screen (and may have been parked): never keep a stalled or crashed
-        // document for the next open.
-        RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
-        raftWebViewKeepAliveClear()
+        // Drop only this Artifact's stalled/crashed slot so other healthy parked Artifacts survive.
+        RaftArtifactViewerMemory.cache.forgetKeptDocument(scope, activeSlotKey)
+        raftWebViewKeepAliveDrop(activeSlotKey)
     }
-    val showsTarget = remember(scope, target) { kept != null && RaftArtifactViewerMemory.cache.keptDocumentShows(scope, target) }
     var visible by remember { mutableStateOf(showsTarget) }
-    var documentReady by remember { mutableStateOf(false) }
-    var navigated by remember { mutableStateOf(kept == null || showsTarget) }
+    var documentReady by remember { mutableStateOf(kept?.loaded == true) }
+    var navigated by remember { mutableStateOf(kept == null || keptResolution.alreadyNavigated) }
     // Every top-level address (a load, or the web app's own history change). Only once the page has
     // shown this Artifact: before that a kept document is still on the warm route or the last one.
     var armed by remember { mutableStateOf(false) }
     var left by remember { mutableStateOf(false) }
     val currentOnStay by rememberUpdatedState(onStay)
     val currentOnSwitch by rememberUpdatedState(onSwitch)
-    // The Artifact the page shows: [target], then one it moved to in place (its title's menu).
-    var shownTarget by remember { mutableStateOf<ArtifactLinkTarget>(target) }
     val currentOnDownload by rememberUpdatedState(onDownload)
     val currentOnLeave by rememberUpdatedState(onLeave)
     val currentOnReloadFresh by rememberUpdatedState(onReloadFresh)
@@ -1046,6 +1170,9 @@ private fun RaftArtifactViewerWebBody(
     // Artifact already, says no `hostLoaded` now, and its bar is the only one from the first frame.
     // One only booted (the warm route) has drawn nothing yet: covered as a fresh load (#301, one bar).
     val keptDrewBar = remember(kept) { raftArtifactViewerKeptPageDrewBar(kept?.currentUrl) }
+    // An already-rendered parked slot returning to its exact Artifact never flashes the loading cover,
+    // even on older web builds that do not emit `hostToolbar=1`.
+    val reusesLoadedTarget = kept != null && showsTarget && kept.loaded && keptResolution.renderedArtifact
     // The page said once (this document) that its toolbar is the only bar: a web build does not
     // change under a document, and the address may lose the marker for a moment while it routes.
     // Read from the kept address at once, not a frame later (no App bar flashed over the page's).
@@ -1055,7 +1182,7 @@ private fun RaftArtifactViewerWebBody(
     var pageLoadedAt by remember { mutableStateOf<kotlin.time.TimeMark?>(null) }
     var splashEnded by remember { mutableStateOf(false) }
     // The last address seen (keeps `hostDesktop` current, takes a handled `#host=<name>` off).
-    var address by remember { mutableStateOf("") }
+    var address by remember { mutableStateOf(kept?.currentUrl.orEmpty()) }
     // A `#host=<name>` address being handled: its fragment is taken off first, then the App acts
     // (Desktop Mode reloads the document on Android: at the address without it, never asking again).
     var pendingHostAction by remember { mutableStateOf<Pair<RaftArtifactViewerHostAction, String>?>(null) }
@@ -1107,13 +1234,24 @@ private fun RaftArtifactViewerWebBody(
             // Picked in the page's title: the same document, now on [switched]. Nothing is waited for (the
             // page writes no `hostLoaded=1` after this move) and the splash state stays as it is.
             raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_switched where=in_place version=${switched.version ?: "latest"}")
+            val previousSlotKey =
+                raftArtifactViewerSlotKey(scope, shownTarget, conversationId, documentHostHead, langTag, useMultiSlot)
+            val nextSlotKey =
+                raftArtifactViewerSlotKey(scope, switched, conversationId, documentHostHead, langTag, useMultiSlot)
             shownTarget = switched
+            latestAddressedTarget = switched
+            if (previousSlotKey != nextSlotKey) {
+                RaftArtifactViewerMemory.cache.forgetSlotMetadataOnly(scope, previousSlotKey)
+            }
             RaftArtifactViewerMemory.cache.rememberKeptDocument(
                 scope,
                 switched,
-                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, switched, conversationId, hostHead, raftEmbeddedWebLangTag()),
+                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, switched, conversationId, documentHostHead, langTag),
                 currentAppToken,
+                slotKey = nextSlotKey,
+                renderedArtifact = true,
             )
+            RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead, langTag, slotKey = nextSlotKey)
             currentOnSwitch(switched)
         }
         when (val navigation = if (switched != null) raftArtifactViewerNavigation(url, scope.webOrigin, switched.id) else addressNavigation) {
@@ -1127,6 +1265,7 @@ private fun RaftArtifactViewerWebBody(
                     )
                 }
                 armed = true
+                latestAddressedTarget = ArtifactLinkTarget(shownTarget.id, navigation.version)
                 currentOnStay(navigation)
             }
             // Off the web origin never loads here: the origin lock blocks it (onNavigationBlocked).
@@ -1158,14 +1297,25 @@ private fun RaftArtifactViewerWebBody(
     LaunchedEffect(Unit) { kept?.currentUrl?.let(::onAddress) }
     val currentOnPageLoadStarted by rememberUpdatedState(onPageLoadStarted)
     LaunchedEffect(Unit) {
-        RaftArtifactOpenTrace.mark("webview_attach", "kept=${kept != null} showsTarget=$showsTarget")
+        RaftArtifactOpenTrace.mark(
+            "webview_attach",
+            "kept=${kept != null} showsTarget=$showsTarget promotedPrewarm=$promotedPrewarm " +
+                "reloaded=${kept == null || !showsTarget} multislot=$useMultiSlot",
+        )
         if (kept == null) {
-            RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl, session.accessToken)
-            // What this new document latches (`hostConversation` and `hostHead` in its first address).
-            RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead)
+            RaftArtifactViewerMemory.cache.rememberKeptDocument(
+                scope,
+                target,
+                pageUrl,
+                session.accessToken,
+                slotKey = activeSlotKey,
+                renderedArtifact = false,
+            )
+            // What this new document latches (`hostConversation`, `hostHead`, and `lang` in its first address).
+            RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead, langTag, slotKey = activeSlotKey)
+            // A new document: the page's splash counts from its navigation, so the App's does too.
+            currentOnPageLoadStarted()
         }
-        // A new document: the page's splash counts from its navigation, so the App's does too.
-        if (kept == null) currentOnPageLoadStarted()
     }
     val injected =
         remember(scope, session.accessToken, binding?.webViewGeneration, desktopMode) {
@@ -1180,7 +1330,7 @@ private fun RaftArtifactViewerWebBody(
                 target,
                 conversationId,
                 hostHead,
-                raftEmbeddedWebLangTag(),
+                langTag,
             )
         if (controller.evaluateJavaScript(script)) {
             // The kept page routes to this Artifact now: its splash counts from here, so the App's does too.
@@ -1188,7 +1338,14 @@ private fun RaftArtifactViewerWebBody(
             // The routed page now holds this session's token.
             pageTokens.onDocumentLoaded(session.accessToken, build.raft.app.data.defaultNowMillis())
             navigated = true
-            RaftArtifactViewerMemory.cache.rememberKeptDocument(scope, target, pageUrl, session.accessToken)
+            RaftArtifactViewerMemory.cache.rememberKeptDocument(
+                scope,
+                target,
+                pageUrl,
+                session.accessToken,
+                slotKey = activeSlotKey,
+                renderedArtifact = false,
+            )
             RaftArtifactOpenTrace.mark("viewer_nav_started", "where=page")
         }
     }
@@ -1260,7 +1417,7 @@ private fun RaftArtifactViewerWebBody(
             RaftArtifactViewerOpenState(
                 sessionRead = true,
                 documentShown = visible,
-                reusesKeptPage = kept != null && keptDrewBar,
+                reusesKeptPage = kept != null && (keptDrewBar || reusesLoadedTarget),
                 loadError = loadError,
                 sinceDocumentReadyMs = coverFallbackFrom?.elapsedNow()?.inWholeMilliseconds.also { coverFallbackTick },
                 pageLoaded = pageLoadedAt != null,
@@ -1285,9 +1442,10 @@ private fun RaftArtifactViewerWebBody(
     // Diagnostics: a load still covered after a while, and what the page reached when it closes.
     val latestState by rememberUpdatedState(
         "kept=${kept != null} showsTarget=$showsTarget visible=$visible documentReady=$documentReady " +
-            "navigated=$navigated loadError=$loadError session=true"
+            "navigated=$navigated loadError=$loadError session=true multislot=$useMultiSlot"
     )
-    val currentShownTarget by rememberUpdatedState(shownTarget)
+    val currentActiveSlotKey by rememberUpdatedState(activeSlotKey)
+    val currentLatestAddressedTarget by rememberUpdatedState(latestAddressedTarget)
     val currentLeft by rememberUpdatedState(left)
     val currentLoadError by rememberUpdatedState(loadError)
     val currentVisible by rememberUpdatedState(visible)
@@ -1304,29 +1462,34 @@ private fun RaftArtifactViewerWebBody(
         onDispose {
             raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_closed $latestState")
             // Keep-alive parks this page's WebView right as it leaves composition: align cache metadata with
-            // the document actually parked (including when a stacked Artifact viewer closed before this one),
-            // and never leave an un-embedded or stale-scope document parked in keep-alive.
-            val parked = raftWebViewKeptDocument(scope.keepAliveKey) ?: return@onDispose
+            // the document actually parked under [currentActiveSlotKey], and never leave an un-embedded or
+            // stale-scope document parked in keep-alive.
+            val slotKey = currentActiveSlotKey
+            val parked = raftWebViewKeptDocument(slotKey) ?: return@onDispose
             if (host.scope() != scope) {
+                RaftArtifactViewerMemory.clear()
                 raftWebViewKeepAliveClear()
                 return@onDispose
             }
             if (!raftArtifactViewerKeptDocumentHasEmbedContract(parked)) {
                 raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=dispose_embed_contract_missing")
-                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
-                raftWebViewKeepAliveClear()
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope, slotKey)
+                raftWebViewKeepAliveDrop(slotKey)
             } else if (currentHostHeadMoved) {
                 raftLogInfo(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=head_changed_while_shown")
-                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope)
-                raftWebViewKeepAliveClear()
+                RaftArtifactViewerMemory.cache.forgetKeptDocument(scope, slotKey)
+                raftWebViewKeepAliveDrop(slotKey)
             } else if (!currentLeft && !currentLoadError && currentVisible && currentNavigated) {
+                val effectiveTarget = currentLatestAddressedTarget
                 RaftArtifactViewerMemory.cache.rememberKeptDocument(
                     scope,
-                    currentShownTarget,
-                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, currentShownTarget, conversationId, documentHostHead, raftEmbeddedWebLangTag()),
+                    effectiveTarget,
+                    raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, effectiveTarget, conversationId, documentHostHead, langTag),
                     currentAppToken,
+                    slotKey = slotKey,
+                    renderedArtifact = true,
                 )
-                RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead)
+                RaftArtifactViewerMemory.cache.noteKeptBoot(scope, conversationId, documentHostHead, langTag, slotKey = slotKey)
             }
         }
     }
@@ -1372,7 +1535,7 @@ private fun RaftArtifactViewerWebBody(
             mainFrameOrigin = scope.webOrigin,
             // The content frame (desktop declares it; see RaftWebViewConfig.frameHosts).
             frameHosts = setOf(ARTIFACT_CONTENT_DOMAIN),
-            keepAliveKey = scope.keepAliveKey,
+            keepAliveKey = activeSlotKey,
             diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
             // #proj-workspace:#360: pinch-to-zoom stays available outside Desktop Mode too.
             allowPinchZoom = true,

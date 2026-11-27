@@ -596,6 +596,8 @@ internal fun formatWebContainerTelemetryLog(event: WebContainerTelemetryEvent): 
             (event.action in TracedWebContainerPoolAnomalyActions) to
                 buildString {
                     append("web_container_pool action=${event.action} size=${event.poolSizeAfter}")
+                    if (!event.surfaceId.isNullOrBlank()) append(" surface=${event.surfaceId}")
+                    if (event.reloaded != null) append(" reloaded=${event.reloaded}")
                     if (!event.engine.isNullOrBlank()) append(" engine=${event.engine}")
                 }
         is WebContainerTelemetryEvent.IsolationScopeCleared ->
