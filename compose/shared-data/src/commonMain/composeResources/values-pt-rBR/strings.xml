@@ -7059,4 +7059,15 @@
     <string name="ask_seats_creator_badge">Criador</string>
     <string name="ask_seats_owners_loading">Buscando os proprietários do servidor</string>
     <string name="ask_seats_owners_failed">Não foi possível carregar os proprietários do servidor.</string>
+    <string name="upgrade_dialog_upload_quota_title_short">Não há envios suficientes neste mês</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_one">e seus agentes esbarraram nisso uma vez nos últimos 7 dias</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_other">e seus agentes esbarraram nisso %1$d vezes nos últimos 7 dias</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_one">Seus agentes esbarraram nesse limite uma vez nos últimos 7 dias.</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_other">Seus agentes esbarraram nesse limite %1$d vezes nos últimos 7 dias.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up">%1$s já usou os %2$s de envios deste mês; o limite é renovado em %3$s. O Pro não tem limite mensal.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up_with_agent_hits">%1$s já usou os %2$s de envios deste mês, %4$s; o limite é renovado em %3$s. O Pro não tem limite mensal.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file">%1$s tem %2$s, e %3$s tem só %4$s restantes dos %5$s de envios deste mês; o limite é renovado em %6$s. O Pro não tem limite mensal.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s tem %2$s, e %3$s tem só %4$s restantes dos %5$s de envios deste mês; o limite é renovado em %6$s. %7$s O Pro não tem limite mensal.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files">%1$s tem só %2$s restantes dos %3$s de envios deste mês, o que não basta para estes %4$d arquivos; o limite é renovado em %5$s. O Pro não tem limite mensal.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s tem só %2$s restantes dos %3$s de envios deste mês, o que não basta para estes %4$d arquivos; o limite é renovado em %5$s. %6$s O Pro não tem limite mensal.</string>
 </resources>

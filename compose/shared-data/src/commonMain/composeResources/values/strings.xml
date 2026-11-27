@@ -7061,4 +7061,15 @@
     <string name="ask_seats_creator_badge">Creator</string>
     <string name="ask_seats_owners_loading">Finding the server's owners</string>
     <string name="ask_seats_owners_failed">The server's owners couldn't be loaded.</string>
+    <string name="upgrade_dialog_upload_quota_title_short">Not enough uploads left this month</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_one">and your agents ran into this once in the past 7 days</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_other">and your agents ran into this %1$d times in the past 7 days</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_one">Your agents ran into this limit once in the past 7 days.</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_other">Your agents ran into this limit %1$d times in the past 7 days.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up">%1$s has used this month's %2$s of uploads; it resets on %3$s. Pro has no monthly limit.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up_with_agent_hits">%1$s has used this month's %2$s of uploads, %4$s; it resets on %3$s. Pro has no monthly limit.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file">%1$s is %2$s, and %3$s has %4$s left of this month's %5$s of uploads; it resets on %6$s. Pro has no monthly limit.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s is %2$s, and %3$s has %4$s left of this month's %5$s of uploads; it resets on %6$s. %7$s Pro has no monthly limit.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files">%1$s has %2$s left of this month's %3$s of uploads, not enough for these %4$d files; it resets on %5$s. Pro has no monthly limit.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s has %2$s left of this month's %3$s of uploads, not enough for these %4$d files; it resets on %5$s. %6$s Pro has no monthly limit.</string>
 </resources>

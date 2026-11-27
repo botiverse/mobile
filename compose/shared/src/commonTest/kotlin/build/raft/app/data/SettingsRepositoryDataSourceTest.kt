@@ -735,6 +735,51 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun billingSummaryParsesAgentUploadQuotaBlocks7dAndLoaderDegradesOnFailure() = runBlocking {
+        val withHits =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"free","agentUploadQuotaBlocks7d":4,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertEquals(4, requireNotNull(withHits).agentUploadQuotaBlocks7d)
+
+        val withZero =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"free","agentUploadQuotaBlocks7d":0,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertEquals(0, requireNotNull(withZero).agentUploadQuotaBlocks7d)
+
+        val withNull =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","agentUploadQuotaBlocks7d":null,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertNull(requireNotNull(withNull).agentUploadQuotaBlocks7d)
+
+        val withNegative =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"free","agentUploadQuotaBlocks7d":-1,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+            )
+        assertNull(requireNotNull(withNegative).agentUploadQuotaBlocks7d)
+
+        val loaded =
+            loadServerAgentUploadQuotaBlocks7d(
+                networkClient =
+                    FakeSettingsNetworkClient(
+                        billingSubscriptionJson =
+                            """{"plan":"free","agentUploadQuotaBlocks7d":5,"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+                    ),
+                serverId = "srv-1",
+            )
+        assertEquals(5, loaded)
+
+        val denied =
+            loadServerAgentUploadQuotaBlocks7d(
+                networkClient = FakeSettingsNetworkClient(responseCode = 403),
+                serverId = "srv-1",
+            )
+        assertNull(denied)
+    }
+
+    @Test
     fun billingMapsDowngradeAndFounderNoticeStates() = runBlocking {
         val downgradeSession =
             sampleSession().copy(

@@ -6,6 +6,7 @@ import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.RaftAttachmentUploadAttempt
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenError
+import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.AttachmentUploadResult
 import build.raft.app.data.DataResult
@@ -19,9 +20,11 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.model.ChannelId
 import build.raft.app.normalizeThreadAttachmentUploadDraftKey
+import build.raft.app.settings.RaftUpgradeUploadFile
 import build.raft.app.settings.openRaftUpgradeDialog
 import build.raft.app.settings.raftUpgradeGateForErrorCode
 import build.raft.app.settings.raftUploadSizeLimitIsFree
+import build.raft.app.settings.toRaftUpgradeMonthlyUploadContext
 import build.raft.app.settle
 import build.raft.app.threadAttachmentUploadAttemptIdentity
 import build.raft.app.threadAttachmentUploadFile
@@ -102,9 +105,25 @@ internal class ThreadRouteAttachmentUploader(
      * nothing opens on a paid plan) or the external channel is frozen (`external_limit_frozen`),
      * and the failure toast.
      */
-    fun showAttachmentUploadFailure(errorCode: String, traceId: String? = null) {
+    fun showAttachmentUploadFailure(
+        errorCode: String,
+        traceId: String? = null,
+        monthlyUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
+        failedFiles: List<RaftUpgradeUploadFile> = emptyList(),
+    ) {
         threadAttachmentUploadFailureUpgradeGate(errorCode)?.let { gate ->
-            pager.openRaftUpgradeDialog(gate, storeScope)
+            val uploadContext =
+                if (gate == RaftUpgradeGate.UploadMonthlyQuota) {
+                    monthlyUploadQuota?.toRaftUpgradeMonthlyUploadContext(failedFiles)
+                } else {
+                    null
+                }
+            pager.openRaftUpgradeDialog(
+                gate = gate,
+                storeScope = storeScope,
+                uploadContext = uploadContext,
+                fallbackUploadFiles = if (gate == RaftUpgradeGate.UploadMonthlyQuota) failedFiles else emptyList(),
+            )
         }
         bridge.errorToast(
             localizedAttachmentUploadFailedDetail(
@@ -407,7 +426,11 @@ internal class ThreadRouteAttachmentUploader(
             // and returns ready attachments only after the whole batch is complete.
             // Gallery on this train calls with requireAllFiles=false, so this branch stays dormant.
             val acceptedLocalIds = acceptedFiles.map(PlatformFile::id).toSet()
-            suspend fun markGalleryBatchFailed(errorCode: String, traceId: String? = null): Boolean {
+            suspend fun markGalleryBatchFailed(
+                errorCode: String,
+                traceId: String? = null,
+                monthlyUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
+            ): Boolean {
                 val currentFailureState = composerDraftViewModel.state.value
                 val markableIds =
                     acceptedLocalIds
@@ -464,7 +487,18 @@ internal class ThreadRouteAttachmentUploader(
                             "draftKey=$draftKey"
                     )
                 }
-                showAttachmentUploadFailure(errorCode, traceId)
+                showAttachmentUploadFailure(
+                    errorCode = errorCode,
+                    traceId = traceId,
+                    monthlyUploadQuota = monthlyUploadQuota,
+                    failedFiles =
+                        acceptedFiles.map { file ->
+                            RaftUpgradeUploadFile(
+                                name = file.fileName,
+                                sizeBytes = file.sizeBytes?.takeIf { it > 0L } ?: file.bytes.size.toLong(),
+                            )
+                        },
+                )
                 return accepted
             }
 
@@ -543,7 +577,8 @@ internal class ThreadRouteAttachmentUploader(
                                 batchResult,
                                 emptyCode = "attachment_upload_batch_empty",
                             ),
-                            traceId = batchResult.error.traceId
+                            traceId = batchResult.error.traceId,
+                            monthlyUploadQuota = batchResult.error.monthlyUploadQuota,
                         )
                         return false
                     }
@@ -734,8 +769,19 @@ internal class ThreadRouteAttachmentUploader(
                     file = file,
                     launchAdmission = admission
                 ) { uploadAttemptToken ->
-                    fun publishTerminalFailure(errorCode: String, traceId: String? = null) {
-                        draftUploads.fail(draftKey, localAttachmentId, uploadAttemptToken, errorCode, traceId)
+                    fun publishTerminalFailure(
+                        errorCode: String,
+                        traceId: String? = null,
+                        monthlyUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
+                    ) {
+                        draftUploads.fail(
+                            draftKey = draftKey,
+                            localAttachmentId = localAttachmentId,
+                            attemptToken = uploadAttemptToken,
+                            errorCode = errorCode,
+                            traceId = traceId,
+                            monthlyUploadQuota = monthlyUploadQuota,
+                        )
                     }
                     // Where this attempt's time goes (RaftAttachmentUploadTelemetry.kt); the network
                     // layer fills its recorder in through the coroutine context. Reported once.
@@ -927,7 +973,8 @@ internal class ThreadRouteAttachmentUploader(
                                     is DataResult.Error ->
                                         publishTerminalFailure(
                                             resolveThreadAttachmentUploadFailureCode(uploadResult),
-                                            traceId = uploadResult.error.traceId
+                                            traceId = uploadResult.error.traceId,
+                                            monthlyUploadQuota = uploadResult.error.monthlyUploadQuota,
                                         )
                                     is DataResult.NoPermission -> {
                                         routeAuthRequired(uploadResult)

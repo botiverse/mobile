@@ -80,6 +80,12 @@ data class ScreenError(
      */
     val historyLimitedTarget: MessageContextHiddenTarget? = null,
     /**
+     * A 403 `FILE_UPLOAD_QUOTA_EXCEEDED` payload's `monthlyUpload` / `quota` allowance snapshot
+     * (botiverse/slock #14968), so the upload quota upgrade dialog can explain the monthly limit
+     * and reset date in context. Null for every other error.
+     */
+    val monthlyUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
+    /**
      * The failed request's server trace id (`X-Trace-Id`), shown with a copy action under the
      * error so a report can be found on the server (AGENTS.md "Errors carry the trace ID").
      * Defaults to the failure the HTTP layer saw just now ([RaftFailedRequestTraceIds], as the

@@ -3835,8 +3835,18 @@ private fun SharedThreadRouteContentContent(
             localizedAttachmentUploadFailedDetailFn = { detail -> localizedAttachmentUploadFailedDetail(detail) },
         )
     val threadRouteAttachmentUploader = buildThreadRouteAttachmentUploader()
-    fun showAttachmentUploadFailure(errorCode: String, traceId: String? = null): Unit =
-        threadRouteAttachmentUploader.showAttachmentUploadFailure(errorCode, traceId)
+    fun showAttachmentUploadFailure(
+        errorCode: String,
+        traceId: String? = null,
+        monthlyUploadQuota: build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot? = null,
+        failedFiles: List<build.raft.app.settings.RaftUpgradeUploadFile> = emptyList(),
+    ): Unit =
+        threadRouteAttachmentUploader.showAttachmentUploadFailure(
+            errorCode = errorCode,
+            traceId = traceId,
+            monthlyUploadQuota = monthlyUploadQuota,
+            failedFiles = failedFiles,
+        )
     suspend fun uploadComposerAttachmentFiles(
         files: List<PlatformFile>,
         replaceAttachmentId: String? = null,
@@ -3890,9 +3900,22 @@ private fun SharedThreadRouteContentContent(
                         attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(upload.localAttachmentId, draftKey)
                 },
                 onFailed = { upload, errorCode ->
+                    val failed = upload.outcome as? RaftComposerDraftUploadOutcome.Failed
                     showAttachmentUploadFailure(
-                        errorCode,
-                        (upload.outcome as? RaftComposerDraftUploadOutcome.Failed)?.traceId
+                        errorCode = errorCode,
+                        traceId = failed?.traceId,
+                        monthlyUploadQuota = failed?.monthlyUploadQuota,
+                        failedFiles =
+                            upload.file
+                                ?.let { file ->
+                                    listOf(
+                                        build.raft.app.settings.RaftUpgradeUploadFile(
+                                            name = file.fileName,
+                                            sizeBytes = file.sizeBytes?.takeIf { it > 0L } ?: file.bytes.size.toLong(),
+                                        )
+                                    )
+                                }
+                                .orEmpty(),
                     )
                 },
                 onDelivered = { upload ->

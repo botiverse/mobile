@@ -37,15 +37,18 @@ import build.raft.app.data.ProPricing
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SeatRequestPurpose
+import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.billingPricing
 import build.raft.app.data.formatProSeatMonthlyUsd
 import build.raft.app.data.loadServerAgentHistoryBlocks7d
+import build.raft.app.data.loadServerBillingSubscriptionSummary
 import build.raft.app.data.loadServerProPricing
 import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.format.RaftFormat
 import build.raft.app.get
 import build.raft.app.holdsExternalSlot
 import build.raft.app.members.membersLocalizedCreatedDateOrNull
@@ -410,6 +413,59 @@ internal fun historyContextForGate(
     }
 }
 
+/** Below 1 MiB remaining, web treats the monthly upload allowance as used up rather than short. */
+internal const val RaftMonthlyUploadUsedUpBelowBytes = 1024L * 1024L
+
+/** One refused attachment named in a monthly upload quota upgrade dialog (web `UploadLimitContext.files`). */
+internal data class RaftUpgradeUploadFile(val name: String, val sizeBytes: Long)
+
+/**
+ * Extra context for a monthly upload quota upgrade gate (web `UploadLimitContext` `monthly_quota`,
+ * botiverse/slock #14968). Paired strictly with [RaftUpgradeGate.UploadMonthlyQuota] via
+ * [uploadContextForGate].
+ */
+internal sealed interface RaftUpgradeUploadContext {
+    data class MonthlyQuota(
+        val month: String,
+        val limitBytes: Long,
+        val remainingBytes: Long,
+        val files: List<RaftUpgradeUploadFile> = emptyList(),
+    ) : RaftUpgradeUploadContext
+}
+
+/**
+ * Pairs [context] only with [RaftUpgradeGate.UploadMonthlyQuota] when well-formed (`YYYY-MM`
+ * month, positive monthly limit, non-negative remaining bytes); any other gate or malformed
+ * snapshot returns null so the gate's default copy is used without the 7-day agent refusal count.
+ */
+internal fun uploadContextForGate(
+    gate: RaftUpgradeGate,
+    context: RaftUpgradeUploadContext?,
+): RaftUpgradeUploadContext? {
+    if (gate != RaftUpgradeGate.UploadMonthlyQuota || context == null) return null
+    return when (context) {
+        is RaftUpgradeUploadContext.MonthlyQuota ->
+            context.takeIf {
+                settingsBillingYearMonth(it.month) != null &&
+                    it.limitBytes > 0L &&
+                    it.remainingBytes >= 0L
+            }
+    }
+}
+
+internal fun SettingsBillingFileUploadQuotaSnapshot.toRaftUpgradeMonthlyUploadContext(
+    files: List<RaftUpgradeUploadFile> = emptyList(),
+): RaftUpgradeUploadContext.MonthlyQuota? {
+    val cleanMonth = month?.trim()?.takeIf { settingsBillingYearMonth(it) != null } ?: return null
+    if (!limited || limitBytes <= 0L || remainingBytes < 0L) return null
+    return RaftUpgradeUploadContext.MonthlyQuota(
+        month = cleanMonth,
+        limitBytes = limitBytes,
+        remainingBytes = remainingBytes,
+        files = files.filter { it.name.isNotBlank() && it.sizeBytes >= 0L },
+    )
+}
+
 /** One open upgrade dialog: shown by the [RaftUpgradeDialogHost] of the page that opened it. */
 internal data class RaftUpgradeRequest(
     val gate: RaftUpgradeGate,
@@ -439,6 +495,14 @@ internal data class RaftUpgradeRequest(
      * inside the contextual [historyContext] line when > 0.
      */
     val agentHistoryBlocks7d: Int? = null,
+    /** Gate-paired monthly upload quota context (`UploadMonthlyQuota`, botiverse/slock #14968). */
+    val uploadContext: RaftUpgradeUploadContext? = null,
+    /**
+     * How often this server's agents were refused by the monthly upload limit in the past 7 days
+     * (`GET /billing/subscription` `agentUploadQuotaBlocks7d`, botiverse/slock #14968). Shown only
+     * inside the contextual [uploadContext] line when > 0.
+     */
+    val agentUploadQuotaBlocks7d: Int? = null,
 )
 
 /** The open upgrade dialog, if any (one per process, like web `useUpgradeDialogStore`). */
@@ -478,6 +542,9 @@ internal fun Pager.openRaftUpgradeDialog(
     historyContext: RaftUpgradeHistoryContext? = null,
     knownAgentHistoryBlocks7d: Int? = null,
     seatRequestPurpose: SeatRequestPurpose? = null,
+    uploadContext: RaftUpgradeUploadContext? = null,
+    knownAgentUploadQuotaBlocks7d: Int? = null,
+    fallbackUploadFiles: List<RaftUpgradeUploadFile> = emptyList(),
 ) {
     val bridge = Utils.bridgeModule(pagerId)
     val sharedStores = RaftSharedStoreRegistry.get(bridge)
@@ -487,6 +554,13 @@ internal fun Pager.openRaftUpgradeDialog(
     val pager = this
     val pairedContext = externalContextForGate(gate, externalContext)
     val pairedHistoryContext = historyContextForGate(gate, historyContext)
+    val pairedUploadContext = uploadContextForGate(gate, uploadContext)
+    val sanitizedFallbackUploadFiles =
+        if (gate == RaftUpgradeGate.UploadMonthlyQuota) {
+            fallbackUploadFiles.filter { it.name.isNotBlank() && it.sizeBytes >= 0L }
+        } else {
+            emptyList()
+        }
     raftUpgradeScope.launch {
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         val requestedServerId = targetServerId?.trim()?.takeIf { it.isNotEmpty() }
@@ -544,6 +618,13 @@ internal fun Pager.openRaftUpgradeDialog(
             } else {
                 null
             }
+        val hasUploadQuotaContext = pairedUploadContext != null || sanitizedFallbackUploadFiles.isNotEmpty()
+        val initialAgentUploadQuotaBlocks =
+            if (mode != RaftUpgradeMode.LimitNotice && gate == RaftUpgradeGate.UploadMonthlyQuota && hasUploadQuotaContext) {
+                knownAgentUploadQuotaBlocks7d?.takeIf { it >= 0 }
+            } else {
+                null
+            }
         val request =
             RaftUpgradeRequest(
                 gate = gate,
@@ -566,6 +647,8 @@ internal fun Pager.openRaftUpgradeDialog(
                 pricing = initialPricing,
                 historyContext = pairedHistoryContext,
                 agentHistoryBlocks7d = initialAgentHistoryBlocks,
+                uploadContext = pairedUploadContext,
+                agentUploadQuotaBlocks7d = initialAgentUploadQuotaBlocks,
             )
         RaftUpgradeDialogState.refresher = { current -> raftReloadServerPlan(authDataSource, current.serverId) }
         RaftUpgradeDialogState.request = request
@@ -578,8 +661,15 @@ internal fun Pager.openRaftUpgradeDialog(
                 knownAgentHistoryBlocks7d == null &&
                 canReadBillingSummary &&
                 request.serverId.isNotBlank()
+        val shouldLoadUploadQuotaBlocks =
+            mode != RaftUpgradeMode.LimitNotice &&
+                gate == RaftUpgradeGate.UploadMonthlyQuota &&
+                hasUploadQuotaContext &&
+                knownAgentUploadQuotaBlocks7d == null &&
+                canReadBillingSummary &&
+                request.serverId.isNotBlank()
         val networkClient =
-            if (shouldLoadPricing || shouldLoadHistoryBlocks) {
+            if (shouldLoadPricing || shouldLoadHistoryBlocks || shouldLoadUploadQuotaBlocks) {
                 sharedStores.networkClient(storeScope)
             } else {
                 null
@@ -625,6 +715,41 @@ internal fun Pager.openRaftUpgradeDialog(
                         current.historyContext == request.historyContext
                     ) {
                         RaftUpgradeDialogState.request = current.copy(agentHistoryBlocks7d = resolved)
+                    }
+                }
+            }
+        }
+        // #14968: read `agentUploadQuotaBlocks7d` (and fallback `fileUploadQuota` if the 403
+        // lacked a quota payload) from GET /api/billing/subscription (owner/admin only).
+        if (shouldLoadUploadQuotaBlocks && networkClient != null) {
+            launch {
+                val summary =
+                    loadServerBillingSubscriptionSummary(
+                        networkClient = networkClient,
+                        serverId = request.serverId,
+                    )
+                if (summary != null) {
+                    val current = RaftUpgradeDialogState.request
+                    if (current != null &&
+                        current.pagerId == request.pagerId &&
+                        current.serverId == request.serverId &&
+                        current.gate == request.gate &&
+                        current.mode == request.mode &&
+                        current.uploadContext == request.uploadContext
+                    ) {
+                        val hydratedContext =
+                            current.uploadContext
+                                ?: sanitizedFallbackUploadFiles
+                                    .takeIf { it.isNotEmpty() }
+                                    ?.let { files -> summary.fileUploadQuota?.toRaftUpgradeMonthlyUploadContext(files) }
+                        val resolvedBlocks = summary.agentUploadQuotaBlocks7d
+                        if (hydratedContext != current.uploadContext || resolvedBlocks != null) {
+                            RaftUpgradeDialogState.request =
+                                current.copy(
+                                    uploadContext = hydratedContext,
+                                    agentUploadQuotaBlocks7d = resolvedBlocks ?: current.agentUploadQuotaBlocks7d,
+                                )
+                        }
                     }
                 }
             }
@@ -876,6 +1001,126 @@ internal fun raftHistoryLimitHint(
     }
 }
 
+/** When a `YYYY-MM` UTC upload quota month resets: the 1st of the following month ("Dec 1", "12月1日"). */
+@Composable
+internal fun raftMonthlyUploadResetDate(month: String): String {
+    val (_, monthNumber) = settingsBillingYearMonth(month) ?: return month
+    val nextMonth = if (monthNumber == 12) 1 else monthNumber + 1
+    return stringResource(Res.string.settings_compact_month_day, raftLocalizedShortMonth(nextMonth), 1)
+}
+
+/** Matches web `formatUploadSize`: bytes/KB below 1 MiB, MB (up to 1 decimal, no trailing .0) from 1 MiB. */
+@Composable
+internal fun raftFormatUploadQuotaSize(bytes: Long): String {
+    val safeBytes = bytes.coerceAtLeast(0L)
+    if (safeBytes < RaftMonthlyUploadUsedUpBelowBytes) return RaftFormat.bytes(safeBytes)
+    val mb = safeBytes / RaftMonthlyUploadUsedUpBelowBytes.toDouble()
+    return stringResource(Res.string.settings_billing_vo_size_mb, settingsBillingFormatSeats(mb))
+}
+
+@Composable
+internal fun raftUploadQuotaAgentHitsClause(usedUp: Boolean, agentTries: Int): String? {
+    if (agentTries <= 0) return null
+    val res =
+        if (usedUp) {
+            if (agentTries == 1) {
+                Res.string.upgrade_dialog_upload_quota_agent_hits_used_up_one
+            } else {
+                Res.string.upgrade_dialog_upload_quota_agent_hits_used_up_other
+            }
+        } else {
+            if (agentTries == 1) {
+                Res.string.upgrade_dialog_upload_quota_agent_hits_limit_one
+            } else {
+                Res.string.upgrade_dialog_upload_quota_agent_hits_limit_other
+            }
+        }
+    return stringResource(res, agentTries)
+}
+
+/**
+ * Web `uploadLimitHint` (`UpgradeDialog.tsx`, botiverse/slock #14968): contextual line under the
+ * monthly upload quota upgrade dialog title, including how often this server's agents were refused
+ * by the monthly limit in the past 7 days when [agentTries] > 0.
+ */
+@Composable
+internal fun raftUploadQuotaLimitHint(
+    serverName: String,
+    context: RaftUpgradeUploadContext.MonthlyQuota,
+    agentTries: Int = 0,
+): String {
+    val monthly = raftFormatUploadQuotaSize(context.limitBytes)
+    val remaining = raftFormatUploadQuotaSize(context.remainingBytes)
+    val resetDate = raftMonthlyUploadResetDate(context.month)
+    val files = context.files
+    return when {
+        files.isEmpty() -> {
+            val agentClause = raftUploadQuotaAgentHitsClause(usedUp = true, agentTries = agentTries)
+            if (agentClause == null) {
+                stringResource(Res.string.upgrade_dialog_upload_quota_hint_used_up, serverName, monthly, resetDate)
+            } else {
+                stringResource(
+                    Res.string.upgrade_dialog_upload_quota_hint_used_up_with_agent_hits,
+                    serverName,
+                    monthly,
+                    resetDate,
+                    agentClause,
+                )
+            }
+        }
+        files.size == 1 -> {
+            val only = files.single()
+            val fileSize = raftFormatUploadQuotaSize(only.sizeBytes)
+            val agentClause = raftUploadQuotaAgentHitsClause(usedUp = false, agentTries = agentTries)
+            if (agentClause == null) {
+                stringResource(
+                    Res.string.upgrade_dialog_upload_quota_hint_file,
+                    only.name,
+                    fileSize,
+                    serverName,
+                    remaining,
+                    monthly,
+                    resetDate,
+                )
+            } else {
+                stringResource(
+                    Res.string.upgrade_dialog_upload_quota_hint_file_with_agent_hits,
+                    only.name,
+                    fileSize,
+                    serverName,
+                    remaining,
+                    monthly,
+                    resetDate,
+                    agentClause,
+                )
+            }
+        }
+        else -> {
+            val agentClause = raftUploadQuotaAgentHitsClause(usedUp = false, agentTries = agentTries)
+            if (agentClause == null) {
+                stringResource(
+                    Res.string.upgrade_dialog_upload_quota_hint_files,
+                    serverName,
+                    remaining,
+                    monthly,
+                    files.size,
+                    resetDate,
+                )
+            } else {
+                stringResource(
+                    Res.string.upgrade_dialog_upload_quota_hint_files_with_agent_hits,
+                    serverName,
+                    remaining,
+                    monthly,
+                    files.size,
+                    resetDate,
+                    agentClause,
+                )
+            }
+        }
+    }
+}
+
 /**
  * The upgrade dialog (see the file comment), in the app's dialog card: eyebrow, a title of up to
  * three lines, the limit, what Pro adds, who finishes it, and the action in the footer.
@@ -891,7 +1136,9 @@ internal fun RaftUpgradeDialog(
     val copy = raftUpgradeGateCopy(request.gate)
     val pairedContext = externalContextForGate(request.gate, request.externalContext)
     val pairedHistoryContext = historyContextForGate(request.gate, request.historyContext)
+    val pairedUploadContext = uploadContextForGate(request.gate, request.uploadContext)
     val agentHistoryTries = (request.agentHistoryBlocks7d ?: 0).coerceAtLeast(0)
+    val agentUploadTries = (request.agentUploadQuotaBlocks7d ?: 0).coerceAtLeast(0)
     val freezeUpcoming = pairedContext as? RaftUpgradeExternalContext.FreezeUpcoming
     val freezeDeadline = freezeUpcoming?.let { raftFormatFreezeDeadline(it.deadlineIso) }
     val slotChannel = (pairedContext as? RaftUpgradeExternalContext.Slot)?.channelName
@@ -926,10 +1173,13 @@ internal fun RaftUpgradeDialog(
         return
     }
     val seats = request.mode == RaftUpgradeMode.AddSeats
+    val monthlyUploadContext = pairedUploadContext as? RaftUpgradeUploadContext.MonthlyQuota
     val title =
         when {
             seats -> stringResource(Res.string.upgrade_dialog_seats_title, server)
             freezeDeadline != null -> stringResource(Res.string.upgrade_dialog_external_freeze_upcoming_title)
+            monthlyUploadContext != null && monthlyUploadContext.remainingBytes >= RaftMonthlyUploadUsedUpBelowBytes ->
+                stringResource(Res.string.upgrade_dialog_upload_quota_title_short)
             else -> stringResource(copy.title, server)
         }
     val hint =
@@ -940,6 +1190,8 @@ internal fun RaftUpgradeDialog(
                 stringResource(Res.string.upgrade_dialog_external_freeze_upcoming_hint, freezeDeadline, server)
             slotChannel != null ->
                 stringResource(Res.string.upgrade_dialog_external_limit_hint_channel, server, slotChannel)
+            monthlyUploadContext != null ->
+                raftUploadQuotaLimitHint(server, monthlyUploadContext, agentUploadTries)
             pairedHistoryContext != null ->
                 raftHistoryLimitHint(pairedHistoryContext, agentHistoryTries)
             else -> stringResource(copy.hint, server)

@@ -707,6 +707,62 @@ class DirectAttachmentUploadNetworkContractTest {
     }
 
     @Test
+    fun monthlyQuota403ExtractsMonthlyUploadAndLegacyQuotaSnapshots() = runBlocking {
+        val directExecutor =
+            RecordingExecutor(
+                respond = { _, _ ->
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"code":"FILE_UPLOAD_QUOTA_EXCEEDED","message":"Monthly quota exceeded.","monthlyUpload":{"month":"2026-11","limitBytes":104857600,"remainingBytes":2097152}}""",
+                    )
+                },
+            )
+        val directResult =
+            composerUpload(directExecutor).uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(bytes = byteArrayOf(1, 2, 3)),
+                clientRequestId = "11111111-1111-4111-8111-111111111112",
+            )
+        val directQuota = requireNotNull(assertIs<DataResult.Error>(directResult).error.monthlyUploadQuota)
+        assertEquals("2026-11", directQuota.month)
+        assertTrue(directQuota.limited)
+        assertEquals(104857600L, directQuota.limitBytes)
+        assertEquals(2097152L, directQuota.remainingBytes)
+
+        val legacyExecutor =
+            RecordingExecutor(
+                respond = { _, _ ->
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"errorCode":"FILE_UPLOAD_QUOTA_EXCEEDED","error":"Quota exceeded.","quota":{"month":"2026-12","limited":true,"limitBytes":104857600,"remainingBytes":0}}""",
+                    )
+                },
+            )
+        val legacyRepository =
+            RealConversationRepository(
+                sessionStore = authenticatedSessionStore(),
+                networkClient = client(executor = legacyExecutor),
+                routeEnvironmentIdProvider = { ApiBaseUrl },
+            )
+        val legacyResult =
+            legacyRepository.uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(file(sizeBytes = 3L, bytes = byteArrayOf(1, 2, 3))),
+                )
+            )
+        val legacyQuota = requireNotNull(assertIs<DataResult.Error>(legacyResult).error.monthlyUploadQuota)
+        assertEquals("2026-12", legacyQuota.month)
+        assertTrue(legacyQuota.limited)
+        assertEquals(104857600L, legacyQuota.limitBytes)
+        assertEquals(0L, legacyQuota.remainingBytes)
+    }
+
+    @Test
     fun legacyMultipart403BillingFrozenAndReadOnlyReturnTypedErrorsWhileTrueForbiddenStaysNoPermission() = runBlocking {
         suspend fun uploadWith403(body: String): DataResult<AttachmentUploadResult> {
             val executor =

@@ -7059,4 +7059,15 @@
     <string name="ask_seats_creator_badge">만든 사람</string>
     <string name="ask_seats_owners_loading">서버 소유자를 찾는 중</string>
     <string name="ask_seats_owners_failed">서버 소유자를 불러오지 못했어요.</string>
+    <string name="upgrade_dialog_upload_quota_title_short">이번 달 업로드 한도가 부족해요</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_one">지난 7일 동안 에이전트가 이 한도 때문에 한 번 막혔어요.</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_other">지난 7일 동안 에이전트가 이 한도 때문에 %1$d번 막혔어요.</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_one">지난 7일 동안 에이전트가 이 한도 때문에 한 번 막혔어요.</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_other">지난 7일 동안 에이전트가 이 한도 때문에 %1$d번 막혔어요.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up">%1$s의 이번 달 업로드 한도 %2$s을 모두 사용했어요. %3$s에 초기화돼요. Pro는 월 한도가 없어요.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up_with_agent_hits">%1$s의 이번 달 업로드 한도 %2$s을 모두 사용했어요. %3$s에 초기화돼요. %4$s Pro는 월 한도가 없어요.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file">%1$s 파일은 %2$s인데, %3$s의 이번 달 업로드 한도 %5$s 중 %4$s만 남았어요. %6$s에 초기화돼요. Pro는 월 한도가 없어요.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s 파일은 %2$s인데, %3$s의 이번 달 업로드 한도 %5$s 중 %4$s만 남았어요. %6$s에 초기화돼요. %7$s Pro는 월 한도가 없어요.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files">%1$s의 이번 달 업로드 한도 %3$s 중 %2$s만 남아 파일 %4$d개를 올릴 수 없어요. %5$s에 초기화돼요. Pro는 월 한도가 없어요.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s의 이번 달 업로드 한도 %3$s 중 %2$s만 남아 파일 %4$d개를 올릴 수 없어요. %5$s에 초기화돼요. %6$s Pro는 월 한도가 없어요.</string>
 </resources>

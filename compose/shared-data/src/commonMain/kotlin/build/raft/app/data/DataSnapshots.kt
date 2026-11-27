@@ -1934,6 +1934,12 @@ data class SettingsBillingSubscriptionSnapshot(
      * Null when not counted (unlimited history) or unreadable.
      */
     val agentHistoryBlocks7d: Int? = null,
+    /**
+     * On a plan with a monthly upload limit: how often this server's agents were refused by it in
+     * the past 7 days (`GET /billing/subscription` `agentUploadQuotaBlocks7d`, botiverse/slock #14968).
+     * Null when not counted (no monthly limit) or unreadable.
+     */
+    val agentUploadQuotaBlocks7d: Int? = null,
 )
 
 /** An AppSumo lifetime license: its allowances and what is used of them. */
