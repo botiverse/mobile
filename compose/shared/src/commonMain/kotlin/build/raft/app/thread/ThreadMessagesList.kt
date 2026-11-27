@@ -716,7 +716,20 @@ private fun ThreadMessagesListContent(
     var viewportControllerState by viewportControllerMutableState
     val viewportLayoutGenerationState = remember(threadInstanceKey) { mutableStateOf(0L) }
     var viewportLayoutGeneration by viewportLayoutGenerationState
+    val timelinePlacementTracker = remember(threadInstanceKey) { ThreadTimelinePlacementTracker() }
+    LaunchedEffect(threadInstanceKey, renderPayload.messages.isEmpty()) {
+        if (renderPayload.messages.isEmpty()) {
+            timelinePlacementTracker.clear()
+        }
+    }
     val dispatchViewportEvent: (LazyViewportEvent) -> Unit = { event ->
+        if (
+            event is LazyViewportEvent.PointerDown ||
+            event is LazyViewportEvent.FollowLatest ||
+            event is LazyViewportEvent.PinTop
+        ) {
+            timelinePlacementTracker.clear()
+        }
         val previousIntent = viewportControllerState.intent
         viewportControllerState = reduceLazyViewport(viewportControllerState, event)
         if (viewportControllerState.intent != previousIntent) {
@@ -811,6 +824,7 @@ private fun ThreadMessagesListContent(
             return true
         }
         if (anchor != null && !anchor.atLatest) {
+            timelinePlacementTracker.clear()
             adaptiveAnchorRestoreInFlight = true
             val firstMessageIndex = renderPayload.firstMessageListItemIndex()
             val locatedIndex =
@@ -1070,6 +1084,7 @@ private fun ThreadMessagesListContent(
     // leaves bottom ownership alone.
     var keepTappedRowForLongMessage: (String, Int, Boolean) -> Unit = { _, _, _ -> }
     val toggleLongMessage: (String, Int) -> Unit = { messageId, listItemIndex ->
+        timelinePlacementTracker.clear()
         val expanding = !longMessageCollapseController.isExpanded(messageId)
         val heightDelta = longMessageCollapseController.toggleHeightDelta(messageId, expanding)
         val forwardItem = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == listItemIndex }
@@ -1218,8 +1233,9 @@ private fun ThreadMessagesListContent(
     // expand/reveal path and any other in-place row action call): the viewport controller is
     // anchored on its current top, so the keeper and the controller's HeightChange replay agree.
     val keepReadingAnchorFor: (String) -> Unit =
-        remember(readingAnchorOwner) {
+        remember(readingAnchorOwner, timelinePlacementTracker) {
             { messageId ->
+                timelinePlacementTracker.clear()
                 val index = readingAnchorPayloadState.value.threadMessageListItemIndex(messageId)
                 val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
                 if (
@@ -1367,6 +1383,7 @@ private fun ThreadMessagesListContent(
             initialFocusedUserNavigationCount,
             initialFocusedRepliesMinReservePx,
             imeProgrammaticViewportPolicy,
+            timelinePlacementTracker,
         ) {
             {
                 initialFocusedPlacementOwner.afterLayout(
@@ -1396,6 +1413,19 @@ private fun ThreadMessagesListContent(
                         )
                     },
                     minBottomReservePx = initialFocusedRepliesMinReservePx,
+                    onPlaced = { placedPlacement ->
+                        val targetId = readingAnchorPayloadState.value.focusedMessageId?.takeIf { it.isNotBlank() }
+                        if (targetId != null) {
+                            val rawInfo = listState.raw.layoutInfo
+                            timelinePlacementTracker.place(
+                                messageId = targetId,
+                                placement = placedPlacement,
+                                userScrollGeneration = userScrollGeneration.value,
+                                viewportHeightPx = rawInfo.usableViewportHeightPx(),
+                                viewportWidthPx = rawInfo.viewportSize.width,
+                            )
+                        }
+                    },
                 )
             }
         }
@@ -1445,6 +1475,7 @@ private fun ThreadMessagesListContent(
         }
         if (threadFindJumpRequested == match.messageId) return@LaunchedEffect
         threadFindJumpRequested = match.messageId
+        timelinePlacementTracker.clear()
         listState.noteUserNavigation()
         diagnosticsLogger("thread_find_jump messageId=${match.messageId.take(8)}")
         onThreadEvent(ThreadFindJumpAction, match.messageId, null, null)
@@ -1518,6 +1549,7 @@ private fun ThreadMessagesListContent(
     // below the viewport is now brought into view by [expandRevealOwner].
     // Fences: the summary row is laid out and no scroll is active.
     val toggleSystemMessageGroup: (String, String, String) -> Unit = { groupId, summaryMessageId, lastMemberId ->
+        timelinePlacementTracker.clear()
         val expanding = groupId !in expandedSystemMessageGroups
         expandedSystemMessageGroups =
             if (expanding) expandedSystemMessageGroups + groupId else expandedSystemMessageGroups - groupId
@@ -1546,6 +1578,7 @@ private fun ThreadMessagesListContent(
     // A row's own disclosure (a system line's details): direct user action, like the group toggle.
     // Fence: the row is laid out, no scroll is active.
     val requestRowExpandReveal: (String) -> Unit = { messageId ->
+        timelinePlacementTracker.clear()
         val index = renderPayload.threadMessageListItemIndex(messageId)
         val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
         if (item != null && !listState.isScrollInProgress) {
@@ -2152,6 +2185,25 @@ private fun ThreadMessagesListContent(
         activeFocusedMessageIdState = activeFocusedMessageIdState,
         liveComposerKeyboardInsetDpState = liveComposerKeyboardInsetDpState,
         focusedAnchorState = focusedAnchorState,
+        timelinePlacementTracker = timelinePlacementTracker,
+    )
+    ThreadTimelinePlacementResizeEffect(
+        threadInstanceKey = threadInstanceKey,
+        tracker = timelinePlacementTracker,
+        listState = listState,
+        userScrollGeneration = userScrollGeneration,
+        imeProgrammaticViewportPolicy = imeProgrammaticViewportPolicy,
+        currentPayloadState = currentPayloadState,
+        viewportControllerMutableState = viewportControllerMutableState,
+        viewportLayoutGenerationState = viewportLayoutGenerationState,
+        liveComposerKeyboardInsetDpState = liveComposerKeyboardInsetDpState,
+        olderPageCycleActiveState = olderPageCycleActiveState,
+        newerPageCycleActiveState = rememberUpdatedState(newerPageCycleActive),
+        shareSelectionCaptureActiveState = rememberUpdatedState(shareSelectionCaptureActive),
+        adaptiveAnchorRestoreInFlightState = rememberUpdatedState(adaptiveAnchorRestoreInFlight),
+        dispatchViewportEvent = dispatchViewportEvent,
+        awaitViewportCommandSettlement = { commandId -> awaitViewportCommandSettlement(commandId) },
+        diagnosticsLogger = diagnosticsLogger,
     )
     ThreadMessagesListBottomAnchorEffects(
         threadInstanceKey = threadInstanceKey,
@@ -2346,10 +2398,12 @@ private fun ThreadMessagesListContent(
                         )
                         when (type) {
                             TouchType.Down -> {
+                                timelinePlacementTracker.clear()
                                 newerPointerGestureActive = true
                                 dispatchViewportEvent(LazyViewportEvent.PointerDown)
                             }
                             TouchType.Move -> {
+                                timelinePlacementTracker.clear()
                                 dispatchViewportEvent(LazyViewportEvent.PointerMove)
                             // Count every direct pointer move, not inertial/programmatic
                             // scrolling. Older-page completion may safely cancel the
@@ -2592,6 +2646,7 @@ private fun ThreadMessagesListContent(
             // button follows the same lifetime rule: it clears its
             // visibility state only after the scroll completes.
             backToBottomInteractionGuardActive = true
+            timelinePlacementTracker.clear()
             // Explicit user navigation: end any active open trace as UserTookOver before retiring
             // focus or jumping to latest (#proj-mobile:#258).
             listState.noteUserNavigation()

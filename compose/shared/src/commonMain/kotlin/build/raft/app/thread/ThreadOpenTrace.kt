@@ -75,6 +75,9 @@ internal object ThreadViewportOwnerTag {
 
     /** The reading anchor kept the anchored row's top in place across an in-place row height change (ThreadReadingAnchorKeeper). */
     const val ReadingAnchor = "reading_anchor"
+
+    /** Initial focus re-placed after timeline viewport height changed before user scroll (ThreadTimelinePlacement). */
+    const val FocusedResize = "focused_resize"
 }
 
 /** A shift's cause when no viewport owner scrolled in its frame. */

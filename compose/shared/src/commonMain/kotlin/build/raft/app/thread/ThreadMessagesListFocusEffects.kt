@@ -53,6 +53,7 @@ internal fun ThreadMessagesListFocusEffects(
     activeFocusedMessageIdState: MutableState<String?>,
     liveComposerKeyboardInsetDpState: State<Float>,
     focusedAnchorState: ThreadFocusedAnchorState,
+    timelinePlacementTracker: ThreadTimelinePlacementTracker,
 ) {
     var allowBottomAutoAnchor by allowBottomAutoAnchorState
     var initialBottomAnchorReady by initialBottomAnchorReadyState
@@ -203,6 +204,7 @@ internal fun ThreadMessagesListFocusEffects(
         }
         val targetIndex = renderPayload.focusedMessageListItemIndex()
         if (targetIndex < 0) {
+            timelinePlacementTracker.clear()
             return@LaunchedEffect
         }
         listState.awaitThreadMessagesLayoutFrame()
@@ -213,6 +215,7 @@ internal fun ThreadMessagesListFocusEffects(
         // programmatic scrollToItem would cancel the gesture (task #554).
         if (listState.isScrollInProgress) {
             scrollInterruptedFocusedMessageAnchorIdentity = targetIdentity
+            timelinePlacementTracker.clear()
             return@LaunchedEffect
         }
         activeFocusedMessageId = targetMessageId
@@ -235,6 +238,7 @@ internal fun ThreadMessagesListFocusEffects(
             )
         ) {
             activeFocusedMessageId = null
+            timelinePlacementTracker.clear()
             return@LaunchedEffect
         }
         if (
@@ -273,6 +277,14 @@ internal fun ThreadMessagesListFocusEffects(
                     offset = currentVisibleOffset,
                     layoutGeneration = viewportLayoutGeneration
                 )
+            )
+            val rawInfo = listState.raw.layoutInfo
+            timelinePlacementTracker.placeIfAbsent(
+                messageId = targetMessageId,
+                placement = basePlacement,
+                userScrollGeneration = userScrollGeneration.value,
+                viewportHeightPx = rawInfo.usableViewportHeightPx(),
+                viewportWidthPx = rawInfo.viewportSize.width,
             )
         } else {
             listState.noteDispatchOwner(threadFocusedDispatchOwnerTag(focusedAnchorPlacementState.placement))
@@ -322,6 +334,19 @@ internal fun ThreadMessagesListFocusEffects(
             activeFocusedMessageId = null
             return@LaunchedEffect
         }
+        if (
+            focusedAnchorPlacementState.placement == LazyViewportAnchorPlacement.Focused ||
+            focusedAnchorPlacementState.placement == LazyViewportAnchorPlacement.FocusedThreadReplies
+        ) {
+            val rawInfo = listState.raw.layoutInfo
+            timelinePlacementTracker.placeIfAbsent(
+                messageId = targetMessageId,
+                placement = basePlacement,
+                userScrollGeneration = userScrollGeneration.value,
+                viewportHeightPx = rawInfo.usableViewportHeightPx(),
+                viewportWidthPx = rawInfo.viewportSize.width,
+            )
+        }
         focusedAnchorStartUserScrollGeneration = userScrollGeneration.value
         correctedFocusedOriginIdentity = null
         // task #567 first-principles invariant: once anchored, the target must
@@ -339,6 +364,8 @@ internal fun ThreadMessagesListFocusEffects(
             focusedAnchorSessionReanchors = 0
         }
         var anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+        var watchedViewportHeightPx = listState.raw.layoutInfo.usableViewportHeightPx()
+        var watchedRePlacementSettledGen = timelinePlacementTracker.rePlacementSettledGeneration
         var quietMs = 0L
         var driftMaxPx = 0
         while (true) {
@@ -357,24 +384,54 @@ internal fun ThreadMessagesListFocusEffects(
                 )
                 return@LaunchedEffect
             }
-            val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
             val currentUserScrollGeneration = userScrollGeneration.value
+            val keyboardOpen =
+                threadImeOpenSuppressesProgrammaticViewport(
+                    keyboardInsetDp = liveComposerKeyboardInsetDp,
+                    policy = imeProgrammaticViewportPolicy,
+                )
+            val userInteracting =
+                focusedAnchorSessionUserOverrideActive(
+                    startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
+                    currentUserScrollGeneration = currentUserScrollGeneration,
+                    targetIdentity = targetIdentity,
+                    scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
+                )
+            // Always honor user override, keyboard open, and hard cap before any deferral.
+            if (!userInteracting && !keyboardOpen && focusedAnchorSessionElapsedMs < FocusedAnchorSessionHardCapMs) {
+                if (viewportControllerState.pendingCommand != null) {
+                    quietMs = 0L
+                    continue
+                }
+                val currentViewportHeightPx = listState.raw.layoutInfo.usableViewportHeightPx()
+                val currentRePlacementSettledGen = timelinePlacementTracker.rePlacementSettledGeneration
+                if (currentRePlacementSettledGen != watchedRePlacementSettledGen) {
+                    anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+                    watchedViewportHeightPx = currentViewportHeightPx
+                    watchedRePlacementSettledGen = currentRePlacementSettledGen
+                    quietMs = 0L
+                    continue
+                }
+                if (watchedViewportHeightPx > 0 && currentViewportHeightPx > 0 && currentViewportHeightPx != watchedViewportHeightPx) {
+                    if (timelinePlacementTracker.current?.messageId == targetMessageId) {
+                        // Let ThreadTimelinePlacementResizeEffect re-place the row first; do not
+                        // lock anchoredOffset to the un-corrected shifted offset.
+                        quietMs = 0L
+                        continue
+                    }
+                    anchoredOffset = listState.focusedAnchorTargetOffset(targetIndex)
+                    watchedViewportHeightPx = currentViewportHeightPx
+                    quietMs = 0L
+                    continue
+                }
+            }
+            val currentOffset = listState.focusedAnchorTargetOffset(targetIndex)
             val rawScrollInProgress = listState.isScrollInProgress
             val explicitInterrupt = scrollInterruptedFocusedMessageAnchorIdentity == targetIdentity
             val action =
                 focusedAnchorSessionAction(
-                    keyboardOpen =
-                        threadImeOpenSuppressesProgrammaticViewport(
-                            keyboardInsetDp = liveComposerKeyboardInsetDp,
-                            policy = imeProgrammaticViewportPolicy,
-                        ),
-                    userInteracting =
-                        focusedAnchorSessionUserOverrideActive(
-                            startUserScrollGeneration = focusedAnchorStartUserScrollGeneration,
-                            currentUserScrollGeneration = currentUserScrollGeneration,
-                            targetIdentity = targetIdentity,
-                            scrollInterruptedIdentity = scrollInterruptedFocusedMessageAnchorIdentity
-                        ),
+                    keyboardOpen = keyboardOpen,
+                    userInteracting = userInteracting,
                     drifted = focusedAnchorTargetDrifted(anchoredOffset, currentOffset),
                     quietMs = quietMs,
                     elapsedMs = focusedAnchorSessionElapsedMs
@@ -583,6 +640,16 @@ internal fun ThreadMessagesListFocusEffects(
             )
         }
         val corrected = correctedOffset != null
+        if (corrected && timelinePlacementTracker.current?.messageId == targetMessageId) {
+            val rawInfo = listState.raw.layoutInfo
+            timelinePlacementTracker.place(
+                messageId = targetMessageId,
+                placement = originCorrectionPlacement,
+                userScrollGeneration = userScrollGeneration.value,
+                viewportHeightPx = rawInfo.usableViewportHeightPx(),
+                viewportWidthPx = rawInfo.viewportSize.width,
+            )
+        }
         diagnosticsLogger(
             "thread_focused_origin_correction result=${if (corrected) "corrected" else "skipped_unmeasured"} " +
                 "messageId=$targetMessageId targetIndex=$targetIndex originStatus=${renderPayload.originStatus} " +
@@ -596,6 +663,7 @@ internal fun ThreadMessagesListFocusEffects(
         if (!listState.canScrollToThreadItem(match.listItemIndex)) {
             return@LaunchedEffect
         }
+        val startUserScrollGen = userScrollGeneration.value
         allowBottomAutoAnchor = false
         initialBottomAnchorReady = true
         listState.noteUserNavigation()
@@ -607,6 +675,25 @@ internal fun ThreadMessagesListFocusEffects(
                 fallback = LazyViewportAnchorFallback.Free
             )
         )
+        val searchCommandId = viewportControllerState.pendingCommand?.id
+        if (searchCommandId != null) {
+            awaitViewportCommandSettlement(searchCommandId)
+        }
+        if (
+            userScrollGeneration.value == startUserScrollGen &&
+            !listState.isScrollInProgress &&
+            viewportControllerState.intent != LazyViewportIntent.UserDragging &&
+            liveComposerKeyboardInsetDp <= 0f
+        ) {
+            val rawInfo = listState.raw.layoutInfo
+            timelinePlacementTracker.place(
+                messageId = match.messageId,
+                placement = LazyViewportAnchorPlacement.Focused,
+                userScrollGeneration = startUserScrollGen,
+                viewportHeightPx = rawInfo.usableViewportHeightPx(),
+                viewportWidthPx = rawInfo.viewportSize.width,
+            )
+        }
     }
     LaunchedEffect(threadInstanceKey, activeFocusedMessageId) {
         val highlightedMessageId = activeFocusedMessageId ?: return@LaunchedEffect

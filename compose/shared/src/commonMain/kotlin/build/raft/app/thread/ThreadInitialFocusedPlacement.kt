@@ -130,6 +130,7 @@ internal class ThreadInitialFocusedPlacementOwner(
         focusedForwardIndex: () -> Int,
         placement: () -> LazyViewportAnchorPlacement,
         minBottomReservePx: Int,
+        onPlaced: (LazyViewportAnchorPlacement) -> Unit = {},
     ) {
         if (applied || retired) return
         if (retiredByHost()) {
@@ -153,10 +154,12 @@ internal class ThreadInitialFocusedPlacementOwner(
             ThreadInitialFocusedPlacementDecision.AlreadyAligned -> {
                 applied = true
                 retired = true
+                onPlaced(resolvedPlacement)
             }
             is ThreadInitialFocusedPlacementDecision.Scroll -> {
                 applied = true
                 retired = true
+                onPlaced(resolvedPlacement)
                 val ownerTag =
                     if (resolvedPlacement == LazyViewportAnchorPlacement.FocusedThreadReplies) {
                         ThreadViewportOwnerTag.JumpPill
