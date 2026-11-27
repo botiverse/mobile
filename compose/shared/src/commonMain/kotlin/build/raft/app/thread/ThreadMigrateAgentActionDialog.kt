@@ -321,8 +321,14 @@ internal fun ThreadMigrateAgentActionDialogContent(
         state = migrationState,
         inputs = inputs,
         initialTarget = dialogState.card.suggestedComputer,
-        onStart = { selectedTarget, preflightOverride ->
-            onMigrationIntent(AgentMigrationIntent.Start(selectedTarget, preflightOverride = preflightOverride))
+        onStart = { selectedTarget, preflightOverride, leaveOut ->
+            onMigrationIntent(
+                AgentMigrationIntent.Start(
+                    selectedTarget,
+                    preflightOverride = preflightOverride,
+                    leaveOut = leaveOut,
+                ),
+            )
         },
         onDismiss = { if (!migrationState.starting) onDismiss() }
     )

@@ -4795,7 +4795,7 @@
     <string name="agent_migration_error_target_runtime_usage_limit">A conta do %1$s em %2$s atingiu o limite de uso, então o agente não conseguiria responder lá até ele ser redefinido. Escolha outro computador ou migre mesmo assim.</string>
     <string name="agent_migration_error_target_runtime_not_ready">O %1$s não pode ser executado em %2$s agora, então o agente não conseguiria responder lá. Peça ao dono do computador para verificar, escolha outro computador ou migre mesmo assim.</string>
     <string name="agent_migration_move_anyway">Migrar mesmo assim</string>
-    <string name="agent_migration_preflight_unverified">Não foi possível verificar se o %1$s está conectado em %2$s. Se o agente não responder depois da migração, entre nesse computador.</string>
+    <string name="agent_migration_preflight_unverified">Migração para %2$s iniciada sem confirmar o login do %1$s. Se o agente não responder depois, verifique o login nesse computador.</string>
     <string name="agent_migration_cannot_respond_title">Migrado, não pode responder</string>
     <string name="agent_migration_cannot_respond_needs_login">Migrado para %1$s, mas o agente não consegue responder lá: o runtime dele não está conectado nesse computador.</string>
     <string name="agent_migration_cannot_respond_credential_invalid">Migrado para %1$s, mas o agente não consegue responder lá: o login do runtime nesse computador foi recusado.</string>
@@ -7138,4 +7138,17 @@
     <string name="auth_disconnect_preview_computer_detail_one">%1$s · %2$d agente vai parar</string>
     <string name="auth_disconnect_preview_computer_detail_other">%1$s · %2$d agentes vão parar</string>
     <string name="auth_disconnect_preview_reconnect">Para reconectar um computador, execute raft-computer setup --machine nele e aprove o login com uma conta de proprietário ou administrador: a página dele em Computadores mostra o comando exato, e os agentes voltam com ele.</string>
+    <string name="agent_migration_leave_out_label">Não mover estes caminhos</string>
+    <string name="agent_migration_leave_out_description">A última migração passou do limite de tamanho. Os caminhos escolhidos aqui são adicionados ao .raftbackupignore.user no espaço de trabalho do agente, então esta migração e todas as próximas os pulam; apague a linha nesse arquivo para voltar a mover o caminho. Depois da migração, eles ficam em %1$s, no backup da migração, por 7 dias e depois são excluídos, então copie antes o que ainda precisar. MEMORY.md e notes/ sempre são movidos.</string>
+    <string name="agent_migration_leave_out_size">%1$s antes da compressão</string>
+    <string name="agent_migration_leave_out_search">Buscar caminhos</string>
+    <string name="agent_migration_leave_out_typed_label">Outro caminho no espaço de trabalho</string>
+    <string name="agent_migration_leave_out_typed_placeholder">work/build ou **/node_modules</string>
+    <string name="agent_migration_leave_out_add">Adicionar</string>
+    <string name="agent_migration_leave_out_invalid">Use um caminho dentro do espaço de trabalho, como work/build, ou **/ e o nome de uma pasta para pular todas as pastas com esse nome.</string>
+    <string name="agent_migration_leave_out_always_moved">MEMORY.md, notes/, os arquivos de exclusão e .raft/ sempre são movidos, então não podem ser deixados de fora.</string>
+    <string name="agent_migration_error_leave_out_invalid">Um dos caminhos que você escolheu deixar de fora não pode ser usado. MEMORY.md e notes/ sempre são movidos, e cada caminho precisa estar dentro do espaço de trabalho.</string>
+    <string name="agent_migration_error_leave_out_unsupported">O Raft no computador de origem é antigo demais para deixar caminhos de fora. Atualize-o e tente novamente.</string>
+    <string name="agent_migration_error_source_offline">O computador em que este agente está agora está offline. Inicie o Raft Computer nele e tente novamente.</string>
+    <string name="agent_migration_error_source_offline_named">%1$s, onde este agente está agora, está offline. Inicie o Raft Computer nele e tente novamente.</string>
 </resources>

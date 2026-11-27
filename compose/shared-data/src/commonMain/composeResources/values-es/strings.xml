@@ -4795,7 +4795,7 @@
     <string name="agent_migration_error_target_runtime_usage_limit">La cuenta de %1$s en %2$s alcanzó su límite de uso, así que el agente no podría responder allí hasta que se restablezca. Elige otra computadora o migra de todos modos.</string>
     <string name="agent_migration_error_target_runtime_not_ready">%1$s no puede ejecutarse en %2$s ahora mismo, así que el agente no podría responder allí. Pide al propietario de la computadora que lo revise, elige otra computadora o migra de todos modos.</string>
     <string name="agent_migration_move_anyway">Migrar de todos modos</string>
-    <string name="agent_migration_preflight_unverified">No se pudo comprobar si %1$s tiene sesión iniciada en %2$s. Si el agente no responde después de migrar, inicia sesión allí.</string>
+    <string name="agent_migration_preflight_unverified">Se inició la migración a %2$s sin comprobar si %1$s tiene sesión iniciada. Si el agente no responde después, comprueba la sesión allí.</string>
     <string name="agent_migration_cannot_respond_title">Migrado, no puede responder</string>
     <string name="agent_migration_cannot_respond_needs_login">Se migró a %1$s, pero el agente no puede responder allí: su runtime no tiene sesión iniciada en esa computadora.</string>
     <string name="agent_migration_cannot_respond_credential_invalid">Se migró a %1$s, pero el agente no puede responder allí: se rechazó el inicio de sesión de su runtime en esa computadora.</string>
@@ -7138,4 +7138,17 @@
     <string name="auth_disconnect_preview_computer_detail_one">%1$s · %2$d agente se detendrá</string>
     <string name="auth_disconnect_preview_computer_detail_other">%1$s · %2$d agentes se detendrán</string>
     <string name="auth_disconnect_preview_reconnect">Para volver a conectar una computadora, ejecuta raft-computer setup --machine en ella y aprueba el inicio de sesión con una cuenta de propietario o administrador: su página en Computadoras muestra el comando exacto y sus agentes volverán con ella.</string>
+    <string name="agent_migration_leave_out_label">No mover estas rutas</string>
+    <string name="agent_migration_leave_out_description">La última migración superó el límite de tamaño. Las rutas que elijas aquí se añaden a .raftbackupignore.user en el espacio de trabajo del agente, así que esta migración y todas las siguientes las omiten; borra su línea en ese archivo para volver a moverla. Después de la migración se quedan en %1$s, en la copia de seguridad de la migración, durante 7 días y luego se eliminan, así que copia antes lo que todavía necesites. MEMORY.md y notes/ siempre se mueven.</string>
+    <string name="agent_migration_leave_out_size">%1$s sin comprimir</string>
+    <string name="agent_migration_leave_out_search">Buscar rutas</string>
+    <string name="agent_migration_leave_out_typed_label">Otra ruta del espacio de trabajo</string>
+    <string name="agent_migration_leave_out_typed_placeholder">work/build o **/node_modules</string>
+    <string name="agent_migration_leave_out_add">Añadir</string>
+    <string name="agent_migration_leave_out_invalid">Usa una ruta dentro del espacio de trabajo, como work/build, o **/ y el nombre de una carpeta para omitir todas las carpetas con ese nombre.</string>
+    <string name="agent_migration_leave_out_always_moved">MEMORY.md, notes/, los archivos de exclusión y .raft/ siempre se mueven, así que no se pueden excluir.</string>
+    <string name="agent_migration_error_leave_out_invalid">Una de las rutas que elegiste excluir no se puede usar. MEMORY.md y notes/ siempre se mueven, y cada ruta debe estar dentro del espacio de trabajo.</string>
+    <string name="agent_migration_error_leave_out_unsupported">Raft en la computadora de origen es demasiado antiguo para excluir rutas. Actualízalo y vuelve a intentarlo.</string>
+    <string name="agent_migration_error_source_offline">La computadora donde está este agente está sin conexión. Inicia Raft Computer en ella e inténtalo de nuevo.</string>
+    <string name="agent_migration_error_source_offline_named">%1$s, donde está este agente ahora, está sin conexión. Inicia Raft Computer en ella e inténtalo de nuevo.</string>
 </resources>

@@ -25,7 +25,11 @@ import kotlinx.serialization.json.JsonPrimitive
     ErrorTargetNotInServer,
     ErrorTargetMatchesSource,
     ErrorCapabilityInsufficient,
+    ErrorSourceOffline,
+    ErrorSourceOfflineNamed,
     ErrorTargetOffline,
+    ErrorLeaveOutInvalid,
+    ErrorLeaveOutUnsupported,
     ErrorHostedUnavailable,
     ErrorHostedAlreadyUsed,
     ErrorHostedModelInvalid,
@@ -413,12 +417,16 @@ private val MIGRATION_ERROR_COPY: Map<String, MigrationCopy> =
         "MIGRATION_START_FAILED" to MigrationCopy.ErrorStartFailed,
         "MIGRATION_STATUS_FAILED" to MigrationCopy.ErrorStatusFailed,
         // Web #15464: MEMORY.md, notes/ or the workspace itself unreadable on the source.
-        "MIGRATION_WORKSPACE_KEY_PATH_UNREADABLE" to MigrationCopy.ErrorKeyPathUnreadable
+        "MIGRATION_WORKSPACE_KEY_PATH_UNREADABLE" to MigrationCopy.ErrorKeyPathUnreadable,
+        // Web #17048: leaveOut path validation & daemon capability refusals.
+        "MIGRATION_LEAVE_OUT_INVALID" to MigrationCopy.ErrorLeaveOutInvalid,
+        "MIGRATION_LEAVE_OUT_UNSUPPORTED" to MigrationCopy.ErrorLeaveOutUnsupported,
     )
 
 /** Codes whose copy is assembled from wire data or the input (web `MIGRATION_ERROR_BUILDERS` / `INPUT_BUILDERS`). */
 private fun builtMessage(code: String, input: MigrationErrorInput): List<MigrationText>? =
     when (code) {
+        "SOURCE_COMPUTER_OFFLINE" -> listOf(sourceOfflineMessage(input))
         "TARGET_RUNTIME_NOT_READY" -> listOf(targetRuntimeNotReadyMessage(input))
         "MIGRATION_OBJECT_STORE_BUNDLE_TOO_LARGE" -> listOf(bundleTooLarge(input.rawMessage))
         "MIGRATION_OBJECT_STORE_MANIFEST_TOO_LARGE" -> listOf(manifestTooLarge(input.rawMessage))
@@ -431,6 +439,15 @@ private fun builtMessage(code: String, input: MigrationErrorInput): List<Migrati
             listOf(workspaceConflict(input, MigrationCopy.ErrorWorkspaceCompleteOldCopyAt, MigrationCopy.ErrorWorkspaceCompleteOldCopy))
         else -> null
     }
+
+private fun sourceOfflineMessage(input: MigrationErrorInput): MigrationText {
+    val computer = input.sourceComputerName?.trim()?.takeIf { it.isNotEmpty() }
+    return if (computer != null) {
+        MigrationText(MigrationCopy.ErrorSourceOfflineNamed, listOf(computer))
+    } else {
+        MigrationText(MigrationCopy.ErrorSourceOffline)
+    }
+}
 
 private fun targetRuntimeNotReadyMessage(input: MigrationErrorInput): MigrationText {
     val notReady = input.targetRuntimeNotReady

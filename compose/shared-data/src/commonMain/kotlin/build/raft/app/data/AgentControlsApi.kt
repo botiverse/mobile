@@ -358,13 +358,14 @@ private val agentControlsRequestJson = Json { explicitNulls = false }
     override suspend fun startMigration(
         agentId: MemberId,
         target: AgentMigrationTarget,
-        preflightOverride: Boolean
+        preflightOverride: Boolean,
+        leaveOut: List<String>,
     ): DataResult<AgentMigrationStartResult> =
         send(
             priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}/migrate",
             method = "POST",
-            bodyText = agentMigrationStartRequestBody(target, preflightOverride = preflightOverride),
+            bodyText = agentMigrationStartRequestBody(target, preflightOverride = preflightOverride, leaveOut = leaveOut),
             parse = ::parseSharedAgentMigrationStart
         )
 

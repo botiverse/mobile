@@ -43,7 +43,11 @@ internal fun migrationCopyResource(copy: MigrationCopy): StringResource =
         MigrationCopy.ErrorTargetNotInServer -> Res.string.agent_migration_error_target_not_in_server
         MigrationCopy.ErrorTargetMatchesSource -> Res.string.agent_migration_error_target_matches_source
         MigrationCopy.ErrorCapabilityInsufficient -> Res.string.agent_migration_error_capability_insufficient
+        MigrationCopy.ErrorSourceOffline -> Res.string.agent_migration_error_source_offline
+        MigrationCopy.ErrorSourceOfflineNamed -> Res.string.agent_migration_error_source_offline_named
         MigrationCopy.ErrorTargetOffline -> Res.string.agent_migration_error_target_offline
+        MigrationCopy.ErrorLeaveOutInvalid -> Res.string.agent_migration_error_leave_out_invalid
+        MigrationCopy.ErrorLeaveOutUnsupported -> Res.string.agent_migration_error_leave_out_unsupported
         MigrationCopy.ErrorHostedUnavailable -> Res.string.agent_migration_error_hosted_unavailable
         MigrationCopy.ErrorHostedAlreadyUsed -> Res.string.agent_migration_error_hosted_already_used
         MigrationCopy.ErrorHostedModelInvalid -> Res.string.agent_migration_error_hosted_model_invalid
@@ -170,15 +174,17 @@ internal fun AgentMigrationActionErrorBanner(
     context: MigrationErrorContext,
     modifier: Modifier = Modifier,
     title: String? = null,
-    targetComputerName: String? = null
+    targetComputerName: String? = null,
+    sourceComputerName: String? = null,
 ) {
     val presentation =
-        remember(error, context, targetComputerName) {
+        remember(error, context, targetComputerName, sourceComputerName) {
             migrationErrorPresentation(
                 MigrationErrorInput(
                     code = error.code,
                     rawMessage = error.serverMessage,
                     context = context,
+                    sourceComputerName = sourceComputerName,
                     targetComputerName = targetComputerName,
                     targetRuntimeNotReady = error.targetRuntimeNotReady,
                     runtimeDisplayName = ::raftAgentRuntimeDisplayName

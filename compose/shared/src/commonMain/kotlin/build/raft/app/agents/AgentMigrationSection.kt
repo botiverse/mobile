@@ -52,6 +52,7 @@ import build.raft.app.data.AgentMigrationEnding
 import build.raft.app.data.AgentMigrationErrorCodes
 import build.raft.app.data.AgentMigrationHostedImportSummary
 import build.raft.app.data.AgentMigrationIntent
+import build.raft.app.data.AgentMigrationLeaveOutCandidate
 import build.raft.app.data.AgentMigrationNotice
 import build.raft.app.data.AgentMigrationState
 import build.raft.app.data.AgentMigrationTarget
@@ -60,6 +61,7 @@ import build.raft.app.data.HOSTED_ARRIVAL_ATTENTION_REASONS
 import build.raft.app.data.MigrationErrorContext
 import build.raft.app.data.MigrationFailureComputers
 import build.raft.app.data.migrationFailurePresentation
+import build.raft.app.data.migrationLeaveOutCandidates
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.canCancel
 import build.raft.app.data.cannotRespondReason
@@ -368,13 +370,24 @@ internal fun AgentMigrationSection(
         }
         inputs.onIntent(AgentMigrationIntent.ConsumeEffect)
     }
+    val leaveOutCandidates =
+        remember(notice, inputs.sourceMachineId) {
+            migrationLeaveOutCandidates(notice, inputs.sourceMachineId)
+        }
     if (showStartDialog) {
         AgentMigrationStartDialog(
             state = state,
             inputs = inputs,
             initialTarget = startDialogTarget,
-            onStart = { target, preflightOverride ->
-                inputs.onIntent(AgentMigrationIntent.Start(target, preflightOverride = preflightOverride))
+            leaveOutCandidates = leaveOutCandidates,
+            onStart = { target, preflightOverride, leaveOut ->
+                inputs.onIntent(
+                    AgentMigrationIntent.Start(
+                        target = target,
+                        preflightOverride = preflightOverride,
+                        leaveOut = leaveOut,
+                    ),
+                )
             },
             onDismiss = { if (!state.starting) showStartDialog = false }
         )
@@ -1041,7 +1054,8 @@ private fun AgentMigrationHostedReviewCard(
                 )
             }
             state.confirmError?.let { error ->
-                AgentMigrationActionErrorBanner(error, MigrationErrorContext.Start)
+                val sourceName = inputs.computers.firstOrNull { it.id == notice.sourceMachineId }?.name
+                AgentMigrationActionErrorBanner(error, MigrationErrorContext.Start, sourceComputerName = sourceName)
             }
         }
     }
@@ -1111,17 +1125,22 @@ internal fun AgentMigrationStartDialog(
     state: AgentMigrationState,
     inputs: AgentMigrationSectionInputs,
     initialTarget: String?,
-    onStart: (AgentMigrationTarget, Boolean) -> Unit,
-    onDismiss: () -> Unit
+    onStart: (AgentMigrationTarget, Boolean, List<String>) -> Unit,
+    onDismiss: () -> Unit,
+    leaveOutCandidates: List<AgentMigrationLeaveOutCandidate>? = null,
 ) {
     val targets = remember(inputs.computers, inputs.sourceMachineId) { agentMigrationTargets(inputs) }
     var choice by remember(targets, initialTarget) {
         mutableStateOf(targets.firstOrNull { it.online && it.id == initialTarget }?.id ?: targets.firstOrNull { it.online }?.id)
     }
+    var leaveOut by remember(leaveOutCandidates) { mutableStateOf<List<String>>(emptyList()) }
+    var typedLeaveOut by remember(leaveOutCandidates) { mutableStateOf<List<String>>(emptyList()) }
     val selected = agentMigrationResolvedTarget(choice, targets, inputs.offersHosted)
     // #proj-raft-computer:#135 (slock #16567): the refused target offers "Move anyway" and sends
     // `preflightOverride: true`; switching to another target resets the button and asks fresh.
     val moveAnyway = selected != null && selected != HOSTED_TARGET_CHOICE && state.notReadyTargetId == selected
+    val offersLeaveOut =
+        leaveOutCandidates != null && selected != HOSTED_TARGET_CHOICE && !inputs.placesWithoutSource
     // Read here: the sheet's content is hosted outside the page, where the local does not reach.
     val usage = LocalMembersRuntimeAccountUsageAccess.current
     RaftDialogSheet(
@@ -1132,7 +1151,8 @@ internal fun AgentMigrationStartDialog(
             val target = selected ?: return@RaftDialogSheet
             onStart(
                 if (target == HOSTED_TARGET_CHOICE) AgentMigrationTarget.Cloud else AgentMigrationTarget.Computer(target),
-                moveAnyway
+                moveAnyway,
+                if (offersLeaveOut) leaveOut else emptyList(),
             )
         },
         commitEnabled = !state.starting && selected != null,
@@ -1142,7 +1162,19 @@ internal fun AgentMigrationStartDialog(
         closeLabel = stringResource(Res.string.common_close),
         cancelLabel = stringResource(Res.string.agent_migration_detail_cancel)
     ) {
-        AgentMigrationStartForm(state, inputs, targets, selected, onSelect = { choice = it }, usage = usage)
+        AgentMigrationStartForm(
+            state = state,
+            inputs = inputs,
+            targets = targets,
+            selected = selected,
+            onSelect = { choice = it },
+            usage = usage,
+            leaveOutCandidates = leaveOutCandidates,
+            leaveOut = leaveOut,
+            onLeaveOutChange = { leaveOut = it },
+            typedLeaveOut = typedLeaveOut,
+            onTypedLeaveOutChange = { typedLeaveOut = it },
+        )
     }
 }
 
@@ -1183,11 +1215,17 @@ internal fun ColumnScope.AgentMigrationStartForm(
     selected: String?,
     onSelect: (String) -> Unit,
     usage: MembersRuntimeAccountUsageAccess? = null,
-    initialQuery: String = ""
+    initialQuery: String = "",
+    leaveOutCandidates: List<AgentMigrationLeaveOutCandidate>? = null,
+    leaveOut: List<String> = emptyList(),
+    onLeaveOutChange: (List<String>) -> Unit = {},
+    typedLeaveOut: List<String> = emptyList(),
+    onTypedLeaveOutChange: ((List<String>) -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val hostedSelected = selected == HOSTED_TARGET_CHOICE
+    val offersLeaveOut = leaveOutCandidates != null && !hostedSelected && !inputs.placesWithoutSource
     val source = agentMigrationComputerLabel(inputs, inputs.sourceMachineId)
     Column(
         modifier =
@@ -1219,6 +1257,17 @@ internal fun ColumnScope.AgentMigrationStartForm(
             initialQuery = initialQuery,
             computerAgents = inputs.computerAgents
         )
+        if (offersLeaveOut) {
+            AgentMigrationLeaveOutPicker(
+                candidates = leaveOutCandidates,
+                sourceName = source,
+                value = leaveOut,
+                onValueChange = onLeaveOutChange,
+                disabled = state.starting,
+                typed = typedLeaveOut,
+                onTypedChange = onTypedLeaveOutChange,
+            )
+        }
         // The one choice first; what happens next follows as the dialog's body text.
         if (hostedSelected) {
             // Said before starting: the move to the cloud is final once confirmed.
@@ -1260,7 +1309,13 @@ internal fun ColumnScope.AgentMigrationStartForm(
         }
         state.startError?.let { error ->
             val selectedTargetName = targets.firstOrNull { it.id == selected }?.name
-            AgentMigrationActionErrorBanner(error, MigrationErrorContext.Start, targetComputerName = selectedTargetName)
+            val sourceName = inputs.computers.firstOrNull { it.id == inputs.sourceMachineId }?.name
+            AgentMigrationActionErrorBanner(
+                error = error,
+                context = MigrationErrorContext.Start,
+                targetComputerName = selectedTargetName,
+                sourceComputerName = sourceName,
+            )
         }
     }
 }

@@ -97,6 +97,7 @@ class AgentMigrationPreflightUiTest {
             agentId: MemberId,
             target: AgentMigrationTarget,
             preflightOverride: Boolean,
+            leaveOut: List<String>,
         ): DataResult<AgentMigrationStartResult> {
             startCalls += target to preflightOverride
             return onStart(target, preflightOverride)
@@ -159,7 +160,9 @@ class AgentMigrationPreflightUiTest {
                         state = state,
                         inputs = inputs,
                         initialTarget = targetId,
-                        onStart = { target, override -> store.dispatch(AgentMigrationIntent.Start(target, preflightOverride = override)) },
+                        onStart = { target, override, leaveOut ->
+                            store.dispatch(AgentMigrationIntent.Start(target, preflightOverride = override, leaveOut = leaveOut))
+                        },
                         onDismiss = {},
                     )
                 }
@@ -222,7 +225,9 @@ class AgentMigrationPreflightUiTest {
                         state = state,
                         inputs = inputs,
                         initialTarget = targetId,
-                        onStart = { target, override -> store.dispatch(AgentMigrationIntent.Start(target, preflightOverride = override)) },
+                        onStart = { target, override, leaveOut ->
+                            store.dispatch(AgentMigrationIntent.Start(target, preflightOverride = override, leaveOut = leaveOut))
+                        },
                         onDismiss = {},
                     )
                 }
@@ -294,7 +299,7 @@ class AgentMigrationPreflightUiTest {
 
             assertEquals(1, toasts.size)
             assertTrue(
-                toasts.single().contains("Couldn't check whether Claude Code is signed in on Target"),
+                toasts.single().contains("Started moving to Target without confirming Claude Code sign-in"),
                 "Unexpected toast: ${toasts.single()}",
             )
         }

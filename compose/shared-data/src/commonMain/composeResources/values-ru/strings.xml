@@ -4795,7 +4795,7 @@
     <string name="agent_migration_error_target_runtime_usage_limit">Аккаунт %1$s на компьютере %2$s достиг лимита использования, поэтому агент не сможет там отвечать до его сброса. Выберите другой компьютер или всё равно перенесите.</string>
     <string name="agent_migration_error_target_runtime_not_ready">%1$s сейчас не может работать на компьютере %2$s, поэтому агент не сможет там отвечать. Попросите владельца компьютера проверить его, выберите другой компьютер или всё равно перенесите.</string>
     <string name="agent_migration_move_anyway">Всё равно перенести</string>
-    <string name="agent_migration_preflight_unverified">Не удалось проверить, выполнен ли вход в %1$s на компьютере %2$s. Если после переноса агент не отвечает, войдите на этом компьютере.</string>
+    <string name="agent_migration_preflight_unverified">Перенос на %2$s запущен без проверки входа в %1$s. Если после переноса агент не отвечает, проверьте вход на этом компьютере.</string>
     <string name="agent_migration_cannot_respond_title">Перенесён, не может отвечать</string>
     <string name="agent_migration_cannot_respond_needs_login">Агент перенесён на %1$s, но не может там отвечать: на этом компьютере не выполнен вход в его среду выполнения.</string>
     <string name="agent_migration_cannot_respond_credential_invalid">Агент перенесён на %1$s, но не может там отвечать: вход в его среду выполнения на этом компьютере был отклонён.</string>
@@ -7138,4 +7138,17 @@
     <string name="auth_disconnect_preview_computer_detail_one">%1$s · %2$d агент остановится</string>
     <string name="auth_disconnect_preview_computer_detail_other">%1$s · %2$d агентов остановятся</string>
     <string name="auth_disconnect_preview_reconnect">Чтобы снова подключить компьютер, выполните на нём raft-computer setup --machine и подтвердите вход аккаунтом владельца или администратора: точная команда указана на его странице в разделе «Компьютеры», и его агенты вернутся вместе с ним.</string>
+    <string name="agent_migration_leave_out_label">Не переносить эти пути</string>
+    <string name="agent_migration_leave_out_description">Прошлый перенос превысил лимит размера. Выбранные здесь пути добавляются в .raftbackupignore.user в рабочей папке агента, поэтому этот и все следующие переносы их пропускают; чтобы снова переносить путь, удалите его строку из этого файла. После переноса они остаются на %1$s в резервной копии переноса 7 дней, затем удаляются, так что скопируйте нужное заранее. MEMORY.md и notes/ переносятся всегда.</string>
+    <string name="agent_migration_leave_out_size">%1$s до сжатия</string>
+    <string name="agent_migration_leave_out_search">Поиск путей</string>
+    <string name="agent_migration_leave_out_typed_label">Другой путь в рабочей папке</string>
+    <string name="agent_migration_leave_out_typed_placeholder">work/build или **/node_modules</string>
+    <string name="agent_migration_leave_out_add">Добавить</string>
+    <string name="agent_migration_leave_out_invalid">Укажите путь внутри рабочей папки, например work/build, или **/ и имя папки, чтобы пропустить все папки с этим именем.</string>
+    <string name="agent_migration_leave_out_always_moved">MEMORY.md, notes/, файлы исключений и .raft/ переносятся всегда, их нельзя исключить.</string>
+    <string name="agent_migration_error_leave_out_invalid">Один из путей для исключения нельзя использовать. MEMORY.md и notes/ переносятся всегда, а каждый путь должен быть внутри рабочей папки.</string>
+    <string name="agent_migration_error_leave_out_unsupported">Raft на исходном компьютере слишком старый, чтобы исключать пути. Обновите его и попробуйте снова.</string>
+    <string name="agent_migration_error_source_offline">Компьютер, на котором сейчас находится этот агент, не в сети. Запустите на нём Raft Computer и попробуйте ещё раз.</string>
+    <string name="agent_migration_error_source_offline_named">Компьютер %1$s, на котором сейчас находится этот агент, не в сети. Запустите на нём Raft Computer и попробуйте ещё раз.</string>
 </resources>

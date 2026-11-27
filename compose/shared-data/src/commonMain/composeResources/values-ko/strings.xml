@@ -4795,7 +4795,7 @@
     <string name="agent_migration_error_target_runtime_usage_limit">%2$s의 %1$s 계정이 사용 한도에 도달해 초기화될 때까지 에이전트가 답할 수 없어요. 다른 컴퓨터를 고르거나 그래도 옮길 수 있어요.</string>
     <string name="agent_migration_error_target_runtime_not_ready">지금은 %2$s에서 %1$s을(를) 실행할 수 없어 에이전트가 답할 수 없어요. 컴퓨터 소유자에게 확인을 요청하거나, 다른 컴퓨터를 고르거나, 그래도 옮길 수 있어요.</string>
     <string name="agent_migration_move_anyway">그래도 옮기기</string>
-    <string name="agent_migration_preflight_unverified">%2$s에 %1$s 로그인이 되어 있는지 확인하지 못했어요. 옮긴 뒤 에이전트가 답하지 않으면 그 컴퓨터에서 로그인해 주세요.</string>
+    <string name="agent_migration_preflight_unverified">%2$s로 옮기기 시작했어요(%1$s 로그인 상태는 확인되지 않음). 옮긴 뒤 에이전트가 답하지 않으면 그 컴퓨터에서 로그인을 확인해 주세요.</string>
     <string name="agent_migration_cannot_respond_title">옮겼지만 응답할 수 없음</string>
     <string name="agent_migration_cannot_respond_needs_login">%1$s(으)로 옮겼지만 에이전트가 그곳에서 답할 수 없어요. 그 컴퓨터에 런타임 로그인이 되어 있지 않아요.</string>
     <string name="agent_migration_cannot_respond_credential_invalid">%1$s(으)로 옮겼지만 에이전트가 그곳에서 답할 수 없어요. 그 컴퓨터의 런타임 로그인이 거부되었어요.</string>
@@ -7138,4 +7138,17 @@
     <string name="auth_disconnect_preview_computer_detail_one">%1$s · 에이전트 %2$d개가 멈춰요</string>
     <string name="auth_disconnect_preview_computer_detail_other">%1$s · 에이전트 %2$d개가 멈춰요</string>
     <string name="auth_disconnect_preview_reconnect">컴퓨터를 다시 연결하려면 해당 머신에서 raft-computer setup --machine 을 실행하고 소유자 또는 관리자 계정으로 로그인을 승인하세요. 컴퓨터 페이지에서 정확한 명령어를 확인할 수 있으며, 에이전트도 함께 복구돼요.</string>
+    <string name="agent_migration_leave_out_label">이 경로는 옮기지 않기</string>
+    <string name="agent_migration_leave_out_description">지난번 마이그레이션이 크기 한도를 넘었어요. 여기서 고른 경로는 에이전트 워크스페이스의 .raftbackupignore.user에 추가되어 이번과 이후의 모든 마이그레이션에서 건너뛰어요. 다시 옮기려면 그 파일에서 해당 줄을 지우세요. 마이그레이션 후 이 경로들은 %1$s의 마이그레이션 백업에 7일 동안 남았다가 삭제되니, 필요한 것은 그 전에 복사해 두세요. MEMORY.md와 notes/는 항상 옮겨져요.</string>
+    <string name="agent_migration_leave_out_size">압축 전 %1$s</string>
+    <string name="agent_migration_leave_out_search">경로 검색</string>
+    <string name="agent_migration_leave_out_typed_label">워크스페이스의 다른 경로</string>
+    <string name="agent_migration_leave_out_typed_placeholder">work/build 또는 **/node_modules</string>
+    <string name="agent_migration_leave_out_add">추가</string>
+    <string name="agent_migration_leave_out_invalid">work/build처럼 워크스페이스 안의 경로를 입력하거나, **/ 뒤에 폴더 이름을 붙여 그 이름의 폴더를 모두 건너뛰세요.</string>
+    <string name="agent_migration_leave_out_always_moved">MEMORY.md, notes/, 제외 파일과 .raft/는 항상 옮겨지므로 제외할 수 없어요.</string>
+    <string name="agent_migration_error_leave_out_invalid">제외할 경로 중 사용할 수 없는 경로가 있어요. MEMORY.md와 notes/는 항상 옮겨지며, 모든 경로는 워크스페이스 안에 있어야 해요.</string>
+    <string name="agent_migration_error_leave_out_unsupported">원본 컴퓨터의 Raft 버전이 오래되어 경로를 제외할 수 없어요. 업데이트한 뒤 다시 시도해 주세요.</string>
+    <string name="agent_migration_error_source_offline">이 에이전트가 지금 있는 컴퓨터가 오프라인이에요. 해당 컴퓨터에서 Raft Computer를 시작한 뒤 다시 시도해 주세요.</string>
+    <string name="agent_migration_error_source_offline_named">이 에이전트가 지금 있는 컴퓨터(%1$s)가 오프라인이에요. 해당 컴퓨터에서 Raft Computer를 시작한 뒤 다시 시도해 주세요.</string>
 </resources>
