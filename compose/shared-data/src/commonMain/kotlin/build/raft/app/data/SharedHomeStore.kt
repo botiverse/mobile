@@ -7,6 +7,7 @@ import build.raft.app.shownAuthorName
 import build.raft.app.RaftSidebarSortMode
 import build.raft.app.isHomeExternalSectionChannel
 import build.raft.app.base.putIfAbsent
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
@@ -366,6 +367,37 @@ private data class HomeNotificationAuthority(
         (_state.value.content as? SharedHomeContentState.Content)
             ?.snapshot
             ?.takeIf { snapshot -> snapshot.server.id == serverId }
+
+    /**
+     * Updates cached channel capabilities after [SharedChannelAuthorityStore] re-reads
+     * `GET /channels/:id` for a `channel:authority-updated` event, keeping Home snapshots in
+     * step without a full Home reload.
+     */
+    @RaftCoreInternalApi fun applyChannelAuthorityRefreshed(
+        serverId: ServerId,
+        channelId: ChannelId,
+        capabilities: ChannelCapabilities,
+    ) {
+        scope.launch {
+            val updatedActive =
+                applyHomeSnapshotLocally(reconcileLounges = false) { snapshot ->
+                    if (snapshot.server.id != serverId) {
+                        snapshot
+                    } else {
+                        snapshot.withChannelCapabilities(channelId, capabilities)
+                    }
+                }
+            if (!updatedActive) {
+                val cached = contentByServer[serverId] ?: return@launch
+                val nextSnapshot = cached.snapshot.withChannelCapabilities(channelId, capabilities)
+                val nextBase = cached.baseSnapshot.withChannelCapabilities(channelId, capabilities)
+                if (nextSnapshot != cached.snapshot || nextBase != cached.baseSnapshot) {
+                    contentByServer[serverId] =
+                        cached.copy(snapshot = nextSnapshot, baseSnapshot = nextBase)
+                }
+            }
+        }
+    }
 
     @RaftCoreInternalApi fun snapshotLookupFor(serverId: ServerId): HomeSnapshotLookup? =
         (_state.value.content as? SharedHomeContentState.Content)
@@ -7614,6 +7646,8 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.NotificationAccountSettingsChanged -> "notification_account_settings_changed"
         is build.raft.app.model.NotificationRetracted -> "notification_retract"
         is build.raft.app.model.NotificationNoticeReceived -> "notification_notice"
+        // Handled by SharedChannelAuthorityStore (updatesHomeSnapshot is false); named for diagnostics only.
+        is build.raft.app.model.ChannelAuthorityUpdated -> "channel_authority_updated"
         else -> "realtime"
     }
 
@@ -7734,6 +7768,27 @@ private fun HomeChannelRow.withJoinedMembership(): HomeChannelRow =
             }
         }
     return if (!changed) this else copy(channels = nextChannels, directMessages = nextDms)
+}
+
+/**
+ * Updates `channelCapabilities` on the matching channel row after a live
+ * `channel:authority-updated` refetch.
+ */
+@RaftCoreInternalApi fun HomeSnapshot.withChannelCapabilities(
+    channelId: ChannelId,
+    capabilities: ChannelCapabilities,
+): HomeSnapshot {
+    var changed = false
+    val nextChannels =
+        channels.map { row ->
+            if (row.channelId == channelId && row.channelCapabilities != capabilities) {
+                changed = true
+                row.copy(channelCapabilities = capabilities)
+            } else {
+                row
+            }
+        }
+    return if (!changed) this else copy(channels = nextChannels)
 }
 
 @RaftCoreInternalApi data class HomeRealtimeRowGuard(

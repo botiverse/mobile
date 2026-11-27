@@ -4,6 +4,7 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ThreadId
@@ -24,11 +25,21 @@ class ChannelSettingsDrawerTest {
     private fun placement(pinned: Boolean = false, sectionId: String? = null, canPin: Boolean = true) =
         ChannelSectionPlacement(customSections = sections, pinned = pinned, placementSectionId = sectionId, canPin = canPin)
 
+    private val managerCapabilities =
+        ChannelCapabilities(
+            editChannelMetadata = true,
+            changeChannelVisibility = true,
+            archiveChannels = true,
+            deleteChannels = true,
+            federateChannels = true,
+        )
+
     private fun channel(
         name: String = "design",
         type: String = "channel",
         archived: Boolean = false,
         kind: ConversationKind = ConversationKind.Channel,
+        capabilities: ChannelCapabilities? = null,
     ) = HomeChannelRow(
         threadId = ThreadId("t-$name"),
         channelId = ChannelId("c-$name"),
@@ -36,6 +47,7 @@ class ChannelSettingsDrawerTest {
         kind = kind,
         name = name,
         archived = archived,
+        channelCapabilities = capabilities,
     )
 
     @Test
@@ -114,7 +126,7 @@ class ChannelSettingsDrawerTest {
 
     @Test
     fun ownerGetsInfoAndEveryActionInTheWebOrder() {
-        val row = channel()
+        val row = channel(capabilities = managerCapabilities)
         val panel = ThreadChannelSettingsPanel(channel = row, permissions = channelSettingsPermissions(row, canManage = true))
         assertTrue(panel.showsInfoForm())
         assertTrue(panel.nameEditable())
@@ -136,11 +148,15 @@ class ChannelSettingsDrawerTest {
         val panel = ThreadChannelSettingsPanel(channel = row, permissions = channelSettingsPermissions(row, canManage = false))
         assertFalse(panel.showsInfoForm())
         assertEquals(listOf(ChannelSettingsActionRow.Leave), rows(row, canManage = false))
+        // Missing capabilities fail closed even when the viewer is an owner/admin on their own server.
+        val failClosedPanel = ThreadChannelSettingsPanel(channel = row, permissions = channelSettingsPermissions(row, canManage = true))
+        assertFalse(failClosedPanel.showsInfoForm())
+        assertEquals(listOf(ChannelSettingsActionRow.Leave), rows(row, canManage = true))
     }
 
     @Test
     fun allChannelKeepsItsNameAndOffersNoLifecycleActions() {
-        val row = channel(name = "all")
+        val row = channel(name = "all", capabilities = managerCapabilities)
         val panel = ThreadChannelSettingsPanel(channel = row, permissions = channelSettingsPermissions(row, canManage = true))
         assertTrue(panel.showsInfoForm())
         assertFalse(panel.nameEditable())
@@ -149,12 +165,12 @@ class ChannelSettingsDrawerTest {
 
     @Test
     fun archivedChannelOffersOnlyUnarchiveAndJointOffersDisconnect() {
-        val archived = channel(archived = true)
+        val archived = channel(archived = true, capabilities = managerCapabilities)
         val archivedPanel = ThreadChannelSettingsPanel(channel = archived, permissions = channelSettingsPermissions(archived, canManage = true))
         assertFalse(archivedPanel.showsInfoForm())
         assertEquals(listOf(ChannelSettingsActionRow.Unarchive), rows(archived, canManage = true))
 
-        val joint = channel(type = "joint", kind = ConversationKind.Joint)
+        val joint = channel(type = "joint", kind = ConversationKind.Joint, capabilities = managerCapabilities)
         assertEquals(
             listOf(ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave, ChannelSettingsActionRow.Disconnect),
             rows(joint, canManage = true)

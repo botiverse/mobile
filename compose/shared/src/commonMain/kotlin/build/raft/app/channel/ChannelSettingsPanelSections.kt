@@ -311,11 +311,26 @@ internal fun rememberThreadChannelSettingsPanel(
     onHomeIntent: (build.raft.app.data.SharedHomeIntent) -> Unit,
     // A DM's Move to section (slock #12622): placed by the sidebar's DM key, at home in Direct Messages.
     directMessage: Boolean = false,
+    viewerAuthority: build.raft.app.model.ChannelViewerAuthorityView? = null,
 ): ThreadChannelSettingsPanel? {
     if (channelId == null) return null
     val snapshot = (homeContent as? build.raft.app.data.SharedHomeContentState.Content)?.snapshot
     val channel = snapshot?.channels?.firstOrNull { it.channelId == channelId }
-    val permissions = channel?.let { channelSettingsPermissions(it, snapshot?.server?.permissions?.canManageSettings == true) }
+    val permissions =
+        when {
+            viewerAuthority != null -> channelSettingsPermissions(viewerAuthority)
+            channel != null -> channelSettingsPermissions(channel)
+            else -> null
+        }
+    val canAddMembers =
+        when (viewerAuthority) {
+            is build.raft.app.model.ChannelViewerAuthorityView.Known ->
+                channel?.archived != true &&
+                    channel?.let(::channelSettingsIsAllChannel) != true &&
+                    build.raft.app.data.authorityAllows(viewerAuthority) { it.addChannelMembers }
+            build.raft.app.model.ChannelViewerAuthorityView.Loading -> false
+            null -> channelSettingsCanAddMembers(memberSlice, channel)
+        }
     val sidebarOrder = snapshot?.sidebarOrder
     val section =
         pinState?.let { pin ->
@@ -347,7 +362,7 @@ internal fun rememberThreadChannelSettingsPanel(
         channel = channel,
         permissions = permissions,
         members = memberSlice,
-        canAddMembers = channelSettingsCanAddMembers(memberSlice, channel),
+        canAddMembers = canAddMembers,
         agentStatusResolver = agentStatusResolver,
         section = section,
         notificationLevelTarget = levelTarget,

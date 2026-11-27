@@ -932,6 +932,13 @@ internal fun SharedHomeScreen(
             // Web "Hide Empty Sections": a device-local display preference, shared with
             // Settings > Appearance "Hide empty sidebar sections".
             val hideEmptySections = build.raft.app.data.RaftDisplayPreferenceRuntime.observeHideEmptySidebarSections()
+            val channelAuthorityStore =
+                remember { build.raft.app.data.RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore }
+            val channelAuthorityByChannel by
+                remember(channelAuthorityStore, snapshot.server.id) {
+                    channelAuthorityStore?.observeServer(snapshot.server.id.value)
+                        ?: kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
+                }.collectAsState(emptyMap())
             RaftStructuralHomeShell(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
@@ -997,7 +1004,25 @@ internal fun SharedHomeScreen(
                 sectionOrder = snapshot.sidebarOrder?.sectionOrder.orEmpty(),
                 sectionPlacements = snapshot.sidebarOrder?.sectionPlacements.orEmpty(),
                 hideEmptySections = hideEmptySections,
-                canArchiveChannels = snapshot.server.permissions.canManageSettings,
+                canArchiveChannels = false,
+                channelAuthorityResolver =
+                    if (channelAuthorityStore != null) {
+                        { channelId ->
+                            channelAuthorityByChannel[channelId]
+                                ?.let { build.raft.app.model.ChannelViewerAuthorityView.Known(it) }
+                                ?: build.raft.app.model.ChannelViewerAuthorityView.Loading
+                        }
+                    } else {
+                        null
+                    },
+                onRequestChannelAuthority =
+                    if (channelAuthorityStore != null) {
+                        { channelId ->
+                            channelAuthorityStore.requestChannelAuthority(snapshot.server.id.value, channelId)
+                        }
+                    } else {
+                        null
+                    },
                 showBottomBar = false,
                 searchAndActivityOnShellNav = searchAndActivityOnShellNav,
                 externalFocusLossDismissEpoch = externalFocusLossDismissEpoch,

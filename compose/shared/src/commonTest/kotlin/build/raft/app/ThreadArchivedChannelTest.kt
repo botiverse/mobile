@@ -80,13 +80,43 @@ class ThreadArchivedChannelTest {
     }
 
     @Test
-    fun unarchiveFollowsTheChannelCapabilityThenTheServerRole() {
+    fun unarchiveRequiresExplicitChannelCapabilityAndFailsClosedWhileLoading() {
         val page = basePayload().copy(channelArchived = true)
 
         assertTrue(threadArchivedChannelCanUnarchive(page.copy(channelCanUnarchive = true), roleMayArchive = false))
         assertFalse(threadArchivedChannelCanUnarchive(page.copy(channelCanUnarchive = false), roleMayArchive = true))
-        assertTrue(threadArchivedChannelCanUnarchive(page, roleMayArchive = true))
+        // Missing channel capability never falls back to own-server role (slock #17055).
+        assertFalse(threadArchivedChannelCanUnarchive(page, roleMayArchive = true))
         assertFalse(threadArchivedChannelCanUnarchive(page, roleMayArchive = false))
+        // Dedicated viewer authority overrides payload and fails closed while loading.
+        assertFalse(
+            threadArchivedChannelCanUnarchive(
+                payload = page.copy(channelCanUnarchive = true),
+                viewerAuthority = build.raft.app.model.ChannelViewerAuthorityView.Loading,
+            )
+        )
+        assertTrue(
+            threadArchivedChannelCanUnarchive(
+                payload = page,
+                viewerAuthority =
+                    build.raft.app.model.ChannelViewerAuthorityView.Known(
+                        build.raft.app.model.ChannelViewerAuthority(
+                            capabilities = build.raft.app.model.ChannelCapabilities(archiveChannels = true),
+                        )
+                    ),
+            )
+        )
+        assertFalse(
+            threadArchivedChannelCanUnarchive(
+                payload = page.copy(channelCanUnarchive = true),
+                viewerAuthority =
+                    build.raft.app.model.ChannelViewerAuthorityView.Known(
+                        build.raft.app.model.ChannelViewerAuthority(
+                            capabilities = build.raft.app.model.ChannelCapabilities(archiveChannels = false),
+                        )
+                    ),
+            )
+        )
     }
 
     private suspend fun kotlinx.coroutines.test.TestScope.loadedChannelPage(body: String): RaftThreadScreenPayload {

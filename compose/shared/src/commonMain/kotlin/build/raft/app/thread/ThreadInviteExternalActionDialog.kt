@@ -76,12 +76,21 @@ internal fun evaluateInviteExternalCardAccess(
     card: ThreadActionCard,
     viewerServerRole: String?,
     targetChannel: HomeChannelRow?,
+    targetChannelAuthority: build.raft.app.model.ChannelViewerAuthorityView? = null,
 ): InviteExternalCardAccess? {
     if (!card.isInviteExternalAction()) return null
     if (viewerServerRole.equals("guest", ignoreCase = true)) {
         return InviteExternalCardAccess(canInvite = false)
     }
-    val channelFederate = targetChannel?.takeIf { !it.archived }?.channelCapabilities?.federateChannels
+    val channelFederate =
+        when {
+            targetChannel?.archived == true -> null
+            targetChannelAuthority is build.raft.app.model.ChannelViewerAuthorityView.Known ->
+                build.raft.app.data.authorityAllows(targetChannelAuthority) { it.federateChannels }
+            targetChannelAuthority is build.raft.app.model.ChannelViewerAuthorityView.Loading && targetChannel != null ->
+                false
+            else -> targetChannel?.channelCapabilities?.federateChannels
+        }
     val canInvite =
         channelFederate
             ?: (viewerServerRole.equals("owner", ignoreCase = true) || viewerServerRole.equals("admin", ignoreCase = true))
@@ -105,7 +114,20 @@ internal fun rememberThreadActionCardInviteExternalAccess(
             (sharedHomeState.content as? SharedHomeContentState.Content)?.baseSnapshot?.channels.orEmpty()
         }
     val latestChannels by rememberUpdatedState(homeChannels)
-    return remember {
+    val authorityStore =
+        remember { build.raft.app.data.RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore }
+    val serverAuthorities by
+        remember(authorityStore, currentServerId) {
+            val cleanServerId = currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+            if (authorityStore != null && cleanServerId != null) {
+                authorityStore.observeServer(cleanServerId)
+            } else {
+                kotlinx.coroutines.flow.MutableStateFlow(emptyMap())
+            }
+        }.collectAsState(emptyMap())
+    val latestAuthorities by rememberUpdatedState(serverAuthorities)
+    val hasAuthorityStore = authorityStore != null
+    return remember(hasAuthorityStore) {
         { card ->
             val serverId = latestServerId
             val role = latestSession?.servers?.firstOrNull { it.id == serverId }?.role
@@ -114,10 +136,20 @@ internal fun rememberThreadActionCardInviteExternalAccess(
                 targetChannelId?.let { id ->
                     latestChannels.firstOrNull { it.channelId.value == id || it.threadId.value == id }
                 }
+            val authorityLookupId = targetChannel?.channelId?.value ?: targetChannelId
+            val targetAuthority =
+                if (hasAuthorityStore && authorityLookupId != null) {
+                    latestAuthorities[authorityLookupId]
+                        ?.let { build.raft.app.model.ChannelViewerAuthorityView.Known(it) }
+                        ?: targetChannel?.let { build.raft.app.model.ChannelViewerAuthorityView.Loading }
+                } else {
+                    null
+                }
             evaluateInviteExternalCardAccess(
                 card = card,
                 viewerServerRole = role,
                 targetChannel = targetChannel,
+                targetChannelAuthority = targetAuthority,
             )
         }
     }
@@ -421,8 +453,23 @@ internal fun ThreadInviteExternalActionDialogHost(
         effects.forEach { effect -> externalInvitesStore.dispatch(ExternalInvitesIntent.ConsumeEffect(effect)) }
     }
 
+    val targetChannelAuthority by
+        remember(sharedStores, resolvedServerId, targetChannelId) {
+            sharedStores.channelAuthorityStore.observe(resolvedServerId, targetChannelId)
+        }.collectAsState(sharedStores.channelAuthorityStore.viewOf(resolvedServerId, targetChannelId))
+    LaunchedEffect(sharedStores, resolvedServerId, targetChannelId, targetChannelAuthority) {
+        if (targetChannelAuthority is build.raft.app.model.ChannelViewerAuthorityView.Loading) {
+            sharedStores.channelAuthorityStore.requestChannelAuthority(resolvedServerId, targetChannelId)
+        }
+    }
+    val resolvedFederateChannels =
+        when (val authority = targetChannelAuthority) {
+            is build.raft.app.model.ChannelViewerAuthorityView.Known ->
+                build.raft.app.data.authorityAllows(authority) { it.federateChannels }
+            build.raft.app.model.ChannelViewerAuthorityView.Loading -> false
+        }
     val seedConnections =
-        remember(targetRow, targetChannelId, resolvedServerId, channelName, memberConnectAccount, isJoint, isPrivate, isPublic) {
+        remember(targetRow, targetChannelId, resolvedServerId, channelName, memberConnectAccount, isJoint, isPrivate, isPublic, resolvedFederateChannels) {
             val jointRole = JointChannelRole.fromWire(targetRow?.jointRole)
             val servers =
                 if (isJoint) {
@@ -464,7 +511,7 @@ internal fun ThreadInviteExternalActionDialogHost(
                 servers = servers,
                 hasCurrentServerPendingInvites = false,
                 jointRole = jointRole,
-                federateChannels = targetRow?.channelCapabilities?.federateChannels,
+                federateChannels = resolvedFederateChannels,
                 isPrivate = if (isJoint || isPublic) false else true,
                 joined = targetRow?.joined ?: true,
             )
@@ -492,6 +539,7 @@ internal fun ThreadInviteExternalActionDialogHost(
             card = dialogState.card,
             viewerServerRole = currentServer?.role,
             targetChannel = targetRow,
+            targetChannelAuthority = targetChannelAuthority,
         )?.canInvite == true
     val publicConnect = if (isPublic) PublicChannelConnect(canMakePrivate = canMakePrivate) else null
     var openedConnectOnly by remember(dialogState.messageId) { mutableStateOf(false) }

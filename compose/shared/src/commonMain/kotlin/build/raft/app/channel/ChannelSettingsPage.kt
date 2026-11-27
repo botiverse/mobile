@@ -95,7 +95,10 @@ import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.authorityAllows
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelViewerAuthorityView
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
@@ -481,26 +484,33 @@ internal data class ChannelSettingsPermissions(
         get() = editMetadata || changeVisibility || archive || delete || federate
 }
 
-internal fun channelSettingsPermissions(channel: HomeChannelRow, canManage: Boolean): ChannelSettingsPermissions {
-    val capabilities = channel.channelCapabilities ?: return ChannelSettingsPermissions(
-        editMetadata = canManage,
-        changeVisibility = canManage,
-        archive = canManage,
-        delete = canManage,
-        federate = canManage,
-        // Web `showVisitorVisible` reads `channel.channelCapabilities.manageVisitorAccess === true` directly;
-        // never infer it from `canManage` when `channelCapabilities` is absent.
-        manageVisitorAccess = false,
-    )
+internal fun channelSettingsPermissions(capabilities: ChannelCapabilities?): ChannelSettingsPermissions {
+    val resolved = capabilities ?: return ChannelSettingsPermissions()
     return ChannelSettingsPermissions(
-        editMetadata = capabilities.editChannelMetadata == true,
-        changeVisibility = capabilities.changeChannelVisibility == true,
-        archive = capabilities.archiveChannels == true,
-        delete = capabilities.deleteChannels == true,
-        federate = capabilities.federateChannels == true,
-        manageVisitorAccess = capabilities.manageVisitorAccess == true,
+        editMetadata = resolved.editChannelMetadata == true,
+        changeVisibility = resolved.changeChannelVisibility == true,
+        archive = resolved.archiveChannels == true,
+        delete = resolved.deleteChannels == true,
+        federate = resolved.federateChannels == true,
+        manageVisitorAccess = resolved.manageVisitorAccess == true,
     )
 }
+
+internal fun channelSettingsPermissions(authority: ChannelViewerAuthorityView): ChannelSettingsPermissions =
+    when (authority) {
+        ChannelViewerAuthorityView.Loading -> ChannelSettingsPermissions()
+        is ChannelViewerAuthorityView.Known -> channelSettingsPermissions(authority.authority.capabilities)
+    }
+
+/**
+ * Resolves channel management actions strictly from server-provided `channelCapabilities`,
+ * failing closed while loading or absent rather than falling back to own-server `canManage`
+ * (botiverse/slock #17055).
+ */
+internal fun channelSettingsPermissions(
+    channel: HomeChannelRow,
+    @Suppress("UNUSED_PARAMETER") canManage: Boolean = false,
+): ChannelSettingsPermissions = channelSettingsPermissions(channel.channelCapabilities)
 
 /**
  * Web `showInfoSection`: the inline name / description form (`showManageActions && canEditInfo`).
@@ -686,6 +696,7 @@ internal fun createChannelSettingsStore(
         initialSharedHandoff = initialSharedHandoff,
         initialAuthorityAccepted = sharedStores.currentAuthenticatedRouteOwner(storeScope) == routeOwner,
         scope = scope,
+        channelAuthorityStore = sharedStores.channelAuthorityStore,
     )
 }
 
@@ -738,6 +749,15 @@ private fun ChannelSettingsPageScreen() {
     }
     val settingsState by settingsStore.state.collectAsState()
     val authorityAccepted = liveOwner == routeOwner
+    val viewerAuthority by
+        remember(sharedStores, route) {
+            sharedStores.channelAuthorityStore.observe(route.serverId.value, route.channelId.value)
+        }.collectAsState(sharedStores.channelAuthorityStore.viewOf(route.serverId.value, route.channelId.value))
+    LaunchedEffect(sharedStores, route, authorityAccepted, viewerAuthority) {
+        if (authorityAccepted && viewerAuthority is ChannelViewerAuthorityView.Loading) {
+            sharedStores.channelAuthorityStore.requestChannelAuthority(route.serverId.value, route.channelId.value)
+        }
+    }
     val channel = settingsState.channel.takeIf { authorityAccepted }
     val memberSlice = settingsState.memberSlice
     // Optimistic: a tapped switch shows its new value while the request runs.
@@ -792,6 +812,11 @@ private fun ChannelSettingsPageScreen() {
         viewerServerLoaded = true
         memberConnectAccount = session?.memberConnectAccount(route.serverId.value)
     }
+    val effectiveCanAddMembers =
+        channel != null &&
+            !channel.archived &&
+            !channelSettingsIsAllChannel(channel) &&
+            authorityAllows(viewerAuthority) { it.addChannelMembers }
     val connectWiring =
         rememberChannelSettingsConnectWiring(
             route = route,
@@ -801,7 +826,7 @@ private fun ChannelSettingsPageScreen() {
             storeScope = storeScope,
             bridge = bridge,
             channel = channel,
-            canAddMembers = channel != null && memberSlice.canAddMembers && !channel.archived,
+            canAddMembers = effectiveCanAddMembers,
             authorityAccepted = authorityAccepted,
             memberConnectAccount = memberConnectAccount,
             onConnectionsChanged = {

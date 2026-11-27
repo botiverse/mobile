@@ -46,6 +46,7 @@ import build.raft.app.raftLogWarn
 import build.raft.app.model.AgentActivitySubscribed
 import build.raft.app.model.AgentCreated
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelViewerAuthority
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MemberPresenceUpdated
@@ -574,6 +575,25 @@ internal class RaftSharedStoreProvider private constructor(
     internal val composerDraftUploads = RaftComposerDraftUploads(threadSendScope)
     /** `slock #16493`: `channel:joined` acks for open Agent Lounge tail catch-up. */
     internal val channelJoinedSignals = RaftChannelJoinedSignals()
+    /**
+     * Dedicated per-viewer channel authority store (`botiverse/slock#17055`): populated strictly
+     * from per-viewer channel HTTP reads (`GET /channels`, `GET /channels/:id`, `POST /channels`)
+     * and refreshed on `channel:authority-updated`.
+     */
+    override val channelAuthorityStore: SharedChannelAuthorityStore =
+        SharedChannelAuthorityStore(
+            scope = threadSendScope,
+            fetchChannelAuthority = { serverId, channelId ->
+                fetchChannelAuthorityForStore(serverId, channelId)
+            },
+            isChannelHeld = { serverId, channelId ->
+                isChannelHeldInStores(serverId, channelId)
+            },
+            onAuthorityRefreshed = { serverId, channelId, authority ->
+                applyChannelAuthorityRefreshedToHomeStores(serverId, channelId, authority)
+            },
+            logger = sharedInfoLogger("SlockChannelAuthority", "channel_authority"),
+        )
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
@@ -936,6 +956,48 @@ internal class RaftSharedStoreProvider private constructor(
         agentDetailCache.evict(owner.agentDetailCacheKey(MemberId(agentId)))
     }
 
+    private suspend fun fetchChannelAuthorityForStore(
+        serverId: String,
+        channelId: String,
+    ): ChannelViewerAuthority? {
+        val response =
+            networkClient.request(
+                priority = DataRequestPriority.Visible,
+                path = "channels/$channelId",
+                serverIdOverride = ServerId(serverId),
+            )
+        if (!response.isSuccessful) return null
+        val parsed = parseChannelViewerAuthority(response.bodyText.orEmpty()) ?: return null
+        if (parsed.first.value != channelId) return null
+        return parsed.second
+    }
+
+    private fun isChannelHeldInStores(serverId: String, channelId: String): Boolean {
+        val targetServer = ServerId(serverId)
+        if (
+            homeStores.entries().any { (_, store) ->
+                store.snapshotFor(targetServer)?.channels?.any { it.channelId.value == channelId } == true
+            }
+        ) {
+            return true
+        }
+        return shellConversationIdentityHubs.entries().any { (_, hub) ->
+            hub.resolveProjection(targetServer, channelId) != null
+        }
+    }
+
+    private fun applyChannelAuthorityRefreshedToHomeStores(
+        serverId: String,
+        channelId: String,
+        authority: ChannelViewerAuthority,
+    ) {
+        val targetServer = ServerId(serverId)
+        val targetChannel = ChannelId(channelId)
+        homeStores.entries().forEach { (_, store) ->
+            store.applyChannelAuthorityRefreshed(targetServer, targetChannel, authority.capabilities)
+        }
+    }
+
     /**
      * What was open beside each conversation on the wide layout (RaftBesideMemory.kt), per person and server on this
      * device: one instance, so its reads and writes share one lock.
@@ -1008,6 +1070,7 @@ internal class RaftSharedStoreProvider private constructor(
                 feedbackTicketsListCache.clear()
                 artifactsHomeSnapshotCache.clear()
                 build.raft.app.settings.SettingsFeedbackTicketSummaryCache.clear()
+                channelAuthorityStore.clear()
             },
             logger = sharedInfoLogger("CanonicalMessageV2Store", "canonical_v2_access_evict"),
             besideMemory = besideMemoryRepository,
@@ -2447,6 +2510,7 @@ internal class RaftSharedStoreProvider private constructor(
                     store.clearScopedReadCaches()
                 }
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
+                channelAuthorityStore.clear()
                 shellPeerReadReceiptStores.entries().forEach { (_, store) ->
                     store.dispatch(PeerReadReceiptIntent.BindOwner(null))
                 }
@@ -2524,6 +2588,7 @@ internal class RaftSharedStoreProvider private constructor(
                 allServerMembersStores().forEach { store -> store.dropServer(ServerId(grant.serverId)) }
                 // Step 4: the server's conversation identities (names, avatars, DM peers) in every shell.
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.dropServer(grant.serverId) }
+                channelAuthorityStore.resetServer(grant.serverId)
                 shellPeerReadReceiptStores.entries().forEach { (_, store) ->
                     if (store.state.value.owner?.serverId == grant.serverId) {
                         store.dispatch(PeerReadReceiptIntent.BindOwner(null))
@@ -2670,6 +2735,7 @@ internal class RaftSharedStoreProvider private constructor(
                     processAuthTerminalSource.runIfAuthSessionTerminalRevision(snapshot.generation) {}
                 if (stillCurrent) {
                     shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
+                    channelAuthorityStore.clear()
                     clearActiveServerSelectionsIfUnchanged(receipts)
                 }
                 updateNetworkKmmRecoveryEnvironment()
@@ -2862,8 +2928,22 @@ internal class RaftSharedStoreProvider private constructor(
                 // The collector lives on threadSendScope (not the shell scope), so cancel it when the
                 // store is disposed, or it would outlive an evicted shell selection store.
                 threadSendScope.launch {
+                    var previousServerId: String? = null
                     val prefetching = launch {
                         selectionStore.currentServerId.collectLatest { serverId ->
+                            val cleanNext = serverId?.trim()?.takeIf { it.isNotEmpty() }
+                            val cleanPrevious = previousServerId
+                            if (cleanPrevious != null && cleanPrevious != cleanNext) {
+                                val stillSelectedElsewhere =
+                                    selectedServerStores.entries().any { (otherScope, otherStore) ->
+                                        otherScope != scope &&
+                                            otherStore.currentServerId.value?.trim() == cleanPrevious
+                                    }
+                                if (!stillSelectedElsewhere) {
+                                    channelAuthorityStore.resetServer(cleanPrevious)
+                                }
+                            }
+                            previousServerId = cleanNext
                             if (!serverId.isNullOrBlank()) {
                                 // A server switch fetches at once: a roster refetch still waiting for
                                 // the reconnect jitter of this server runs now, and the socket connect
@@ -5185,6 +5265,9 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                         owner.installTaskUpdatedSink { serverId, previous, task ->
                             provider.onTaskUpdatedRealtimeEvent(serverId, previous, task)
+                        }
+                        owner.installChannelAuthorityUpdatedSink { serverId, event ->
+                            provider.channelAuthorityStore.onChannelAuthorityUpdated(serverId, event)
                         }
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,

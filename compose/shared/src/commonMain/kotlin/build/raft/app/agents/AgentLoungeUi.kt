@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1302,12 +1303,54 @@ internal fun rememberThreadPageLounge(
         } else {
             null
         }
-    val roleMayArchive = build.raft.app.model.serverPermissionsForRole(serverRole).canManageSettings
+    val archivedAuthorityTargetId =
+        if (lounge == null && threadFooterShowsArchived(payload)) {
+            payload.agentLoungeLookupChannelId()
+        } else {
+            null
+        }
+    val archivedAuthorityStore =
+        remember(bridge) { build.raft.app.data.RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore }
+    val archivedChannelAuthority by
+        remember(archivedAuthorityStore, cleanServerId, archivedAuthorityTargetId) {
+            if (archivedAuthorityStore != null && cleanServerId != null && archivedAuthorityTargetId != null) {
+                archivedAuthorityStore.observe(cleanServerId, archivedAuthorityTargetId)
+            } else {
+                MutableStateFlow<build.raft.app.model.ChannelViewerAuthorityView>(
+                    build.raft.app.model.ChannelViewerAuthorityView.Loading
+                )
+            }
+        }.collectAsState(
+            if (archivedAuthorityStore != null && cleanServerId != null && archivedAuthorityTargetId != null) {
+                archivedAuthorityStore.viewOf(cleanServerId, archivedAuthorityTargetId)
+            } else {
+                build.raft.app.model.ChannelViewerAuthorityView.Loading
+            }
+        )
+    LaunchedEffect(archivedAuthorityStore, cleanServerId, archivedAuthorityTargetId, archivedChannelAuthority) {
+        if (
+            archivedAuthorityStore != null &&
+            cleanServerId != null &&
+            archivedAuthorityTargetId != null &&
+            archivedChannelAuthority is build.raft.app.model.ChannelViewerAuthorityView.Loading
+        ) {
+            archivedAuthorityStore.requestChannelAuthority(cleanServerId, archivedAuthorityTargetId)
+        }
+    }
     var channelUnarchiving by remember { mutableStateOf(false) }
     val archivedChannel =
         if (lounge == null && threadFooterShowsArchived(payload)) {
             ThreadPageArchivedChannel(
-                canUnarchive = threadArchivedChannelCanUnarchive(payload, roleMayArchive),
+                canUnarchive =
+                    threadArchivedChannelCanUnarchive(
+                        payload = payload,
+                        viewerAuthority =
+                            archivedChannelAuthority.takeIf {
+                                archivedAuthorityStore != null &&
+                                    cleanServerId != null &&
+                                    archivedAuthorityTargetId != null
+                            },
+                    ),
                 unarchiving = channelUnarchiving,
                 onUnarchive = { onUnarchived ->
                     // A reply thread's Unarchive restores its parent channel.

@@ -55,12 +55,22 @@ internal fun threadHeaderShowsArchivedBadge(payload: RaftThreadScreenPayload, di
     payload.surfaceKind == RaftThreadSurfaceKind.Channel && (payload.channelArchived || directoryArchived)
 
 /**
- * Who may Unarchive: the channel's own `archiveChannels` capability when the load carried it
- * (web `effectiveChannelCapabilities.archiveChannels`), else the server role, as Channel settings
- * decides without capabilities.
+ * Who may Unarchive: strictly the viewer's per-channel `archiveChannels` capability (from
+ * [viewerAuthority] when supplied, else [RaftThreadScreenPayload.channelCanUnarchive]).
+ * Fails closed while loading or absent — never falls back to the viewer's own-server role
+ * (botiverse/slock #17055).
  */
-internal fun threadArchivedChannelCanUnarchive(payload: RaftThreadScreenPayload, roleMayArchive: Boolean): Boolean =
-    payload.channelCanUnarchive ?: roleMayArchive
+internal fun threadArchivedChannelCanUnarchive(
+    payload: RaftThreadScreenPayload,
+    @Suppress("UNUSED_PARAMETER") roleMayArchive: Boolean = false,
+    viewerAuthority: build.raft.app.model.ChannelViewerAuthorityView? = null,
+): Boolean =
+    when (viewerAuthority) {
+        is build.raft.app.model.ChannelViewerAuthorityView.Known ->
+            build.raft.app.data.authorityAllows(viewerAuthority) { it.archiveChannels }
+        build.raft.app.model.ChannelViewerAuthorityView.Loading -> false
+        null -> payload.channelCanUnarchive == true
+    }
 
 /** Web ChatPanel `message.chatPanel.archived`: the muted soft badge after the channel name. */
 @Composable

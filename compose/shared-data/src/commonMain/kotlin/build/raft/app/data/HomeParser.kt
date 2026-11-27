@@ -13,6 +13,7 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelViewerAuthority
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
@@ -188,7 +189,10 @@ data class HomeChannelWireDto(
     val activityMuteSupported: Boolean = false,
     val maxReadSeq: Long? = null,
     val readStateVersion: Long? = null,
+    val channelRole: String? = null,
+    val channelAdminBasis: String? = null,
     val channelCapabilities: WireChannelCapabilities? = null,
+    val channelAuthorityRevision: Long? = null,
     /**
      * Agent Lounge v0 (botiverse/slock packages/server/src/routes/channels.ts GET `/:id`,
      * routes/agents.ts POST `/:id/lounge`): the agent this channel is the Lounge of; absent or null
@@ -391,7 +395,10 @@ private data class HomeChannelDetailWireDto(
     val readStateVersion: Long? = null,
     val lastMessagePreview: String? = null,
     val lastMessageSenderName: String? = null,
+    val channelRole: String? = null,
+    val channelAdminBasis: String? = null,
     val channelCapabilities: WireChannelCapabilities? = null,
+    val channelAuthorityRevision: Long? = null,
     /** See [HomeChannelWireDto.loungeAgentId]. */
     val loungeAgentId: String? = null,
 )
@@ -509,9 +516,74 @@ data class WireChannelCapabilities(
             activityMuteSupported = wire.activityMuteSupported,
             maxReadSeq = wire.maxReadSeq,
             readStateVersion = wire.readStateVersion,
+            channelRole = wire.channelRole,
+            channelAdminBasis = wire.channelAdminBasis,
             channelCapabilities = wire.channelCapabilities,
+            channelAuthorityRevision = wire.channelAuthorityRevision,
             loungeAgentId = wire.loungeAgentId,
         ).toChannelRow()
+    }
+}
+
+/**
+ * Extracts per-viewer authority from a decoded wire channel row (`GET /api/channels`,
+ * `GET /api/channels/:id`, `POST /api/channels`), or `null` when the row carries no
+ * `channelCapabilities` object (broadcast `channel:updated` rows, PATCH answers, DM rows).
+ */
+@RaftCoreInternalApi fun HomeChannelWireDto.readChannelAuthority(): ChannelViewerAuthority? {
+    val caps = channelCapabilities ?: return null
+    if (type.equals("dm", ignoreCase = true)) return null
+    return ChannelViewerAuthority(
+        role = channelRole?.trim()?.takeIf { it.isNotEmpty() },
+        adminBasis = channelAdminBasis?.trim()?.takeIf { it.isNotEmpty() },
+        capabilities = caps.toModel(),
+        revision = channelAuthorityRevision,
+    )
+}
+
+/**
+ * Parses `(channelId, authority)` from a single-channel JSON body (`GET /api/channels/:id` or
+ * `POST /api/channels`), or `null` when it is a DM, invalid, or carries no `channelCapabilities`.
+ */
+@RaftCoreInternalApi fun parseChannelViewerAuthority(bodyText: String): Pair<ChannelId, ChannelViewerAuthority>? {
+    val rawObj = runCatching { homeJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull() ?: return null
+    val id = (rawObj["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+        ?: return null
+    val type = (rawObj["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+    if (type.equals("dm", ignoreCase = true)) return null
+    val authority = readChannelAuthority(rawObj) ?: return null
+    return ChannelId(id) to authority
+}
+
+/**
+ * Parses `(serverId?, channelId, authority)` from a single-channel JSON body when callers do not
+ * already hold the server id separately (e.g. `RealJointChannelRepository.loadConnections`).
+ */
+@RaftCoreInternalApi fun parseChannelViewerAuthorityWithServer(bodyText: String): Triple<String?, ChannelId, ChannelViewerAuthority>? {
+    val rawObj = runCatching { homeJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull() ?: return null
+    val id = (rawObj["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+        ?: return null
+    val type = (rawObj["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+    if (type.equals("dm", ignoreCase = true)) return null
+    val authority = readChannelAuthority(rawObj) ?: return null
+    val serverId = (rawObj["serverId"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+    return Triple(serverId, ChannelId(id), authority)
+}
+
+/**
+ * Parses per-viewer authority rows from a `GET /api/channels` JSON array response, skipping rows
+ * without `channelCapabilities` or with blank ids.
+ */
+@RaftCoreInternalApi fun parseChannelViewerAuthorityList(bodyText: String): List<ChannelAuthorityAnswerRow> {
+    val rows = runCatching { homeJson.parseToJsonElement(bodyText) as? JsonArray }.getOrNull() ?: return emptyList()
+    return rows.mapNotNull { element ->
+        val obj = element as? JsonObject ?: return@mapNotNull null
+        val id = (obj["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return@mapNotNull null
+        val type = (obj["type"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()
+        if (type.equals("dm", ignoreCase = true)) return@mapNotNull null
+        val authority = readChannelAuthority(obj) ?: return@mapNotNull null
+        ChannelAuthorityAnswerRow(channelId = id, authority = authority)
     }
 }
 

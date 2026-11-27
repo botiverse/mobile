@@ -19,6 +19,7 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.SharedChannelAuthorityStore
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
@@ -30,6 +31,7 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelViewerAuthority
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -735,6 +737,7 @@ class ChannelSettingsStoreTest {
         owner: AuthenticatedRouteOwner = routeOwner(),
         initialSharedHandoff: ChannelSettingsSharedHandoff = ChannelSettingsSharedHandoff.Unavailable,
         initialAuthorityAccepted: Boolean = true,
+        channelAuthorityStore: SharedChannelAuthorityStore? = null,
     ): ChannelSettingsStore =
         ChannelSettingsStore(
             route = route(),
@@ -744,6 +747,7 @@ class ChannelSettingsStoreTest {
             initialSharedHandoff = initialSharedHandoff,
             initialAuthorityAccepted = initialAuthorityAccepted,
             scope = this,
+            channelAuthorityStore = channelAuthorityStore,
         )
 
     private fun routeOwner(
@@ -763,13 +767,24 @@ class ChannelSettingsStoreTest {
             )
         )
 
-    private fun snapshot(name: String = "#canonical"): ChannelSettingsSnapshot =
+    private fun snapshot(
+        name: String = "#canonical",
+        capabilities: ChannelCapabilities? =
+            ChannelCapabilities(
+                editChannelMetadata = true,
+                changeChannelVisibility = true,
+                archiveChannels = true,
+                deleteChannels = true,
+                federateChannels = true,
+            ),
+    ): ChannelSettingsSnapshot =
         ChannelSettingsSnapshot(
             channel =
                 HomeChannelRow(
                     threadId = ThreadId("channel-1"),
                     channelId = ChannelId("channel-1"),
                     name = name,
+                    channelCapabilities = capabilities,
                 ),
             sidebarOrder =
                 SettingsServerSidebarOrderSnapshot(
@@ -877,6 +892,72 @@ class ChannelSettingsStoreTest {
         assertEquals("private", store.state.value.channel?.channelType)
         assertEquals(false, store.state.value.channel?.guestVisible)
         assertEquals(false, store.state.value.displayVisitorVisible)
+    }
+
+    @Test
+    fun disconnectRequiresDeleteChannelsCapabilityNotServerCanManage() = runTest {
+        val noDelete =
+            jointSnapshot().let { base ->
+                base.copy(
+                    canManage = true,
+                    channel =
+                        base.channel.copy(
+                            channelCapabilities = ChannelCapabilities(editChannelMetadata = true, deleteChannels = false),
+                        ),
+                )
+            }
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(noDelete))
+        val store = store(dataSource = dataSource)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        store.dispatch(ChannelSettingsIntent.Disconnect)
+        runCurrent()
+
+        assertEquals(0, dataSource.disconnectCalls)
+        assertNull(store.state.value.effect)
+        store.clear()
+    }
+
+    @Test
+    fun observedChannelAuthorityUpdatesPermissionsAndCanAddMembersLive() = runTest {
+        val authorityStore = SharedChannelAuthorityStore()
+        val initial =
+            snapshot(
+                capabilities = ChannelCapabilities(addChannelMembers = false, archiveChannels = false),
+            )
+        val dataSource = FakeChannelSettingsDataSource(loadResult = DataResult.Content(initial))
+        val store = store(dataSource = dataSource, channelAuthorityStore = authorityStore)
+        store.dispatch(ChannelSettingsIntent.Load)
+        runCurrent()
+
+        assertFalse(store.state.value.permissions().archive)
+        assertFalse(store.state.value.memberSlice.canAddMembers)
+
+        val token = authorityStore.captureRequestToken("server-1")
+        authorityStore.writeSingleAnswer(
+            token = token,
+            channelId = ChannelId("channel-1"),
+            authority =
+                ChannelViewerAuthority(
+                    role = "admin",
+                    adminBasis = "channel_admin",
+                    capabilities =
+                        ChannelCapabilities(
+                            addChannelMembers = true,
+                            archiveChannels = true,
+                            editChannelMetadata = true,
+                        ),
+                    revision = 2L,
+                ),
+        )
+        runCurrent()
+
+        assertTrue(store.state.value.permissions().archive)
+        assertTrue(store.state.value.permissions().editMetadata)
+        assertTrue(store.state.value.memberSlice.canAddMembersKnown)
+        assertTrue(store.state.value.memberSlice.canAddMembers)
+        store.clear()
     }
 
     private fun ownerMemberSlice(): SharedServerChannelMembersSlice =

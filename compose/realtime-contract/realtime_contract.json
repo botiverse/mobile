@@ -52,6 +52,7 @@
     "threadUpdated": "thread:updated",
     "channelUpdated": "channel:updated",
     "channelMembersUpdated": "channel:members-updated",
+    "channelAuthorityUpdated": "channel:authority-updated",
     "scopeReadUpdated": "scope_read:updated",
     "taskCreated": "task:created",
     "taskUpdated": "task:updated",
@@ -123,6 +124,7 @@
     "threadUpdated",
     "channelUpdated",
     "channelMembersUpdated",
+    "channelAuthorityUpdated",
     "scopeReadUpdated",
     "taskCreated",
     "taskUpdated",
@@ -223,6 +225,7 @@
     "PRODUCT_FEEDBACK_UNREAD_EVENT": "product_feedback:unread",
     "SEAT_JOIN_BLOCKS_CHANGED_EVENT": "seat-join-blocks:changed",
     "SERVER_FEATURES_CHANGED_SOCKET_EVENT": "server:features-changed",
+    "TO_ANSWER_CHANGED_SOCKET_EVENT": "to-answer:changed",
     "USER_PROFILE_UPDATED_EVENT": "user:profile-updated"
   },
   "unconsumedSlockEvents": {
@@ -233,7 +236,8 @@
     "notification:desktop": "Platform-scoped to clientKind desktop sockets and sent with an ack (emitDesktopNotificationWithAck); the desktop client adopts it in realtime unification phase 2.",
     "object:changed": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
     "object:unwatch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
-    "object:watch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet."
+    "object:watch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
+    "to-answer:changed": "Live refresh for Activity 'To answer' filter (slock #17252/#17261, behind to_answer_list); mobile has not ported the To answer filter yet."
   },
   "acknowledgedUnemittedServerWireEvents": {
     "computerUpgradeProgress": "No literal server emit site on slock staging (web still lists it; RFC 033 streams it from the Computer). Kept until the server team confirms it is gone.",

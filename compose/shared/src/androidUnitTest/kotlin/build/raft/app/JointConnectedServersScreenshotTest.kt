@@ -21,6 +21,7 @@ import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.model.ThreadId
 import build.raft.app.thread.RaftLongMessageCollapseConversationSetting
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole
@@ -110,6 +111,14 @@ private val wgDeck =
         subtitle = "Deck working group",
         memberCount = 2,
         jointRole = "host",
+        channelCapabilities =
+            ChannelCapabilities(
+                editChannelMetadata = true,
+                changeChannelVisibility = true,
+                archiveChannels = true,
+                deleteChannels = true,
+                federateChannels = true,
+            ),
     )
 
 /** artin's #wg-deck: Botiverse hosts it (this server, its owner looking), Raft connected; one more server to connect. */

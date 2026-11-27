@@ -262,6 +262,61 @@ data class ChannelCapabilities(
     val manageVisitorAccess: Boolean? = null,
 )
 
+/**
+ * The viewer's own authority on one channel: what the server says this person may do there
+ * (web `ChannelAuthority` in `packages/web/src/store/channelAuthorityStore.ts`, slock #17055).
+ * It is per viewer, so it lives in [build.raft.app.data.SharedChannelAuthorityStore] and is
+ * written only by per-viewer HTTP answers (`GET /api/channels`, `GET /api/channels/:id`,
+ * `POST /api/channels`). Broadcast `channel:updated` rows carry none of it and can neither set
+ * nor erase it.
+ */
+@Serializable
+data class ChannelViewerAuthority(
+    val role: String? = null,
+    val adminBasis: String? = null,
+    val capabilities: ChannelCapabilities,
+    /**
+     * The viewer's membership row's `authority_revision`; `null` when there is no membership row.
+     * Only orders role changes within one membership row (it restarts at 1 after leave + re-join),
+     * so HTTP answers are ordered by request start `observedSeq`, never by [revision].
+     */
+    val revision: Long? = null,
+)
+
+/**
+ * What readers see for the viewer's authority on a channel (web `ChannelAuthorityView`,
+ * slock #17055): [Loading] until a per-viewer answer has said (entries it gates stay hidden —
+ * fail closed, never falling back to the viewer's own-server role/capabilities).
+ */
+sealed interface ChannelViewerAuthorityView {
+    data object Loading : ChannelViewerAuthorityView
+    data class Known(val authority: ChannelViewerAuthority) : ChannelViewerAuthorityView
+}
+
+/** What the server said yes and no to; empty (all null / denied) while [ChannelViewerAuthorityView.Loading]. */
+fun ChannelViewerAuthorityView.knownCapabilities(): ChannelCapabilities =
+    (this as? ChannelViewerAuthorityView.Known)?.authority?.capabilities ?: ChannelCapabilities()
+
+/** Whether the server explicitly allowed [capability]; `false` while [ChannelViewerAuthorityView.Loading]. */
+fun ChannelViewerAuthorityView.allows(capability: (ChannelCapabilities) -> Boolean?): Boolean =
+    (this as? ChannelViewerAuthorityView.Known)?.let { capability(it.authority.capabilities) == true } == true
+
+/**
+ * Any of web `CHANNEL_MANAGE_ENTRY_CAPABILITIES` lets the viewer manage the channel; `false` while
+ * [ChannelViewerAuthorityView.Loading].
+ */
+fun ChannelViewerAuthorityView.canManageChannel(): Boolean {
+    val caps = (this as? ChannelViewerAuthorityView.Known)?.authority?.capabilities ?: return false
+    return caps.editChannelMetadata == true ||
+        caps.changeChannelVisibility == true ||
+        caps.archiveChannels == true ||
+        caps.deleteChannels == true ||
+        caps.addChannelMembers == true ||
+        caps.removeChannelMembers == true ||
+        caps.changeChannelMemberRoles == true ||
+        caps.federateChannels == true
+}
+
 // Member Models
 @Serializable
 enum class MemberKind {
@@ -1748,6 +1803,20 @@ data class RealtimeRefreshRequired(
      * nothing about it (an id-only frame, a row without the field).
      */
     val channelAnnouncement: build.raft.app.data.RaftChannelRowAnnouncement? = null,
+) : RealtimeEvent
+
+/**
+ * `channel:authority-updated` (`{ channelId, channelRole, authorityRevision }`, botiverse/slock
+ * `services/channelMembershipRoleOutbox.ts` / `#17055`): the viewer's role on [channelId] changed.
+ * Emitted to the viewer's `user:<id>` room (spans all their servers) and carries no
+ * `channelCapabilities`; clients re-read `GET /api/channels/:id` for a held channel when
+ * [authorityRevision] is newer than what [build.raft.app.data.SharedChannelAuthorityStore] holds.
+ */
+@Serializable
+data class ChannelAuthorityUpdated(
+    val channelId: ChannelId,
+    val channelRole: String? = null,
+    val authorityRevision: Long,
 ) : RealtimeEvent
 
 @Serializable

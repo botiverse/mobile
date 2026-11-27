@@ -115,11 +115,26 @@ private suspend fun RaftNetworkClient.setChannelActivityMuted(
 ): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}/notification-settings", method = "PATCH", bodyText = bodyText)
 
-class RealChannelRepository(
+class RealChannelRepository @RaftCoreInternalApi constructor(
     private val sessionStore: RaftAuthSessionStore,
     private val networkClient: RaftNetworkClient,
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val channelAuthorityStore: SharedChannelAuthorityStore?,
 ) : ChannelRepository {
+    @OptIn(RaftCoreInternalApi::class)
+    constructor(
+        sessionStore: RaftAuthSessionStore,
+        networkClient: RaftNetworkClient,
+        warningLogger: (String) -> Unit = {},
+    ) : this(
+        sessionStore = sessionStore,
+        networkClient = networkClient,
+        warningLogger = warningLogger,
+        channelAuthorityStore = null,
+    )
+    private fun resolveChannelAuthorityStore(): SharedChannelAuthorityStore? =
+        channelAuthorityStore ?: RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore
+
     private val homeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
@@ -127,7 +142,8 @@ class RealChannelRepository(
             parseHome = { payload, session ->
                 parseRaftHome(payload, session, warningLogger)
             },
-            diagnosticsLogger = { message -> warningLogger("home_data_source $message") }
+            diagnosticsLogger = { message -> warningLogger("home_data_source $message") },
+            channelAuthorityStore = channelAuthorityStore,
         )
 
     override suspend fun getHome(serverId: ServerId): DataResult<HomeSnapshot> =
@@ -165,12 +181,14 @@ class RealChannelRepository(
         )
 
     override suspend fun createChannel(request: CreateChannelRequest): DataResult<CreateChannelResult> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
         val name = request.name.trim()
         if (name.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
         if (!name.isSubmittableChannelName()) {
             return DataResult.Error(ScreenError(code = "channel_name_invalid", retryable = false))
         }
+        val authorityStore = resolveChannelAuthorityStore()
+        val authorityToken = authorityStore?.captureRequestToken(context.server.id.value)
         return executeChannel(
             emptyReason = EmptyReason.NoChannels,
             block = { networkClient.createChannel(DataRequestPriority.Foreground, buildCreateChannelBody(request)) },
@@ -179,6 +197,11 @@ class RealChannelRepository(
                 val result =
                     parseSharedCreateChannelResult(bodyText)
                         ?: throw IllegalStateException("Create channel response missing channel")
+                if (authorityStore != null && authorityToken != null) {
+                    parseChannelViewerAuthority(bodyText)?.let { (channelId, authority) ->
+                        authorityStore.writeSingleAnswer(authorityToken, channelId, authority)
+                    }
+                }
                 result.copy(
                     addedAgentMemberIds = request.agentMemberIds.cleanCreateChannelIds(),
                     addedUserMemberIds = request.userMemberIds.cleanCreateChannelIds()
@@ -362,8 +385,10 @@ class RealChannelRepository(
     private suspend fun fetchChannels(
         context: SharedChannelServerContext,
         includeArchived: Boolean = false,
-    ): DataResult<ChannelSnapshot> =
-        executeChannel(
+    ): DataResult<ChannelSnapshot> {
+        val authorityStore = resolveChannelAuthorityStore()
+        val authorityToken = authorityStore?.captureRequestToken(context.server.id.value)
+        return executeChannel(
             emptyReason = EmptyReason.NoChannels,
             block = { networkClient.channels(DataRequestPriority.Visible, context.server.id, includeArchived) },
             emptyWhen = { it.channels.isEmpty() },
@@ -372,9 +397,13 @@ class RealChannelRepository(
                 val parsed =
                     parseSharedChannelSnapshot(bodyText, context.server, includeArchived)
                         ?: throw IllegalStateException("Channels response missing channel array")
+                if (authorityStore != null && authorityToken != null) {
+                    authorityStore.writeAnswers(authorityToken, parseChannelViewerAuthorityList(bodyText))
+                }
                 parsed.copy(channels = parsed.channels.dedupeChannelRows())
             }
         )
+    }
 
     private suspend fun fetchDirectMessages(context: SharedChannelServerContext): DataResult<DirectMessageSnapshot> =
         executeChannel(

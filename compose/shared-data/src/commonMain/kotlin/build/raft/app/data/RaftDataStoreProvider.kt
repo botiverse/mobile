@@ -16,6 +16,7 @@ import kotlin.concurrent.Volatile
     val serverFeatureFlags: SharedServerFeatureFlags
     val avatarCacheRuntime: RaftAvatarCacheRuntime
     val apiEnvironmentStore: SharedApiEnvironmentStore
+    val channelAuthorityStore: SharedChannelAuthorityStore
 
     fun ensureServerModelLabelCatalog(serverId: String)
 

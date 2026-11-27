@@ -365,7 +365,6 @@ class ServerEnumContractTest {
                 "agent:archive:updated" to "archive view is read on open",
                 "agent:lifecycle" to "covered by agent:updated / agent:activity",
                 "agent:migration-updated" to "migration page reads on open",
-                "channel:authority-updated" to "covered by channel:members-updated",
                 "external-inbox-delivered" to "external-agent delivery receipt, no mobile surface",
                 "feedback_report:session_record" to "desktop feedback recorder only",
                 "link_card.operation_changed" to "being added on agent/lagoon/silent-drop-* (audit W3)",

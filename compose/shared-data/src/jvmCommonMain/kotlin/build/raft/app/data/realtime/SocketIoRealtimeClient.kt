@@ -932,6 +932,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is MemberPresenceUpdated -> "member_presence_updated"
     is AgentActivitySubscribed -> "agent_activity_subscribed"
     is RealtimeRefreshRequired -> "refresh_required"
+    is build.raft.app.model.ChannelAuthorityUpdated -> "channel_authority_updated"
     is ServerMembershipRemoved -> "server_membership_removed"
     is ServerDeleted -> "server_deleted"
     is ServerPlanUpdated -> "server_plan_updated"
