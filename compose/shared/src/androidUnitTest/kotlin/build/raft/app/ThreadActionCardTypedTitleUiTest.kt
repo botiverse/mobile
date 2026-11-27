@@ -329,7 +329,7 @@ class ThreadActionCardTypedTitleUiTest {
         onNodeWithText("Raft has no description for this scope.", useUnmergedTree = true).assertIsDisplayed()
         onNode(hasText("Add Notion") and hasClickAction()).performClick()
         waitForIdle()
-        assertEquals(listOf(ThreadInstallAppActionIntent.Confirm), intents)
+        assertEquals<List<ThreadInstallAppActionIntent>>(listOf(ThreadInstallAppActionIntent.Confirm), intents)
     }
 
     @Test
