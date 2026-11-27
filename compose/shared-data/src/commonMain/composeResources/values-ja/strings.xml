@@ -4974,7 +4974,7 @@
     <string name="agent_migration_error_target_runtime_usage_limit">%2$s の %1$s アカウントは使用量の上限に達しているため、リセットされるまでエージェントは返信できません。別のコンピューターを選ぶか、このまま移行してください。</string>
     <string name="agent_migration_error_target_runtime_not_ready">%2$s では今 %1$s を実行できないため、エージェントは返信できません。コンピューターのオーナーに確認を依頼するか、別のコンピューターを選ぶか、このまま移行してください。</string>
     <string name="agent_migration_move_anyway">このまま移行</string>
-    <string name="agent_migration_preflight_unverified">%2$s で %1$s にログインしているか確認できませんでした。移行後にエージェントが返信しない場合は、そのコンピューターでログインしてください。</string>
+    <string name="agent_migration_preflight_unverified">%2$s への移行を開始しました（%1$s のログイン状態は未確認です）。移行後にエージェントが返信しない場合は、そのコンピューターでログインを確認してください。</string>
     <string name="agent_migration_cannot_respond_title">移行済み、応答できません</string>
     <string name="agent_migration_cannot_respond_needs_login">%1$s に移行しましたが、エージェントはそこで返信できません。そのコンピューターでランタイムにログインしていません。</string>
     <string name="agent_migration_cannot_respond_credential_invalid">%1$s に移行しましたが、エージェントはそこで返信できません。そのコンピューターでのランタイムのログインが拒否されました。</string>
@@ -7139,4 +7139,17 @@
     <string name="auth_disconnect_preview_computer_detail_one">%1$s · エージェント %2$d 件が停止します</string>
     <string name="auth_disconnect_preview_computer_detail_other">%1$s · エージェント %2$d 件が停止します</string>
     <string name="auth_disconnect_preview_reconnect">コンピューターを再接続するには、そのマシンで raft-computer setup --machine を実行し、オーナーまたは管理者のアカウントでログインを承認してください。「コンピューター」の該当ページに正確なコマンドが表示され、エージェントも一緒に戻ります。</string>
+    <string name="agent_migration_leave_out_label">これらのパスを移行しない</string>
+    <string name="agent_migration_leave_out_description">前回の移行はサイズ上限を超えていました。ここで選んだパスはエージェントのワークスペースの .raftbackupignore.user に追加され、今回以降のすべての移行でスキップされます。もう一度移行するには、そのファイルの該当行を削除してください。移行後、これらのパスは %1$s の移行バックアップに 7 日間残り、その後削除されます。必要なものはそれまでにコピーしてください。MEMORY.md と notes/ は常に移行されます。</string>
+    <string name="agent_migration_leave_out_size">圧縮前 %1$s</string>
+    <string name="agent_migration_leave_out_search">パスを検索</string>
+    <string name="agent_migration_leave_out_typed_label">ワークスペース内の別のパス</string>
+    <string name="agent_migration_leave_out_typed_placeholder">work/build または **/node_modules</string>
+    <string name="agent_migration_leave_out_add">追加</string>
+    <string name="agent_migration_leave_out_invalid">ワークスペース内のパス（例: work/build）か、**/ とフォルダー名（その名前のフォルダーをすべてスキップ）を入力してください。</string>
+    <string name="agent_migration_leave_out_always_moved">MEMORY.md、notes/、除外ファイル、.raft/ は常に移行されるため、除外できません。</string>
+    <string name="agent_migration_error_leave_out_invalid">除外するパスのうち、使えないものがあります。MEMORY.md と notes/ は常に移行され、各パスはワークスペース内である必要があります。</string>
+    <string name="agent_migration_error_leave_out_unsupported">移行元のコンピューターの Raft が古いため、パスを除外できません。更新してからもう一度お試しください。</string>
+    <string name="agent_migration_error_source_offline">このエージェントが今あるコンピューターはオフラインです。そのコンピューターで Raft Computer を起動してから、もう一度お試しください。</string>
+    <string name="agent_migration_error_source_offline_named">このエージェントが今ある %1$s はオフラインです。そのコンピューターで Raft Computer を起動してから、もう一度お試しください。</string>
 </resources>

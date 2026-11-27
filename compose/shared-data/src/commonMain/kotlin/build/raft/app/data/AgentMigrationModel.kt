@@ -222,6 +222,7 @@ private data class AgentMigrationStartRequestDto(
     val targetComputer: String? = null,
     val preflight: String? = null,
     val preflightOverride: Boolean? = null,
+    val leaveOut: List<String>? = null,
     val target: AgentMigrationHostedTargetDto? = null
 )
 
@@ -280,12 +281,14 @@ private data class AgentMigrationRevisionRequestDto(
 }
 
 /**
- * Web AgentMigrationDialog (slock #16567): `{ targetComputer, preflight: "v1"[, preflightOverride: true] }`
- * or `{ target: { kind: "hosted" } }` (server default model).
+ * Web AgentMigrationDialog (slock #16567, #17048):
+ * `{ targetComputer, preflight: "v1"[, preflightOverride: true][, leaveOut: [...]] }`
+ * or `{ target: { kind: "hosted" } }` (server default model; `leaveOut` is never sent for cloud).
  */
 @RaftCoreInternalApi fun agentMigrationStartRequestBody(
     target: AgentMigrationTarget,
-    preflightOverride: Boolean = false
+    preflightOverride: Boolean = false,
+    leaveOut: List<String> = emptyList(),
 ): String =
     migrationRequestJson.encodeToString(
         AgentMigrationStartRequestDto.serializer(),
@@ -294,7 +297,8 @@ private data class AgentMigrationRevisionRequestDto(
                 AgentMigrationStartRequestDto(
                     targetComputer = target.machineId,
                     preflight = "v1",
-                    preflightOverride = if (preflightOverride) true else null
+                    preflightOverride = if (preflightOverride) true else null,
+                    leaveOut = leaveOut.takeIf { it.isNotEmpty() },
                 )
             AgentMigrationTarget.Cloud -> AgentMigrationStartRequestDto(target = AgentMigrationHostedTargetDto(kind = "hosted"))
         }

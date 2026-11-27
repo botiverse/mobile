@@ -98,6 +98,7 @@ class ActionCardAgentMigrateUiTest {
             agentId: MemberId,
             target: AgentMigrationTarget,
             preflightOverride: Boolean,
+            leaveOut: List<String>,
         ): DataResult<AgentMigrationStartResult> {
             starts += target to preflightOverride
             return onStart(target, preflightOverride)

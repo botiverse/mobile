@@ -641,7 +641,8 @@ private object MembersVisualFixtureMigrationDataSource : AgentMigrationDataSourc
     override suspend fun startMigration(
         agentId: MemberId,
         target: AgentMigrationTarget,
-        preflightOverride: Boolean
+        preflightOverride: Boolean,
+        leaveOut: List<String>,
     ): DataResult<AgentMigrationStartResult> =
         DataResult.Error(refused)
 

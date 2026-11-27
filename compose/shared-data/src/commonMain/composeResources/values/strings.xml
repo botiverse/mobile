@@ -4975,7 +4975,7 @@
     <string name="agent_migration_error_target_runtime_usage_limit">The %1$s account on %2$s has reached its usage limit, so the agent couldn't reply there until it resets. Choose another computer, or move anyway.</string>
     <string name="agent_migration_error_target_runtime_not_ready">%1$s can't run on %2$s right now, so the agent couldn't reply there. Ask the computer's owner to check it, choose another computer, or move anyway.</string>
     <string name="agent_migration_move_anyway">Move anyway</string>
-    <string name="agent_migration_preflight_unverified">Couldn't check whether %1$s is signed in on %2$s. If the agent doesn't reply after the move, sign in there.</string>
+    <string name="agent_migration_preflight_unverified">Started moving to %2$s without confirming %1$s sign-in. If the agent doesn't reply after the move, sign in there.</string>
     <string name="agent_migration_cannot_respond_title">Moved, can't respond</string>
     <string name="agent_migration_cannot_respond_needs_login">Moved to %1$s, but the agent can't reply there: its runtime isn't signed in on that computer.</string>
     <string name="agent_migration_cannot_respond_credential_invalid">Moved to %1$s, but the agent can't reply there: its runtime sign-in on that computer was rejected.</string>
@@ -7140,4 +7140,17 @@
     <string name="auth_disconnect_preview_computer_detail_one">%1$s · %2$d agent stops</string>
     <string name="auth_disconnect_preview_computer_detail_other">%1$s · %2$d agents stop</string>
     <string name="auth_disconnect_preview_reconnect">To reconnect a Computer, run raft-computer setup --machine on it and approve the sign-in with an owner or admin account: its page under Computers shows the exact command, and its agents come back with it.</string>
+    <string name="agent_migration_leave_out_label">Don't move these paths</string>
+    <string name="agent_migration_leave_out_description">The last move was over the size limit. Paths picked here are added to .raftbackupignore.user in the agent's workspace, so this move and every later one skips them; delete a line there to move that path again. After the move they stay on %1$s in the migration backup for 7 days, then are deleted, so copy anything you still need before then. MEMORY.md and notes/ always move.</string>
+    <string name="agent_migration_leave_out_size">%1$s before compression</string>
+    <string name="agent_migration_leave_out_search">Search paths</string>
+    <string name="agent_migration_leave_out_typed_label">Another path in the workspace</string>
+    <string name="agent_migration_leave_out_typed_placeholder">work/build or **/node_modules</string>
+    <string name="agent_migration_leave_out_add">Add</string>
+    <string name="agent_migration_leave_out_invalid">Use a path inside the workspace, like work/build, or **/ and a folder name to skip that folder everywhere.</string>
+    <string name="agent_migration_leave_out_always_moved">MEMORY.md, notes/, the ignore files and .raft/ always move, so they can't be left out.</string>
+    <string name="agent_migration_error_leave_out_invalid">One of the paths to leave out can't be used. MEMORY.md and notes/ always move, and each path must be inside the workspace.</string>
+    <string name="agent_migration_error_leave_out_unsupported">Raft on the source computer is too old to leave paths out. Update it, then try again.</string>
+    <string name="agent_migration_error_source_offline">The computer this agent is on is offline. Start Raft Computer on it and try again.</string>
+    <string name="agent_migration_error_source_offline_named">%1$s, where this agent is now, is offline. Start Raft Computer on it and try again.</string>
 </resources>

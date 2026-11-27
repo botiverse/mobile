@@ -61,8 +61,59 @@ class AgentMigrationErrorCopyTest {
                 context = MigrationErrorContext.Failed
             )
         )
-        assertEquals(listOf(MigrationText(MigrationCopy.ErrorKeyPathUnreadable)), result.messageParts)
+        assertEquals(
+            listOf(MigrationText(MigrationCopy.ErrorKeyPathUnreadable)),
+            result.messageParts
+        )
         assertEquals("MIGRATION_WORKSPACE_KEY_PATH_UNREADABLE", result.technicalCode)
+    }
+
+    @Test
+    fun sourceComputerOfflineUsesNamedOrGenericCopy() {
+        val named =
+            migrationErrorPresentation(
+                MigrationErrorInput(
+                    code = "SOURCE_COMPUTER_OFFLINE",
+                    context = MigrationErrorContext.Start,
+                    sourceComputerName = "studio-mac",
+                )
+            )
+        assertEquals(listOf(MigrationText(MigrationCopy.ErrorSourceOfflineNamed, listOf("studio-mac"))), named.messageParts)
+        assertEquals("SOURCE_COMPUTER_OFFLINE", named.technicalCode)
+
+        val unnamed =
+            migrationErrorPresentation(
+                MigrationErrorInput(
+                    code = "SOURCE_COMPUTER_OFFLINE",
+                    context = MigrationErrorContext.Start,
+                    sourceComputerName = "  ",
+                )
+            )
+        assertEquals(listOf(MigrationText(MigrationCopy.ErrorSourceOffline)), unnamed.messageParts)
+        assertEquals("SOURCE_COMPUTER_OFFLINE", unnamed.technicalCode)
+    }
+
+    @Test
+    fun leaveOutRefusalCodesMapToDedicatedCopy() {
+        val invalid =
+            migrationErrorPresentation(
+                MigrationErrorInput(
+                    code = "MIGRATION_LEAVE_OUT_INVALID",
+                    context = MigrationErrorContext.Start,
+                )
+            )
+        assertEquals(listOf(MigrationText(MigrationCopy.ErrorLeaveOutInvalid)), invalid.messageParts)
+        assertEquals("MIGRATION_LEAVE_OUT_INVALID", invalid.technicalCode)
+
+        val unsupported =
+            migrationErrorPresentation(
+                MigrationErrorInput(
+                    code = "MIGRATION_LEAVE_OUT_UNSUPPORTED",
+                    context = MigrationErrorContext.Start,
+                )
+            )
+        assertEquals(listOf(MigrationText(MigrationCopy.ErrorLeaveOutUnsupported)), unsupported.messageParts)
+        assertEquals("MIGRATION_LEAVE_OUT_UNSUPPORTED", unsupported.technicalCode)
     }
 
     @Test

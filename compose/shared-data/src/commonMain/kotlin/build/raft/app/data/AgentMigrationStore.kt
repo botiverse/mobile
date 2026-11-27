@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
     suspend fun startMigration(
         agentId: MemberId,
         target: AgentMigrationTarget,
-        preflightOverride: Boolean = false
+        preflightOverride: Boolean = false,
+        leaveOut: List<String> = emptyList(),
     ): DataResult<AgentMigrationStartResult>
     suspend fun cancelMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
     suspend fun confirmHostedMigration(agentId: MemberId, migrationRef: String, expectedRevision: Int): DataResult<Unit>
@@ -76,7 +77,11 @@ import kotlinx.coroutines.launch
     /** The page became visible / hidden (covered or app backgrounded): the poll pauses while hidden. */
     data class SetPageVisible(val visible: Boolean) : AgentMigrationIntent
     data object Refresh : AgentMigrationIntent
-    data class Start(val target: AgentMigrationTarget, val preflightOverride: Boolean = false) : AgentMigrationIntent
+    data class Start(
+        val target: AgentMigrationTarget,
+        val preflightOverride: Boolean = false,
+        val leaveOut: List<String> = emptyList(),
+    ) : AgentMigrationIntent
     data object Cancel : AgentMigrationIntent
     data object ConfirmHosted : AgentMigrationIntent
     /** Close the failed last move's card. */
@@ -124,7 +129,7 @@ import kotlinx.coroutines.launch
             AgentMigrationIntent.StopWatching -> stopWatching()
             is AgentMigrationIntent.SetPageVisible -> setPageVisible(intent.visible)
             AgentMigrationIntent.Refresh -> refresh(DataRequestPriority.Visible)
-            is AgentMigrationIntent.Start -> start(intent.target, intent.preflightOverride)
+            is AgentMigrationIntent.Start -> start(intent.target, intent.preflightOverride, intent.leaveOut)
             AgentMigrationIntent.Cancel -> cancel()
             AgentMigrationIntent.ConfirmHosted -> confirmHosted()
             AgentMigrationIntent.Dismiss -> dismissFailed()
@@ -257,13 +262,25 @@ import kotlinx.coroutines.launch
         }
     }
 
-    private fun start(target: AgentMigrationTarget, preflightOverride: Boolean) {
+    private fun start(
+        target: AgentMigrationTarget,
+        preflightOverride: Boolean,
+        leaveOut: List<String>,
+    ) {
         val current = mutableState.value
         val agentId = current.agentId ?: return
         if (current.starting || current.notice?.isActive == true) return
         update { it.copy(starting = true, startError = null, lastStartResult = null) }
         scope.launch {
-            val result = guarded { dataSource.startMigration(agentId, target, preflightOverride = preflightOverride) }
+            val result =
+                guarded {
+                    dataSource.startMigration(
+                        agentId = agentId,
+                        target = target,
+                        preflightOverride = preflightOverride,
+                        leaveOut = leaveOut,
+                    )
+                }
             if (mutableState.value.agentId != agentId) return@launch
             when {
                 result is DataResult.Content && result.data.placedWithoutSource -> {

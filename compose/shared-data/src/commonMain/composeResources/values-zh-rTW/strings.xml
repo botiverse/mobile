@@ -4795,7 +4795,7 @@
     <string name="agent_migration_error_target_runtime_usage_limit">%2$s 上的 %1$s 帳號已達用量上限，重設前 agent 遷過去也無法回覆。請改選另一台電腦，也可以仍然遷移。</string>
     <string name="agent_migration_error_target_runtime_not_ready">%1$s 現在無法在 %2$s 上執行，agent 遷過去也無法回覆。請聯絡這台電腦的擁有者檢查一下，或改選另一台電腦，也可以仍然遷移。</string>
     <string name="agent_migration_move_anyway">仍然遷移</string>
-    <string name="agent_migration_preflight_unverified">無法確認 %2$s 上是否已登入 %1$s。如果遷移後 agent 沒有回覆，請在那台電腦上登入。</string>
+    <string name="agent_migration_preflight_unverified">已開始遷移到 %2$s，暫未核驗 %1$s 登入狀態。若遷移後 Agent 無回覆，請在該電腦上確認登入。</string>
     <string name="agent_migration_cannot_respond_title">已遷移，無法回應</string>
     <string name="agent_migration_cannot_respond_needs_login">已遷移到 %1$s，但 agent 在那裡無法回覆：那台電腦上沒有登入它的執行環境。</string>
     <string name="agent_migration_cannot_respond_credential_invalid">已遷移到 %1$s，但 agent 在那裡無法回覆：那台電腦上的執行環境登入遭到拒絕。</string>
@@ -7138,4 +7138,17 @@
     <string name="auth_disconnect_preview_computer_detail_one">%1$s · %2$d 個 Agent 會停止運作</string>
     <string name="auth_disconnect_preview_computer_detail_other">%1$s · %2$d 個 Agent 會停止運作</string>
     <string name="auth_disconnect_preview_reconnect">之後要讓電腦重新連線，在那台機器上執行 raft-computer setup --machine，並用擁有者或管理員的帳號核准登入：「電腦」裡它的頁面會給出完整指令，上面的 Agent 會一起恢復。</string>
+    <string name="agent_migration_leave_out_label">不遷移這些路徑</string>
+    <string name="agent_migration_leave_out_description">上次遷移超過了大小上限。這裡選取的路徑會寫進 agent 工作區的 .raftbackupignore.user，這次和之後的遷移都會略過；想重新遷移某個路徑，刪掉檔案中對應的那一行。遷移完成後，這些路徑留在 %1$s 的遷移備份中，7 天後自動刪除，仍需要的內容請在此之前自行複製。MEMORY.md 和 notes/ 一律會遷移。</string>
+    <string name="agent_migration_leave_out_size">壓縮前 %1$s</string>
+    <string name="agent_migration_leave_out_search">搜尋路徑</string>
+    <string name="agent_migration_leave_out_typed_label">工作區中的其他路徑</string>
+    <string name="agent_migration_leave_out_typed_placeholder">work/build 或 **/node_modules</string>
+    <string name="agent_migration_leave_out_add">新增</string>
+    <string name="agent_migration_leave_out_invalid">請填寫工作區內的路徑，例如 work/build；或用 **/ 加資料夾名稱，略過所有同名資料夾。</string>
+    <string name="agent_migration_leave_out_always_moved">MEMORY.md、notes/、忽略檔案和 .raft/ 一律會遷移，無法排除。</string>
+    <string name="agent_migration_error_leave_out_invalid">有一個要排除的路徑無法使用。MEMORY.md 和 notes/ 一律會遷移，每個路徑都必須在工作區內。</string>
+    <string name="agent_migration_error_leave_out_unsupported">來源電腦上的 Raft 版本太舊，無法排除路徑。請先更新，再重試。</string>
+    <string name="agent_migration_error_source_offline">這個 Agent 目前所在的電腦已離線。請在該電腦上啟動 Raft Computer，然後再試一次。</string>
+    <string name="agent_migration_error_source_offline_named">這個 Agent 目前所在的電腦 %1$s 已離線。請在該電腦上啟動 Raft Computer，然後再試一次。</string>
 </resources>

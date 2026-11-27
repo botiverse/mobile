@@ -112,6 +112,48 @@ class AgentMigrationStoreTest {
         assertEquals(setOf("target"), cloud.keys)
         assertEquals("hosted", cloud.getValue("target").jsonObject.getValue("kind").jsonPrimitive.content)
         assertEquals(setOf("kind"), cloud.getValue("target").jsonObject.keys)
+
+        // slock #17048: leaveOut is serialized only for computer targets when non-empty.
+        val computerLeaveOut =
+            Json.parseToJsonElement(
+                agentMigrationStartRequestBody(
+                    AgentMigrationTarget.Computer("m-target"),
+                    leaveOut = listOf("work/", "**/drizzle"),
+                )
+            ).jsonObject
+        assertEquals(setOf("targetComputer", "preflight", "leaveOut"), computerLeaveOut.keys)
+        assertEquals("""["work/","**/drizzle"]""", computerLeaveOut.getValue("leaveOut").toString())
+
+        val cloudWithLeaveOut =
+            Json.parseToJsonElement(
+                agentMigrationStartRequestBody(
+                    AgentMigrationTarget.Cloud,
+                    leaveOut = listOf("work/"),
+                )
+            ).jsonObject
+        assertEquals(setOf("target"), cloudWithLeaveOut.keys)
+    }
+
+    @Test
+    fun startIntentForwardsLeaveOutOverTheWire() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("GET", statusPath, 200, """{"migration":null}""")
+        network.respond("POST", "agents/${agentId.value}/migrate", 200, """{"migrationRef":"$migrateRef"}""")
+        val store = AgentMigrationStore(RaftAgentControlsApi(network), this)
+        store.dispatch(AgentMigrationIntent.PrepareStart(agentId, checkPlan = false))
+        runCurrent()
+
+        store.dispatch(
+            AgentMigrationIntent.Start(
+                target = AgentMigrationTarget.Computer("m-target"),
+                leaveOut = listOf("models/", "**/node_modules"),
+            ),
+        )
+        runCurrent()
+
+        val post = network.requests.single { it.method == "POST" }
+        val body = Json.parseToJsonElement(post.bodyText!!).jsonObject
+        assertEquals("""["models/","**/node_modules"]""", body.getValue("leaveOut").toString())
     }
 
     @Test
