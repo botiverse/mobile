@@ -247,14 +247,14 @@ class RaftMobileWebPanelUiTest {
 
         // Single suspended page: no count badge, tap immediately resumes.
         onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).assertIsDisplayed()
-        onNodeWithTag(RAFT_FLOATING_TAB_PILL_COUNT_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_COUNT_TAG, useUnmergedTree = true).assertDoesNotExist()
         onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
         assertEquals(listOf("resume:1"), events)
 
         // Two suspended pages: count badge [2] visible, tap opens multi-page switcher sheet.
         runOnIdle { tabs = listOf(tab1, tab2) }
-        onNodeWithTag(RAFT_FLOATING_TAB_PILL_COUNT_TAG).assertIsDisplayed()
-        onNodeWithText("2").assertIsDisplayed()
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_COUNT_TAG, useUnmergedTree = true).assertIsDisplayed()
+        onNodeWithText("2", useUnmergedTree = true).assertIsDisplayed()
         onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
 
         onNodeWithTag(RAFT_APP_BROWSER_SWITCHER_SHEET_TAG).assertIsDisplayed()
