@@ -4457,7 +4457,6 @@
     <string name="agent_stop_turn_not_running">Nada estava em execução.</string>
     <string name="agent_stop_turn_failed">Não foi possível parar o turno atual.</string>
     <string name="agent_stop_turn_restarted">Para parar o turno, o agente foi reiniciado. O contexto da conversa foi mantido.</string>
-    <string name="agent_stop_turn_upgrade_required">Atualize o computador deste agente para parar só um turno. Em vez disso, você pode parar o agente inteiro.</string>
     <string name="agent_stop_turn_computer_offline">O computador deste agente está offline.</string>
     <string name="channel_sos_entry">Parar todos os agentes</string>
     <string name="channel_sos_stop_all_agents">Parar todos os agentes</string>

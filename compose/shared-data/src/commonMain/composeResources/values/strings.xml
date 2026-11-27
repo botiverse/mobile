@@ -4637,7 +4637,6 @@
     <string name="agent_stop_turn_not_running">Nothing was running.</string>
     <string name="agent_stop_turn_failed">Couldn't stop the current turn.</string>
     <string name="agent_stop_turn_restarted">To stop the turn, the agent was restarted. Its conversation context is kept.</string>
-    <string name="agent_stop_turn_upgrade_required">Upgrade this agent's Computer to stop a single turn. You can stop the whole agent instead.</string>
     <string name="agent_stop_turn_computer_offline">This agent's Computer is offline.</string>
     <string name="channel_sos_entry">Stop all agents</string>
     <string name="channel_sos_stop_all_agents">Stop all agents</string>

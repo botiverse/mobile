@@ -1042,6 +1042,90 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun logoutSendsRefreshTokenAndBearerFallbackAuthorization() = runBlocking {
+        val transport = FakeAuthApi()
+        val store =
+            InMemoryRaftAuthSessionStore(
+                storedSession().copy(
+                    accessToken = "access-token-1",
+                    refreshToken = "refresh-token-1",
+                )
+            )
+        val result = SharedAuthDataSource(transport = transport, sessionStore = store).logout()
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("""{"refreshToken":"refresh-token-1"}""", transport.logoutBody)
+        assertEquals("Bearer access-token-1", transport.logoutAuthorization)
+        assertNull(store.readSession())
+    }
+
+    @Test
+    fun logoutWithBlankRefreshTokenOmitsRefreshFieldAndSendsBearerFallback() = runBlocking {
+        val transport = FakeAuthApi()
+        val store =
+            InMemoryRaftAuthSessionStore(
+                storedSession().copy(
+                    accessToken = "access-only-token",
+                    refreshToken = "   ",
+                )
+            )
+        val result = SharedAuthDataSource(transport = transport, sessionStore = store).logout()
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("{}", transport.logoutBody)
+        assertEquals("Bearer access-only-token", transport.logoutAuthorization)
+    }
+
+    @Test
+    fun logoutWithBlankAccessTokenOmitsAuthorizationHeader() = runBlocking {
+        val transport = FakeAuthApi()
+        val store =
+            InMemoryRaftAuthSessionStore(
+                storedSession().copy(
+                    accessToken = "   ",
+                    refreshToken = "refresh-only-token",
+                )
+            )
+        val result = SharedAuthDataSource(transport = transport, sessionStore = store).logout()
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("""{"refreshToken":"refresh-only-token"}""", transport.logoutBody)
+        assertNull(transport.logoutAuthorization)
+    }
+
+    @Test
+    fun logoutUsesLatestRotatedTokensAfterPushUnbind() = runBlocking {
+        val transport = FakeAuthApi()
+        val initial =
+            storedSession().copy(
+                accessToken = "stale-access",
+                refreshToken = "stale-refresh",
+            )
+        val store = InMemoryRaftAuthSessionStore(initial)
+        RaftPushRegistrationLifecycle.install(
+            object : RaftPushRegistrationLifecycleSink {
+                override fun onSessionSaved() = Unit
+                override fun onSessionInvalidated(reason: AuthSessionClearReason) = Unit
+
+                override suspend fun unbindBeforeLogout() {
+                    store.saveSession(
+                        initial.copy(
+                            accessToken = "rotated-access",
+                            refreshToken = "rotated-refresh",
+                        )
+                    )
+                }
+            }
+        )
+
+        try {
+            val result = SharedAuthDataSource(transport = transport, sessionStore = store).logout()
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals("""{"refreshToken":"rotated-refresh"}""", transport.logoutBody)
+            assertEquals("Bearer rotated-access", transport.logoutAuthorization)
+        } finally {
+            RaftPushRegistrationLifecycle.clearForTests()
+        }
+    }
+
+    @Test
     fun switchingAccountClearsWebViewAuthStorageBeforePersistingNewSession() = runBlocking {
         val events = mutableListOf<String>()
         val previousSession = storedSession()
@@ -1546,6 +1630,10 @@ class AuthDataSourceTest {
             private set
         var serversAuthorization: String? = null
             private set
+        var logoutBody: String? = null
+            private set
+        var logoutAuthorization: String? = null
+            private set
         val serversAuthorizations = mutableListOf<String>()
         val serverOrderAuthorizations = mutableListOf<String>()
         var createServerBody: String? = null
@@ -1650,7 +1738,9 @@ class AuthDataSourceTest {
             return refreshResponse
         }
 
-        override suspend fun logout(bodyText: String): AuthNetworkResponse {
+        override suspend fun logout(bodyText: String, authorization: String?): AuthNetworkResponse {
+            logoutBody = bodyText
+            logoutAuthorization = authorization
             onLogoutRequest()
             return logoutResponse
         }

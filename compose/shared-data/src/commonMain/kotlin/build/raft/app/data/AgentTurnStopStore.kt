@@ -19,12 +19,11 @@ import kotlinx.coroutines.launch
     Interrupted,
     Restarted,
     NotRunning,
-    UpgradeRequired,
     ComputerOffline,
     Failed;
 
     val isError: Boolean
-        get() = this == UpgradeRequired || this == ComputerOffline || this == Failed
+        get() = this == ComputerOffline || this == Failed
 }
 
 @RaftCoreInternalApi fun DataResult<AgentTurnStopOutcome>.toAgentTurnStopFeedback(): AgentTurnStopFeedback =
@@ -37,7 +36,6 @@ import kotlinx.coroutines.launch
             }
         is DataResult.Error ->
             when (error.serverCode) {
-                AgentControlErrorCodes.ComputerUpgradeRequired -> AgentTurnStopFeedback.UpgradeRequired
                 AgentControlErrorCodes.ComputerOffline -> AgentTurnStopFeedback.ComputerOffline
                 else -> AgentTurnStopFeedback.Failed
             }

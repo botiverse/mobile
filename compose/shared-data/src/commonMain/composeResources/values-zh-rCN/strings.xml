@@ -4636,7 +4636,6 @@
     <string name="agent_stop_turn_not_running">当前没有在运行。</string>
     <string name="agent_stop_turn_failed">没能停止当前这一轮。</string>
     <string name="agent_stop_turn_restarted">为了停止这一轮，agent 被重启了，对话上下文都还在。</string>
-    <string name="agent_stop_turn_upgrade_required">升级这个 Agent 所在的 Computer，即可只停这一轮。也可以停止整个 Agent。</string>
     <string name="agent_stop_turn_computer_offline">这个 agent 所在的 Computer 离线了。</string>
     <string name="channel_sos_entry">停止所有 Agent</string>
     <string name="channel_sos_stop_all_agents">停止所有 Agent</string>

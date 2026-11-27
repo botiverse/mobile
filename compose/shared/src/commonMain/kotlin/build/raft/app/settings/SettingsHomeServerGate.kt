@@ -162,7 +162,7 @@ internal class AuthChooseServerVisualApi(
     override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> =
         AuthApiResult.Failure(code = 401)
 
-    override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =
+    override suspend fun logout(refreshToken: String, authorization: String?): AuthApiResult<Unit> =
         AuthApiResult.Success(Unit)
 
     override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =

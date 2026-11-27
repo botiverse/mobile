@@ -1468,11 +1468,17 @@ class SharedAuthDataSource(
                             "errorType=${throwable.safeDiagnosticsType()}"
                     )
                 }
+                val latestSession = sessionStore.readSession() ?: session
+                val bearerAuthorization =
+                    latestSession.accessToken.trim().takeIf { it.isNotEmpty() }?.let { "Bearer $it" }
                 serverRevocation =
                     when (
                         val apiResult =
                             runCatchingPreservingCancellation {
-                                api.logout(session.refreshToken)
+                                api.logout(
+                                    refreshToken = latestSession.refreshToken,
+                                    authorization = bearerAuthorization,
+                                )
                             }.getOrElse { throwable ->
                                 diagnosticsLogger(
                                     "auth_logout_api_result result=error " +
@@ -1854,7 +1860,7 @@ interface RaftAuthApi {
         refreshToken: String,
         attempt: AuthRefreshAttemptContext,
     ): AuthApiResult<AuthRefreshResponse> = refresh(refreshToken)
-    suspend fun logout(refreshToken: String): AuthApiResult<Unit>
+    suspend fun logout(refreshToken: String, authorization: String? = null): AuthApiResult<Unit>
     suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>>
     suspend fun serverOrder(authorization: String): AuthApiResult<ServerSwitcherOrderPreference>
     suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer>
@@ -2069,8 +2075,14 @@ class RaftAuthApiClient(
             it.toDomain()
         }
 
-    override suspend fun logout(refreshToken: String): AuthApiResult<Unit> {
-        val response = transport.logout(authJson.encodeToString(AuthLogoutRequestBody(refreshToken = refreshToken)))
+    override suspend fun logout(refreshToken: String, authorization: String?): AuthApiResult<Unit> {
+        val normalizedRefreshToken = refreshToken.trim().takeIf { it.isNotEmpty() }
+        val normalizedAuthorization = authorization?.trim()?.takeIf { it.isNotEmpty() }
+        val response =
+            transport.logout(
+                bodyText = authJson.encodeToString(AuthLogoutRequestBody(refreshToken = normalizedRefreshToken)),
+                authorization = normalizedAuthorization,
+            )
         if (!response.isSuccessful) return response.toAuthApiFailure()
         return AuthApiResult.Success(Unit)
     }
@@ -2459,7 +2471,7 @@ data class AuthRefreshRequestBody(
 
 @kotlinx.serialization.Serializable
 data class AuthLogoutRequestBody(
-    val refreshToken: String
+    val refreshToken: String? = null
 )
 
 /**

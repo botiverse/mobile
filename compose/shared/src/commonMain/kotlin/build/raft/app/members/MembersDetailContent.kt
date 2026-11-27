@@ -328,7 +328,6 @@ private fun membersAgentTurnStopMessages(): Map<AgentTurnStopFeedback, String> =
         AgentTurnStopFeedback.Interrupted to stringResource(Res.string.agent_stop_turn_interrupted),
         AgentTurnStopFeedback.Restarted to stringResource(Res.string.agent_stop_turn_restarted),
         AgentTurnStopFeedback.NotRunning to stringResource(Res.string.agent_stop_turn_not_running),
-        AgentTurnStopFeedback.UpgradeRequired to stringResource(Res.string.agent_stop_turn_upgrade_required),
         AgentTurnStopFeedback.ComputerOffline to stringResource(Res.string.agent_stop_turn_computer_offline),
         AgentTurnStopFeedback.Failed to stringResource(Res.string.agent_stop_turn_failed)
     )

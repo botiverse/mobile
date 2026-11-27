@@ -67,7 +67,7 @@ internal class FakeRefreshAuthApi(
     override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
         error("not used")
 
-    override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =
+    override suspend fun logout(refreshToken: String, authorization: String?): AuthApiResult<Unit> =
         error("not used")
 
     override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =

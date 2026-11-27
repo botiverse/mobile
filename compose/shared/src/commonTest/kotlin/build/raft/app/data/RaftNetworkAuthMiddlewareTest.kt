@@ -634,7 +634,7 @@ class RaftNetworkAuthMiddlewareTest {
             return refreshResult ?: error("refresh should not be called")
         }
 
-        override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =
+        override suspend fun logout(refreshToken: String, authorization: String?): AuthApiResult<Unit> =
             error("not used")
 
         override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =

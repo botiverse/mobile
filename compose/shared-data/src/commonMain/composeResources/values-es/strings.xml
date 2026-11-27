@@ -4457,7 +4457,6 @@
     <string name="agent_stop_turn_not_running">No había nada en ejecución.</string>
     <string name="agent_stop_turn_failed">No se pudo detener el turno actual.</string>
     <string name="agent_stop_turn_restarted">Para detener el turno, se reinició el agente. Conserva el contexto de la conversación.</string>
-    <string name="agent_stop_turn_upgrade_required">Actualiza la computadora de este agente para detener un solo turno. En su lugar, puedes detener todo el agente.</string>
     <string name="agent_stop_turn_computer_offline">La computadora de este agente está sin conexión.</string>
     <string name="channel_sos_entry">Detener todos los agentes</string>
     <string name="channel_sos_stop_all_agents">Detener todos los agentes</string>

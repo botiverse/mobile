@@ -2,6 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.RaftHttpExecutor
@@ -11,6 +12,7 @@ import build.raft.app.network.RaftRequestScheduler
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNotSame
 import kotlin.test.assertTrue
@@ -101,6 +103,91 @@ class SharedRaftNetworkClientTest {
         assertContains(finishLog, "requestId=req_auth_refresh_123")
         logs.forEach { log ->
             assertEquals(false, log.contains("secret-refresh-token"), "auth transport diagnostics must not log request bodies")
+        }
+    }
+
+    @Test
+    fun authTransportLogoutSendsBearerHeaderAndNeverLogsTokenBytes() = runBlocking {
+        val logs = mutableListOf<String>()
+        val executor = RecordingExecutor { ok() }
+        val transport =
+            SharedRaftAuthTransport(
+                baseUrl = "https://api.slock.test/api",
+                executor = executor,
+                warningLogger = logs::add,
+            )
+
+        val response =
+            transport.logout(
+                bodyText = """{"refreshToken":"rt-secret-value"}""",
+                authorization = "Bearer at-secret-jwt-value",
+            )
+
+        assertEquals(200, response.code)
+        val req = executor.requests.single()
+        assertEquals("POST", req.method)
+        assertEquals("https://api.slock.test/api/auth/logout", req.url)
+        assertEquals("Bearer at-secret-jwt-value", req.headers[HEADER_AUTHORIZATION])
+        assertEquals("""{"refreshToken":"rt-secret-value"}""", req.bodyText)
+        assertTrue(logs.any { "path=auth/logout" in it && "authorizationPresent=true" in it })
+        logs.forEach { log ->
+            assertFalse(log.contains("at-secret-jwt-value"), "auth transport diagnostics must not log access tokens")
+            assertFalse(log.contains("rt-secret-value"), "auth transport diagnostics must not log refresh tokens")
+        }
+    }
+
+    @Test
+    fun authTransportLogoutDoesNotTriggerSsoOrDeletionSignalsOn403() = runBlocking {
+        RaftSsoRequiredSignal.Process.reset()
+        RaftAccountDeletionPendingSignal.Process.reset()
+        try {
+            val logs = mutableListOf<String>()
+            val responses =
+                ArrayDeque(
+                    listOf(
+                        RaftHttpExecutorResponse(
+                            code = 403,
+                            bodyText = null,
+                            errorBodyText = """{"error":"Your organization requires SSO.","code":"SSO_REQUIRED","signInUrl":"https://api.raft.build/api/auth/sso/start"}""",
+                        ),
+                        RaftHttpExecutorResponse(
+                            code = 403,
+                            bodyText = null,
+                            errorBodyText = """{"error":"Account deletion is pending.","code":"account_deletion_pending"}""",
+                        ),
+                    ),
+                )
+            val executor = RecordingExecutor { responses.removeFirst() }
+            val transport =
+                SharedRaftAuthTransport(
+                    baseUrl = "https://api.slock.test/api",
+                    executor = executor,
+                    warningLogger = logs::add,
+                )
+
+            val ssoResp = transport.logout(bodyText = "{}", authorization = "Bearer at-sso")
+            val deletionResp = transport.logout(bodyText = "{}", authorization = "Bearer at-del")
+
+            assertEquals(403, ssoResp.code)
+            assertEquals(403, deletionResp.code)
+            assertTrue(logs.none { it.startsWith("sso_required ") })
+            assertTrue(logs.none { it.startsWith("account_deletion_pending ") })
+            // Process signals must still be fresh (untriggered), so a subsequent non-logout 403 still fires.
+            assertTrue(
+                RaftSsoRequiredSignal.Process.observe(
+                    403,
+                    """{"error":"Your organization requires SSO.","code":"SSO_REQUIRED","signInUrl":"https://api.raft.build/api/auth/sso/start"}""",
+                ),
+            )
+            assertTrue(
+                RaftAccountDeletionPendingSignal.Process.observe(
+                    403,
+                    """{"error":"Account deletion is pending.","code":"account_deletion_pending"}""",
+                ),
+            )
+        } finally {
+            RaftSsoRequiredSignal.Process.reset()
+            RaftAccountDeletionPendingSignal.Process.reset()
         }
     }
 
