@@ -53,12 +53,14 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
 import build.raft.app.data.RaftVoiceDictationV2PermitApi
+import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.VoiceDictationButtonGesture
 import build.raft.app.data.VoiceDictationGestureMode
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Error
 import build.raft.app.data.VoiceDictationV2ErrorCode
+import build.raft.app.data.VoiceDictationV2PermitApi
 import build.raft.app.data.VoiceDictationV2PermitFailure
 import build.raft.app.data.VoiceDictationV2Phase
 import build.raft.app.data.VoiceDictationV2Quota
@@ -68,6 +70,7 @@ import build.raft.app.data.VoiceDictationV2StreamConnection
 import build.raft.app.data.VoiceDictationV2StreamConnector
 import build.raft.app.data.normalizeVoiceDictationLanguage
 import build.raft.app.data.offsetMinutesAt
+import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
@@ -303,51 +306,58 @@ internal fun rememberVoiceDictationAwaitingSubmitFinal(host: ThreadVoiceDictatio
 }
 
 /**
- * Creates and lifecycle-manages the conversation's [ThreadVoiceDictationHost]:
- * observes `voice_dictation_v1` reactively, tracks server/channel/thread/sign-out/active changes,
- * and aborts any active microphone capture or WebSocket on owner switch or disposal.
+ * Creates and lifecycle-manages a [ThreadVoiceDictationHost] for any composer surface (chat thread,
+ * feedback form, ticket reply, etc.): observes `voice_dictation_v1` reactively (optionally
+ * prefetching when the resolved server's snapshot is not cached yet), tracks server/channel/thread/
+ * sign-out/active/editable changes, and aborts any active microphone capture or WebSocket on owner
+ * switch, deactivation, or disposal.
  */
 @Composable
-internal fun rememberThreadVoiceDictationHost(
-    sharedStores: RaftSharedStoreProvider,
-    storeScope: RaftShellStoreScope,
+internal fun rememberComposerVoiceDictationHost(
+    serverFeatureFlags: SharedServerFeatureFlags,
+    permitApi: VoiceDictationV2PermitApi,
     active: Boolean,
     currentSession: StoredAuthSession?,
-    currentServerId: String?,
-    headerProjectionServerId: ServerId?,
-    renderedThread: RaftThreadScreenPayload,
-    viewerIsGuest: Boolean,
+    serverId: String?,
+    channelId: String? = null,
+    threadId: String? = null,
+    viewerIsGuest: Boolean = currentSession.threadViewerIsGuest(serverId),
+    surfaceEditable: Boolean = true,
+    prefetchIfUnresolved: Boolean = false,
+    streamConnector: VoiceDictationV2StreamConnector = SharedVoiceDictationStreamConnector,
     audioRecorderProvider: () -> RaftVoiceDictationAudioRecorder? =
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
 ): ThreadVoiceDictationHost {
-    val flagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
-    val effectiveServerId =
-        (headerProjectionServerId?.value ?: currentServerId)
-            ?.trim()
-            ?.takeIf { it.isNotEmpty() }
+    val flagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
+    val effectiveServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
     val serverIdObj = remember(effectiveServerId) { effectiveServerId?.let(::ServerId) }
+    val signedInUserId = currentSession?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
+
+    LaunchedEffect(serverFeatureFlags, serverIdObj, signedInUserId, prefetchIfUnresolved) {
+        if (!prefetchIfUnresolved || signedInUserId == null || serverIdObj == null) return@LaunchedEffect
+        if (!serverFeatureFlags.snapshotFor(serverIdObj).resolved) {
+            runCatchingPreservingCancellation {
+                serverFeatureFlags.prefetch(serverIdObj)
+            }
+        }
+    }
+
     val flagEnabled =
-        remember(sharedStores.serverFeatureFlags, serverIdObj, flagRevision) {
-            sharedStores.serverFeatureFlags.isVoiceDictationEnabled(serverIdObj)
+        remember(serverFeatureFlags, serverIdObj, flagRevision) {
+            serverFeatureFlags.isVoiceDictationEnabled(serverIdObj)
         }
     val recorderAvailable = audioRecorderProvider() != null
-    val signedInUserId = currentSession?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
-    val effectiveChannelId =
-        renderedThread.streamChannelId?.trim()?.takeIf { it.isNotEmpty() }
-            ?: renderedThread.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
-    val effectiveThreadId =
-        renderedThread.parentMessageId?.trim()?.takeIf { it.isNotEmpty() }
-            ?: renderedThread.sourceThreadId?.trim()?.takeIf { it.isNotEmpty() }
+    val effectiveChannelId = channelId?.trim()?.takeIf { it.isNotEmpty() }
+    val effectiveThreadId = threadId?.trim()?.takeIf { it.isNotEmpty() }
     val localeTag = rememberRaftUiLocaleTag()
     val languageHint = remember(localeTag) { normalizeVoiceDictationLanguage(localeTag) }
 
-    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val dictationScope = rememberCoroutineScope()
     val controller =
-        remember(networkClient, dictationScope, audioRecorderProvider) {
+        remember(permitApi, streamConnector, dictationScope, audioRecorderProvider) {
             VoiceDictationV2Controller(
-                permitApi = RaftVoiceDictationV2PermitApi(networkClient),
-                streamConnector = SharedVoiceDictationStreamConnector,
+                permitApi = permitApi,
+                streamConnector = streamConnector,
                 scope = dictationScope,
                 audioRecorderProvider = audioRecorderProvider,
             )
@@ -369,8 +379,8 @@ internal fun rememberThreadVoiceDictationHost(
         }
     }
 
-    LaunchedEffect(controller, active, flagEnabled, viewerIsGuest, recorderAvailable, renderedThread.channelArchived) {
-        if (!active || !flagEnabled || viewerIsGuest || !recorderAvailable || renderedThread.channelArchived) {
+    LaunchedEffect(controller, active, flagEnabled, viewerIsGuest, recorderAvailable, surfaceEditable) {
+        if (!active || !flagEnabled || viewerIsGuest || !recorderAvailable || !surfaceEditable) {
             controller.cancel()
         }
     }
@@ -382,12 +392,13 @@ internal fun rememberThreadVoiceDictationHost(
         effectiveServerId,
         effectiveChannelId,
         effectiveThreadId,
+        signedInUserId,
         languageHint,
         controller,
-        renderedThread.channelArchived,
+        surfaceEditable,
     ) {
         ThreadVoiceDictationHost(
-            flagEnabled = flagEnabled && !renderedThread.channelArchived,
+            flagEnabled = flagEnabled && surfaceEditable && effectiveServerId != null && signedInUserId != null,
             viewerIsGuest = viewerIsGuest,
             recorderAvailable = recorderAvailable,
             serverId = effectiveServerId,
@@ -397,6 +408,82 @@ internal fun rememberThreadVoiceDictationHost(
             controller = controller,
         )
     }
+}
+
+/**
+ * Convenience overload of [rememberComposerVoiceDictationHost] wired to [RaftSharedStoreProvider]
+ * and [RaftShellStoreScope].
+ */
+@Composable
+internal fun rememberComposerVoiceDictationHost(
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    active: Boolean,
+    currentSession: StoredAuthSession?,
+    serverId: String?,
+    channelId: String? = null,
+    threadId: String? = null,
+    viewerIsGuest: Boolean = currentSession.threadViewerIsGuest(serverId),
+    surfaceEditable: Boolean = true,
+    prefetchIfUnresolved: Boolean = false,
+    audioRecorderProvider: () -> RaftVoiceDictationAudioRecorder? =
+        RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
+): ThreadVoiceDictationHost {
+    val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
+    val permitApi = remember(networkClient) { RaftVoiceDictationV2PermitApi(networkClient) }
+    return rememberComposerVoiceDictationHost(
+        serverFeatureFlags = sharedStores.serverFeatureFlags,
+        permitApi = permitApi,
+        active = active,
+        currentSession = currentSession,
+        serverId = serverId,
+        channelId = channelId,
+        threadId = threadId,
+        viewerIsGuest = viewerIsGuest,
+        surfaceEditable = surfaceEditable,
+        prefetchIfUnresolved = prefetchIfUnresolved,
+        audioRecorderProvider = audioRecorderProvider,
+    )
+}
+
+/**
+ * Creates and lifecycle-manages the conversation's [ThreadVoiceDictationHost]:
+ * observes `voice_dictation_v1` reactively, tracks server/channel/thread/sign-out/active changes,
+ * and aborts any active microphone capture or WebSocket on owner switch or disposal.
+ */
+@Composable
+internal fun rememberThreadVoiceDictationHost(
+    sharedStores: RaftSharedStoreProvider,
+    storeScope: RaftShellStoreScope,
+    active: Boolean,
+    currentSession: StoredAuthSession?,
+    currentServerId: String?,
+    headerProjectionServerId: ServerId?,
+    renderedThread: RaftThreadScreenPayload,
+    viewerIsGuest: Boolean,
+    audioRecorderProvider: () -> RaftVoiceDictationAudioRecorder? =
+        RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
+): ThreadVoiceDictationHost {
+    val effectiveServerId = headerProjectionServerId?.value ?: currentServerId
+    val effectiveChannelId =
+        renderedThread.streamChannelId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: renderedThread.parentChannelId?.trim()?.takeIf { it.isNotEmpty() }
+    val effectiveThreadId =
+        renderedThread.parentMessageId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: renderedThread.sourceThreadId?.trim()?.takeIf { it.isNotEmpty() }
+    return rememberComposerVoiceDictationHost(
+        sharedStores = sharedStores,
+        storeScope = storeScope,
+        active = active,
+        currentSession = currentSession,
+        serverId = effectiveServerId,
+        channelId = effectiveChannelId,
+        threadId = effectiveThreadId,
+        viewerIsGuest = viewerIsGuest,
+        surfaceEditable = !renderedThread.channelArchived,
+        prefetchIfUnresolved = false,
+        audioRecorderProvider = audioRecorderProvider,
+    )
 }
 
 /**
