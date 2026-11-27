@@ -64,6 +64,11 @@
       "subagents": false,
       "compactionReported": true
     },
+    "pi-sdk": {
+      "midTurnSteering": true,
+      "subagents": false,
+      "compactionReported": true
+    },
     "qwen": {
       "midTurnSteering": false,
       "subagents": true,

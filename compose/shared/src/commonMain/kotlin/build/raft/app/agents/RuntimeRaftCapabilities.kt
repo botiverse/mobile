@@ -15,7 +15,7 @@ import org.jetbrains.compose.resources.StringResource
  * (contract-cases-drift.yml) fails when slock's table moves on. Update both together.
  */
 internal object RuntimeRaftCapabilityTable {
-    const val SLOCK_SHA = "c0f6195c6efacc2d906c69e28f130f097e12ba05"
+    const val SLOCK_SHA = "6f8d4e06aff9d4655438f2c42f75136ecf26e4d1"
 
     val recommendedRuntimeIds: List<String> = listOf("claude", "codex")
 
@@ -33,6 +33,7 @@ internal object RuntimeRaftCapabilityTable {
             "gemini" to RuntimeRaftCapabilities(midTurnSteering = false, subagents = false, compactionReported = false),
             "opencode" to RuntimeRaftCapabilities(midTurnSteering = false, subagents = false, compactionReported = false),
             "pi" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = false, compactionReported = true),
+            "pi-sdk" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = false, compactionReported = true),
             "qwen" to RuntimeRaftCapabilities(midTurnSteering = false, subagents = true, compactionReported = false),
             "qoder" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = true, compactionReported = false),
             "dsh" to RuntimeRaftCapabilities(midTurnSteering = true, subagents = true, compactionReported = true)

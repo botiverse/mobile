@@ -30,6 +30,7 @@ class RuntimePickerGuidanceTest {
                 "gemini" to RuntimePickerGuidance(limited = true, hint = RuntimeCapabilityHint.NoSteeringNoSubagentsCompactionUnreported),
                 "opencode" to RuntimePickerGuidance(limited = true, hint = RuntimeCapabilityHint.NoSteeringNoSubagentsCompactionUnreported),
                 "pi" to RuntimePickerGuidance(hint = RuntimeCapabilityHint.NoSubagents),
+                "pi-sdk" to RuntimePickerGuidance(hint = RuntimeCapabilityHint.NoSubagents),
                 "qwen" to RuntimePickerGuidance(limited = true, hint = RuntimeCapabilityHint.NoSteeringCompactionUnreported),
                 "qoder" to RuntimePickerGuidance(hint = RuntimeCapabilityHint.CompactionUnreported),
                 "dsh" to RuntimePickerGuidance(),
