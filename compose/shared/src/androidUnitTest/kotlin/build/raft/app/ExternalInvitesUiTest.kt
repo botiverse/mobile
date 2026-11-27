@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
@@ -26,6 +27,7 @@ import build.raft.app.data.ChannelExternalInviteList
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.ExternalInvitePreview
+import build.raft.app.data.InviteConnectableServer
 import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.thread.RaftThreadMemberItem
 import build.raft.app.thread.ThreadMemberRemovalGateState
@@ -380,5 +382,33 @@ class ExternalInvitesUiTest {
         waitForIdle()
         assertEquals(1, count(ExternalInviteReviewGroupInvitedTag))
         assertEquals(0, count(ExternalInvitePrivateWarningTag))
+    }
+
+    @Test
+    fun step1AutoFocusesEmailFieldAndHidesFooterLinkWhenInlineServersShown() = runRobolectricComposeUiTest {
+        setContent {
+            RaftDesignSystemTheme {
+                ExternalInviteSheet(
+                    dialog =
+                        ExternalInviteDialogState(
+                            servers = listOf(InviteConnectableServer(id = "s2", name = "Botiverse", slug = "botiverse", canConnectDirectly = true)),
+                        ),
+                    serverName = "Acme",
+                    willBecomePrivate = false,
+                    joint = false,
+                    channelSlotsLeft = 10,
+                    onConnectServers = {},
+                    onDismiss = {},
+                    onTextChange = {},
+                    onNext = {},
+                    onBack = {},
+                    onSend = {},
+                    onUpgrade = {},
+                )
+            }
+        }
+        waitForIdle()
+        onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+        assertEquals(0, count(ExternalInviteConnectServersLinkTag))
     }
 }

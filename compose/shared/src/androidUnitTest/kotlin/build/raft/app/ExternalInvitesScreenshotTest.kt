@@ -70,6 +70,9 @@ class ExternalInvitesScreenshotTest {
     private val servers = ExternalInviteDialogState(servers = ownServers, serverIds = setOf("s3"))
 
     @Test
+    fun emailsLight() = sheet("channel.external-invite.emails", RaftAppAppearance.Light, emails)
+
+    @Test
     fun serversLight() = sheet("channel.external-invite.servers", RaftAppAppearance.Light, servers, historyHint = true)
 
     @Test
@@ -93,7 +96,7 @@ class ExternalInvitesScreenshotTest {
                     modifier = Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction).wrapContentHeight(Alignment.Bottom),
                     closeLabel = stringResource(Res.string.common_close),
                     footerLink =
-                        if (state.preview == null) {
+                        if (state.preview == null && state.servers.isEmpty()) {
                             RaftDialogSheetLink(label = stringResource(Res.string.channel_external_invite_connect_servers_link), onClick = {})
                         } else {
                             null

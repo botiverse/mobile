@@ -15,10 +15,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
@@ -408,8 +411,9 @@ internal fun ExternalInviteSheet(
             onBack = if (preview != null) onBack else null,
             backLabel = stringResource(Res.string.channel_external_invite_back),
             // Web DialogSheetFooterLink: the centred footer's muted link, a phone sheet's outline button.
+            // Never show alongside an inline "Connect your servers" checklist on the same screen.
             footerLink =
-                if (preview == null && onConnectServers != null) {
+                if (preview == null && onConnectServers != null && dialog.servers.isEmpty()) {
                     RaftDialogSheetLink(
                         label = connectLinkLabel,
                         onClick = onConnectServers,
@@ -432,6 +436,7 @@ internal fun ExternalInviteSheet(
                 channelName = channelName,
                 serversHistoryHint = serversHistoryHint,
                 onServersChange = onServersChange,
+                autoFocusEmail = true,
             )
         }
     }
@@ -450,12 +455,13 @@ internal fun ExternalInviteSheetBody(
     channelName: String = "",
     serversHistoryHint: Boolean = false,
     onServersChange: (Set<String>) -> Unit = {},
+    autoFocusEmail: Boolean = false,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val preview = dialog.preview
     Column(
-        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Web privateWarning (#16635/#16643): on step 1 shown as the rule; on review only when
@@ -478,6 +484,7 @@ internal fun ExternalInviteSheetBody(
                 channelName = channelName,
                 historyHint = serversHistoryHint,
                 slotsText = externalInviteTypedSlotsLine(channelSlotsLeft, dialog.entries.size, dialog.chosenServers.size)?.let { externalInviteSlotsText(it, joint) },
+                autoFocus = autoFocusEmail,
             )
             ExternalInviteServersField(
                 servers = dialog.servers,
@@ -614,7 +621,14 @@ internal fun ExternalInviteEmailsField(
     channelName: String = "",
     historyHint: Boolean = false,
     slotsText: String? = null,
+    autoFocus: Boolean = false,
 ) {
+    val focusRequester = remember { FocusRequester() }
+    if (autoFocus && enabled) {
+        LaunchedEffect(Unit) {
+            runCatching { focusRequester.requestFocus() }
+        }
+    }
     val cleanChannel = channelName.trim().removePrefix("#")
     val hint =
         if (cleanChannel.isNotEmpty()) {
@@ -641,6 +655,7 @@ internal fun ExternalInviteEmailsField(
             placeholder = stringResource(Res.string.channel_external_invite_emails_placeholder),
             enabled = enabled,
             invalid = overBy > 0,
+            inputModifier = if (autoFocus) Modifier.focusRequester(focusRequester) else Modifier,
         )
     }
 }
