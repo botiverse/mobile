@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
@@ -244,6 +245,17 @@ internal fun threadInstallAppActionDialogStore(
         stepUp = stepUp,
     )
 
+/** Unified Add-App title and primary CTA copy ("Add Notion", fallback "Add app"; App detail v6). */
+@Composable
+internal fun localizedAddAppActionLabel(clientName: String?): String {
+    val named = clientName?.trim()?.takeIf { it.isNotEmpty() }
+    return if (named != null) {
+        stringResource(Res.string.thread_action_card_add_app_named, named)
+    } else {
+        stringResource(Res.string.thread_action_card_add_app)
+    }
+}
+
 /** The confirmation as a raft-ui phone sheet (web `NarrowDialogContent narrow="sheet"`). */
 @Composable
 internal fun ThreadInstallAppActionDialog(
@@ -252,12 +264,14 @@ internal fun ThreadInstallAppActionDialog(
 ) {
     // The dialog sits outside the page's design-system theme.
     RaftDesignSystemTheme {
+        val addLabel = localizedAddAppActionLabel(state.card.clientName)
         RaftDialogSheet(
             onDismissRequest = { onIntent(ThreadInstallAppActionIntent.Dismiss) },
-            // A dialog opened by a button takes that button's label.
-            title = stringResource(Res.string.thread_action_card_install_app),
-            commitLabel = stringResource(Res.string.thread_action_card_install_dialog_confirm),
+            // Unified Add-App wording matching web `apps.addDialog.title` ("Add {App}" / "Add app").
+            title = addLabel,
+            commitLabel = addLabel,
             commitEnabled = state.canInstall,
+            commitLoading = state.submitting,
             onCommit = { onIntent(ThreadInstallAppActionIntent.Confirm) },
             closeLabel = stringResource(Res.string.common_close),
             cancelLabel = stringResource(Res.string.common_cancel),
@@ -269,18 +283,21 @@ internal fun ThreadInstallAppActionDialog(
     }
 }
 
-/** The sheet's surface without its window, for screenshot fixtures. */
+/** The sheet's surface without its window, for screenshot fixtures and Compose UI tests. */
 @Composable
 internal fun ThreadInstallAppActionSheetSurfaceForFixture(
     state: ThreadInstallAppActionDialogState,
     modifier: Modifier = Modifier,
+    onIntent: (ThreadInstallAppActionIntent) -> Unit = {},
 ) {
+    val addLabel = localizedAddAppActionLabel(state.card.clientName)
     RaftDialogSheetSurface(
-        title = stringResource(Res.string.thread_action_card_install_app),
-        commitLabel = stringResource(Res.string.thread_action_card_install_dialog_confirm),
+        title = addLabel,
+        commitLabel = addLabel,
         commitEnabled = state.canInstall,
-        onCommit = {},
-        onClose = {},
+        commitLoading = state.submitting,
+        onCommit = { onIntent(ThreadInstallAppActionIntent.Confirm) },
+        onClose = { onIntent(ThreadInstallAppActionIntent.Dismiss) },
         modifier = modifier,
         closeLabel = stringResource(Res.string.common_close),
         closeEnabled = !state.submitting,
@@ -433,16 +450,29 @@ private fun String.codePointList(): List<String> {
     return out
 }
 
+internal const val ThreadAppPermissionSetListTag = "thread_app_permission_set_list"
+
 /**
- * The login scopes and data groups an install records (web `AppPermissionSetList`), as a
- * DescriptionList. Nothing is filtered: a scope or group this build has no copy for is listed by
- * its raw name with "Raft has no description", never dropped (it would still be granted).
+ * The login scopes and data groups an install records (App detail v6; web `AppPermissionSetList`),
+ * as a DescriptionList. Empty sections are omitted rather than rendering "None" placeholders.
+ * Known login scopes render as plain-language descriptions without raw scope tokens; unknown
+ * scopes and data groups keep their raw name plus Raft's "no description" copy so nothing granted
+ * is ever dropped.
  */
 @Composable
 internal fun ThreadAppPermissionSetList(scopes: List<String>, groups: List<String>, modifier: Modifier = Modifier) {
     val scopeRows =
         scopes.map { it.trim() }.filter { it.isNotEmpty() }.distinct().map { scope ->
-            ThreadAppPermissionRow(name = scope, mono = true, description = localizedAppPermissionScopeDescription(scope))
+            val knownDescription = knownAppPermissionScopeDescriptionOrNull(scope)
+            if (knownDescription != null) {
+                ThreadAppPermissionRow(name = null, mono = false, description = knownDescription)
+            } else {
+                ThreadAppPermissionRow(
+                    name = scope,
+                    mono = true,
+                    description = stringResource(Res.string.thread_action_card_permission_set_unrecognized_scope),
+                )
+            }
         }
     val groupRows =
         groups.map { it.trim() }.filter { it.isNotEmpty() }.distinct().map { group ->
@@ -453,50 +483,81 @@ internal fun ThreadAppPermissionSetList(scopes: List<String>, groups: List<Strin
                 description = localizedAppPermissionGroupSummary(group),
             )
         }
-    RaftDescriptionList(modifier = modifier.fillMaxWidth(), direction = RaftDescriptionListDirection.Horizontal) {
-        Item(stringResource(Res.string.thread_action_card_permission_set_login_scopes)) { ThreadAppPermissionRows(scopeRows) }
-        Item(stringResource(Res.string.thread_action_card_permission_set_data_access)) { ThreadAppPermissionRows(groupRows) }
-    }
-}
-
-private data class ThreadAppPermissionRow(val name: String, val mono: Boolean, val description: String)
-
-@Composable
-private fun ThreadAppPermissionRows(rows: List<ThreadAppPermissionRow>) {
-    val colors = RaftTheme.colors
-    val typography = RaftTheme.typography
-    if (rows.isEmpty()) {
-        RaftText(stringResource(Res.string.thread_action_card_permission_set_none), style = typography.callout, color = colors.foregroundHint)
-        return
-    }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        rows.forEach { row ->
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                RaftText(
-                    row.name,
-                    style = if (row.mono) typography.monoMeta else typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                )
-                RaftText(row.description, style = typography.footnote, color = colors.foregroundMuted)
+    if (scopeRows.isEmpty() && groupRows.isEmpty()) return
+    RaftDescriptionList(
+        modifier = modifier.fillMaxWidth().testTag(ThreadAppPermissionSetListTag),
+        direction = RaftDescriptionListDirection.Horizontal,
+    ) {
+        if (scopeRows.isNotEmpty()) {
+            Item(stringResource(Res.string.thread_action_card_permission_set_login_scopes)) {
+                ThreadAppPermissionRows(scopeRows)
+            }
+        }
+        if (groupRows.isNotEmpty()) {
+            Item(stringResource(Res.string.thread_action_card_permission_set_data_access)) {
+                ThreadAppPermissionRows(groupRows)
             }
         }
     }
 }
 
-/** web `OAUTH_SCOPE_PRESENTATION` copy, then the reserved scope, then "no description". */
+private data class ThreadAppPermissionRow(val name: String?, val mono: Boolean, val description: String)
+
 @Composable
-internal fun localizedAppPermissionScopeDescription(scope: String): String =
-    when (scope) {
+private fun ThreadAppPermissionRows(rows: List<ThreadAppPermissionRow>) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        rows.forEach { row ->
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                val heading = row.name
+                if (heading != null) {
+                    RaftText(
+                        heading,
+                        style = if (row.mono) typography.monoMeta else typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                    )
+                    RaftText(row.description, style = typography.footnote, color = colors.foregroundMuted)
+                } else {
+                    RaftText(row.description, style = typography.footnote, color = colors.foreground)
+                }
+            }
+        }
+    }
+}
+
+private val AgentInboundOAuthScopes: Set<String> = setOf("agent:event:write", "agent:notification:write")
+
+/** True when [scopes] includes any agent-inbound scope (web `hasAgentInboundOAuthScope`). */
+internal fun hasAgentInboundOAuthScope(scopes: List<String>): Boolean =
+    scopes.any { it.trim().lowercase() in AgentInboundOAuthScopes }
+
+/**
+ * Plain-language description for every known Raft OAuth scope (web `OAUTH_SCOPE_PRESENTATION` +
+ * `RESERVED_SCOPE_COPY_IDS`), or null for a scope this build does not know.
+ */
+@Composable
+internal fun knownAppPermissionScopeDescriptionOrNull(scope: String): String? =
+    when (scope.trim().lowercase()) {
         "openid" -> stringResource(Res.string.thread_action_card_scope_openid)
         "profile" -> stringResource(Res.string.thread_action_card_scope_profile)
         "email" -> stringResource(Res.string.thread_action_card_scope_email)
         "identity" -> stringResource(Res.string.thread_action_card_scope_identity)
         "agent:read" -> stringResource(Res.string.thread_action_card_scope_agent_read)
+        "agent_computer:read" -> stringResource(Res.string.thread_action_card_scope_agent_computer_read)
+        "app:read" -> stringResource(Res.string.in_app_browser_scope_app_read)
         "agent:event:write" -> stringResource(Res.string.thread_action_card_scope_agent_event_write)
         "agent:notification:write" -> stringResource(Res.string.thread_action_card_scope_agent_notification_write)
         "agent:action_request:write" -> stringResource(Res.string.thread_action_card_scope_agent_action_request_write)
-        else -> stringResource(Res.string.thread_action_card_permission_set_unrecognized_scope)
+        "agent:voice" -> stringResource(Res.string.in_app_browser_scope_agent_voice)
+        else -> null
     }
+
+/** web `OAUTH_SCOPE_PRESENTATION` copy, then the reserved scope, then "no description". */
+@Composable
+internal fun localizedAppPermissionScopeDescription(scope: String): String =
+    knownAppPermissionScopeDescriptionOrNull(scope)
+        ?: stringResource(Res.string.thread_action_card_permission_set_unrecognized_scope)
 
 /** web `permissionGroupLabel`: "<resource> · read", except the reminder-write group. Null when unknown. */
 @Composable

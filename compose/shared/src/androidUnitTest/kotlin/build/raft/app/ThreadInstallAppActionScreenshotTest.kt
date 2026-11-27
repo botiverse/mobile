@@ -39,10 +39,10 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The confirmation an `integration:install_marketplace_app` card opens (web
  * `InstallAppCardDialog`, `narrow="sheet"`): the phone sheet's surface (no window) at 90% of a
- * phone's height, light and dark. One sheet waiting on Install with the bound login scopes and
- * data groups (an unknown scope listed with "no description"), one after a stale-card 409
- * (Install disabled, Raft's copy). Reports land in `build/reports/home-screenshots/`; verify /
- * record as [RaftRobolectricScreenshot].
+ * phone's height, light and dark. One sheet waiting on Add with the bound login scopes (plain
+ * language for known scopes, raw name + "no description" for unknown) and data groups, and one
+ * after a stale-card 409 (Add disabled, Raft's copy). Reports land in
+ * `build/reports/home-screenshots/`; verify / record as [RaftRobolectricScreenshot].
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
