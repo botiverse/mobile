@@ -222,6 +222,7 @@ internal fun buildWebContainerTraceSpan(
         is WebContainerTelemetryEvent.ResourceIntercepted,
         is WebContainerTelemetryEvent.IsolationScopeCleared,
         is WebContainerTelemetryEvent.MediaCapturePermission,
+        is WebContainerTelemetryEvent.MainFrameNavigation,
         -> null
     }
 

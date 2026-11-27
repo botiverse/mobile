@@ -443,27 +443,67 @@ async function main() {
     });
 
     await step("update-prompt-offers-B", async () => {
+      const isStrongPromptAction = (n) =>
+        n.pkg === PKG &&
+        (n.text === "Install now" || n.text === "Update now") &&
+        n.enabled;
+      const isHomeUpdateBanner = (n) =>
+        n.pkg === PKG &&
+        (n.text === "App update available" || n.text === "Update ready to install");
       let relaunched = false;
-      const banner = await waitFor(
-        'the "App update available" or "Update ready to install" prompt on Home',
-        (n) => n.pkg === PKG && (n.text === "App update available" || n.text === "Update ready to install"),
+      const prompt = await waitFor(
+        'the update prompt ("App update available", "Update ready to install", "Update now", or "Install now")',
+        (n) => isStrongPromptAction(n) || isHomeUpdateBanner(n),
         {
-        timeoutMs: 180_000,
-        intervalMs: 3000,
-        onTick: async () => {
-          // The check runs when Home loads; it may have run before the device joined the group.
-          if (!relaunched) {
-            relaunched = true;
-            shell(`am force-stop ${PKG}`);
-            await sleep(1000);
-            launchApp();
-            await sleep(5000);
-          }
+          timeoutMs: 180_000,
+          intervalMs: 3000,
+          onTick: async () => {
+            // The check runs when Home loads; it may have run before the device joined the group.
+            if (!relaunched) {
+              relaunched = true;
+              shell(`am force-stop ${PKG}`);
+              await sleep(1000);
+              launchApp();
+              await sleep(5000);
+            }
+          },
         },
-      });
-      tapNode(banner);
-      const offered = await waitFor(`the update page naming B (${B_CODE})`, (n) => n.pkg === PKG && (n.text.includes(String(B_CODE)) || (B_NAME && n.text.includes(B_NAME))), { timeoutMs: 60_000 });
-      return { offered_text: offered.text };
+      );
+      log(`tapping update prompt "${prompt.text}"`);
+      tapNode(prompt);
+      // An L2 strong-prompt modal (AppShellUpdatePromptHost) can appear between waitFor() and
+      // tapNode(banner) once Wi-Fi preload hits ReadyToInstall, causing the first tap on the
+      // Home banner coordinates to hit the modal scrim and dismiss the modal instead of opening
+      // the update page. Keep polling for the update page (distinguished from the modal by the
+      // absence of "Install now"/"Update now") and tap the modal action or re-tap the Home banner
+      // if we are still on Home.
+      const deadline = Date.now() + 60_000;
+      let list = [];
+      while (Date.now() < deadline) {
+        await sleep(1500);
+        list = nodes();
+        const strongAction = find(list, isStrongPromptAction);
+        if (strongAction) {
+          log(`strong update dialog visible; tapping "${strongAction.text}"`);
+          tapNode(strongAction);
+          continue;
+        }
+        const offered = find(
+          list,
+          (n) => n.pkg === PKG && (n.text.includes(String(B_CODE)) || (B_NAME && n.text.includes(B_NAME))),
+        );
+        if (offered) return { offered_text: offered.text };
+        if (await dismissSystemDialog(list)) continue;
+        if (find(list, isHome)) {
+          const homeBanner = find(list, isHomeUpdateBanner);
+          if (homeBanner) {
+            log(`still on Home after tap; tapping "${homeBanner.text}"`);
+            tapNode(homeBanner);
+          }
+        }
+      }
+      const visible = list.map(label).filter(Boolean).slice(0, 40).join(" | ");
+      fail(`timed out after 60s waiting for the update page naming B (${B_CODE}); on screen: ${visible || "(nothing labelled)"}`);
     });
 
     const installer = { initial_action: null, permission_toggle: false, installer_confirm: false, installer_open: false };
