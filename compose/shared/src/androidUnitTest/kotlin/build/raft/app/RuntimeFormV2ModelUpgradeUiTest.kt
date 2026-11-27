@@ -139,7 +139,10 @@ class RuntimeFormV2ModelUpgradeUiTest {
                             pointer = "/properties/model",
                             options = listOf(RuntimeFormV2Choice("claude-sonnet-4-5", "Claude Sonnet 4.5")),
                             unavailableOptions = unavailableOptions,
-                            status = sourceStatus,
+                            status = sourceStatus?.let { if (it.unavailable) "unavailable" else "fallback" },
+                            reason = sourceStatus?.reason,
+                            retryable = sourceStatus?.retryable,
+                            state = if (sourceStatus?.stale == true) "stale" else null,
                         )
                 ),
         )
@@ -228,7 +231,7 @@ class RuntimeFormV2ModelUpgradeUiTest {
 
     @Test
     fun zhCnSuggestedVersionOutdatedFallbackAndNonOwnerSkipAuthFetch() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.ChineseSimplified.stringDescLocaleType
+        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         val nonOwnerOps = FakeUpgradeOps()
         val ownerOps = FakeUpgradeOps()
         var currentLoaded by mutableStateOf(modelForm(runtimeId = "codex"))
@@ -416,7 +419,7 @@ class RuntimeFormV2ModelUpgradeUiTest {
 
     @Test
     fun dropdownShowsLocalizedUnavailableReasonsBottomRefreshAndNonUpgradeRetryingState() = runRobolectricComposeUiTest {
-        StringDesc.localeType = AppLocale.ChineseSimplified.stringDescLocaleType
+        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
         var refreshing by mutableStateOf(emptySet<String>())
         val refreshed = mutableListOf<String>()
         val loaded =
