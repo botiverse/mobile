@@ -2998,6 +2998,8 @@
     <string name="in_app_browser_sign_in_notice">Una página de este navegador pidió iniciar tu sesión con Raft. Si continúas, Raft enviará la respuesta a %1$s.</string>
     <string name="in_app_browser_sign_in_signed_in_toast">Has iniciado sesión en %1$s con Raft</string>
     <string name="in_app_browser_sign_in_declined">Iniciar sesión con Raft aún no está disponible en el navegador integrado. Abre esta página en tu navegador para iniciar sesión.</string>
+    <string name="in_app_browser_sign_in_declined_recently">Acabas de intentar iniciar sesión con Raft. Espera unos segundos e inténtalo de nuevo, o abre esta página en tu navegador.</string>
+    <string name="in_app_browser_sign_in_resolving">Iniciando sesión con Raft…</string>
     <string name="in_app_browser_sign_in_open_in_browser">Abrir en el navegador</string>
     <string name="in_app_browser_sign_in_signed_in_as">Sesión iniciada como</string>
     <string name="in_app_browser_sign_in_server_label">Raft Server</string>

@@ -1,9 +1,14 @@
 package build.raft.app
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +22,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -45,10 +51,16 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftChoiceList
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftSheet
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.RaftSpinnerVariant
+import build.raft.designsystem.components.RaftToast
 import build.raft.designsystem.components.RaftToastIntent
+import build.raft.designsystem.components.RaftToastSurface
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.delay
+import org.jetbrains.compose.resources.StringResource
 
 /*
  * Native "Log in with Raft" sheet and in-app browser host wiring (#proj-workspace:#356 §5).
@@ -187,6 +199,57 @@ private fun StoredAuthSession.toSignInAccountContext(environmentKey: String): Ra
             },
         environmentKey = environmentKey,
     )
+
+internal const val RAFT_BROWSER_SIGN_IN_RESOLVING_OVERLAY_TAG = "raft_browser_sign_in_resolving_overlay"
+
+internal fun raftBrowserSignInDeclinedStringRes(reason: RaftBrowserSignInDropReason?): StringResource =
+    when (reason) {
+        RaftBrowserSignInDropReason.RaisedRecently -> Res.string.in_app_browser_sign_in_declined_recently
+        else -> Res.string.in_app_browser_sign_in_declined
+    }
+
+@Composable
+internal fun raftBrowserSignInDeclinedMessage(reason: RaftBrowserSignInDropReason?): String =
+    stringResource(raftBrowserSignInDeclinedStringRes(reason))
+
+/**
+ * Lightweight resolving indicator shown over the web viewport while an intercepted Raft Sign-In
+ * request checks the server or prepares consent, absorbing accidental duplicate page taps without
+ * blocking the panel's bottom bar (Close / Back / Reload).
+ */
+@Composable
+internal fun RaftBrowserSignInResolvingOverlay(
+    modifier: Modifier = Modifier,
+) {
+    RaftDesignSystemTheme {
+        Box(
+            modifier =
+                modifier
+                    .fillMaxSize()
+                    .testTag(RAFT_BROWSER_SIGN_IN_RESOLVING_OVERLAY_TAG)
+                    // raw-click: transparent tap sink preventing duplicate page taps while Raft sign-in resolves
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            RaftToast(
+                title = stringResource(Res.string.in_app_browser_sign_in_resolving),
+                surface = RaftToastSurface.Hud,
+                icon = {
+                    RaftSpinner(
+                        size = RaftSpinnerSize.Sm,
+                        variant = RaftSpinnerVariant.Inverse,
+                        contentDescription = "",
+                    )
+                },
+            )
+        }
+    }
+}
 
 /**
  * Hosts the native "Log in with Raft" sheet and its optional `SecondFactorStepUpDialog` over it.

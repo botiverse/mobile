@@ -2998,6 +2998,8 @@
     <string name="in_app_browser_sign_in_notice">這個瀏覽器裡有一個頁面要求使用 Raft 登入。如果繼續，Raft 會把結果傳送到 %1$s。</string>
     <string name="in_app_browser_sign_in_signed_in_toast">已使用 Raft 登入 %1$s</string>
     <string name="in_app_browser_sign_in_declined">內建瀏覽器尚不支援使用 Raft 登入。請在你的瀏覽器中開啟此頁面後登入。</string>
+    <string name="in_app_browser_sign_in_declined_recently">剛剛嘗試過使用 Raft 登入，請稍等幾秒後重試，或在預設瀏覽器中開啟此頁面登入。</string>
+    <string name="in_app_browser_sign_in_resolving">正在使用 Raft 登入…</string>
     <string name="in_app_browser_sign_in_open_in_browser">在瀏覽器中開啟</string>
     <string name="in_app_browser_sign_in_signed_in_as">目前登入帳號：</string>
     <string name="in_app_browser_sign_in_server_label">Raft Server</string>

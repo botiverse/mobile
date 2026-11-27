@@ -7,6 +7,8 @@ import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpIntent
 import build.raft.app.data.SecondFactorStepUpMethod
 import build.raft.app.data.SecondFactorStepUpResult
+import build.raft.app.resources.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -769,5 +771,493 @@ class RaftBrowserSignInSessionTest {
         h.setupOrigin = null
         advanceTimeBy(RAFT_SIGN_IN_RAISE_AGAIN_AFTER_MS + 1L)
         assertFalse(h.session.onMainFrameNavigation(pageAsk(validEntry)))
+    }
+
+    private fun manyServersAccount(
+        count: Int = 20,
+        currentServerId: String? = "srv-1",
+    ): RaftBrowserSignInAccountContext =
+        RaftBrowserSignInAccountContext(
+            accountId = "user-1",
+            signedInAsLabel = "Alice",
+            currentServerId = currentServerId,
+            servers =
+                (1..count).map { index ->
+                    RaftBrowserSignInServerOption(
+                        id = "srv-$index",
+                        name = "Server $index",
+                        slug = "server-$index",
+                    )
+                },
+            environmentKey = "prod",
+        )
+
+    @Test
+    fun serverHintNarrowsLookupToMatchingServersOnly() = runTest {
+        val queriedBySlug = mutableListOf<String>()
+        val slugHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, "$setupLocation&server=server-12") },
+                lookupHandler = { _, serverId, _ ->
+                    queriedBySlug += serverId
+                    RaftBrowserSignInLookupResult.Found(readyClient(serverId = serverId))
+                },
+            )
+        assertTrue(slugHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertEquals(listOf("srv-12"), queriedBySlug)
+        val slugSheet = assertNotNull(slugHarness.session.uiState.value.sheet)
+        val slugMode = assertIs<RaftBrowserSignInSheetMode.ServerReady>(slugSheet.mode)
+        assertEquals(listOf("srv-12"), slugMode.readyServers.map { it.id })
+        assertEquals("srv-12", slugMode.selectedServerId)
+        assertFalse(slugHarness.session.uiState.value.resolving)
+
+        // Matching by server id also queries only that server.
+        val queriedById = mutableListOf<String>()
+        val idHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, "$setupLocation&server=srv-15") },
+                lookupHandler = { _, serverId, _ ->
+                    queriedById += serverId
+                    RaftBrowserSignInLookupResult.Found(readyClient(serverId = serverId))
+                },
+            )
+        assertTrue(idHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertEquals(listOf("srv-15"), queriedById)
+        assertFalse(idHarness.session.uiState.value.resolving)
+
+        // Unknown server hint makes zero lookup calls and fails closed with UnregisteredReturn.
+        val queriedUnknown = mutableListOf<String>()
+        val unknownHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, "$setupLocation&server=no-such-server") },
+                lookupHandler = { _, serverId, _ ->
+                    queriedUnknown += serverId
+                    RaftBrowserSignInLookupResult.Found(readyClient(serverId = serverId))
+                },
+            )
+        assertTrue(unknownHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertTrue(queriedUnknown.isEmpty())
+        assertNull(unknownHarness.session.uiState.value.sheet)
+        assertFalse(unknownHarness.session.uiState.value.resolving)
+        assertEquals(authorizeUrl, unknownHarness.session.uiState.value.declinedAuthorizeUrl)
+        assertEquals(RaftBrowserSignInDropReason.UnregisteredReturn, unknownHarness.session.uiState.value.declinedReason)
+    }
+
+    @Test
+    fun accountModeFastPathCompletesOnFirstReadyAndCancelsSlowLookups() = runTest {
+        val startedSlow = mutableSetOf<String>()
+        val cancelledServers = mutableSetOf<String>()
+        val slowGate = CompletableDeferred<RaftBrowserSignInLookupResult>()
+        val approveCalls = mutableListOf<RaftBrowserSignInApproveRequest>()
+        val h =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                lookupHandler = { _, serverId, _ ->
+                    when (serverId) {
+                        "srv-3" ->
+                            RaftBrowserSignInLookupResult.Found(
+                                readyClient(
+                                    serverId = serverId,
+                                    loginMode = RaftSignInLoginMode.Account,
+                                    availability = RaftSignInAvailability.Suspended,
+                                ),
+                            )
+                        "srv-7", "srv-12" ->
+                            RaftBrowserSignInLookupResult.Found(
+                                readyClient(
+                                    serverId = serverId,
+                                    loginMode = RaftSignInLoginMode.Account,
+                                    availability = RaftSignInAvailability.Ready,
+                                    consent = RaftSignInConsent(granted = true, coversRequested = true),
+                                ),
+                            )
+                        else -> {
+                            startedSlow += serverId
+                            try {
+                                slowGate.await()
+                            } catch (cancelled: CancellationException) {
+                                cancelledServers += serverId
+                                throw cancelled
+                            }
+                        }
+                    }
+                },
+                approveHandler = { req ->
+                    approveCalls += req
+                    DataResult.Content(RaftBrowserSignInApproveOutcome.Approved(code = "acct-fast-1", returnUrl = appReturnUrl))
+                },
+            )
+
+        assertTrue(h.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+
+        assertEquals(1, approveCalls.size)
+        assertTrue(approveCalls.single().confirmSkipped)
+        assertEquals(RaftBrowserSignInApproveTarget.Account, approveCalls.single().target)
+        assertNull(h.session.uiState.value.sheet)
+        assertFalse(h.session.uiState.value.resolving)
+        assertEquals(listOf("Stamp"), h.toasts)
+        assertEquals(
+            listOf("https://stamp.build/auth/callback?next=1&code=acct-fast-1&state=secret-state-xyz"),
+            h.loadedUrls,
+        )
+        assertFalse(slowGate.isCompleted)
+        assertTrue("srv-1" in cancelledServers)
+        assertEquals(startedSlow, cancelledServers)
+
+        // First-time Account-mode login (no consent yet) also opens AccountReady immediately without waiting for slow servers.
+        val firstTimeStartedSlow = mutableSetOf<String>()
+        val firstTimeCancelled = mutableSetOf<String>()
+        val firstTimeGate = CompletableDeferred<RaftBrowserSignInLookupResult>()
+        val firstTimeHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(20),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-7") {
+                        RaftBrowserSignInLookupResult.Found(
+                            readyClient(
+                                serverId = serverId,
+                                loginMode = RaftSignInLoginMode.Account,
+                                availability = RaftSignInAvailability.Ready,
+                                consent = null,
+                            ),
+                        )
+                    } else {
+                        firstTimeStartedSlow += serverId
+                        try {
+                            firstTimeGate.await()
+                        } catch (cancelled: CancellationException) {
+                            firstTimeCancelled += serverId
+                            throw cancelled
+                        }
+                    }
+                },
+            )
+        assertTrue(firstTimeHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertIs<RaftBrowserSignInSheetMode.AccountReady>(firstTimeHarness.session.uiState.value.sheet?.mode)
+        assertFalse(firstTimeHarness.session.uiState.value.resolving)
+        assertFalse(firstTimeGate.isCompleted)
+        assertTrue("srv-1" in firstTimeCancelled)
+        assertEquals(firstTimeStartedSlow, firstTimeCancelled)
+    }
+
+    @Test
+    fun serverModePreferredFastPathSkipsRespectsSelectionRulesAndCompletesPickerOnFallback() = runTest {
+        // 1. Preferred server Ready + consent covered skips immediately and cancels slow siblings.
+        val startedSlow = mutableSetOf<String>()
+        val cancelled = mutableSetOf<String>()
+        val slowGate = CompletableDeferred<RaftBrowserSignInLookupResult>()
+        val skipHarness =
+            Harness(
+                scope = this,
+                account = manyServersAccount(5),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") {
+                        RaftBrowserSignInLookupResult.Found(
+                            readyClient(
+                                serverId = "srv-1",
+                                loginMode = RaftSignInLoginMode.Server,
+                                consent = RaftSignInConsent(granted = true, coversRequested = true),
+                            ),
+                        )
+                    } else {
+                        startedSlow += serverId
+                        try {
+                            slowGate.await()
+                        } catch (c: CancellationException) {
+                            cancelled += serverId
+                            throw c
+                        }
+                    }
+                },
+                approveHandler = {
+                    DataResult.Content(RaftBrowserSignInApproveOutcome.Approved(code = "pref-skip", returnUrl = appReturnUrl))
+                },
+            )
+        assertTrue(skipHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertFalse(slowGate.isCompleted)
+        assertEquals(startedSlow, cancelled)
+        assertFalse(skipHarness.session.uiState.value.resolving)
+        assertEquals(
+            listOf("https://stamp.build/auth/callback?next=1&code=pref-skip&state=secret-state-xyz"),
+            skipHarness.loadedUrls,
+        )
+
+        // 2. Non-preferred server Ready + consent covered MUST NOT skip early while preferred is pending.
+        val preferredGate = CompletableDeferred<RaftBrowserSignInLookupResult>()
+        val approveCalls = mutableListOf<RaftBrowserSignInApproveRequest>()
+        val orderHarness =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") {
+                        preferredGate.await()
+                    } else {
+                        RaftBrowserSignInLookupResult.Found(
+                            readyClient(
+                                serverId = "srv-2",
+                                loginMode = RaftSignInLoginMode.Server,
+                                consent = RaftSignInConsent(granted = true, coversRequested = true),
+                            ),
+                        )
+                    }
+                },
+                approveHandler = { req ->
+                    approveCalls += req
+                    DataResult.Content(RaftBrowserSignInApproveOutcome.Approved(code = "unexpected", returnUrl = appReturnUrl))
+                },
+            )
+        assertTrue(orderHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertTrue(approveCalls.isEmpty())
+        assertTrue(orderHarness.session.uiState.value.resolving)
+        assertNull(orderHarness.session.uiState.value.sheet)
+
+        // Preferred server is Ready without consent -> must open sheet selecting srv-1, never skip to srv-2.
+        preferredGate.complete(RaftBrowserSignInLookupResult.Found(readyClient(serverId = "srv-1", consent = null)))
+        runCurrent()
+        assertTrue(approveCalls.isEmpty())
+        assertFalse(orderHarness.session.uiState.value.resolving)
+        val mode = assertIs<RaftBrowserSignInSheetMode.ServerReady>(orderHarness.session.uiState.value.sheet?.mode)
+        assertEquals(listOf("srv-1", "srv-2"), mode.readyServers.map { it.id })
+        assertEquals("srv-1", mode.selectedServerId)
+
+        // 3. Preferred skip approve failing (403 step-up) fetches remaining servers so the sheet picker is complete.
+        var srv2Calls = 0
+        val srv2FirstAttemptGate = CompletableDeferred<RaftBrowserSignInLookupResult>()
+        val fallbackHarness =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                preferredServerId = "srv-1",
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") {
+                        RaftBrowserSignInLookupResult.Found(
+                            readyClient(
+                                serverId = "srv-1",
+                                loginMode = RaftSignInLoginMode.Server,
+                                consent = RaftSignInConsent(granted = true, coversRequested = true),
+                            ),
+                        )
+                    } else {
+                        srv2Calls += 1
+                        if (srv2Calls == 1) {
+                            srv2FirstAttemptGate.await()
+                        } else {
+                            RaftBrowserSignInLookupResult.Found(readyClient(serverId = "srv-2"))
+                        }
+                    }
+                },
+                approveHandler = {
+                    DataResult.Error(
+                        ScreenError(
+                            code = "second_factor_step_up_required",
+                            retryable = false,
+                            secondFactorStepUp =
+                                SecondFactorStepUpChallenge(
+                                    methods = listOf(SecondFactorStepUpMethod.Totp.wireName),
+                                    serverMessage = "Verify",
+                                ),
+                        ),
+                    )
+                },
+            )
+        assertTrue(fallbackHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertEquals(2, srv2Calls)
+        assertFalse(fallbackHarness.session.uiState.value.resolving)
+        val fallbackMode = assertIs<RaftBrowserSignInSheetMode.ServerReady>(fallbackHarness.session.uiState.value.sheet?.mode)
+        assertEquals(listOf("srv-1", "srv-2"), fallbackMode.readyServers.map { it.id })
+        assertEquals("srv-1", fallbackMode.selectedServerId)
+    }
+
+    @Test
+    fun resolvingStateTracksLifecycleAcrossFetchLookupCompletionDropAndRefusal() = runTest {
+        val fetchGate = CompletableDeferred<RaftAuthorizeResponse?>()
+        val lookupGate = CompletableDeferred<RaftBrowserSignInLookupResult>()
+        val h =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                fetchHandler = { fetchGate.await() },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") lookupGate.await() else RaftBrowserSignInLookupResult.NotAvailable
+                },
+            )
+
+        assertFalse(h.session.uiState.value.resolving)
+        assertTrue(h.session.onMainFrameNavigation(pageAsk()))
+        assertTrue(h.session.uiState.value.resolving)
+        assertNull(h.session.uiState.value.sheet)
+        assertNull(h.session.uiState.value.declinedAuthorizeUrl)
+        assertNull(h.session.uiState.value.declinedReason)
+
+        // Duplicate tap while resolving is dropped as Pending without setting declined notice or clearing resolving.
+        assertTrue(h.session.onMainFrameNavigation(pageAsk()))
+        assertTrue(h.session.uiState.value.resolving)
+        assertNull(h.session.uiState.value.declinedAuthorizeUrl)
+        assertNull(h.session.uiState.value.declinedReason)
+
+        fetchGate.complete(RaftAuthorizeResponse(302, setupLocation))
+        runCurrent()
+        assertTrue(h.session.uiState.value.resolving)
+
+        lookupGate.complete(RaftBrowserSignInLookupResult.Found(readyClient(serverId = "srv-1")))
+        runCurrent()
+        assertFalse(h.session.uiState.value.resolving)
+        assertNotNull(h.session.uiState.value.sheet)
+
+        // Dropping while resolving clears resolving immediately.
+        val dropFetchGate = CompletableDeferred<RaftAuthorizeResponse?>()
+        val dropHarness =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                fetchHandler = { dropFetchGate.await() },
+            )
+        assertTrue(dropHarness.session.onMainFrameNavigation(pageAsk()))
+        assertTrue(dropHarness.session.uiState.value.resolving)
+        dropHarness.session.onPageCommitted()
+        assertFalse(dropHarness.session.uiState.value.resolving)
+        assertNull(dropHarness.session.uiState.value.declinedAuthorizeUrl)
+
+        // Refusing while resolving clears resolving and records ServerRefused.
+        val refuseHarness =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                fetchHandler = { RaftAuthorizeResponse(400, null) },
+            )
+        assertTrue(refuseHarness.session.onMainFrameNavigation(pageAsk()))
+        assertTrue(refuseHarness.session.uiState.value.resolving)
+        runCurrent()
+        assertFalse(refuseHarness.session.uiState.value.resolving)
+        assertEquals(authorizeUrl, refuseHarness.session.uiState.value.declinedAuthorizeUrl)
+        assertEquals(RaftBrowserSignInDropReason.ServerRefused, refuseHarness.session.uiState.value.declinedReason)
+
+        // Consent-skip keeps resolving=true until approve completes, then clears resolving=false.
+        val approveGate = CompletableDeferred<DataResult<RaftBrowserSignInApproveOutcome>>()
+        val skipHarness =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                fetchHandler = { RaftAuthorizeResponse(302, setupLocation) },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") {
+                        RaftBrowserSignInLookupResult.Found(
+                            readyClient(serverId = "srv-1", consent = RaftSignInConsent(granted = true, coversRequested = true)),
+                        )
+                    } else {
+                        RaftBrowserSignInLookupResult.NotAvailable
+                    }
+                },
+                approveHandler = { approveGate.await() },
+            )
+        assertTrue(skipHarness.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertTrue(skipHarness.session.uiState.value.resolving)
+        approveGate.complete(DataResult.Content(RaftBrowserSignInApproveOutcome.Approved(code = "done-1", returnUrl = appReturnUrl)))
+        runCurrent()
+        assertFalse(skipHarness.session.uiState.value.resolving)
+        assertNull(skipHarness.session.uiState.value.sheet)
+    }
+
+    @Test
+    fun cooldownDeclinedReasonUsesCooldownCopyAndPreservesTenSecondGuard() = runTest {
+        assertEquals(10_000L, RAFT_SIGN_IN_RAISE_AGAIN_AFTER_MS)
+        var fetchCalls = 0
+        val h =
+            Harness(
+                scope = this,
+                account = defaultAccount(),
+                fetchHandler = {
+                    fetchCalls += 1
+                    RaftAuthorizeResponse(302, setupLocation)
+                },
+                lookupHandler = { _, serverId, _ ->
+                    if (serverId == "srv-1") RaftBrowserSignInLookupResult.Found(readyClient(serverId = "srv-1"))
+                    else RaftBrowserSignInLookupResult.NotAvailable
+                },
+            )
+
+        assertTrue(h.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertNotNull(h.session.uiState.value.sheet)
+        h.session.cancelSheet()
+        assertNull(h.session.uiState.value.sheet)
+        assertFalse(h.session.uiState.value.resolving)
+
+        // Retrying 8.3 s later (< 10 s cooldown) declines with RaisedRecently and maps to the cooldown string.
+        advanceTimeBy(8_300L)
+        assertTrue(h.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertEquals(1, fetchCalls)
+        assertFalse(h.session.uiState.value.resolving)
+        assertEquals(authorizeUrl, h.session.uiState.value.declinedAuthorizeUrl)
+        assertEquals(RaftBrowserSignInDropReason.RaisedRecently, h.session.uiState.value.declinedReason)
+        assertEquals(
+            Res.string.in_app_browser_sign_in_declined_recently,
+            raftBrowserSignInDeclinedStringRes(h.session.uiState.value.declinedReason),
+        )
+        // Non-cooldown reasons continue to use the general declined string.
+        listOf(
+            null,
+            RaftBrowserSignInDropReason.SignedOut,
+            RaftBrowserSignInDropReason.ServerRefused,
+            RaftBrowserSignInDropReason.UnregisteredReturn,
+            RaftBrowserSignInDropReason.OtherSite,
+        ).forEach { reason ->
+            assertEquals(
+                Res.string.in_app_browser_sign_in_declined,
+                raftBrowserSignInDeclinedStringRes(reason),
+                "reason=$reason",
+            )
+        }
+
+        // Dismissing clears both declinedAuthorizeUrl and declinedReason together.
+        h.session.dismissDeclinedNotice()
+        assertNull(h.session.uiState.value.declinedAuthorizeUrl)
+        assertNull(h.session.uiState.value.declinedReason)
+
+        // Still blocked at 9,999 ms; cleared on page commit; allowed once 10,000 ms have elapsed.
+        advanceTimeBy(1_699L)
+        assertTrue(h.session.onMainFrameNavigation(pageAsk()))
+        assertEquals(RaftBrowserSignInDropReason.RaisedRecently, h.session.uiState.value.declinedReason)
+        h.session.onPageCommitted()
+        assertNull(h.session.uiState.value.declinedAuthorizeUrl)
+        assertNull(h.session.uiState.value.declinedReason)
+
+        advanceTimeBy(2L)
+        assertTrue(h.session.onMainFrameNavigation(pageAsk()))
+        runCurrent()
+        assertEquals(2, fetchCalls)
+        assertNotNull(h.session.uiState.value.sheet)
+        assertNull(h.session.uiState.value.declinedReason)
     }
 }

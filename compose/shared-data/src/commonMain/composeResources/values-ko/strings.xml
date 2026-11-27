@@ -2998,6 +2998,8 @@
     <string name="in_app_browser_sign_in_notice">이 브라우저의 페이지가 Raft로 로그인을 요청했어요. 계속하면 Raft가 응답을 %1$s(으)로 보내요.</string>
     <string name="in_app_browser_sign_in_signed_in_toast">Raft로 %1$s에 로그인했습니다</string>
     <string name="in_app_browser_sign_in_declined">내장 브라우저에서는 아직 Raft로 로그인할 수 없습니다. 로그인하려면 이 페이지를 브라우저에서 여세요.</string>
+    <string name="in_app_browser_sign_in_declined_recently">방금 Raft로 로그인을 시도했습니다. 몇 초 후 다시 시도하거나 브라우저에서 이 페이지를 열어 로그인하세요.</string>
+    <string name="in_app_browser_sign_in_resolving">Raft로 로그인하는 중…</string>
     <string name="in_app_browser_sign_in_open_in_browser">브라우저에서 열기</string>
     <string name="in_app_browser_sign_in_signed_in_as">로그인 계정:</string>
     <string name="in_app_browser_sign_in_server_label">Raft Server</string>

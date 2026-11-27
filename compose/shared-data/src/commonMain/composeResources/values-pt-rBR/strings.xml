@@ -2998,6 +2998,8 @@
     <string name="in_app_browser_sign_in_notice">Uma página neste navegador pediu para entrar com o Raft. Se você continuar, o Raft enviará a resposta para %1$s.</string>
     <string name="in_app_browser_sign_in_signed_in_toast">Você entrou em %1$s com o Raft</string>
     <string name="in_app_browser_sign_in_declined">Entrar com o Raft ainda não está disponível no navegador integrado. Abra esta página no seu navegador para entrar.</string>
+    <string name="in_app_browser_sign_in_declined_recently">Você acabou de tentar entrar com o Raft. Aguarde alguns segundos e tente novamente, ou abra esta página no seu navegador.</string>
+    <string name="in_app_browser_sign_in_resolving">Entrando com o Raft…</string>
     <string name="in_app_browser_sign_in_open_in_browser">Abrir no navegador</string>
     <string name="in_app_browser_sign_in_signed_in_as">Você entrou como</string>
     <string name="in_app_browser_sign_in_server_label">Raft Server</string>
