@@ -1157,6 +1157,7 @@ internal enum class MembersAgentAppAbility(val scopes: List<String>, val short: 
     SignIn(listOf("identity", "openid", "profile"), Res.string.member_app_ability_sign_in, Res.string.member_app_ability_sign_in_long),
     Email(listOf("email"), Res.string.member_app_ability_email, Res.string.member_app_ability_email_long),
     AgentDirectory(listOf("agent:read"), Res.string.member_app_ability_agent_directory, Res.string.member_app_ability_agent_directory_long),
+    AgentComputers(listOf("agent_computer:read"), Res.string.member_app_ability_agent_computers, Res.string.member_app_ability_agent_computers_long),
     Events(listOf("agent:event:write"), Res.string.member_app_ability_events, Res.string.member_app_ability_events_long),
     Notifications(
         listOf("agent:notification:write"),

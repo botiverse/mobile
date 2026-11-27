@@ -3039,6 +3039,7 @@
     <string name="in_app_browser_scope_email">Ler o endereço de e-mail verificado da sua conta do Raft. Sem acesso a mensagens, arquivos ou agentes.</string>
     <string name="in_app_browser_scope_identity">Ler quem você é — pessoa ou agente, seu subject no Raft e em nome de qual servidor/principal você está atuando. Sem acesso a conteúdo.</string>
     <string name="in_app_browser_scope_agent_read">Ler os IDs, identificadores, nomes de exibição e avatares dos agentes do servidor que você autorizar. Esta permissão não permite enviar mensagens nem ler conversas, atividade ou contagens de mensagens não lidas.</string>
+    <string name="in_app_browser_scope_agent_computer_read">Ver em qual computador cada agente do servidor que você autorizar roda, e as pessoas que são proprietárias desses computadores ou os vincularam: seus IDs e nomes, ou só um ID privado para quem a lista de membros oculta do servidor não mostra a você. Esta permissão não mostra o nome nem o hostname de um computador, nem permite usá-lo.</string>
     <string name="in_app_browser_scope_app_read">Vê quais apps estão instalados no servidor que você autorizar: nomes, ícones e páginas iniciais. Esta permissão não permite abri-los nem usá-los.</string>
     <string name="in_app_browser_scope_agent_event_write">Enviar mensagens de evento estruturadas somente para o agente que você autorizar.</string>
     <string name="in_app_browser_scope_agent_notification_write">Enviar mensagens de notificação somente para o agente que você autorizar.</string>
@@ -3756,6 +3757,8 @@
     <string name="settings_labs_failed_load">Não foi possível carregar as configurações de Labs.</string>
     <string name="settings_labs_failed_update">Não foi possível atualizar as configurações de Labs.</string>
     <string name="settings_labs_failed_server_mismatch">A resposta das configurações de Labs não corresponde ao servidor ativo.</string>
+    <string name="settings_labs_desktop_server_views_name">Desktop: uma página por servidor</string>
+    <string name="settings_labs_desktop_server_views_description">O Raft Desktop mantém uma página separada para cada servidor. Isso muda toda a janela do desktop de cada membro, incluindo os outros servidores dele, na próxima vez que abrir o Raft Desktop. A web e o celular não são afetados.</string>
     <string name="settings_server_label_name">Nome</string>
     <string name="settings_server_label_slug">Slug</string>
     <string name="settings_server_placeholder_name">Nome do espaço de trabalho</string>
@@ -5282,12 +5285,14 @@
     <string name="member_app_ability_sign_in">fazer login como este agente</string>
     <string name="member_app_ability_email">ver o e-mail deste agente</string>
     <string name="member_app_ability_agent_directory">ver os agentes do servidor</string>
+    <string name="member_app_ability_agent_computers">ver em qual computador cada agente roda e as pessoas que são proprietárias dele ou o vincularam</string>
     <string name="member_app_ability_events">enviar eventos</string>
     <string name="member_app_ability_notifications">enviar notificações</string>
     <string name="member_app_ability_action_requests">pedir que este agente aja</string>
     <string name="member_app_ability_sign_in_long">Fazer login como este agente</string>
     <string name="member_app_ability_email_long">Ver o e-mail deste agente</string>
     <string name="member_app_ability_agent_directory_long">Ver os agentes deste servidor</string>
+    <string name="member_app_ability_agent_computers_long">Ver em qual computador cada agente roda e as pessoas que são proprietárias dele ou o vincularam</string>
     <string name="member_app_ability_events_long">Enviar eventos a ele</string>
     <string name="member_app_ability_notifications_long">Enviar notificações a ele</string>
     <string name="member_app_ability_action_requests_long">Pedir que ele realize ações</string>

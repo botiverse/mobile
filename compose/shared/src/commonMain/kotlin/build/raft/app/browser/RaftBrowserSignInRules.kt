@@ -43,6 +43,7 @@ internal val RaftSignInVisibleScopes: Set<String> =
         "email",
         "identity",
         "agent:read",
+        "agent_computer:read",
         "app:read",
         "agent:event:write",
         "agent:notification:write",

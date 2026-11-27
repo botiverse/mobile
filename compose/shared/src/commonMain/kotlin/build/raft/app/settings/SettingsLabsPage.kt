@@ -352,6 +352,8 @@ private fun SettingsLabRow(
     val colors = RaftTheme.colors
     val editable = settingsLabEnrollmentEditable(lab, authority, masterEnabled)
     val reason = settingsLabDisabledReason(lab, authority, masterEnabled)
+    val displayName = settingsLabDisplayName(lab)
+    val displayDescription = settingsLabDisplayDescription(lab)
     Row(
         Modifier
             .fillMaxWidth()
@@ -362,14 +364,14 @@ private fun SettingsLabRow(
     ) {
         Column(Modifier.weight(1f)) {
             RaftText(
-                lab.name,
+                displayName,
                 style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
                 color = if (editable) colors.foreground else colors.foregroundDisabled,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             RaftText(
-                lab.description,
+                displayDescription,
                 modifier = Modifier.padding(top = 2.dp),
                 style = RaftTheme.typography.footnote,
                 color = colors.foregroundMuted,
@@ -389,13 +391,31 @@ private fun SettingsLabRow(
             enabled = editable && !mutationPending,
             label =
                 if (saving) {
-                    stringResource(Res.string.settings_labs_saving_enrollment, lab.name)
+                    stringResource(Res.string.settings_labs_saving_enrollment, displayName)
                 } else {
-                    stringResource(Res.string.settings_labs_enrollment_label, lab.name)
+                    stringResource(Res.string.settings_labs_enrollment_label, displayName)
                 },
         )
     }
 }
+
+internal const val DESKTOP_SERVER_VIEWS_LAB_KEY = "desktop_server_views"
+
+/** Web `getServerLabNameMessageId` (slock #17008): catalog overrides localized per lab key, else server name. */
+@Composable
+internal fun settingsLabDisplayName(lab: ServerLab): String =
+    when (lab.key) {
+        DESKTOP_SERVER_VIEWS_LAB_KEY -> stringResource(Res.string.settings_labs_desktop_server_views_name)
+        else -> lab.name
+    }
+
+/** Web `getServerLabDescriptionMessageId` (slock #17008): catalog overrides localized per lab key, else server description. */
+@Composable
+internal fun settingsLabDisplayDescription(lab: ServerLab): String =
+    when (lab.key) {
+        DESKTOP_SERVER_VIEWS_LAB_KEY -> stringResource(Res.string.settings_labs_desktop_server_views_description)
+        else -> lab.description
+    }
 
 private fun SettingsLabDisabledReason.messageRes() =
     when (this) {

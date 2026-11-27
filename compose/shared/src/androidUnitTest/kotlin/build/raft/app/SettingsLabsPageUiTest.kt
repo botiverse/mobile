@@ -13,8 +13,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
+import build.raft.app.data.ServerLab
+import build.raft.app.data.ServerLabState
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.DESKTOP_SERVER_VIEWS_LAB_KEY
 import build.raft.app.settings.SettingsLabsError
 import build.raft.app.settings.SettingsLabsErrorKind
 import build.raft.app.settings.SettingsLabsMasterSwitchTestTag
@@ -103,5 +106,58 @@ class SettingsLabsPageUiTest {
         }
         onNodeWithText("Failed to update Labs settings.").assertExists()
         onNodeWithTag(RaftTraceIdNoteTestTag).assertExists()
+    }
+
+    @Test
+    fun desktopServerViewsLabUsesLocalizedNameAndDescription() = runRobolectricComposeUiTest {
+        val desktopLab =
+            ServerLab(
+                key = DESKTOP_SERVER_VIEWS_LAB_KEY,
+                name = "Raw server name",
+                description = "Raw server description",
+                state = ServerLabState.Open,
+                enrolled = false,
+                effective = false,
+            )
+        val unknownLab =
+            ServerLab(
+                key = "custom_experiment",
+                name = "Custom Experiment",
+                description = "Custom description from server.",
+                state = ServerLabState.Open,
+                enrolled = false,
+                effective = false,
+            )
+        val labsState =
+            loaded.copy(readback = settingsLabsFixtureReadback.copy(labs = listOf(desktopLab, unknownLab)))
+        show(labsState, role = "owner")
+        onNodeWithText("Desktop: one page per server").assertExists()
+        onNodeWithText(
+            "Raft Desktop keeps a separate page for each server. This changes each member's whole desktop window, their other servers included, from the next time they open Raft Desktop. Web and mobile are not affected."
+        ).assertExists()
+        onNodeWithContentDescription("Desktop: one page per server enrollment").assertExists()
+        onNodeWithText("Custom Experiment").assertExists()
+        onNodeWithText("Custom description from server.").assertExists()
+    }
+
+    @Test
+    fun desktopServerViewsLabLocalizesInZhCn() = runRobolectricComposeUiTest {
+        StringDesc.localeType = AppLocale.SimplifiedChinese.stringDescLocaleType
+        val desktopLab =
+            ServerLab(
+                key = DESKTOP_SERVER_VIEWS_LAB_KEY,
+                name = "Raw server name",
+                description = "Raw server description",
+                state = ServerLabState.Open,
+                enrolled = true,
+                effective = true,
+            )
+        val labsState =
+            loaded.copy(readback = settingsLabsFixtureReadback.copy(labs = listOf(desktopLab)))
+        show(labsState, role = "owner")
+        onNodeWithText("桌面端：每个服务器一个页面").assertExists()
+        onNodeWithText(
+            "Raft Desktop 为每个服务器保留单独的页面。这会改变每位成员的整个桌面端窗口（包括他们的其他服务器），在他们下次打开 Raft Desktop 时生效。网页版和手机端不受影响。"
+        ).assertExists()
     }
 }

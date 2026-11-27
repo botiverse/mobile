@@ -3039,6 +3039,7 @@
     <string name="in_app_browser_scope_email">인증된 Raft 계정 이메일 주소를 읽어요. 메시지, 파일, 에이전트에는 접근할 수 없어요.</string>
     <string name="in_app_browser_scope_identity">사용자 신원을 읽어요 — 사람인지 에이전트인지, Raft subject, 어떤 서버/주체로 활동 중인지 등. 콘텐츠에는 접근하지 않아요.</string>
     <string name="in_app_browser_scope_agent_read">승인한 서버에 있는 에이전트의 ID, 핸들, 표시 이름, 아바타를 읽어요. 이 권한으로는 메시지를 보내거나 대화, 활동, 읽지 않은 메시지 수를 읽을 수 없어요.</string>
+    <string name="in_app_browser_scope_agent_computer_read">승인한 서버의 각 에이전트가 어떤 컴퓨터에서 실행되는지와, 그 컴퓨터를 소유하거나 연결한 사람이 누구인지 읽어요. 사람은 ID와 이름으로 표시되지만, 서버가 숨긴 멤버 목록 때문에 나에게 보이지 않는 사람은 비공개 ID로만 표시돼요. 이 권한으로는 컴퓨터의 이름이나 호스트 이름을 볼 수 없고, 컴퓨터를 사용할 수도 없어요.</string>
     <string name="in_app_browser_scope_app_read">승인한 서버에 설치된 앱의 이름, 아이콘, 홈페이지를 확인해요. 이 권한으로는 해당 앱을 열거나 사용할 수 없어요.</string>
     <string name="in_app_browser_scope_agent_event_write">승인한 단 하나의 에이전트에게 구조화된 이벤트 메시지를 보내요.</string>
     <string name="in_app_browser_scope_agent_notification_write">승인한 단 하나의 에이전트에게 알림 메시지를 보내요.</string>
@@ -3756,6 +3757,8 @@
     <string name="settings_labs_failed_load">Labs 설정을 불러오지 못했어요.</string>
     <string name="settings_labs_failed_update">Labs 설정을 업데이트하지 못했어요.</string>
     <string name="settings_labs_failed_server_mismatch">Labs 설정 응답이 현재 서버와 일치하지 않아요.</string>
+    <string name="settings_labs_desktop_server_views_name">데스크톱: 서버당 한 페이지</string>
+    <string name="settings_labs_desktop_server_views_description">Raft Desktop은 서버마다 별도의 페이지를 유지해요. 이 설정은 다음에 Raft Desktop을 열 때부터 각 멤버의 전체 데스크톱 창(다른 서버 포함)에 적용돼요. 웹과 모바일에는 영향을 주지 않아요.</string>
     <string name="settings_server_label_name">이름</string>
     <string name="settings_server_label_slug">슬러그</string>
     <string name="settings_server_placeholder_name">워크스페이스 이름</string>
@@ -5282,12 +5285,14 @@
     <string name="member_app_ability_sign_in">이 에이전트로 로그인</string>
     <string name="member_app_ability_email">이메일 주소 확인</string>
     <string name="member_app_ability_agent_directory">서버의 에이전트 목록 확인</string>
+    <string name="member_app_ability_agent_computers">각 에이전트가 실행되는 컴퓨터와 그 소유자·연결한 사람 확인</string>
     <string name="member_app_ability_events">이벤트 보내기</string>
     <string name="member_app_ability_notifications">알림 보내기</string>
     <string name="member_app_ability_action_requests">작업 요청</string>
     <string name="member_app_ability_sign_in_long">이 에이전트로 로그인</string>
     <string name="member_app_ability_email_long">이 에이전트의 이메일 주소 확인</string>
     <string name="member_app_ability_agent_directory_long">이 서버의 에이전트 목록 확인</string>
+    <string name="member_app_ability_agent_computers_long">각 에이전트가 실행되는 컴퓨터와 그 컴퓨터를 소유하거나 연결한 사람 확인</string>
     <string name="member_app_ability_events_long">이 에이전트에게 이벤트 보내기</string>
     <string name="member_app_ability_notifications_long">이 에이전트에게 알림 보내기</string>
     <string name="member_app_ability_action_requests_long">이 에이전트에게 작업 요청</string>
