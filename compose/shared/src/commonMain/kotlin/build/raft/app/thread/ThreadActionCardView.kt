@@ -22,12 +22,17 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import build.raft.app.RaftCardTreeContext
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
@@ -43,9 +48,8 @@ import build.raft.designsystem.components.RaftMessageActionCardHint
 import build.raft.designsystem.components.RaftMessageActionCardNotice
 import build.raft.designsystem.components.RaftMessageActionCardProperties
 import build.raft.designsystem.components.RaftMessageActionCardProperty
-import build.raft.designsystem.components.RaftMessageActionCardScope
-import build.raft.designsystem.components.RaftMessageActionCardScopeList
 import build.raft.designsystem.components.RaftMessageActionCardStatusTone
+import build.raft.designsystem.text.RaftText
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.ui.semantics.onClick
 import kotlinx.coroutines.flow.first
@@ -154,17 +158,23 @@ internal fun ThreadActionCardView(
             card.actionCardDraftHint()?.let { hint ->
                 RaftMessageActionCardHint(hint, label = stringResource(Res.string.thread_action_card_reason))
             }
-            if (card.isIntegrationApproveLoginAction() || card.isInstallMarketplaceAppAction()) {
-                val scopes =
-                    card.scopes.takeIf { it.isNotEmpty() }
-                        ?: if (card.isInstallMarketplaceAppAction()) emptyList() else listOf("openid", "profile", "identity")
-                if (scopes.isNotEmpty()) RaftMessageActionCardScopeList(
-                    label = stringResource(Res.string.thread_action_card_permissions, scopes.size),
-                    viewportDescription = stringResource(Res.string.thread_action_card_permissions_label),
-                ) {
-                    scopes.forEach { scope ->
-                        RaftMessageActionCardScope(scope.trim(), localizedIntegrationScopeDescription(scope))
+            if (card.isIntegrationApproveLoginAction() || card.isInstallMarketplaceAppAction() || card.isIntegrationRegisterAppAction()) {
+                val scopes = card.actionCardFlatPermissionScopes()
+                if (scopes.isNotEmpty()) {
+                    if (hasAgentInboundOAuthScope(scopes)) {
+                        val inboundAgent =
+                            if (card.isIntegrationApproveLoginAction() || card.isInstallMarketplaceAppAction()) {
+                                card.agentName?.takeIf { it.isNotBlank() }
+                                    ?: card.name.takeIf { it.isNotBlank() && card.isIntegrationApproveLoginAction() }
+                            } else {
+                                null
+                            }
+                        inboundAgent?.let { agent ->
+                            RaftMessageActionCardNotice(stringResource(Res.string.thread_action_card_will_send_to, agent.removePrefix("@")))
+                        }
+                        RaftMessageActionCardNotice(stringResource(Res.string.thread_action_card_agent_inbound_cannot))
                     }
+                    ThreadActionCardFlatPermissions(scopes = scopes)
                 }
             }
             // Web shows the button disabled beside the reason; with no reason to give (the
@@ -288,17 +298,13 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
                 if (humans.isNotEmpty()) add(ThreadActionCardProperty(humansLabel, humanNames(humans)))
                 if (agents.isNotEmpty()) add(ThreadActionCardProperty(agentsLabel, agentNames(agents)))
             }
+        // Approve login / Add app cards: the header title already names the App and Agent; omit
+        // duplicate Service / Agent label-value rows (App detail v6).
         "integration:approve_agent_login",
-        InstallMarketplaceAppActionCardType -> {
-            val service = clientName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.thread_action_card_app)
-            val agent = agentName?.takeIf { it.isNotBlank() }
-                ?: name.takeIf { it.isNotBlank() }
-                ?: stringResource(Res.string.thread_action_card_agent)
-            listOf(
-                ThreadActionCardProperty(stringResource(Res.string.thread_action_card_label_service), service),
-                ThreadActionCardProperty(stringResource(Res.string.thread_action_card_label_agent), "@${agent.removePrefix("@")}", mono = true),
-            )
-        }
+        InstallMarketplaceAppActionCardType -> emptyList()
+        // Register app cards: omit raw developer metadata (Redirect URI, Client key / Client ID,
+        // Service / Agent, and raw scopes, which render flat in plain language below).
+        "integration:register_app" -> registerAppActionCardProperties()
         // web: the client key and the new owner by name, not the stored ids.
         "integration:recover_app_owner" -> {
             val recoverClientKey = clientKey
@@ -322,6 +328,45 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
         else -> genericActionCardProperties()
     }
 }
+
+/** Register-app properties with technical and duplicate metadata rows removed (App detail v6). */
+@Composable
+private fun ThreadActionCard.registerAppActionCardProperties(): List<ThreadActionCardProperty> {
+    val visible =
+        metadataItems.filterNot { item ->
+            normalizeRegisterAppMetadataKey(item.key) in RegisterAppOmittedMetadataKeys
+        }
+    if (visible.isEmpty()) return emptyList()
+    val hidden = stringResource(Res.string.thread_action_card_hidden_value)
+    return visible.map { item ->
+        ThreadActionCardProperty(
+            label = humanizeActionCardMetadataKey(item.key),
+            value = if (item.redacted) hidden else item.value,
+            muted = item.redacted,
+        )
+    }
+}
+
+private fun normalizeRegisterAppMetadataKey(raw: String): String =
+    raw.trim().lowercase().replace("_", "").replace("-", "").replace(" ", "")
+
+private val RegisterAppOmittedMetadataKeys: Set<String> =
+    setOf(
+        "name",
+        "clientname",
+        "service",
+        "agent",
+        "agentname",
+        "agentid",
+        "clientkey",
+        "clientid",
+        "returnurl",
+        "redirecturl",
+        "redirecturi",
+        "callbackurl",
+        "scopes",
+        "unsafedemourloverride",
+    )
 
 /** A type without its own rows lists the server's display items (or the raw action's fields). */
 @Composable
@@ -388,7 +433,7 @@ private fun ThreadActionCard.localizedActionCardVerb(): String =
         "agent:create" -> stringResource(Res.string.thread_action_card_create_agent)
         "channel:add_member" -> stringResource(Res.string.thread_action_card_add_members)
         "integration:approve_agent_login" -> stringResource(Res.string.thread_action_card_approve_login)
-        InstallMarketplaceAppActionCardType -> stringResource(Res.string.thread_action_card_install_app)
+        InstallMarketplaceAppActionCardType -> localizedAddAppActionLabel(clientName)
         "integration:register_app" -> stringResource(Res.string.thread_action_card_register_app)
         "integration:recover_app_owner" -> stringResource(Res.string.thread_action_card_recover_owner)
         "integration:update_app_registration" -> stringResource(Res.string.thread_action_card_unavailable)
@@ -400,11 +445,11 @@ private fun ThreadActionCard.localizedActionCardVerb(): String =
 @Composable
 private fun ThreadActionCard.localizedActionCardPendingLabel(): String =
     when (type) {
-        "channel:add_member" -> stringResource(Res.string.thread_action_card_adding)
-        "integration:approve_agent_login" -> stringResource(Res.string.thread_action_card_approving)
-        InstallMarketplaceAppActionCardType -> stringResource(Res.string.thread_action_card_installing)
-        "integration:register_app",
+        "channel:add_member",
+        InstallMarketplaceAppActionCardType -> stringResource(Res.string.thread_action_card_adding)
+        "integration:approve_agent_login",
         "integration:recover_app_owner" -> stringResource(Res.string.thread_action_card_approving)
+        "integration:register_app" -> stringResource(Res.string.thread_action_card_creating)
         else -> stringResource(Res.string.thread_action_card_creating)
     }
 
@@ -545,27 +590,57 @@ private fun ThreadActionCard.actionCardTitle(): String =
         else -> "Approve ${humanizeActionCardType(type)}"
     }
 
-private fun ThreadActionCard.actionCardDetails(): String =
-    buildList {
-        description?.takeIf { it.isNotBlank() }?.let { add("Description: $it") }
-        if (type.equals("agent:create", ignoreCase = true)) {
-            requiredComputer?.takeIf { it.isNotBlank() }?.let { add("Required computer: $it") }
-            if (requiredComputer.isNullOrBlank()) {
-                suggestedComputer?.takeIf { it.isNotBlank() }?.let { add("Suggested computer: $it") }
+internal const val ThreadActionCardFlatPermissionsTag = "thread_action_card_flat_permissions"
+
+/**
+ * Flat plain-language permission list for approve / add / register App action cards (App detail
+ * v6; web `ActionCardScopes`): rendered directly in the card body without a `Permissions (N)`
+ * collapse/scroll container or raw scope chips for known scopes. Unknown scopes keep their raw
+ * name plus Raft's "no description" copy so nothing granted is ever hidden.
+ */
+@Composable
+internal fun ThreadActionCardFlatPermissions(
+    scopes: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    val normalized = scopes.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+    if (normalized.isEmpty()) return
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    Column(
+        modifier = modifier.fillMaxWidth().testTag(ThreadActionCardFlatPermissionsTag),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        RaftText(
+            text = stringResource(Res.string.thread_action_card_permissions_label),
+            style = typography.footnote.copy(fontWeight = FontWeight.Medium),
+            color = colors.foregroundHint,
+        )
+        normalized.forEach { scope ->
+            val knownDescription = knownAppPermissionScopeDescriptionOrNull(scope)
+            if (knownDescription != null) {
+                RaftText(
+                    text = knownDescription,
+                    style = typography.footnote,
+                    color = colors.foreground,
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    RaftText(
+                        text = scope,
+                        style = typography.monoMeta,
+                        color = colors.foreground,
+                    )
+                    RaftText(
+                        text = stringResource(Res.string.thread_action_card_permission_set_unrecognized_scope),
+                        style = typography.footnote,
+                        color = colors.foregroundMuted,
+                    )
+                }
             }
-            if (description.isNullOrBlank()) add("No description prefilled.")
         }
-        if (initialHumans.isNotEmpty()) add("Humans: ${initialHumans.joinToString(", ")}")
-        if (initialAgents.isNotEmpty()) add("Agents: ${initialAgents.joinToString(", ")}")
-        if (humans.isNotEmpty()) add("Humans: ${humans.joinToString(", ")}")
-        if (agents.isNotEmpty()) add("Agents: ${agents.joinToString(", ")}")
-        if (type.equals("integration:approve_agent_login", ignoreCase = true)) {
-            clientName?.takeIf { it.isNotBlank() }?.let { add("Service: $it") }
-            agentName?.takeIf { it.isNotBlank() }?.let { add("Agent: @${it.removePrefix("@")}") }
-            val scopeLine = scopes.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "-"
-            add("Scopes: $scopeLine")
-        }
-    }.joinToString("\n")
+    }
+}
 
 internal fun ThreadActionCard.actionCardDraftHint(): String? =
     draftHint
@@ -575,11 +650,31 @@ internal fun ThreadActionCard.actionCardDraftHint(): String? =
 private fun ThreadActionCard.isIntegrationApproveLoginAction(): Boolean =
     type.equals("integration:approve_agent_login", ignoreCase = true)
 
-private fun ThreadActionCard.usesGenericActionCardPresentation(): Boolean =
-    !type.equals("channel:create", ignoreCase = true) &&
-        !type.equals("agent:create", ignoreCase = true) &&
-        !type.equals("channel:add_member", ignoreCase = true) &&
-        !isIntegrationApproveLoginAction()
+private fun ThreadActionCard.isIntegrationRegisterAppAction(): Boolean =
+    type.equals("integration:register_app", ignoreCase = true)
+
+private fun ThreadActionCard.actionCardFlatPermissionScopes(): List<String> {
+    val raw =
+        when {
+            isIntegrationApproveLoginAction() ->
+                scopes.takeIf { it.isNotEmpty() } ?: listOf("openid", "profile", "identity")
+            isInstallMarketplaceAppAction() ->
+                scopes
+            isIntegrationRegisterAppAction() ->
+                scopes.takeIf { it.isNotEmpty() } ?: metadataItemScopes()
+            else -> emptyList()
+        }
+    return raw.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+}
+
+private fun ThreadActionCard.metadataItemScopes(): List<String> =
+    metadataItems
+        .firstOrNull { it.key.equals("scopes", ignoreCase = true) }
+        ?.value
+        ?.split(",")
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        .orEmpty()
 
 internal fun humanizeActionCardMetadataKey(raw: String): String {
     val clean = raw.trim()
@@ -621,23 +716,6 @@ internal fun humanizeActionCardMetadataKey(raw: String): String {
 
 internal fun humanizeActionCardType(raw: String): String =
     humanizeActionCardMetadataKey(raw.substringAfter(':', raw))
-
-private fun integrationScopeDescription(scope: String): String =
-    when (scope.trim().lowercase()) {
-        "identity" ->
-            "Reads who you are - human or agent, your Raft subject, and which server/principal you are acting as. No content access."
-        "openid" ->
-            "Signs you in with Raft and issues a stable identity token. Authentication only."
-        "profile" ->
-            "Reads your basic profile fields, such as display name. No access to messages, files, or agents."
-        else ->
-            "Allows the app to request this named permission from Raft."
-    }
-
-@Composable
-private fun localizedIntegrationScopeDescription(scope: String): String =
-    // web ActionCardScopes: the same copy as the install confirmation's permission set.
-    localizedAppPermissionScopeDescription(scope.trim().lowercase())
 
 private fun ThreadActionCard.actionCardCommittedLabel(): String =
     buildString {
