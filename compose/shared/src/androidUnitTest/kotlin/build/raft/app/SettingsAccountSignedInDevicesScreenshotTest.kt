@@ -47,7 +47,7 @@ import org.robolectric.shadows.ShadowDialog
  *    the Computers note, Sign out of all other devices, then two Apps with Revoke;
  *  - `settings.account.signed-in-devices.failed`: the first read failed (Try again);
  *  - `settings.account.sign-out-device.choice{,.dark}`: the question with Sign out / I no longer
- *    have it (1 computer and 2 agent keys), the second chosen;
+ *    have it (1 computer; agent keys are never named), the second chosen;
  *  - `settings.account.sign-out-device.single`: nothing to disconnect, one question;
  *  - `settings.account.sign-out-device.leftovers`: only what signed-out devices approved;
  *  - `settings.account.sign-out-device.reauth`: the password, a wrong one under the field;

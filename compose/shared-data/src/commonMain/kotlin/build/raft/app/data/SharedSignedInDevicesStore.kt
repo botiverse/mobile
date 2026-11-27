@@ -28,6 +28,8 @@ import kotlinx.coroutines.launch
     val target: SignedInDevicesSignOutTarget,
     val reach: SignedInDeviceLostReach,
     val reason: SignedInDeviceRevokeReason = SignedInDeviceRevokeReason.SignOut,
+    /** Named disconnect preview for `lost_device` (`GET /api/me/sessions/disconnect-preview`); null while loading, unread, or failed. */
+    val disconnectPreview: SecurityRevokePreview? = null,
     val submitting: Boolean = false,
     /** The last try failed: "Couldn't sign out. Try again." in the dialog. */
     val failed: Boolean = false,
@@ -164,6 +166,8 @@ private sealed interface SignedInDevicesSendOutcome {
 
     private var refreshJob: Job? = null
     private var commitJob: Job? = null
+    private var previewJob: Job? = null
+    private var previewGeneration: Long = 0
     private var pendingReauth: CompletableDeferred<Boolean>? = null
     private var passwordConfigured: Boolean? = null
     private var email: String? = null
@@ -185,8 +189,10 @@ private sealed interface SignedInDevicesSendOutcome {
                 state.copy(signOut = dialog.copy(reason = intent.reason))
             }
             SharedSignedInDevicesIntent.Confirm -> confirm()
-            SharedSignedInDevicesIntent.CloseSignOut -> update { state ->
-                if (state.signOut?.submitting == true) state else state.copy(signOut = null)
+            SharedSignedInDevicesIntent.CloseSignOut -> {
+                if (mutableState.value.signOut?.submitting == true) return
+                cancelDisconnectPreview()
+                update { it.copy(signOut = null) }
             }
             is SharedSignedInDevicesIntent.ReauthInput -> update { state ->
                 val dialog = state.reauth?.takeIf { !it.submitting } ?: return@update state
@@ -218,6 +224,7 @@ private sealed interface SignedInDevicesSendOutcome {
                         val list = result.data
                         update { state ->
                             if (list == null) {
+                                cancelDisconnectPreview()
                                 SharedSignedInDevicesState(unavailable = true)
                             } else {
                                 state.copy(list = list, unavailable = false, loading = false, loadFailed = false)
@@ -230,6 +237,12 @@ private sealed interface SignedInDevicesSendOutcome {
             }
     }
 
+    private fun cancelDisconnectPreview() {
+        previewGeneration++
+        previewJob?.cancel()
+        previewJob = null
+    }
+
     private fun openSignOut(target: SignedInDevicesSignOutTarget) {
         val list = mutableState.value.list ?: return
         if (mutableState.value.signOut != null) return
@@ -238,7 +251,26 @@ private sealed interface SignedInDevicesSendOutcome {
                 is SignedInDevicesSignOutTarget.One -> target.device.lostDeviceReach
                 else -> list.othersLostDeviceReach
             }
+        cancelDisconnectPreview()
         update { it.copy(signOut = SignedInDevicesSignOutDialog(target = target, reach = reach)) }
+        // Read the named preview only when at least one Computer is counted (`slock#17081`).
+        if (reach.computers <= 0) return
+        val generation = ++previewGeneration
+        val previewTarget =
+            when (target) {
+                is SignedInDevicesSignOutTarget.One -> SignedInDisconnectPreviewTarget.LostDeviceOne(target.device.id)
+                SignedInDevicesSignOutTarget.Others,
+                SignedInDevicesSignOutTarget.Leftovers -> SignedInDisconnectPreviewTarget.LostDeviceOthers
+            }
+        previewJob =
+            scope.launch {
+                val preview = dataSource.disconnectPreview(previewTarget)
+                if (previewGeneration != generation) return@launch
+                update { state ->
+                    val dialog = state.signOut?.takeIf { it.target == target } ?: return@update state
+                    state.copy(signOut = dialog.copy(disconnectPreview = preview))
+                }
+            }
     }
 
     private fun confirm() {
@@ -258,12 +290,14 @@ private sealed interface SignedInDevicesSendOutcome {
                 when (outcome) {
                     is SignedInDevicesSendOutcome.Done -> {
                         val notice = outcome.notice
+                        cancelDisconnectPreview()
                         update { it.copy(signOut = null, notice = notice) }
                         refresh()
                     }
                     is SignedInDevicesSendOutcome.Failed ->
                         if (outcome.serverCode in SIGNED_IN_DEVICES_GONE_CODES) {
                             // Gone meanwhile (signed out elsewhere, expired): the list catches up, nothing to say.
+                            cancelDisconnectPreview()
                             update { it.copy(signOut = null) }
                             refresh()
                         } else {

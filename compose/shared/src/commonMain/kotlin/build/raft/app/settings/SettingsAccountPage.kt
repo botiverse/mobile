@@ -57,6 +57,7 @@ import build.raft.app.SecondFactorStepUpDialog
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.data.ACCOUNT_ACTION_PASSWORD_CHANGE
 import build.raft.app.data.AccountPasswordChangeRequest
 import build.raft.app.data.AccountProfileUpdateRequest
 import build.raft.app.data.AccountProviderLinkStartRequest
@@ -95,6 +96,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.background
@@ -354,12 +356,45 @@ private fun SettingsAccountScreen() {
     val appLoginsState by appLoginsStore.state.collectAsState()
     val passwordSetupStore = rememberSettingsAccountPasswordSetupStore(loginSecurityNetworkClient)
     val passwordSetupState by passwordSetupStore.state.collectAsState()
+    val passwordDisconnectPreviewStore = rememberSettingsPasswordDisconnectPreviewStore(loginSecurityNetworkClient)
+    val passwordDisconnectPreviewState by passwordDisconnectPreviewStore.state.collectAsState()
+    var passwordFormOpen by remember { mutableStateOf(false) }
+    var passwordChangeRevision by remember { mutableStateOf(0) }
+    var passwordChangeWasRunning by remember { mutableStateOf(false) }
     // The proof dialogs need the account's password state (GET /auth/identities) and its address.
     val accountSnapshot = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
     val accountPasswordConfigured = accountSnapshot?.passwordConfigured
     val accountEmail = accountSnapshot?.profile?.email ?: session.value?.user?.email
     LaunchedEffect(signedInDevicesStore, accountPasswordConfigured, accountEmail) {
         signedInDevicesStore.dispatch(SharedSignedInDevicesIntent.AccountKnown(accountPasswordConfigured, accountEmail))
+    }
+    // Re-read the password-change disconnect preview when a password change finishes without error.
+    val passwordActionState = settingsState.actionState
+    val passwordChangeRunning =
+        passwordActionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE && passwordActionState.inProgress
+    val passwordChangeSucceeded =
+        passwordActionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE &&
+            !passwordActionState.inProgress &&
+            passwordActionState.errorCode == null &&
+            passwordActionState.screenError == null &&
+            passwordActionState.permissionBlocker == null
+    LaunchedEffect(passwordChangeRunning, passwordChangeSucceeded) {
+        if (passwordChangeWasRunning && passwordChangeSucceeded) {
+            passwordChangeRevision++
+        }
+        passwordChangeWasRunning = passwordChangeRunning
+    }
+    val passwordPreviewKey =
+        if (passwordFormOpen && accountPasswordConfigured == true) {
+            "password_change:$passwordChangeRevision"
+        } else {
+            null
+        }
+    LaunchedEffect(passwordDisconnectPreviewStore, passwordPreviewKey) {
+        passwordDisconnectPreviewStore.sync(passwordPreviewKey)
+    }
+    DisposableEffect(passwordDisconnectPreviewStore) {
+        onDispose { passwordDisconnectPreviewStore.sync(null) }
     }
     // Web AccountSection `handleDisconnectProvider`: Disconnect refused for the last sign-in of an
     // account without a password reads the sign-in methods again, so the confirm turns into
@@ -457,6 +492,11 @@ private fun SettingsAccountScreen() {
                     passwordConfigured = accountPasswordConfigured,
                     state = passwordSetupState,
                     dispatch = passwordSetupStore::dispatch,
+                ),
+            passwordDisconnectPreview =
+                SettingsPasswordDisconnectPreviewUi(
+                    preview = passwordDisconnectPreviewState.preview,
+                    onFormOpenChanged = { passwordFormOpen = it },
                 ),
             onEvent = { action, value ->
                 handleStandaloneAccountAction(
@@ -562,6 +602,8 @@ internal fun SettingsAccountContent(
      * AccountSection); null (visual fixtures): Change password and the plain Disconnect confirm.
      */
     passwordSetup: SettingsAccountPasswordSetupUi? = null,
+    /** Named disconnect preview for Change password (`GET /api/me/sessions/disconnect-preview?action=password_change`). */
+    passwordDisconnectPreview: SettingsPasswordDisconnectPreviewUi? = null,
     onEvent: (String, String?) -> Unit
 ) {
     val localizedPayload = payload.localizedPresentationCopy()
@@ -598,6 +640,7 @@ internal fun SettingsAccountContent(
                         payload = localizedPayload,
                         onPasswordChange = onPasswordChange,
                         passwordSetup = passwordSetup,
+                        passwordDisconnectPreview = passwordDisconnectPreview,
                     )
                 }
             }
@@ -944,6 +987,7 @@ private fun SettingsAccountPasswordCard(
     payload: RaftSettingsAccountPayload,
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit,
     passwordSetup: SettingsAccountPasswordSetupUi?,
+    passwordDisconnectPreview: SettingsPasswordDisconnectPreviewUi?,
 ) {
     val passwordExpandedState = remember(payload.passwordExpanded) { mutableStateOf(payload.passwordExpanded) }
     val currentPasswordState = remember { mutableStateOf(TextFieldValue("")) }
@@ -956,6 +1000,14 @@ private fun SettingsAccountPasswordCard(
     // stands in for Change password and its form.
     val setPasswordUi =
         passwordSetup?.takeIf { settingsAccountPasswordRow(it.passwordConfigured) == SettingsAccountPasswordRow.SetPassword }
+    val showPasswordForm = setPasswordUi == null && passwordExpandedState.value
+    val currentOnFormOpenChanged by rememberUpdatedState(passwordDisconnectPreview?.onFormOpenChanged)
+    LaunchedEffect(showPasswordForm) {
+        currentOnFormOpenChanged?.invoke(showPasswordForm)
+    }
+    DisposableEffect(Unit) {
+        onDispose { currentOnFormOpenChanged?.invoke(false) }
+    }
     RaftListRowGroup(Modifier.fillMaxWidth().settingsSearchAnchor("password", SettingsSearchCardShape)) {
         if (setPasswordUi != null) {
             SettingsAccountSetPasswordRow(
@@ -990,6 +1042,7 @@ private fun SettingsAccountPasswordCard(
                         newPassword = newPasswordState.value,
                         confirmPassword = confirmPasswordState.value,
                         draftError = passwordDraftError.value,
+                        disconnectPreview = passwordDisconnectPreview?.preview,
                         onCurrentPasswordChange = {
                             currentPasswordState.value = it
                             passwordDraftError.value = null
@@ -1148,6 +1201,7 @@ private fun SettingsPasswordForm(
     newPassword: TextFieldValue,
     confirmPassword: TextFieldValue,
     draftError: String?,
+    disconnectPreview: build.raft.app.data.SecurityRevokePreview?,
     onCurrentPasswordChange: (TextFieldValue) -> Unit,
     onNewPasswordChange: (TextFieldValue) -> Unit,
     onConfirmPasswordChange: (TextFieldValue) -> Unit,
@@ -1202,12 +1256,7 @@ private fun SettingsPasswordForm(
                 visualTransformation = PasswordVisualTransformation()
             )
         }
-        RaftBanner(
-            description = stringResource(Res.string.settings_account_device_login_notice),
-            status = RaftBannerStatus.Info,
-            size = RaftBannerSize.Sm,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        SettingsPasswordDisconnectNotice(preview = disconnectPreview)
         draftError?.let { SettingsAccountWarning(it) }
         payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let {
             SettingsAccountWarning(stringResource(Res.string.settings_account_password_update_failed, it))
