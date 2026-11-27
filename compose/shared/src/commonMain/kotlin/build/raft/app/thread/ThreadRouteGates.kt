@@ -43,6 +43,8 @@ import kotlinx.coroutines.flow.map
 
 private const val ThreadPerformanceSlowThresholdMs = 4L
 internal enum class ThreadTransientBackTarget(val label: String) {
+    /** Reply thread head pull-down over the replies and search bar: Back closes it first. */
+    OriginalPullDown("thread_original_pull_down"),
     /** Task v2: the Tasks / Files cards covering the conversation; Back closes them all (web). */
     SideCards("conversation_side_cards"),
     ShareSelection("thread_share_selection"),
@@ -54,9 +56,11 @@ internal fun threadTransientBackTarget(
     shareSelectionActive: Boolean,
     inlineSearchVisible: Boolean,
     sideCardsOpen: Boolean = false,
+    originalPullDownOpen: Boolean = false,
 ): ThreadTransientBackTarget? =
     when {
         activeModal != null -> null
+        originalPullDownOpen -> ThreadTransientBackTarget.OriginalPullDown
         // The cards cover the conversation: what is under them (a selection) waits its turn.
         sideCardsOpen -> ThreadTransientBackTarget.SideCards
         shareSelectionActive -> ThreadTransientBackTarget.ShareSelection

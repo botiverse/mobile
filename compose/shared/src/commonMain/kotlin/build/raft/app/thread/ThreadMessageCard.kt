@@ -357,6 +357,7 @@ private data class ThreadMessageCardData(
     val replyMetadata: ThreadReplyMetadata,
     val hasReplyDraft: Boolean,
     val sourceTasks: List<ThreadMessageSourceTaskItem> = emptyList(),
+    val foldDoneTasks: Boolean = false,
     val actionCard: ThreadActionCard?,
     val messageIndex: Int,
     val highlightedMentions: Set<String>,
@@ -458,6 +459,8 @@ fun ThreadMessageCard(
     hasReplyDraft: Boolean = false,
     /** Task v2: the tasks listed under the message (web `TaskChipList`); tapping one opens it. */
     sourceTasks: List<ThreadMessageSourceTaskItem> = emptyList(),
+    /** Reply thread's first message: Done and Closed fold behind one row while any task is open. */
+    foldDoneTasks: Boolean = false,
     onOpenSourceTask: (String) -> Unit = {},
     actionCard: ThreadActionCard? = message.threadActionCard(),
     messageIndex: Int = -1,
@@ -551,6 +554,7 @@ fun ThreadMessageCard(
                 hasReplyDraft = hasReplyDraft,
                 // A retracted message keeps none of its content (web hides the list with it).
                 sourceTasks = if (retracted) emptyList() else sourceTasks,
+                foldDoneTasks = foldDoneTasks,
                 actionCard = if (retracted) null else actionCard,
                 messageIndex = messageIndex,
                 highlightedMentions = highlightedMentions,
@@ -1983,7 +1987,8 @@ private fun ThreadMessageCardContent(
                                             agentStatusResolver = agentStatusResolver,
                                             onOpenTask = onOpenSourceTask,
                                             // web `mt-1.5`: 6dp under the body (the column adds 4).
-                                            modifier = Modifier.padding(top = RaftAppSpacing.Xxs)
+                                            modifier = Modifier.padding(top = RaftAppSpacing.Xxs),
+                                            foldDone = data.foldDoneTasks,
                                         )
                                     }
                                 }

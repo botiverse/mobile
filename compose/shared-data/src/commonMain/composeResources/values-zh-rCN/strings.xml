@@ -679,6 +679,14 @@
     <string name="thread_title_original_a11y">消息列：%1$s：%2$s</string>
     <string name="thread_title_original_deleted_a11y">消息列：原消息已删除</string>
     <string name="thread_title_original_unavailable_a11y">消息列：无法查看原消息</string>
+    <string name="thread_header_summary_tasks_one">1 个任务</string>
+    <string name="thread_header_summary_tasks_many">%1$d 个任务</string>
+    <string name="thread_header_summary_tasks_done">任务都已完成</string>
+    <string name="thread_header_summary_waiting_on_you">%1$d 个等你</string>
+    <string name="thread_header_show_original">展开第一条消息和它的任务</string>
+    <string name="thread_header_original_panel_a11y">第一条消息和它的任务</string>
+    <string name="thread_header_original_no_tasks">这条消息还没有任务</string>
+    <string name="thread_header_jump_to_original">跳到这条消息</string>
     <string name="thread_channel_title">频道</string>
     <string name="thread_channel_access_lost">你已不在这个频道中</string>
     <string name="thread_direct_message_title">私信</string>
@@ -2307,6 +2315,7 @@
     <string name="tasks_source_list_open_no_number">打开任务：%1$s</string>
     <string name="tasks_source_list_reply_count_one">任务里有 1 条讨论</string>
     <string name="tasks_source_list_reply_count_many">任务里有 %1$d 条讨论</string>
+    <string name="tasks_source_list_done_fold">%1$d 个已完成</string>
     <string name="task_conversation_follow">关注任务</string>
     <string name="task_conversation_unfollow">取消关注任务</string>
     <string name="task_conversation_deleted">该任务已被删除</string>

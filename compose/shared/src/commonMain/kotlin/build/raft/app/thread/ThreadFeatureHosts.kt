@@ -530,6 +530,11 @@ internal fun rememberThreadProvidedValues(
                     flags = sharedStores.serverFeatureFlags,
                     serverId = headerProjectionServerId,
                 ),
+            LocalTaskWaitingOnYouEnabled provides
+                rememberTaskWaitingOnYouEnabled(
+                    flags = sharedStores.serverFeatureFlags,
+                    serverId = headerProjectionServerId ?: currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+                ),
             LocalThreadQuoteReplyHost provides quoteReplyHost,
             LocalThreadVoiceDictationHost provides voiceDictationHost,
             LocalRaftViewerServerLogos provides viewerServerLogos,

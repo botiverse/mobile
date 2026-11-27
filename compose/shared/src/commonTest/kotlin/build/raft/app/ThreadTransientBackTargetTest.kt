@@ -19,6 +19,34 @@ class ThreadTransientBackTargetTest {
     }
 
     @Test
+    fun originalPullDownConsumesBackBeforeSideCardsSelectionAndInlineSearch() {
+        assertEquals(
+            ThreadTransientBackTarget.OriginalPullDown,
+            threadTransientBackTarget(
+                activeModal = null,
+                shareSelectionActive = true,
+                inlineSearchVisible = true,
+                sideCardsOpen = true,
+                originalPullDownOpen = true,
+            )
+        )
+    }
+
+    @Test
+    fun activeModalYieldsNoTransientBackTargetEvenWhenOriginalPullDownIsOpen() {
+        assertEquals(
+            null,
+            threadTransientBackTarget(
+                activeModal = "settings",
+                shareSelectionActive = false,
+                inlineSearchVisible = false,
+                sideCardsOpen = false,
+                originalPullDownOpen = true,
+            )
+        )
+    }
+
+    @Test
     fun inlineSearchConsumesBackWhenSelectionIsInactive() {
         assertEquals(
             ThreadTransientBackTarget.InlineSearch,

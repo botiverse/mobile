@@ -52,6 +52,7 @@ import build.raft.app.members.iconName
 import build.raft.app.RaftMonoFamily
 import build.raft.app.shell.RaftNativeNavBarAction
 import build.raft.app.shell.RaftNativeNavBarPlacement
+import build.raft.app.shell.RaftNativeNavBarTitleChevron
 import build.raft.app.shell.RaftNativeNavBarTitleExtras
 import build.raft.app.shell.RaftNativeNavBarTitleLeading
 import build.raft.app.RaftNotificationLevelDialog
@@ -176,6 +177,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -369,6 +371,8 @@ internal fun ThreadPageHeader(
     nativeBackIntercepts: Boolean = false,
     /** Server-driven primary action selection on phone headers (`mobile_phone_header_action_v0`). */
     phoneHeaderPrimaryConfig: PhoneConversationHeaderPrimaryConfig = LocalPhoneConversationHeaderPrimaryConfig.current,
+    /** Reply thread head task summary and first-message pull-down (web #17200); null elsewhere. */
+    originalPull: ThreadHeaderOriginalPullChrome? = null,
 ) {
     // Agent Lounge v0 (web ChatPanel `lounge-header`): a Lounge is headed "{Name}'s Lounge" with its
     // agent's face and the Lounge mark; no # tile, no description. A thread in it names the Lounge.
@@ -429,6 +433,30 @@ internal fun ThreadPageHeader(
             localizedChannel = stringResource(Res.string.thread_channel_title),
             localizedDirectMessage = stringResource(Res.string.thread_direct_message_title)
         )
+    val shownOriginal = (headerOriginal?.original as? ThreadHeaderOriginal.Shown)?.takeIf { headerOriginal.swapped }
+    val pullable = originalPull != null && shownOriginal != null && !shownOriginal.behindHistory
+    val pullOpen = pullable && originalPull.open
+    val activeTaskSummaryParts =
+        if (pullable && originalPull != null) {
+            rememberLocalizedThreadTaskSummaryParts(originalPull.summary)
+        } else {
+            null
+        }
+    val originalSeparator = stringResource(Res.string.thread_title_original_separator)
+    val nativeHeaderTitle =
+        shownOriginal?.let { threadHeaderOriginalTitleText(it, originalSeparator) } ?: localizedHeaderTitle
+    val nativeHeaderSubtitle = appendThreadTaskSummarySubtitle(headerSubtitle, activeTaskSummaryParts)
+    val focusManager = LocalFocusManager.current
+    val toggleOriginalPull: (() -> Unit)? =
+        if (pullable && originalPull != null) {
+            {
+                // Opening the pull-down takes focus off the composer (matching TaskConversationBarTitle).
+                if (!pullOpen) focusManager.clearFocus()
+                originalPull.onToggle()
+            }
+        } else {
+            null
+        }
     val resolvedDmPeerAvatarWireValue =
         rememberRaftMemberAvatarWireValue(
             memberAvatarResolver,
@@ -687,13 +715,14 @@ internal fun ThreadPageHeader(
     val headRowTabs = LocalRaftPaneGridHeadTabs.current
     val sidePane = LocalRaftSidePanePage.current
     RaftTopPageHeader(
-        title = localizedHeaderTitle,
+        title = nativeHeaderTitle,
         modifier =
             Modifier.onSizeChanged { size ->
                 val measured = with(headerDensity) { size.width.toDp().value }
                 if (measured != headerWidthDp) headerWidthDp = measured
             },
-        nativeSubtitle = headerSubtitle,
+        nativeSubtitle = nativeHeaderSubtitle,
+        nativeOnTitleClick = toggleOriginalPull,
         nativeOnSubtitleClick =
             channelLinkLabel?.let {
                 {
@@ -738,6 +767,12 @@ internal fun ThreadPageHeader(
                         else -> null
                     },
                 refreshing = payload.backgroundRefreshing,
+                chevron =
+                    if (pullable) {
+                        if (pullOpen) RaftNativeNavBarTitleChevron.Up else RaftNativeNavBarTitleChevron.Down
+                    } else {
+                        null
+                    },
             ),
         backgroundColor = RaftColor.Canvas,
         topSafeAreaOverride = topSafeArea,
@@ -863,10 +898,12 @@ internal fun ThreadPageHeader(
                     Modifier
                         .weight(1f)
                         .then(if (loungeHeader != null) Modifier.testTag(AgentLoungeTestTags.Header) else Modifier)
-                        // A long press copies the channel / DM name; the tap (scroll to top) stays.
+                        // A long press copies the channel / DM name; when the swapped reply thread
+                        // title pulls down the first message, the title button itself owns the tap
+                        // so the channel link and task summary stay separate.
                         .raftCopyable(
                             copyText,
-                            onClick = trackedTitleClick,
+                            onClick = if (pullable) null else trackedTitleClick,
                         )
                 val titleRowContent: @Composable (Modifier) -> Unit = { rowModifier ->
                     ThreadHeaderNameFirstRow(modifier = rowModifier) {
@@ -876,6 +913,9 @@ internal fun ThreadPageHeader(
                             // raft-ui `PanelTitle`: text-headline (17/22 bold; 16/24 in the wide type).
                             style = RaftType.Headline.copy(color = RaftColor.TextBlack),
                             color = RaftColor.TextBlack,
+                            pullable = pullable,
+                            pullOpen = pullOpen,
+                            onTogglePull = toggleOriginalPull,
                         )
                         if (
                             loungeHeader == null &&
@@ -904,7 +944,8 @@ internal fun ThreadPageHeader(
                         }
                     }
                 }
-                val hasSubtitle = channelLinkLabel != null || !headerSubtitle.isNullOrBlank()
+                val hasTaskSummary = !activeTaskSummaryParts?.tasks.isNullOrBlank()
+                val hasSubtitle = channelLinkLabel != null || !headerSubtitle.isNullOrBlank() || hasTaskSummary
                 val subtitleContent: @Composable (Modifier) -> Unit = { subModifier ->
                     // Web #10285: under a View in Channel tooltip.
                     if (channelLinkLabel != null) {
@@ -916,7 +957,28 @@ internal fun ThreadPageHeader(
                                 onOpenInChannel()
                             },
                             modifier = subModifier,
+                            taskSummaryParts = activeTaskSummaryParts,
                         )
+                    } else if (hasTaskSummary && activeTaskSummaryParts != null) {
+                        Row(modifier = subModifier, verticalAlignment = Alignment.CenterVertically) {
+                            val baseSubtitle = headerSubtitle?.takeIf { it.isNotBlank() }
+                            if (baseSubtitle != null) {
+                                Text(
+                                    text = baseSubtitle,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    // raft-ui `PanelMeta` (md): sans text-footnote on foreground-hint.
+                                    style = ThreadHeaderMetaStyle,
+                                    color = RaftColor.ForegroundHint,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            ThreadHeaderTaskSummaryText(
+                                parts = activeTaskSummaryParts,
+                                leadingSeparator = baseSubtitle != null,
+                                style = ThreadHeaderMetaStyle,
+                            )
+                        }
                     } else {
                         headerSubtitle?.takeIf { it.isNotBlank() }?.let {
                             Text(
@@ -931,11 +993,16 @@ internal fun ThreadPageHeader(
                         }
                     }
                 }
+                val narrowReplyHeader =
+                    headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                        headerWidthDp > 0f &&
+                        headerWidthDp < ThreadHeaderReplyInlineMinWidthDp
                 // raft-design desktop-density rule 2 & panel.md (web PanelHeaderContent / ThreadPanelHeader):
                 // from 768px (RaftScale.Wide), every head is one line by touch or mouse alike; only a
-                // compact phone stacks the subtitle under the title.
+                // compact phone (or a reply thread pane narrower than 512dp, web `@[32rem]/panel-head`)
+                // stacks the subtitle under the title.
                 CompositionLocalProvider(LocalRaftCopyHandler provides copyTrackedHandler) {
-                    if (RaftTheme.scale == RaftScale.Wide && hasSubtitle) {
+                    if (RaftTheme.scale == RaftScale.Wide && hasSubtitle && !narrowReplyHeader) {
                         ThreadHeaderInlineTitleRow(
                             subtitlePriority = headerOriginal?.swapped == true,
                             modifier = headModifier,
@@ -1250,6 +1317,7 @@ internal fun ThreadHeaderChannelLinkSubtitle(
     replyCountLabel: String?,
     onOpenInChannel: () -> Unit,
     modifier: Modifier = Modifier,
+    taskSummaryParts: ThreadTaskSummaryParts? = null,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         ThreadHeaderViewInChannelLink(
@@ -1265,6 +1333,13 @@ internal fun ThreadHeaderChannelLinkSubtitle(
                 color = RaftColor.ForegroundHint,
                 maxLines = 1,
                 softWrap = false
+            )
+        }
+        if (!taskSummaryParts?.tasks.isNullOrBlank() && taskSummaryParts != null) {
+            ThreadHeaderTaskSummaryText(
+                parts = taskSummaryParts,
+                leadingSeparator = true,
+                style = ThreadHeaderMetaStyle,
             )
         }
     }
@@ -1295,6 +1370,9 @@ internal fun ThreadHeaderViewInChannelLink(
 }
 
 internal const val ThreadHeaderMinTitleWidthDp = 56f
+// Web `ThreadPanelHeader` `@[32rem]/panel-head:` threshold: a narrow side thread pane stacks the
+// subtitle under the swapped title so the channel link, reply count, and task summary keep room.
+private const val ThreadHeaderReplyInlineMinWidthDp = 512f
 
 internal data class ThreadHeaderOwnActionSpec(
     val id: String,
