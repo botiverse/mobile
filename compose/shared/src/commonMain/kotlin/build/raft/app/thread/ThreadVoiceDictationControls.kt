@@ -52,6 +52,7 @@ import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.currentRaftEffectiveDateTimeContext
+import build.raft.app.data.RaftClientTraceEvents
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftTelemetryPrivacy
@@ -65,6 +66,9 @@ import build.raft.app.data.VoiceDictationButtonGesture
 import build.raft.app.data.VoiceDictationFeedbackRequest
 import build.raft.app.data.VoiceDictationFeedbackTarget
 import build.raft.app.data.VoiceDictationGestureMode
+import build.raft.app.data.VoiceDictationSessionMode
+import build.raft.app.data.VoiceDictationSessionSummary
+import build.raft.app.data.VoiceDictationStopReason
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Error
 import build.raft.app.data.VoiceDictationV2ErrorCode
@@ -347,6 +351,7 @@ internal fun rememberComposerVoiceDictationHost(
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
     feedbackApi: VoiceFeedbackApi? = null,
     collectContactHints: () -> List<String>? = { null },
+    onSessionTelemetry: ((serverId: String, summary: VoiceDictationSessionSummary) -> Unit)? = null,
 ): ThreadVoiceDictationHost {
     val flagRevision by key(serverFeatureFlags) { serverFeatureFlags.snapshotRevision.collectAsState() }
     val effectiveServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
@@ -377,6 +382,7 @@ internal fun rememberComposerVoiceDictationHost(
     val languageHint = remember(localeTag) { normalizeVoiceDictationLanguage(localeTag) }
 
     val dictationScope = rememberCoroutineScope()
+    val currentOnSessionTelemetry by rememberUpdatedState(onSessionTelemetry)
     val submitFeedbackHandler: (suspend (String, VoiceDictationFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? =
         remember(feedbackApi) {
             feedbackApi?.let { api ->
@@ -405,6 +411,9 @@ internal fun rememberComposerVoiceDictationHost(
                             }
                         }
                     },
+                onSessionTelemetry = { targetServerId, summary ->
+                    currentOnSessionTelemetry?.invoke(targetServerId, summary)
+                },
             )
         }
 
@@ -480,6 +489,8 @@ internal fun rememberComposerVoiceDictationHost(
     prefetchIfUnresolved: Boolean = false,
     audioRecorderProvider: () -> RaftVoiceDictationAudioRecorder? =
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
+    onSessionTelemetry: ((serverId: String, summary: VoiceDictationSessionSummary) -> Unit)? =
+        RaftClientTraceEvents::emitVoiceDictationSession,
 ): ThreadVoiceDictationHost {
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val permitApi = remember(networkClient) { RaftVoiceDictationV2PermitApi(networkClient) }
@@ -511,6 +522,7 @@ internal fun rememberComposerVoiceDictationHost(
         audioRecorderProvider = audioRecorderProvider,
         feedbackApi = feedbackApi,
         collectContactHints = collectContactHints,
+        onSessionTelemetry = onSessionTelemetry,
     )
 }
 
@@ -731,9 +743,10 @@ internal fun ThreadVoiceDictationToolbarButton(
         state = state,
         enabled = composerEditable,
         onStart = onStart,
-        onStop = host.controller::stop,
+        onStop = { host.controller.stop(VoiceDictationStopReason.Button) },
         isActiveNow = { host.controller.state.value.isActive },
         nowEpochMs = host.controller.currentEpochMillis(),
+        onHoldEngaged = { host.controller.setSessionMode(VoiceDictationSessionMode.Hold) },
         modifier = modifier,
     )
 }
@@ -761,6 +774,7 @@ internal fun ThreadVoiceDictationButton(
     nowEpochMs: Long? = null,
     gestureModeOverride: VoiceDictationGestureMode? = null,
     elapsedMsOverride: Long? = null,
+    onHoldEngaged: (() -> Unit)? = null,
 ) {
     val phase = state.phase
     val isConnecting = phase == VoiceDictationV2Phase.Connecting
@@ -793,6 +807,7 @@ internal fun ThreadVoiceDictationButton(
     val currentIsDisabled by rememberUpdatedState(isDisabled)
     val currentOnStart by rememberUpdatedState(onStart)
     val currentOnStop by rememberUpdatedState(onStop)
+    val currentOnHoldEngaged by rememberUpdatedState(onHoldEngaged)
     var liveGestureMode by remember { mutableStateOf(VoiceDictationGestureMode.Idle) }
     val gesture =
         remember(gestureScope) {
@@ -801,7 +816,12 @@ internal fun ThreadVoiceDictationButton(
                 isActive = { currentIsActiveNow?.invoke() ?: currentIsActive },
                 onStart = { currentOnStart() },
                 onStop = { currentOnStop() },
-                onModeChange = { liveGestureMode = it },
+                onModeChange = { nextMode ->
+                    liveGestureMode = nextMode
+                    if (nextMode == VoiceDictationGestureMode.Holding) {
+                        currentOnHoldEngaged?.invoke()
+                    }
+                },
             )
         }
 

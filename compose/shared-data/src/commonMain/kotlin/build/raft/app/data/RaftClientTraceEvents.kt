@@ -1031,6 +1031,18 @@ object RaftClientTraceEvents {
     ) {
         sender.emit(serverId, name, attrs, occurredAtMillis = occurredAtMillis)
     }
+
+    /** #wg-mobile-sync:#357 (web slock #17140/#17157/#17246): `slock.composer.voice_dictation_session`. */
+    @RaftCoreInternalApi fun emitVoiceDictationSession(
+        serverId: String,
+        summary: VoiceDictationSessionSummary,
+    ) {
+        sender.emit(
+            serverId = serverId,
+            name = VoiceDictationSessionEventName,
+            attrs = voiceDictationSessionTraceAttrs(summary = summary),
+        )
+    }
 }
 
 /** `clientPlatform` as `X-Raft-Client-Platform` names the app, its `appVersion`, and `app_build`. */

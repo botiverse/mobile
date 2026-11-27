@@ -488,7 +488,13 @@ class VoiceDictationV2Controller(
     private val onOutcomeReport: ((VoiceDictationOutcomeReport) -> Unit)? = null,
     private val privacyModeProvider: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
     private val clientPlatformProvider: () -> VoiceFeedbackClientPlatform = ::currentVoiceFeedbackClientPlatform,
+    private val onSessionTelemetry: ((serverId: String, summary: VoiceDictationSessionSummary) -> Unit)? = null,
 ) {
+    private class QueuedAudioChunk(
+        val bytes: ByteArray,
+        val preReady: Boolean,
+    )
+
     private inner class Session(
         val id: Long,
         val owner: VoiceDictationV2Owner,
@@ -496,14 +502,20 @@ class VoiceDictationV2Controller(
         val recorder: RaftVoiceDictationAudioRecorder,
         val span: VoiceDictationComposerSpan,
         val startedAtMs: Long,
+        mode: VoiceDictationSessionMode,
         val onComposerUpdate: (VoiceDictationComposerUpdate) -> Unit,
     ) {
-        val liveAudioChannel: Channel<ByteArray> = Channel(Channel.UNLIMITED)
+        val liveAudioChannel: Channel<QueuedAudioChunk> = Channel(Channel.UNLIMITED)
         val readyReceived: CompletableDeferred<Unit> = CompletableDeferred()
         val recorderReleased: CompletableDeferred<Unit> = CompletableDeferred()
 
         // Protected by [stateLock].
         val preReadyQueue: ArrayDeque<ByteArray> = ArrayDeque()
+        val metrics: VoiceDictationSessionMetrics =
+            VoiceDictationSessionMetrics(
+                mode = mode,
+                startedAtMs = startedAtMs,
+            )
         var aborted: Boolean = false
         var stopping: Boolean = false
         var transportReady: Boolean = false
@@ -661,6 +673,13 @@ class VoiceDictationV2Controller(
             !bg.aborted && !bg.postStopFinalReceived && !bg.span.ignoreSubsequentText
         }
 
+    /** Updates the active foreground session's gesture mode (`Tap` -> `Hold`) once press-and-hold engages. */
+    fun setSessionMode(mode: VoiceDictationSessionMode) {
+        synchronized(stateLock) {
+            activeSession?.takeIf { !it.aborted }?.metrics?.mode = mode
+        }
+    }
+
     /**
      * Starts a new v2 dictation session for [serverId] / [channelId] / [threadId], anchored at
      * `(baseText, insertStart, insertEnd)`. Any previously active or background session and any
@@ -676,6 +695,7 @@ class VoiceDictationV2Controller(
         insertEnd: Int = insertStart,
         draftBefore: String? = null,
         contactHints: List<String>? = null,
+        mode: VoiceDictationSessionMode = VoiceDictationSessionMode.Tap,
         onComposerUpdate: (VoiceDictationComposerUpdate) -> Unit,
     ) {
         val cleanServerId = serverId.trim()
@@ -698,6 +718,7 @@ class VoiceDictationV2Controller(
             abortAllSessionsLocked(
                 resetState = false,
                 closeReason = VOICE_DICTATION_CLOSE_REASON_SUPERSEDED,
+                activeStopReason = VoiceDictationStopReason.Reset,
             )
 
         if (cleanServerId.isEmpty()) {
@@ -722,6 +743,12 @@ class VoiceDictationV2Controller(
                         error = VoiceDictationV2Error.DeviceUnavailable,
                     )
             }
+            emitImmediateStartFailureTelemetry(
+                serverId = cleanServerId,
+                mode = mode,
+                startedAtMs = now,
+                errorCode = VoiceDictationSessionErrorCode.MicNone,
+            )
             return
         }
 
@@ -735,6 +762,12 @@ class VoiceDictationV2Controller(
                         error = VoiceDictationV2Error.AudioCaptureFailed("Unsupported sample rate: $sampleRateHz"),
                     )
             }
+            emitImmediateStartFailureTelemetry(
+                serverId = cleanServerId,
+                mode = mode,
+                startedAtMs = now,
+                errorCode = VoiceDictationSessionErrorCode.MicUnsupported,
+            )
             return
         }
 
@@ -749,6 +782,7 @@ class VoiceDictationV2Controller(
                         recorder = recorder,
                         span = VoiceDictationComposerSpan(baseText = baseText, insertStart = insertStart, insertEnd = insertEnd),
                         startedAtMs = now,
+                        mode = mode,
                         onComposerUpdate = onComposerUpdate,
                     )
                 val prev = stateFlow.value
@@ -798,6 +832,7 @@ class VoiceDictationV2Controller(
                     when (audioStart) {
                         VoiceDictationAudioStartResult.Started -> {
                             session.markRecorderNeedsStop()
+                            val micReadyAt = nowMillis()
                             // Zero-wait instant start: transition to Listening immediately once mic
                             // capture is live while permit + WS connect run concurrently below.
                             val enteredListening =
@@ -805,6 +840,9 @@ class VoiceDictationV2Controller(
                                     if (session.aborted || activeSession !== session) {
                                         false
                                     } else {
+                                        if (session.metrics.micReadyAtMs == null) {
+                                            session.metrics.micReadyAtMs = micReadyAt
+                                        }
                                         stateFlow.value = stateFlow.value.copy(phase = VoiceDictationV2Phase.Listening)
                                         true
                                     }
@@ -869,6 +907,7 @@ class VoiceDictationV2Controller(
                                 session.sessionId = permit.sessionId
                                 session.traceId = permit.traceId
                                 session.streamUrlSource = permit.streamUrlSource
+                                session.metrics.streamUrlSource = permit.streamUrlSource
                                 if (activeSession === session || (activeSession == null && backgroundSession === session)) {
                                     val quotaAvailable = permit.quota.remainingSeconds > 0
                                     stateFlow.value =
@@ -946,8 +985,13 @@ class VoiceDictationV2Controller(
                             session.readyReceived.await()
                             for (chunk in session.liveAudioChannel) {
                                 if (!isLive(session)) break
-                                val ok = connection.sendAudio(chunk)
+                                val ok = connection.sendAudio(chunk.bytes)
                                 if (!ok) break
+                                if (chunk.preReady) {
+                                    synchronized(stateLock) {
+                                        session.metrics.preReadyChunksSent += 1
+                                    }
+                                }
                             }
                         }
                     val continueAfterSenderAttach =
@@ -994,13 +1038,15 @@ class VoiceDictationV2Controller(
      *
      * If stopped before microphone acquisition even resolved, aborts cleanly with no background work.
      */
-    fun stop() {
+    fun stop(stoppedBy: VoiceDictationStopReason = VoiceDictationStopReason.Button) {
         var sessionToDrain: Session? = null
         var abortImmediately = false
         var previousBg: Session? = null
+        var previousBgSummary: VoiceDictationSessionSummary? = null
         var previousBgHelperJobs: List<Job> = emptyList()
         var previousBgRunJob: Job? = null
         var previousBgHasConnection = false
+        val stopAt = nowMillis()
 
         synchronized(stateLock) {
             val session = activeSession ?: return
@@ -1013,6 +1059,15 @@ class VoiceDictationV2Controller(
                 if (existingBg != null && existingBg !== session) {
                     existingBg.recordCloseReasonLocked(VOICE_DICTATION_CLOSE_REASON_SUPERSEDED)
                     existingBg.aborted = true
+                    val bgReason = existingBg.metrics.stoppedBy ?: VoiceDictationStopReason.Button
+                    val bgFinishingMs = existingBg.metrics.stopRequestedAtMs?.let { (stopAt - it).coerceAtLeast(0L) }
+                    previousBgSummary =
+                        existingBg.metrics.buildSummary(
+                            stoppedBy = bgReason,
+                            finishingMs = bgFinishingMs,
+                            errorCode = null,
+                            nowMs = stopAt,
+                        )
                     previousBg = existingBg
                     previousBgRunJob = existingBg.runJob
                     previousBgHasConnection = existingBg.connection != null
@@ -1020,6 +1075,7 @@ class VoiceDictationV2Controller(
                 }
 
                 session.stopping = true
+                session.metrics.freezeStop(stoppedBy = stoppedBy, stopAtMs = stopAt)
                 session.span.markStopping()
                 activeSession = null
                 backgroundSession = session
@@ -1036,6 +1092,7 @@ class VoiceDictationV2Controller(
         }
 
         previousBg?.let { stale ->
+            emitSessionTelemetrySafely(stale.owner.serverId, previousBgSummary)
             stale.liveAudioChannel.close()
             previousBgHelperJobs.forEach { it.cancel() }
             if (!previousBgHasConnection) {
@@ -1050,7 +1107,7 @@ class VoiceDictationV2Controller(
         }
 
         if (abortImmediately) {
-            cancel()
+            cancel(discardProvisional = false, stoppedBy = stoppedBy)
             return
         }
 
@@ -1168,6 +1225,7 @@ class VoiceDictationV2Controller(
             resetState = true,
             clearQuotaAndOwner = false,
             closeReason = VOICE_DICTATION_CLOSE_REASON_SUBMIT,
+            activeStopReason = VoiceDictationStopReason.Submit,
         )
     }
 
@@ -1208,13 +1266,18 @@ class VoiceDictationV2Controller(
      * uncommitted live partial tail (or restores the initial base draft if nothing was confirmed
      * yet) while preserving already-confirmed utterances.
      */
-    fun cancel(discardProvisional: Boolean = false) {
+    fun cancel(
+        discardProvisional: Boolean = false,
+        stoppedBy: VoiceDictationStopReason =
+            if (discardProvisional) VoiceDictationStopReason.Esc else VoiceDictationStopReason.Reset,
+    ) {
         outcomeTracker.clear()
         var discardCallback: Pair<(VoiceDictationComposerUpdate) -> Unit, VoiceDictationComposerUpdate>? = null
         abortAllSessionsLocked(
             resetState = true,
             clearQuotaAndOwner = false,
             closeReason = VOICE_DICTATION_CLOSE_REASON_USER_CANCEL,
+            activeStopReason = stoppedBy,
             onBeforeAbortActiveLocked =
                 if (discardProvisional) {
                     { active ->
@@ -1329,6 +1392,7 @@ class VoiceDictationV2Controller(
                 clearQuotaAndOwner = true,
                 nextOwner = nextOwner,
                 closeReason = VOICE_DICTATION_CLOSE_REASON_OWNER_CHANGED,
+                activeStopReason = VoiceDictationStopReason.Reset,
             )
         }
     }
@@ -1361,11 +1425,12 @@ class VoiceDictationV2Controller(
         synchronized(stateLock) {
             if (session.aborted || session.recorderStopped || session.micFlushed || !isLiveLocked(session)) return
             if (session.transportReady) {
-                session.liveAudioChannel.trySend(copy)
+                session.liveAudioChannel.trySend(QueuedAudioChunk(copy, preReady = false))
             } else if (session.preReadyQueue.size >= VOICE_DICTATION_MAX_PRE_READY_CHUNKS) {
                 overflow = true
             } else {
                 session.preReadyQueue.addLast(copy)
+                session.metrics.preReadyChunksQueued += 1
             }
         }
         if (overflow) {
@@ -1389,8 +1454,13 @@ class VoiceDictationV2Controller(
                     if (session.connectedAtMs == null) {
                         session.connectedAtMs = readyAt
                     }
+                    if (session.metrics.connectedAtMs == null) {
+                        session.metrics.connectedAtMs = readyAt
+                    }
                     while (session.preReadyQueue.isNotEmpty()) {
-                        session.liveAudioChannel.trySend(session.preReadyQueue.removeFirst())
+                        session.liveAudioChannel.trySend(
+                            QueuedAudioChunk(session.preReadyQueue.removeFirst(), preReady = true),
+                        )
                     }
                     if (session.micFlushed) {
                         session.liveAudioChannel.close()
@@ -1427,6 +1497,13 @@ class VoiceDictationV2Controller(
                             if (frame.text.isNotBlank() && session.firstPartialAtMs == null) {
                                 session.firstPartialAtMs = textAt
                             }
+                            session.metrics.recordSnapshot(
+                                text = frame.text,
+                                stableLen = frame.stableLen,
+                                refined = frame.refined,
+                                timestampMs = textAt,
+                                isActiveSession = activeSession === session,
+                            )
                             session.transcriptCapture = session.transcriptCapture.recordSnapshot(frame.text, frame.refined)
                             val applied = session.span.applyFrame(frame)
                             if (applied != null) {
@@ -1531,6 +1608,8 @@ class VoiceDictationV2Controller(
         closeReason: String = VOICE_DICTATION_CLOSE_REASON_DONE,
     ) {
         var releaseSubmitWait = false
+        var summary: VoiceDictationSessionSummary? = null
+        val completedAt = nowMillis()
         val termination =
             synchronized(stateLock) {
                 if (session.aborted) return
@@ -1539,6 +1618,14 @@ class VoiceDictationV2Controller(
                 when {
                     activeSession === session -> {
                         activeSession = null
+                        session.metrics.freezeStop(VoiceDictationStopReason.Server, completedAt)
+                        summary =
+                            session.metrics.buildSummary(
+                                stoppedBy = VoiceDictationStopReason.Server,
+                                finishingMs = 0L,
+                                errorCode = null,
+                                nowMs = completedAt,
+                            )
                         stateFlow.value =
                             stateFlow.value.copy(
                                 phase = VoiceDictationV2Phase.Idle,
@@ -1550,6 +1637,15 @@ class VoiceDictationV2Controller(
                     backgroundSession === session -> {
                         backgroundSession = null
                         releaseSubmitWait = true
+                        val reason = session.metrics.stoppedBy ?: VoiceDictationStopReason.Button
+                        val finishingMs = session.metrics.stopRequestedAtMs?.let { (completedAt - it).coerceAtLeast(0L) }
+                        summary =
+                            session.metrics.buildSummary(
+                                stoppedBy = reason,
+                                finishingMs = finishingMs,
+                                errorCode = null,
+                                nowMs = completedAt,
+                            )
                         stateFlow.value =
                             stateFlow.value.copy(
                                 hasBackgroundDrain = false,
@@ -1559,6 +1655,7 @@ class VoiceDictationV2Controller(
                 }
                 Triple(collectHelperJobsLocked(session), session.runJob, session.connection != null)
             }
+        emitSessionTelemetrySafely(session.owner.serverId, summary)
         val feedbackTarget = captureSessionOutcome(session, sentBeforeRefineDone = false)
         if (feedbackTarget != null) {
             synchronized(stateLock) {
@@ -1588,6 +1685,8 @@ class VoiceDictationV2Controller(
         closeReason: String = VOICE_DICTATION_CLOSE_REASON_ERROR,
     ) {
         var releaseSubmitWait = false
+        var summary: VoiceDictationSessionSummary? = null
+        val failedAt = nowMillis()
         val termination =
             synchronized(stateLock) {
                 if (session.aborted) return
@@ -1598,6 +1697,14 @@ class VoiceDictationV2Controller(
                 val wasReady = session.transportReady
                 if (wasActive) {
                     activeSession = null
+                    session.metrics.freezeStop(VoiceDictationStopReason.Error, failedAt)
+                    summary =
+                        session.metrics.buildSummary(
+                            stoppedBy = VoiceDictationStopReason.Error,
+                            finishingMs = null,
+                            errorCode = voiceDictationSessionErrorCode(error),
+                            nowMs = failedAt,
+                        )
                     stateFlow.value =
                         applyErrorToStateLocked(
                             base =
@@ -1612,6 +1719,24 @@ class VoiceDictationV2Controller(
                 } else if (wasBackground) {
                     backgroundSession = null
                     releaseSubmitWait = true
+                    summary =
+                        if (!wasReady) {
+                            session.metrics.buildSummary(
+                                stoppedBy = VoiceDictationStopReason.Error,
+                                finishingMs = null,
+                                errorCode = voiceDictationSessionErrorCode(error),
+                                nowMs = failedAt,
+                            )
+                        } else {
+                            val reason = session.metrics.stoppedBy ?: VoiceDictationStopReason.Button
+                            val finishingMs = session.metrics.stopRequestedAtMs?.let { (failedAt - it).coerceAtLeast(0L) }
+                            session.metrics.buildSummary(
+                                stoppedBy = reason,
+                                finishingMs = finishingMs,
+                                errorCode = null,
+                                nowMs = failedAt,
+                            )
+                        }
                     val surfaceBanner = !wasReady && activeSession == null
                     stateFlow.value =
                         applyErrorToStateLocked(
@@ -1626,6 +1751,7 @@ class VoiceDictationV2Controller(
                 }
                 Triple(collectHelperJobsLocked(session), session.runJob, session.connection != null)
             }
+        emitSessionTelemetrySafely(session.owner.serverId, summary)
         val (helperJobs, runJob, hasConnection) = termination
         session.liveAudioChannel.close()
         helperJobs.forEach { it.cancel() }
@@ -1715,11 +1841,13 @@ class VoiceDictationV2Controller(
         clearQuotaAndOwner: Boolean = false,
         nextOwner: VoiceDictationV2Owner? = null,
         closeReason: String = VOICE_DICTATION_CLOSE_REASON_USER_CANCEL,
+        activeStopReason: VoiceDictationStopReason = VoiceDictationStopReason.Reset,
         onBeforeAbortActiveLocked: ((Session) -> VoiceDictationComposerUpdate?)? = null,
     ): Job? {
         val sessionsToClean = mutableListOf<Triple<Session, Job?, Boolean>>()
         val helperJobsToCancel = mutableListOf<Job>()
         val immediateRunJobsToCancel = mutableListOf<Job>()
+        val telemetryToEmit = mutableListOf<Pair<String, VoiceDictationSessionSummary>>()
         var existingRecorderCleanup: Job? = null
         var submitWaitToCancel: CompletableDeferred<Boolean>? = null
 
@@ -1727,11 +1855,23 @@ class VoiceDictationV2Controller(
             submitWaitToCancel = pendingSubmitWait
             pendingSubmitWait = null
 
+            val abortAt = if (activeSession != null || backgroundSession != null) nowMillis() else 0L
             var discardUpdate: VoiceDictationComposerUpdate? = null
             val active = activeSession
             if (active != null) {
-                if (!active.aborted && onBeforeAbortActiveLocked != null) {
-                    discardUpdate = onBeforeAbortActiveLocked(active)
+                if (!active.aborted) {
+                    if (onBeforeAbortActiveLocked != null) {
+                        discardUpdate = onBeforeAbortActiveLocked(active)
+                    }
+                    active.metrics.freezeStop(activeStopReason, abortAt)
+                    active.metrics.buildSummary(
+                        stoppedBy = activeStopReason,
+                        finishingMs = null,
+                        errorCode = null,
+                        nowMs = abortAt,
+                    )?.let { summary ->
+                        telemetryToEmit += active.owner.serverId to summary
+                    }
                 }
                 active.recordCloseReasonLocked(closeReason)
                 active.aborted = true
@@ -1745,6 +1885,18 @@ class VoiceDictationV2Controller(
             }
             val bg = backgroundSession
             if (bg != null) {
+                if (!bg.aborted) {
+                    val bgReason = bg.metrics.stoppedBy ?: VoiceDictationStopReason.Button
+                    val bgFinishingMs = bg.metrics.stopRequestedAtMs?.let { (abortAt - it).coerceAtLeast(0L) }
+                    bg.metrics.buildSummary(
+                        stoppedBy = bgReason,
+                        finishingMs = bgFinishingMs,
+                        errorCode = null,
+                        nowMs = abortAt,
+                    )?.let { summary ->
+                        telemetryToEmit += bg.owner.serverId to summary
+                    }
+                }
                 bg.recordCloseReasonLocked(closeReason)
                 bg.aborted = true
                 backgroundSession = null
@@ -1787,6 +1939,9 @@ class VoiceDictationV2Controller(
             existingRecorderCleanup = pendingRecorderCleanupJob
         }
 
+        telemetryToEmit.forEach { (serverId, summary) ->
+            emitSessionTelemetrySafely(serverId, summary)
+        }
         submitWaitToCancel?.complete(false)
         if (sessionsToClean.isEmpty()) {
             return existingRecorderCleanup
@@ -1810,6 +1965,35 @@ class VoiceDictationV2Controller(
             }
         }
         return lastRecorderCleanup
+    }
+
+    private fun emitImmediateStartFailureTelemetry(
+        serverId: String,
+        mode: VoiceDictationSessionMode,
+        startedAtMs: Long,
+        errorCode: VoiceDictationSessionErrorCode,
+    ) {
+        val metrics = VoiceDictationSessionMetrics(mode = mode, startedAtMs = startedAtMs)
+        metrics.freezeStop(stoppedBy = VoiceDictationStopReason.Error, stopAtMs = startedAtMs)
+        val summary =
+            metrics.buildSummary(
+                stoppedBy = VoiceDictationStopReason.Error,
+                finishingMs = null,
+                errorCode = errorCode,
+                nowMs = startedAtMs,
+            )
+        emitSessionTelemetrySafely(serverId, summary)
+    }
+
+    private fun emitSessionTelemetrySafely(
+        serverId: String,
+        summary: VoiceDictationSessionSummary?,
+    ) {
+        if (summary == null) return
+        val callback = onSessionTelemetry ?: return
+        runCatching {
+            callback(serverId, summary)
+        }
     }
 
     private fun resolveSubmitWait(target: CompletableDeferred<Boolean>?, proceed: Boolean) {
