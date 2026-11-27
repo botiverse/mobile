@@ -137,6 +137,27 @@ dependencyResolutionManagement {
         }
     }
 
+    // iOS only: the patched latex-renderer klibs (glyph-width SIGABRT,
+    // third_party/latex-renderer-1.7.2/README.md). Only these two modules at the patched version
+    // come from here; the root latex-renderer module, latex-parser and every other target stay on
+    // Maven Central. The version is raft.latexRendererPatch.version in gradle.properties (root
+    // build.gradle.kts pins the two modules to it); without that property this repository is not added.
+    fun org.gradle.api.artifacts.dsl.RepositoryHandler.raftArtifactsLatexRendererPatch() {
+        val patchedVersion = providers.gradleProperty("raft.latexRendererPatch.version").orNull ?: return
+        exclusiveContent {
+            forRepository {
+                maven {
+                    name = "RaftArtifactsLatexRendererPatch"
+                    url = uri("https://maven.artifacts.botiverse.dev")
+                }
+            }
+            filter {
+                includeVersion("io.github.huarangmeng", "latex-renderer-iosarm64", patchedVersion)
+                includeVersion("io.github.huarangmeng", "latex-renderer-iossimulatorarm64", patchedVersion)
+            }
+        }
+    }
+
     // Android only: the patched androidx Compose foundation AAR, two isAttached guards for the
     // detached-node crash (third_party/compose-foundation-1.12.1/README.md). Only this module at the
     // patched version comes from here; foundation-android at any other version and every other
@@ -179,6 +200,7 @@ dependencyResolutionManagement {
         raftArtifactsKuiklyBase()
         raftArtifactsHands()
         raftArtifactsComposeUiPatch()
+        raftArtifactsLatexRendererPatch()
         raftArtifactsComposeFoundationPatch()
         raftJitpackAudioSwitch()
         mavenLocal()
