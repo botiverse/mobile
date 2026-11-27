@@ -242,6 +242,15 @@ internal class RaftAndroidSandboxWebView(
     private var currentProgress: Int = 0
     private var currentIsLoading: Boolean = false
     private var speculativeLinkLoading: Boolean = false
+    @Volatile private var mainFrameNavigationEpoch: Int = 0
+    private val speculativeLoadingTimeoutRunnable =
+        Runnable {
+            if (!destroyed && speculativeLinkLoading) {
+                speculativeLinkLoading = false
+                currentIsLoading = false
+                notifyNavigationState()
+            }
+        }
 
     /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]); kept across a rebuilt WebView. */
     private var loadGeneration: Int = 0
@@ -625,6 +634,9 @@ internal class RaftAndroidSandboxWebView(
         fullscreenController.hide()
         newWindowTransport.cancelAll()
         audioPermissionController.cancelAll()
+        mainFrameNavigationEpoch += 1
+        shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+        speculativeLinkLoading = false
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         events = RaftWebViewEvents()
@@ -654,6 +666,9 @@ internal class RaftAndroidSandboxWebView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
+        mainFrameNavigationEpoch += 1
+        shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+        speculativeLinkLoading = false
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
@@ -698,6 +713,9 @@ internal class RaftAndroidSandboxWebView(
         currentTitle = ""
         currentProgress = 0
         currentIsLoading = false
+        mainFrameNavigationEpoch += 1
+        shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+        speculativeLinkLoading = false
         navigationStateRelay.reset()
         lastRoutedBlockedUrl = ""
         lastRoutedBlockedAtMs = 0L
@@ -787,6 +805,7 @@ internal class RaftAndroidSandboxWebView(
                     super.onProgressChanged(view, newProgress)
                     currentProgress = newProgress.coerceIn(0, 100)
                     if (speculativeLinkLoading && currentProgress >= 100) {
+                        shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                         speculativeLinkLoading = false
                         currentIsLoading = false
                     }
@@ -1028,6 +1047,8 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed || configuredWebView !== webView) return
+                    mainFrameNavigationEpoch += 1
+                    shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                     speculativeLinkLoading = false
                     jsDialogTracker.cancelActive()
                     fullscreenController.hide()
@@ -1095,6 +1116,8 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (destroyed || configuredWebView !== webView) return
+                    mainFrameNavigationEpoch += 1
+                    shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                     speculativeLinkLoading = false
                     super.onPageFinished(view, url)
                     val target = url.orEmpty()
@@ -1127,6 +1150,8 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onPageCommitVisible(view: WebView?, url: String?) {
                     if (destroyed || configuredWebView !== webView) return
+                    mainFrameNavigationEpoch += 1
+                    shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                     speculativeLinkLoading = false
                     super.onPageCommitVisible(view, url)
                     val target = url.orEmpty()
@@ -1186,7 +1211,23 @@ internal class RaftAndroidSandboxWebView(
                         view?.post { handleBlockedMainFrameNavigation(blockedUrl) }
                         return WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
                     }
-                    if (request?.isForMainFrame == true && request.method.equals("GET", ignoreCase = true)) {
+                    val method = request?.method?.takeIf { it.isNotBlank() } ?: "GET"
+                    if (
+                        request?.isForMainFrame == true &&
+                        !method.equals("GET", ignoreCase = true) &&
+                        !method.equals("HEAD", ignoreCase = true) &&
+                        url != null &&
+                        (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true)) &&
+                        !isRecentlyHostCancelled(url)
+                    ) {
+                        val capturedEpoch = mainFrameNavigationEpoch
+                        shareMainHandler.post {
+                            if (!destroyed && !parkedForKeepAlive && mainFrameNavigationEpoch == capturedEpoch) {
+                                startSpeculativeMainFrameLoading()
+                            }
+                        }
+                    }
+                    if (request?.isForMainFrame == true && method.equals("GET", ignoreCase = true)) {
                         hostMainDocumentResponse(url)?.let { return it }
                     }
                     return super.shouldInterceptRequest(view, request)
@@ -1199,6 +1240,8 @@ internal class RaftAndroidSandboxWebView(
                 ) {
                     if (destroyed || configuredWebView !== webView) return
                     if (request?.isForMainFrame == true) {
+                        mainFrameNavigationEpoch += 1
+                        shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                         speculativeLinkLoading = false
                         val failedUrl = request.url?.toString().orEmpty()
                         if (isCurrentLoadHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) {
@@ -1230,6 +1273,8 @@ internal class RaftAndroidSandboxWebView(
                 override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
                     handler?.cancel()
                     if (destroyed || configuredWebView !== webView) return
+                    mainFrameNavigationEpoch += 1
+                    shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                     speculativeLinkLoading = false
                     mainFrameLoadFailed = true
                     lastSuccessfulUrl = ""
@@ -1272,6 +1317,8 @@ internal class RaftAndroidSandboxWebView(
         configuredWebView.setDownloadListener(
             DownloadListener { url, _, contentDisposition, mimeType, _ ->
                 if (destroyed || configuredWebView !== webView) return@DownloadListener
+                mainFrameNavigationEpoch += 1
+                shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                 if (speculativeLinkLoading) {
                     speculativeLinkLoading = false
                     currentIsLoading = false
@@ -1521,6 +1568,8 @@ internal class RaftAndroidSandboxWebView(
             }
             RaftWebViewController.COMMAND_STOP -> {
                 webView?.stopLoading()
+                mainFrameNavigationEpoch += 1
+                shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
                 speculativeLinkLoading = false
                 currentIsLoading = false
                 forceNotify = false
@@ -1829,6 +1878,8 @@ internal class RaftAndroidSandboxWebView(
             )
         if (events.catchesMainFrameNavigation?.invoke(catchAsk) != true) return false
         val wasSpeculative = speculativeLinkLoading
+        mainFrameNavigationEpoch += 1
+        shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
         speculativeLinkLoading = false
         if (stopLoading) view?.stopLoading()
         lastHostCancelledUrl = target
@@ -1842,6 +1893,16 @@ internal class RaftAndroidSandboxWebView(
         currentIsLoading = false
         notifyNavigationState()
         return true
+    }
+
+    private fun startSpeculativeMainFrameLoading() {
+        if (destroyed || parkedForKeepAlive || currentIsLoading) return
+        shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+        speculativeLinkLoading = true
+        currentProgress = 0
+        currentIsLoading = true
+        shareMainHandler.postDelayed(speculativeLoadingTimeoutRunnable, 15_000L)
+        notifyNavigationState()
     }
 
     /**
@@ -1871,6 +1932,13 @@ internal class RaftAndroidSandboxWebView(
         if (shouldRouteMainFrameNavigation(target, isRedirect = isRedirect, isUserGesture = isUserGesture) ||
             shouldBlockMainFrameNavigation(target, isUserGesture = isUserGesture)
         ) {
+            mainFrameNavigationEpoch += 1
+            shareMainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+            if (speculativeLinkLoading) {
+                speculativeLinkLoading = false
+                currentIsLoading = false
+                notifyNavigationState()
+            }
             return true
         }
         if (target == null) return false
@@ -1909,28 +1977,38 @@ internal class RaftAndroidSandboxWebView(
             RaftHostNavigationDecision.Allow -> {
                 if (!isRedirect) navChainCarriesRaftHost = requestHasHeader
                 if (
-                    isUserGesture &&
-                    !isRedirect &&
+                    (isUserGesture || isRedirect) &&
                     !currentIsLoading &&
                     (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) &&
                     !isSameDocumentIgnoringFragment(currentUrl, target) &&
                     !isRecentlyHostCancelled(target)
                 ) {
-                    speculativeLinkLoading = true
-                    currentProgress = 0
-                    currentIsLoading = true
-                    notifyNavigationState()
+                    startSpeculativeMainFrameLoading()
                 }
                 false
             }
             RaftHostNavigationDecision.ReissueWithHeader -> {
                 navChainReissueBudget = (navChainReissueBudget - 1).coerceAtLeast(0)
                 navChainCarriesRaftHost = true
+                if (
+                    !currentIsLoading &&
+                    (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) &&
+                    !isSameDocumentIgnoringFragment(currentUrl, target)
+                ) {
+                    startSpeculativeMainFrameLoading()
+                }
                 postReissueLoad(view, target, includeHeader = true, referer = requestReferer)
                 true
             }
             RaftHostNavigationDecision.ReissueWithoutHeader -> {
                 navChainCarriesRaftHost = false
+                if (
+                    !currentIsLoading &&
+                    (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) &&
+                    !isSameDocumentIgnoringFragment(currentUrl, target)
+                ) {
+                    startSpeculativeMainFrameLoading()
+                }
                 postReissueLoad(view, target, includeHeader = false)
                 true
             }
