@@ -100,11 +100,12 @@ class ThreadActionCardInviteExternalUiTest {
     }
 
     private val nowMillis = 1_794_218_580_000L // 2026-11-09 10:03 UTC
+    private val launchChannelId = "00000000-0000-4000-8000-000000000001"
     private val names =
         ThreadActionCardNameLookup { kind, id ->
             when {
                 kind == ThreadActionCardEntityKind.Human && id == "u-ada" -> "Ada"
-                kind == ThreadActionCardEntityKind.Channel && id == "ch-launch" -> "launch"
+                kind == ThreadActionCardEntityKind.Channel && id == launchChannelId -> "launch"
                 else -> null
             }
         }
@@ -128,7 +129,7 @@ class ThreadActionCardInviteExternalUiTest {
              "spec":{"root":"root","elements":{
                "root":{"type":"Stack","props":{"direction":"column","wrap":false},"children":["props"]},
                "props":{"type":"Stack","props":{"direction":"column","wrap":false,"role":"properties"},"children":["ch"]},
-               "ch":{"type":"Field","props":{"label":{"key":"actionCard.field.channel","text":{"en":"Channel"}},"value":[{"kind":"channel","id":"ch-launch","fallback":"launch"}]}}
+               "ch":{"type":"Field","props":{"label":{"key":"actionCard.field.channel","text":{"en":"Channel"}},"value":[{"kind":"channel","id":"$launchChannelId","fallback":"launch"}]}}
              }}$resultJson}
         """.trimIndent()
     }
@@ -148,7 +149,7 @@ class ThreadActionCardInviteExternalUiTest {
     ) = ThreadActionCard(
         type = ChannelInviteExternalActionCardType,
         state = state,
-        channel = "ch-launch",
+        channel = launchChannelId,
         externalInviteAddresses = addresses,
         confirmationVersion = 2,
         sourceServerId = sourceServerId,

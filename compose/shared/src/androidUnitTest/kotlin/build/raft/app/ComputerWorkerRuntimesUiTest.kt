@@ -72,7 +72,7 @@ class ComputerWorkerRuntimesUiTest {
         agents = emptyList(),
         sections = emptyList(),
         canManageMachines = true,
-        canEditMachine = true,
+        canEditMachine = false,
         canClaimOwner = canClaimOwner,
         currentUserId = "user-1",
     )

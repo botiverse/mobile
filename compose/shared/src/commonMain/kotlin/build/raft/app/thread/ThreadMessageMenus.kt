@@ -58,6 +58,7 @@ import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.app.data.AgentContextViewMenuEntryState
 import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.theme.RaftPointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.platform.LocalDensity
@@ -1126,11 +1127,12 @@ internal fun ThreadMessageHoverToolbar(
 ) {
     var toolbarHovered by remember { mutableStateOf(false) }
     var toolbarFocused by remember { mutableStateOf(false) }
+    var toolbarPressed by remember { mutableStateOf(false) }
     var opener by remember { mutableStateOf<ThreadMessageHoverToolbarOpener?>(null) }
     LaunchedEffect(popupOpen) { if (!popupOpen) opener = null }
     val shown =
         RaftTheme.pointerInput == RaftPointerInput.Fine &&
-            (rowHovered || toolbarHovered || toolbarFocused || popupOpen)
+            (rowHovered || toolbarHovered || toolbarFocused || toolbarPressed || popupOpen)
     val currentOnShownChange by rememberUpdatedState(actions.onShownChange)
     val currentOnRowShownChange by rememberUpdatedState(onShownChange)
     DisposableEffect(shown) {
@@ -1142,6 +1144,7 @@ internal fun ThreadMessageHoverToolbar(
             if (shown) {
                 toolbarHovered = false
                 toolbarFocused = false
+                toolbarPressed = false
                 currentOnShownChange(false)
                 currentOnRowShownChange(false)
             }
@@ -1169,6 +1172,18 @@ internal fun ThreadMessageHoverToolbar(
             modifier
                 .raftPointerHoverPosition { toolbarHovered = it != null }
                 .onFocusChanged { toolbarFocused = it.hasFocus }
+                .pointerInput(messageId) {
+                    try {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                toolbarPressed = event.changes.any { it.pressed }
+                            }
+                        }
+                    } finally {
+                        toolbarPressed = false
+                    }
+                }
     ) {
         if (actions.reaction) {
             ThreadMessageHoverToolbarReactionButton(

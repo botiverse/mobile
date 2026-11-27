@@ -110,10 +110,10 @@ class MobilePlacesServerPopoverUiTest {
             }
 
             waitForIdle()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true).assertIsDisplayed()
             onNodeWithText("Q4 Design Spec").assertIsDisplayed()
             onNodeWithText("Stamp").assertIsDisplayed()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_BUTTON).assertIsDisplayed()
 
             // Tapping a recently used Artifact picks it and dismisses the popover.
@@ -126,8 +126,13 @@ class MobilePlacesServerPopoverUiTest {
             recentItems = emptyList()
             state.show()
             waitForIdle()
-            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION).fetchSemanticsNodes().size)
-            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER).assertIsDisplayed()
+            assertEquals(
+                0,
+                onAllNodesWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .size,
+            )
+            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
         }
 
     @Test
@@ -182,7 +187,7 @@ class MobilePlacesServerPopoverUiTest {
             // Enter Edit mode via More header Edit button.
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_BUTTON).performClick()
             waitForIdle()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE, useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SETTINGS_TILE).assertIsDisplayed()
             assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.removeBadge("settings")).fetchSemanticsNodes().size)
             assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.addBadge("settings")).fetchSemanticsNodes().size)
@@ -194,8 +199,8 @@ class MobilePlacesServerPopoverUiTest {
                 listOf("activity", "tasks", "search", "artifacts", "chat", "members", "computers", "apps"),
                 savedOrders.last(),
             )
-            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("artifacts")).assertIsDisplayed()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("chat")).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("chat"), useUnmergedTree = true).assertIsDisplayed()
 
             // Tap + on Computers: moves computers to slot 4, bumps artifacts to More[0].
             onNodeWithTag(RaftMobilePlacesPopoverTags.addBadge("computers")).performClick()
@@ -204,21 +209,26 @@ class MobilePlacesServerPopoverUiTest {
                 listOf("activity", "tasks", "search", "computers", "artifacts", "chat", "members", "apps"),
                 savedOrders.last(),
             )
-            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("computers")).assertIsDisplayed()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("artifacts")).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("computers"), useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
 
             // Tap Reset: restores default order.
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_RESET_BUTTON).performClick()
             waitForIdle()
             assertEquals(1, resetCount)
-            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("chat")).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("chat"), useUnmergedTree = true).assertIsDisplayed()
 
             // Tap Done: returns to normal popover view while keeping popover open.
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_DONE_BUTTON).performClick()
             waitForIdle()
             assertTrue(state.open)
-            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE).fetchSemanticsNodes().size)
-            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER).assertIsDisplayed()
+            assertEquals(
+                0,
+                onAllNodesWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE, useUnmergedTree = true)
+                    .fetchSemanticsNodes()
+                    .size,
+            )
+            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
         }
 
     @Test
@@ -263,7 +273,7 @@ class MobilePlacesServerPopoverUiTest {
             }
 
             waitForIdle()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE, useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.removeBadge("chat")).assertIsNotEnabled()
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_SETTINGS_TILE).assertIsDisplayed()
         }
@@ -297,10 +307,10 @@ class MobilePlacesServerPopoverUiTest {
             }
 
             waitForIdle()
-            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION).fetchSemanticsNodes().size)
-            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER).fetchSemanticsNodes().size)
+            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true).fetchSemanticsNodes().size)
+            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).fetchSemanticsNodes().size)
             assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.EDIT_BUTTON).fetchSemanticsNodes().size)
-            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE).fetchSemanticsNodes().size)
+            assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.EDIT_SURFACE, useUnmergedTree = true).fetchSemanticsNodes().size)
         }
 
     @Test

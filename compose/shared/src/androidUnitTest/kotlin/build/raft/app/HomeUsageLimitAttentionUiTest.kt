@@ -109,7 +109,7 @@ class HomeUsageLimitAttentionUiTest {
             }
 
             // Two cards rendered, empty state hidden, unread dot shown on bell for unseen card.
-            onNode(hasTestTag(HOME_NOTIFICATION_UNREAD_DOT_TAG)).assertExists()
+            onNode(hasTestTag(HOME_NOTIFICATION_UNREAD_DOT_TAG), useUnmergedTree = true).assertExists()
             onNode(hasText("No notifications right now")).assertDoesNotExist()
             onNode(hasTestTag("home_notification_row_usage-limit:inc-claude")).assertExists()
             onNode(hasText("Claude used up")).assertExists()
@@ -128,7 +128,7 @@ class HomeUsageLimitAttentionUiTest {
                 cards = cards.map { if (it.id == "inc-claude") it.copy(seenAt = "2026-11-10T12:00:00.000Z") else it }
             }
             waitForIdle()
-            onNode(hasTestTag(HOME_NOTIFICATION_UNREAD_DOT_TAG)).assertDoesNotExist()
+            onNode(hasTestTag(HOME_NOTIFICATION_UNREAD_DOT_TAG), useUnmergedTree = true).assertDoesNotExist()
             onNode(hasTestTag("home_notification_row_usage-limit:inc-claude")).assertExists()
 
             // Dismiss both cards -> empty state appears and no usage-limit rows remain.
@@ -167,7 +167,7 @@ class HomeUsageLimitAttentionUiTest {
                 }
             }
 
-            onNode(hasTestTag(HOME_NOTIFICATION_UNREAD_DOT_TAG)).assertDoesNotExist()
+            onNode(hasTestTag(HOME_NOTIFICATION_UNREAD_DOT_TAG), useUnmergedTree = true).assertDoesNotExist()
             onNode(hasText("No notifications right now")).assertExists()
             onNode(hasText("used up", substring = true)).assertDoesNotExist()
         }
