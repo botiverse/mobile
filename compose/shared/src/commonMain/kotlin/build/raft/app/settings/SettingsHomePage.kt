@@ -2443,6 +2443,7 @@ private fun RaftAppShellReadyContent(
         membersListCachedContent = null
         foregroundBannerStore.clear()
         sharedStores.homeSavedStateCache.clear()
+        userPickedTabServerIdState.value = null
         selectAppShellTab("home")
         retainedAppShellTabs = setOf("home")
         prewarmedAppShellTabs = emptySet()
@@ -4646,6 +4647,7 @@ private fun RaftAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.DismissServerSwitcher))
             return
         }
+        userPickedTabServerIdState.value = normalizedServerId
         selectAppShellTab("home")
         retainedAppShellTabs = retainedAppShellTabs + "home"
         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
@@ -4803,6 +4805,7 @@ private fun RaftAppShellReadyContent(
             authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(selectedSession))
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(normalizedServerId)))
         }
+        userPickedTabServerIdState.value = normalizedServerId
         selectAppShellTab("home")
         retainedAppShellTabs = retainedAppShellTabs + "home"
         homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
@@ -4898,6 +4901,7 @@ private fun RaftAppShellReadyContent(
             ?.let { session -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(session)) }
         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
         homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(plan.serverId)))
+        userPickedTabServerIdState.value = plan.serverId
         if (selectedTab != plan.tab) selectAppShellTab(plan.tab, directChildSwitch = true)
         bridge.log("app_shell_server_menu_switch to=${plan.serverId} tab=${plan.tab}")
     }
@@ -4916,6 +4920,7 @@ private fun RaftAppShellReadyContent(
             homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
             homeShellStore.dispatch(SharedHomeShellIntent.Home(SharedHomeIntent.SelectServer(target)))
         }
+        userPickedTabServerIdState.value = target
         selectAppShellTab("activity", directChildSwitch = true)
         bridge.log("notification_open_activity_done targetServerId=$target")
     }
@@ -5074,6 +5079,7 @@ private fun RaftAppShellReadyContent(
     ) {
         serverMenuState.dismiss()
         target.switchToServerId?.let { serverId ->
+            userPickedTabServerIdState.value = serverId
             readySession
                 ?.withAppShellSelectedServer(serverId)
                 ?.let { switched -> authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(switched)) }

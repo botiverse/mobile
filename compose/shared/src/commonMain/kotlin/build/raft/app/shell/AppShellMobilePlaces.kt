@@ -350,6 +350,27 @@ internal fun appShellPhonePrimaryTabKey(phoneTabKeys: List<String> = AppShellPho
     phoneTabKeys.firstOrNull { it != AppShellServerTabKey } ?: RaftAppDestination.Chat.id
 
 /**
+ * Whether [AppShellMobileRailPlacesEffects] should apply the server's 1st phone tab as the initial
+ * landing destination:
+ * - Only once per account session ([appliedDefaultServerId] == null) after the first mobile-places
+ *   snapshot loads, never overriding the active tab when switching servers in place (D1a: switching
+ *   servers from Activity/Tasks/etc. keeps the tab you are on unless unavailable on the new server).
+ * - Never overrides an explicit launch tab ([hasExplicitInitialTab]) or a tab the user already
+ *   chose or carried into [serverId] ([userPickedTabServerId] == [serverId]).
+ */
+internal fun appShellShouldApplyPhonePrimaryTabDefault(
+    activeSnapshotLoaded: Boolean,
+    appliedDefaultServerId: String?,
+    serverId: String,
+    hasExplicitInitialTab: Boolean,
+    userPickedTabServerId: String?,
+): Boolean =
+    activeSnapshotLoaded &&
+        appliedDefaultServerId == null &&
+        !hasExplicitInitialTab &&
+        userPickedTabServerId != serverId
+
+/**
  * When a foldable/tablet widens into [navRailActive] while a promoted phone page tab (`artifacts`,
  * `computers`, `apps`) is selected, returns its inline rail destination key so the rail highlights
  * and renders it seamlessly.

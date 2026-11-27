@@ -1258,11 +1258,12 @@ internal fun AppShellMobileRailPlacesEffects(
             null -> Unit
         }
     }
-    // Kirby §7: when entering a server with `tab_bar_places_v0` ON on a phone, land on the 1st tab
-    // of the person's phone bar (not hardcoded "home") unless an explicit launch tab or manual tap
-    // already chose a tab on this server. Also clamp unavailable promoted tabs (e.g. Artifacts off
-    // or guest role on Members/Computers/Apps) back to the 1st tab.
-    var appliedDefaultServerId by remember { mutableStateOf<String?>(null) }
+    // Kirby §7: when initially entering a phone session with `tab_bar_places_v0` ON, land on the
+    // 1st tab of the person's phone bar (not hardcoded "home") unless an explicit launch tab or
+    // manual tap / server-switch carry already chose a tab. Switching servers in place keeps the
+    // active tab (e.g. Activity), while unavailable promoted tabs (Artifacts off, or guest role on
+    // Members/Computers/Apps) still clamp cleanly back to the 1st tab.
+    var appliedDefaultServerId by remember(accountId) { mutableStateOf<String?>(null) }
     val activeSnapshotLoaded = mobileRailPlacesState.activeSnapshot != null
     LaunchedEffect(
         enabled,
@@ -1287,10 +1288,13 @@ internal fun AppShellMobileRailPlacesEffects(
             return@LaunchedEffect
         }
         if (
-            activeSnapshotLoaded &&
-            appliedDefaultServerId != serverId &&
-            !hasExplicitInitialTab &&
-            userPickedTabServerIdState.value != serverId
+            build.raft.app.shell.appShellShouldApplyPhonePrimaryTabDefault(
+                activeSnapshotLoaded = activeSnapshotLoaded,
+                appliedDefaultServerId = appliedDefaultServerId,
+                serverId = serverId,
+                hasExplicitInitialTab = hasExplicitInitialTab,
+                userPickedTabServerId = userPickedTabServerIdState.value,
+            )
         ) {
             appliedDefaultServerId = serverId
             if (retained != primaryTab) {
