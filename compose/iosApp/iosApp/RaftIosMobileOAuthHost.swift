@@ -72,7 +72,7 @@ final class RaftIosOAuthRouteStore: ObservableObject {
                 )
                 if let message = result.message, !message.isEmpty {
                     let noticeTraceId = result.traceId
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    DispatchQueue.main.async {
                         RaftIosMobileOAuthHost.shared.presentNotice(message, traceId: noticeTraceId)
                     }
                 }
@@ -574,9 +574,56 @@ final class RaftIosMobileOAuthHost: NSObject,
         )
     }
 
-    func presentNotice(_ message: String, traceId: String? = nil) {
-        runOnMain {
-            guard let controller = Self.topViewController(), controller.presentedViewController == nil else {
+    func presentNotice(
+        _ message: String,
+        traceId: String? = nil,
+        attempt: Int = 0,
+        ignoringCoordinator completedCoordinator: UIViewControllerTransitionCoordinator? = nil
+    ) {
+        runOnMain { [weak self] in
+            guard let self, let controller = Self.topViewController() else {
+                return
+            }
+            // topViewController() walks to the leaf presented VC; if that VC itself is currently
+            // dismissing (e.g. ASWebAuthenticationSession / OAuth sheet), wait for its dismissal
+            // before presenting so UIKit does not silently drop the alert.
+            func scheduleRetry(
+                coordinator: UIViewControllerTransitionCoordinator?
+            ) {
+                var dispatched = false
+                weak var fallbackWaiter: RaftIosDisplayLinkFrameWaiter?
+                let fireOnce: (UIViewControllerTransitionCoordinator?) -> Void = { [weak self] ignored in
+                    guard !dispatched else { return }
+                    dispatched = true
+                    fallbackWaiter?.cancel()
+                    self?.presentNotice(message, traceId: traceId, attempt: attempt + 1, ignoringCoordinator: ignored)
+                }
+                if let coordinator, coordinator !== completedCoordinator, attempt < 10 {
+                    let attached = coordinator.animate(alongsideTransition: nil) { _ in
+                        DispatchQueue.main.async {
+                            fireOnce(coordinator)
+                        }
+                    }
+                    if attached { return }
+                }
+                if attempt < 45 {
+                    fallbackWaiter = RaftIosDisplayLinkFrameWaiter.schedule(afterFrames: 1) {
+                        fireOnce(completedCoordinator)
+                    }
+                }
+            }
+            if controller.isBeingDismissed {
+                scheduleRetry(
+                    coordinator: controller.transitionCoordinator ?? controller.presentingViewController?.transitionCoordinator
+                )
+                return
+            }
+            if let presented = controller.presentedViewController {
+                if presented.isBeingDismissed {
+                    scheduleRetry(
+                        coordinator: presented.transitionCoordinator ?? controller.transitionCoordinator
+                    )
+                }
                 return
             }
             let validTraceId = RaftHostStrings.shared.validTraceIdOrNull(traceId: traceId)

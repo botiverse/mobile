@@ -447,7 +447,12 @@ private final class RaftIosVlcPlayerChrome: UIView {
 
     private func setControlsVisible(_ visible: Bool) {
         controlsVisible = visible
-        UIView.animate(withDuration: 0.2) {
+        let duration: TimeInterval = UIAccessibility.isReduceMotionEnabled ? 0 : 0.2
+        UIView.animate(
+            withDuration: duration,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
             self.bar.alpha = visible ? 1 : 0
         }
         bar.isUserInteractionEnabled = visible

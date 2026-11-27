@@ -30,12 +30,15 @@ import build.raft.designsystem.components.RaftToastBottomInsetProvider
  * placed from `WindowInsets.ime` (the composer's bottom padding, the shell's bar hiding) then sits
  * behind the keyboard.
  *
- * The Android host therefore drives `imeBottomPx` directly as the single authoritative IME height
- * (settled heights from `onApplyWindowInsets`, per-frame interpolated heights directly from
- * `WindowInsetsAnimation.Callback.onProgress`, and Choreographer vsync reconciliation if an OEM
- * drops `onStart`/`onEnd`), keeping `imeAnimationRunning = false` so Compose never switches between
- * two inset sources mid-animation. iOS drives `imeBottomPx` during its curve-matched keyboard
- * animation and sets `imeAnimationRunning = true` once settled to hand back to `WindowInsets.ime`.
+ * The Android and iOS hosts therefore drive `imeBottomPx` directly as the single authoritative IME
+ * height (`imeAnimationRunning` stays `false` permanently on both platforms so Compose never
+ * switches between two inset sources mid-animation or at settlement):
+ * - Android: settled heights from `onApplyWindowInsets`, per-frame interpolated heights from
+ *   `WindowInsetsAnimation.Callback.onProgress`, and Choreographer vsync reconciliation if an OEM
+ *   drops `onStart`/`onEnd`.
+ * - iOS: curve-matched per-frame heights from `UIKeyboardWillChangeFrameNotification` and settled
+ *   heights from `UIKeyboardDidChangeFrameNotification` / zero-duration changes (see
+ *   [ProvideRaftPlatformImeInsets]).
  * Hosts that publish nothing (desktop, tests) keep reading `WindowInsets.ime` alone.
  */
 
@@ -46,10 +49,8 @@ class RaftHostImeInsets {
     var imeBottomPx: Int by mutableIntStateOf(0)
 
     /**
-     * When `true`, `WindowInsets.ime` is used instead of [imeBottomPx]. Android keeps this `false`
-     * because `AndroidImeAnimationTracker` feeds both settled and animated heights directly into
-     * [imeBottomPx]. iOS sets this `true` when no host keyboard animation is running (see
-     * [ProvideRaftPlatformImeInsets]) so the settled keyboard falls back to CMP's value.
+     * When `true`, `WindowInsets.ime` is used instead of [imeBottomPx]. Both Android and iOS keep
+     * this `false` so [imeBottomPx] remains the single authoritative inset source.
      */
     var imeAnimationRunning: Boolean by mutableStateOf(false)
 }
@@ -65,7 +66,8 @@ val LocalRaftHostImeInsets = staticCompositionLocalOf<RaftHostImeInsets?> { null
  * keyboard's curve 7 becomes ease-in-out; CMP-10448, fixed upstream in 1.13). The composer then
  * trails the keyboard by up to a third of its height at the start of the slide and catches up at
  * the end, which reads as a low-frame-rate, unglued keyboard. The iOS actual follows the keyboard
- * with the real curve while it animates and hands back to `WindowInsets.ime` once it settles.
+ * with the real curve and keeps [RaftHostImeInsets.imeBottomPx] as the single authoritative IME
+ * inset source even after settling (no handoff back to `WindowInsets.ime`).
  * Android's host provides [LocalRaftHostImeInsets] round its page stack itself and the desktop has
  * no software keyboard: both pass [content] through.
  */

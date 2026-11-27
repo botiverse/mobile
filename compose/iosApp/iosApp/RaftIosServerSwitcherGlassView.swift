@@ -376,6 +376,7 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
         separatorView.isHidden = state.actions.isEmpty
         actionsStackView.isHidden = state.actions.isEmpty
 
+        let wasHidden = isHidden
         isHidden = false
         positionGlassPopover()
         if pendingScrollToSelectedOnOpen {
@@ -385,7 +386,7 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
 
         if !presentedVisible {
             presentedVisible = true
-            animatePresent(animated: animated)
+            animatePresent(animated: animated, fromHidden: wasHidden)
         }
     }
 
@@ -434,16 +435,23 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
         glassContainerView.transform = savedTransform
     }
 
-    private func animatePresent(animated: Bool) {
-        glassContainerView.layer.removeAllAnimations()
+    private var animationGeneration: UInt64 = 0
+
+    private func animatePresent(animated: Bool, fromHidden: Bool) {
+        animationGeneration &+= 1
         guard animated else {
+            glassContainerView.layer.removeAllAnimations()
             glassContainerView.alpha = 1
             glassContainerView.transform = .identity
             return
         }
         let reduceMotion = UIAccessibility.isReduceMotionEnabled
-        glassContainerView.alpha = 0
-        glassContainerView.transform = reduceMotion ? .identity : CGAffineTransform(scaleX: 0.88, y: 0.88)
+        // Only seed the starting state when appearing from hidden; if interrupting an active
+        // dismiss animation, let `.beginFromCurrentState` reverse smoothly from the live layer.
+        if fromHidden {
+            glassContainerView.alpha = 0
+            glassContainerView.transform = reduceMotion ? .identity : CGAffineTransform(scaleX: 0.88, y: 0.88)
+        }
         UIView.animate(
             withDuration: reduceMotion ? 0.18 : 0.34,
             delay: 0,
@@ -459,8 +467,10 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
     private func dismissPopover(animated: Bool) {
         guard presentedVisible || !isHidden else { return }
         presentedVisible = false
-        glassContainerView.layer.removeAllAnimations()
+        animationGeneration &+= 1
+        let generation = animationGeneration
         guard animated else {
+            glassContainerView.layer.removeAllAnimations()
             isHidden = true
             glassContainerView.alpha = 1
             glassContainerView.transform = .identity
@@ -470,14 +480,14 @@ final class RaftIosServerSwitcherGlassOverlayView: UIView,
         UIView.animate(
             withDuration: 0.18,
             delay: 0,
-            options: [.curveEaseIn, .beginFromCurrentState]
+            options: [.curveEaseIn, .beginFromCurrentState, .allowUserInteraction]
         ) {
             self.glassContainerView.alpha = 0
             if !reduceMotion {
                 self.glassContainerView.transform = CGAffineTransform(scaleX: 0.90, y: 0.90)
             }
         } completion: { _ in
-            if !self.currentState.open {
+            if generation == self.animationGeneration && !self.currentState.open && !self.presentedVisible {
                 self.isHidden = true
                 self.glassContainerView.alpha = 1
                 self.glassContainerView.transform = .identity

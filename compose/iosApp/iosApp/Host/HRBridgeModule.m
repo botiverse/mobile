@@ -7243,6 +7243,12 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
 }
 
 - (void)raft_presentShareItems:(NSArray *)items attempt:(NSInteger)attempt {
+    [self raft_presentShareItems:items attempt:attempt ignoringCoordinator:nil];
+}
+
+- (void)raft_presentShareItems:(NSArray *)items
+                       attempt:(NSInteger)attempt
+           ignoringCoordinator:(nullable id<UIViewControllerTransitionCoordinator>)completedCoordinator {
     UIViewController *controller = RaftSharePresenterController(
         self.raft_sharePresenterController, [self raft_currentViewController]);
     if (!controller) {
@@ -7253,7 +7259,7 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
                 [NSString stringWithFormat:@"share_present_retry attempt=%ld reason=%@",
                  (long)attempt, reason]);
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self raft_presentShareItems:items attempt:attempt + 1];
+                [self raft_presentShareItems:items attempt:attempt + 1 ignoringCoordinator:nil];
             });
             return;
         }
@@ -7265,21 +7271,45 @@ didFinishPickingMediaWithInfo:(NSDictionary<UIImagePickerControllerInfoKey, id> 
         return;
     }
     UIViewController *dismissing = controller.presentedViewController;
-    if (dismissing && dismissing.isBeingDismissed && attempt < 3) {
-        // Strongly capture self in this bounded one-shot retry so a popped page's bridge module
-        // stays alive until the dismissing picker/sheet finishes and UIActivityViewController presents.
-        id<UIViewControllerTransitionCoordinator> coordinator = dismissing.transitionCoordinator;
-        if (coordinator) {
-            [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> ctx) {
+    if (dismissing && dismissing.isBeingDismissed) {
+        // Strongly capture self in this bounded retry so a popped page's bridge module stays alive
+        // until the dismissing picker/sheet finishes and UIActivityViewController presents.
+        // Guard coordinator completion + display-link fallback with a shared one-shot flag because
+        // UIKit may return NO from animateAlongsideTransition:completion: and still run completion.
+        __block BOOL dispatched = NO;
+        __block __weak RaftIosDisplayLinkFrameWaiter *fallbackWaiter = nil;
+        void (^fireOnce)(id<UIViewControllerTransitionCoordinator>) = ^(id<UIViewControllerTransitionCoordinator> ignored) {
+            if (dispatched) return;
+            dispatched = YES;
+            [fallbackWaiter cancel];
+            [self raft_presentShareItems:items attempt:attempt + 1 ignoringCoordinator:ignored];
+        };
+        id<UIViewControllerTransitionCoordinator> coordinator =
+            dismissing.transitionCoordinator ?: controller.transitionCoordinator;
+        if (coordinator && coordinator != completedCoordinator && attempt < 10) {
+            BOOL attached = [coordinator animateAlongsideTransition:nil completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> ctx) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    [self raft_presentShareItems:items attempt:attempt + 1];
+                    fireOnce(coordinator);
                 });
             }];
-        } else {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [self raft_presentShareItems:items attempt:attempt + 1];
-            });
+            if (attached) {
+                return;
+            }
         }
+        // Remote pickers (PHPickerViewController / UIDocumentPickerViewController) can dismiss
+        // without an in-process transitionCoordinator; pace retries across live display frames
+        // rather than spinning dispatch_async in <1ms or guessing a fixed wall-clock delay.
+        if (attempt < 45) {
+            fallbackWaiter = [RaftIosDisplayLinkFrameWaiter scheduleAfterFrames:1 action:^{
+                fireOnce(completedCoordinator);
+            }];
+            return;
+        }
+        RaftDiagnosticsRecord(
+            @"error", @"SlockShare",
+            [NSString stringWithFormat:@"share_present_failed attempt=%ld reason=dismissing_stalled",
+             (long)attempt]);
+        [self raft_showToast:SharedRaftHostStrings.shared.shareOpenFailed];
         return;
     }
     UIActivityViewController *activityController = [[UIActivityViewController alloc] initWithActivityItems:items applicationActivities:nil];

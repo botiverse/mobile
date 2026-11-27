@@ -1,5 +1,45 @@
 import Foundation
+import QuartzCore
 import UIKit
+
+/// One-shot cancellable display-link barrier so UIKit overlays wait on real rendered vsync frames
+/// (e.g. ensuring Skia/Metal has presented its transparent clear drawable, or pacing modal
+/// dismissal checks) rather than guessing with `DispatchQueue.main.async` or hardcoded ms timers.
+@objc final class RaftIosDisplayLinkFrameWaiter: NSObject {
+    private var remainingFrames: Int
+    private var action: (() -> Void)?
+    private var displayLink: CADisplayLink?
+
+    private init(frames: Int, action: @escaping () -> Void) {
+        self.remainingFrames = max(1, frames)
+        self.action = action
+        super.init()
+    }
+
+    @objc(scheduleAfterFrames:action:)
+    @discardableResult
+    static func schedule(afterFrames frames: Int, _ action: @escaping () -> Void) -> RaftIosDisplayLinkFrameWaiter {
+        let waiter = RaftIosDisplayLinkFrameWaiter(frames: frames, action: action)
+        let link = CADisplayLink(target: waiter, selector: #selector(handleTick))
+        waiter.displayLink = link
+        link.add(to: .main, forMode: .common)
+        return waiter
+    }
+
+    @objc func cancel() {
+        displayLink?.invalidate()
+        displayLink = nil
+        action = nil
+    }
+
+    @objc private func handleTick() {
+        remainingFrames -= 1
+        guard remainingFrames <= 0 else { return }
+        let work = action
+        cancel()
+        work?()
+    }
+}
 
 /// Pass-through transparent window that hosts one `UIWindowScene`'s single `RaftToastHost`
 /// above its navigation stack (#proj-mobile:#351). Never becomes key; hidden whenever no toast
@@ -51,24 +91,43 @@ final class RaftIosToastOverlayWindow: UIWindow {
 ///   transparent clear frame before the window hides and never flashes a stale toast later.
 final class RaftIosToastOverlayWindowController {
     let overlayWindow: RaftIosToastOverlayWindow
-    private let scheduleNextFrameHide: (@escaping () -> Void) -> Void
-    private let scheduleFallbackHide: (@escaping () -> Void) -> Void
+    private var scheduleNextFrameHide: (@escaping () -> Void) -> Void
+    private var scheduleFallbackHide: (@escaping () -> Void) -> Void
     private var hasVisibleToasts = false
     private var pendingHideToken: UInt64 = 0
+    private var activeWaiters: [RaftIosDisplayLinkFrameWaiter] = []
     private var detached = false
 
     init(
         overlayWindow: RaftIosToastOverlayWindow,
-        scheduleNextFrameHide: @escaping (@escaping () -> Void) -> Void = { work in
-            DispatchQueue.main.async(execute: work)
-        },
-        scheduleFallbackHide: @escaping (@escaping () -> Void) -> Void = { work in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
-        }
+        scheduleNextFrameHide: ((@escaping () -> Void) -> Void)? = nil,
+        scheduleFallbackHide: ((@escaping () -> Void) -> Void)? = nil
     ) {
         self.overlayWindow = overlayWindow
-        self.scheduleNextFrameHide = scheduleNextFrameHide
-        self.scheduleFallbackHide = scheduleFallbackHide
+        self.scheduleNextFrameHide = scheduleNextFrameHide ?? { _ in }
+        self.scheduleFallbackHide = scheduleFallbackHide ?? { _ in }
+        if scheduleNextFrameHide == nil {
+            self.scheduleNextFrameHide = { [weak self] work in
+                // 2 display-link ticks: frame 1 commits Compose/Metal's transparent clear drawable;
+                // frame 2 guarantees it has presented before hiding the window.
+                let waiter = RaftIosDisplayLinkFrameWaiter.schedule(afterFrames: 2, work)
+                self?.activeWaiters.append(waiter)
+            }
+        }
+        if scheduleFallbackHide == nil {
+            self.scheduleFallbackHide = { [weak self] work in
+                // 4 live display-link ticks if Compose never emitted non-empty bounds (zero hardcoded ms).
+                let waiter = RaftIosDisplayLinkFrameWaiter.schedule(afterFrames: 4, work)
+                self?.activeWaiters.append(waiter)
+            }
+        }
+    }
+
+    private func cancelActiveWaiters() {
+        for waiter in activeWaiters {
+            waiter.cancel()
+        }
+        activeWaiters.removeAll()
     }
 
     func handleVisibilityChanged(
@@ -80,6 +139,7 @@ final class RaftIosToastOverlayWindowController {
         if hasToasts {
             hasVisibleToasts = true
             pendingHideToken &+= 1
+            cancelActiveWaiters()
             if let bounds = sceneBounds, overlayWindow.frame != bounds {
                 overlayWindow.frame = bounds
             }
@@ -90,6 +150,7 @@ final class RaftIosToastOverlayWindowController {
             hasVisibleToasts = false
             overlayWindow.toastHitRect = nil
             pendingHideToken &+= 1
+            cancelActiveWaiters()
             let token = pendingHideToken
             guard !overlayWindow.isHidden else { return }
             scheduleFallbackHide { [weak self] in
@@ -133,12 +194,14 @@ final class RaftIosToastOverlayWindowController {
         detached = true
         hasVisibleToasts = false
         pendingHideToken &+= 1
+        cancelActiveWaiters()
         overlayWindow.toastHitRect = nil
         overlayWindow.isHidden = true
     }
 
     private func finishPendingHideIfCurrent(token: UInt64) {
         guard !detached, !hasVisibleToasts, pendingHideToken == token else { return }
+        cancelActiveWaiters()
         overlayWindow.toastHitRect = nil
         overlayWindow.isHidden = true
     }

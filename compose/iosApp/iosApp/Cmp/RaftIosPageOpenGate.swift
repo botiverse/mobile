@@ -58,6 +58,12 @@ import shared
     /// Where the gate's drop / queue lines go (the diagnostics log: `RaftPageControllerFactory.configure`).
     static var log: (String) -> Void = { line in NSLog("[RaftPageRouter] %@", line) }
 
+    /// Defers transition-end drain to the next main-queue turn so UIKit finishes clearing
+    /// `UINavigationController.transitionCoordinator` / `_isTransitioning` before pushing.
+    static var scheduleTransitionEnd: (@escaping () -> Void) -> Void = { work in
+        DispatchQueue.main.async(execute: work)
+    }
+
     /// Pages whose open is never gated: opening them resets or replaces the stack's meaning.
     static let ungatedPageNames: Set<String> = ["compose_slock_app_shell", "compose_login"]
 
@@ -109,14 +115,19 @@ import shared
         return gate(for: navigationController).open(RaftIosPageRoute(pageName: pageName, pageData: pageData), push: push)
     }
 
-    private func open(_ route: RaftIosPageRoute, push: @escaping () -> UIViewController?) -> Bool {
+    private func open(
+        _ route: RaftIosPageRoute,
+        push: @escaping () -> UIViewController?,
+        ignoringCoordinator completedCoordinator: UIViewControllerTransitionCoordinator? = nil
+    ) -> Bool {
         guard let navigationController else { return false }
         if let top = RaftIosPageOpenGate.route(of: navigationController.topViewController),
            RaftIosPageOpenGate.sameRoute(top, route) {
             log("open_dropped page=\(route.pageName) reason=same_route_on_top")
             return false
         }
-        if let coordinator = navigationController.transitionCoordinator {
+        if let coordinator = navigationController.transitionCoordinator,
+           coordinator !== completedCoordinator {
             if let queued = pending, RaftIosPageOpenGate.sameRoute(queued.route, route) {
                 log("open_dropped page=\(route.pageName) reason=same_route_queued")
                 return false
@@ -129,7 +140,9 @@ import shared
             if !waitingForTransition {
                 waitingForTransition = true
                 coordinator.animate(alongsideTransition: nil) { [weak self] _ in
-                    self?.transitionEnded()
+                    RaftIosPageOpenGate.scheduleTransitionEnd { [weak self] in
+                        self?.transitionEnded(completedCoordinator: coordinator)
+                    }
                 }
             }
             return false
@@ -141,11 +154,11 @@ import shared
     }
 
     /// The transition completed (or was cancelled): opens the queued open, checked again.
-    func transitionEnded() {
+    func transitionEnded(completedCoordinator: UIViewControllerTransitionCoordinator? = nil) {
         waitingForTransition = false
         guard let queued = pending else { return }
         pending = nil
-        _ = open(queued.route, push: queued.push)
+        _ = open(queued.route, push: queued.push, ignoringCoordinator: completedCoordinator)
     }
 
     private func log(_ line: String) {

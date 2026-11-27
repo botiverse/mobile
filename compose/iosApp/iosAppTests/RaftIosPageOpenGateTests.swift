@@ -66,6 +66,8 @@ final class RaftIosPageOpenGateTests: XCTestCase {
 
     private var savedSameRoute: ((RaftIosPageRoute, RaftIosPageRoute) -> Bool)!
     private var savedLog: ((String) -> Void)!
+    private var savedScheduleTransitionEnd: ((@escaping () -> Void) -> Void)!
+    private var deferredTransitionEnds: [() -> Void] = []
     private var logged: [String] = []
     private var navigation: RecordingNavigationController!
 
@@ -73,11 +75,16 @@ final class RaftIosPageOpenGateTests: XCTestCase {
         super.setUp()
         savedSameRoute = RaftIosPageOpenGate.sameRoute
         savedLog = RaftIosPageOpenGate.log
+        savedScheduleTransitionEnd = RaftIosPageOpenGate.scheduleTransitionEnd
+        deferredTransitionEnds = []
         // The shared identity compares the thread by thread id, not per-open facts: same here.
         RaftIosPageOpenGate.sameRoute = { a, b in
             a.pageName == b.pageName && Self.threadId(a) == Self.threadId(b)
         }
         RaftIosPageOpenGate.log = { [weak self] line in self?.logged.append(line) }
+        RaftIosPageOpenGate.scheduleTransitionEnd = { [weak self] work in
+            self?.deferredTransitionEnds.append(work)
+        }
         navigation = RecordingNavigationController(rootViewController: UIViewController())
         navigation.pushCount = 0
     }
@@ -85,8 +92,17 @@ final class RaftIosPageOpenGateTests: XCTestCase {
     override func tearDown() {
         RaftIosPageOpenGate.sameRoute = savedSameRoute
         RaftIosPageOpenGate.log = savedLog
+        RaftIosPageOpenGate.scheduleTransitionEnd = savedScheduleTransitionEnd
+        deferredTransitionEnds = []
         navigation = nil
         super.tearDown()
+    }
+
+    private func drainDeferredTransitionEnds() {
+        while !deferredTransitionEnds.isEmpty {
+            let next = deferredTransitionEnds.removeFirst()
+            next()
+        }
     }
 
     private static func threadId(_ route: RaftIosPageRoute) -> String? {
@@ -129,11 +145,39 @@ final class RaftIosPageOpenGateTests: XCTestCase {
         XCTAssertEqual(coordinator.completionCount, 1, "one completion per transition")
         XCTAssertEqual(navigation.pushCount, 1)
 
-        navigation.fakeCoordinator = nil
+        // Real UIKit keeps navigationController.transitionCoordinator non-nil until after
+        // completion closures return; draining on the next main-queue turn must push cleanly.
         coordinator.finish()
+        XCTAssertEqual(navigation.pushCount, 1, "must not push synchronously inside coordinator completion")
+        navigation.fakeCoordinator = nil
+        drainDeferredTransitionEnds()
         XCTAssertEqual(titles, ["compose_thread t1", "compose_thread t3"])
         XCTAssertTrue(logged.contains("open_dropped page=compose_thread reason=superseded_in_transition"))
         XCTAssertTrue(logged.contains("open_dropped page=compose_thread reason=same_route_queued"))
+    }
+
+    func testStaleCompletedCoordinatorStillAttachedDoesNotWedgeQueuedOpen() {
+        open("compose_thread", thread: "t1")
+        let coordinator = FakeTransitionCoordinator()
+        navigation.fakeCoordinator = coordinator
+        XCTAssertFalse(open("compose_thread", thread: "t2"))
+
+        // Even if the same finished coordinator is still attached when the deferred drain runs,
+        // the gate ignores the already-completed coordinator instead of re-attaching a dead handler.
+        coordinator.finish()
+        drainDeferredTransitionEnds()
+        XCTAssertEqual(titles, ["compose_thread t1", "compose_thread t2"])
+        XCTAssertEqual(coordinator.completionCount, 0, "must not re-register on the completed coordinator")
+
+        // Subsequent transitions continue to work without wedging.
+        let secondCoordinator = FakeTransitionCoordinator()
+        navigation.fakeCoordinator = secondCoordinator
+        XCTAssertFalse(open("compose_thread", thread: "t3"))
+        XCTAssertEqual(secondCoordinator.completionCount, 1)
+        secondCoordinator.finish()
+        navigation.fakeCoordinator = nil
+        drainDeferredTransitionEnds()
+        XCTAssertEqual(titles, ["compose_thread t1", "compose_thread t2", "compose_thread t3"])
     }
 
     func testBackThenTheSameRowOpensAgain() {
