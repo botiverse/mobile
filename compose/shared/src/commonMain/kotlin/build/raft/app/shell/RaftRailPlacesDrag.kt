@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -55,6 +56,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -107,6 +109,8 @@ import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftReorderDefaults
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
+import build.raft.designsystem.components.raftScrollFadeY
+import build.raft.designsystem.components.raftScrollbar
 import build.raft.designsystem.haptics.RaftHaptics
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.text.RaftText
@@ -149,6 +153,15 @@ internal const val RaftRailClickBlockAfterDropMs = 50L
 
 /** Test tag prefix for place rows rendered inside the desktop rail More menu. */
 internal const val RaftRailMorePlaceTagPrefix = "rail-more-place-"
+
+/** Test tag for the desktop rail More menu surface. */
+internal const val RaftRailMoreMenuTag = "rail-more-menu"
+
+/** Test tag for the scrollable places section inside the desktop rail More menu. */
+internal const val RaftRailMoreScrollTag = "rail-more-scroll"
+
+/** Test tag for the pinned "Edit navigation bar" footer item inside the desktop rail More menu. */
+internal const val RaftRailMoreEditTag = "rail-more-edit"
 
 /** Where a desktop rail place pointer drag originated (web `DragSource`). */
 internal enum class RaftRailDragSource {
@@ -1024,11 +1037,13 @@ internal fun RaftDesktopRailPlacesNav(
 }
 
 /**
- * More overflow menu overlay (web `RailMore.tsx`, botiverse/slock #16808 + #16838):
+ * More overflow menu overlay (web `RailMore.tsx`, botiverse/slock #16808 + #16838 + #16999 + #17070):
  * - Positioned beside the rail at More's anchor (pinned to [RaftDesktopRailPlacesHost.pinnedMoreAnchorTopPx]
  *   while dragging out of More so the menu never jumps as the rail makes room).
  * - Renders **settled** overflow places + "More places" (not-on-list built-ins and `placeableApps`)
- *   so menu rows never reflow mid-drag; the dragged row dims to 40% in place.
+ *   inside a bounded scrollable section (`raftScrollFadeY` + `raftScrollbar`) so long lists scroll
+ *   cleanly within the available window height instead of overflowing; the dragged row dims to 40%
+ *   in place.
  * - Pinned "Edit navigation bar" footer stays visible below the scrollable places list.
  * - Uses [RaftFloatingOverlayOutsidePointerMode.PassThrough] while a drag is live so pointer drag
  *   events cross freely between the menu and the rail without dismissing the menu.
@@ -1051,18 +1066,6 @@ private fun RaftRailPlacesMoreOverlay(host: RaftDesktopRailPlacesHost) {
     val edgePadPx = with(density) { RaftAppRailPopoverGap.toPx() }
     val rawAnchorTop = host.pinnedMoreAnchorTopPx ?: host.moreButtonBounds?.top ?: edgePadPx
     val localAnchorTop = rawAnchorTop - overlayOriginY
-    val maxTopPx =
-        if (windowHeightPx > 0f && menuHeightPx > 0f) {
-            (windowHeightPx - menuHeightPx - edgePadPx).coerceAtLeast(edgePadPx)
-        } else {
-            localAnchorTop.coerceAtLeast(edgePadPx)
-        }
-    val clampedTopPx = localAnchorTop.coerceIn(edgePadPx, maxTopPx)
-    val maxListHeightDp =
-        with(density) {
-            val budget = if (windowHeightPx > 0f) (windowHeightPx - edgePadPx * 2f - 64.dp.toPx()) else 360.dp.toPx()
-            budget.coerceAtLeast(120.dp.toPx()).toDp()
-        }
 
     DisposableEffect(Unit) {
         onDispose { host.updateMoreMenuBounds(null) }
@@ -1086,7 +1089,28 @@ private fun RaftRailPlacesMoreOverlay(host: RaftDesktopRailPlacesHost) {
     ) { layout ->
         overlayOriginY = layout.origin.y
         RaftDesignSystemTheme {
-            Box(Modifier.fillMaxSize()) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val availableHeightPx =
+                    when {
+                        constraints.hasBoundedHeight -> constraints.maxHeight.toFloat()
+                        layout.size.height > 0f -> layout.size.height
+                        else -> windowHeightPx
+                    }
+                val maxMenuHeightDp =
+                    if (availableHeightPx > 0f) {
+                        with(density) { (availableHeightPx - edgePadPx * 2f).coerceAtLeast(0f).toDp() }
+                    } else {
+                        Dp.Unspecified
+                    }
+                val maxTopPx =
+                    if (availableHeightPx > 0f && menuHeightPx > 0f) {
+                        (availableHeightPx - menuHeightPx - edgePadPx).coerceAtLeast(edgePadPx)
+                    } else {
+                        localAnchorTop.coerceAtLeast(edgePadPx)
+                    }
+                val clampedTopPx = localAnchorTop.coerceIn(edgePadPx, maxTopPx)
+                val scrollState = rememberScrollState()
+
                 RaftMenuSurface(
                     width = RaftMenuMetrics.MinWidth,
                     modifier =
@@ -1094,6 +1118,14 @@ private fun RaftRailPlacesMoreOverlay(host: RaftDesktopRailPlacesHost) {
                             .align(Alignment.TopStart)
                             .padding(start = RaftAppRailOuterWidth + RaftAppRailPopoverGap)
                             .offset { IntOffset(0, clampedTopPx.roundToInt()) }
+                            .then(
+                                if (maxMenuHeightDp != Dp.Unspecified) {
+                                    Modifier.heightIn(max = maxMenuHeightDp)
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .testTag(RaftRailMoreMenuTag)
                             .onGloballyPositioned { coords ->
                                 menuHeightPx = coords.size.height.toFloat()
                                 host.updateMoreMenuBounds(coords.boundsInRoot())
@@ -1105,8 +1137,11 @@ private fun RaftRailPlacesMoreOverlay(host: RaftDesktopRailPlacesHost) {
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .heightIn(max = maxListHeightDp)
-                                    .verticalScroll(rememberScrollState()),
+                                    .weight(1f, fill = false)
+                                    .testTag(RaftRailMoreScrollTag)
+                                    .raftScrollFadeY(scrollState)
+                                    .raftScrollbar(scrollState)
+                                    .verticalScroll(scrollState),
                         ) {
                             overflow.forEach { place ->
                                 val item = host.payloadForPlace(place, builtIns) ?: return@forEach
@@ -1172,6 +1207,7 @@ private fun RaftRailPlacesMoreOverlay(host: RaftDesktopRailPlacesHost) {
                                 host.onOpenEdit()
                             }
                         },
+                        modifier = Modifier.testTag(RaftRailMoreEditTag),
                         leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.SlidersHorizontal, size = 14.dp) },
                     )
                 }
