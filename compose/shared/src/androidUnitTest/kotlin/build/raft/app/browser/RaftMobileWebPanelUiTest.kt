@@ -8,8 +8,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsEnabled
-import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -134,48 +132,69 @@ class RaftMobileWebPanelUiTest {
     }
 
     @Test
-    fun bottomBarBackForwardReloadAndCloseReflectHistory() = runRobolectricComposeUiTest {
-        val history = mutableListOf("https://deck.example/page-1")
-        var index by mutableStateOf(0)
+    fun topBarAlignsWithNavStackShowingQuickExitOnlyWhenWebHistoryExists() = runRobolectricComposeUiTest {
+        var canGoBack by mutableStateOf(false)
+        var inColumn by mutableStateOf(false)
         val callbacks = mutableListOf<String>()
 
         setContent {
             RaftDesignSystemTheme {
-                RaftAppBrowserBottomBar(
-                    canGoBack = index > 0,
-                    canGoForward = index < history.lastIndex,
-                    onGoBack = {
-                        callbacks += "back"
-                        if (index > 0) index -= 1
+                RaftAppBrowserTopBar(
+                    isRaftApp = true,
+                    isOutboundChild = false,
+                    currentUrl = "https://stamp.build/pulls/42",
+                    appName = "Stamp",
+                    appLogoUrl = null,
+                    signedInAsName = "artin",
+                    inColumn = inColumn,
+                    canGoBack = canGoBack,
+                    onBack = {
+                        if (canGoBack) {
+                            callbacks += "web_back"
+                            canGoBack = false
+                        } else {
+                            callbacks += "exit_to_raft"
+                        }
                     },
-                    onGoForward = {
-                        callbacks += "forward"
-                        if (index < history.lastIndex) index += 1
-                    },
+                    onExitToHost = { callbacks += "quick_exit_to_raft" },
+                    onClosePage = { callbacks += "close_page" },
                     onReload = { callbacks += "reload" },
-                    onClose = { callbacks += "close" },
+                    onShare = { callbacks += "share" },
+                    onCopyLink = { callbacks += "copy" },
+                    onOpenInBrowser = { callbacks += "open_browser" },
                 )
             }
         }
 
-        onNodeWithTag(RAFT_WEB_PANEL_BACK_BUTTON_TAG).assertIsDisplayed()
-        onNodeWithTag(RAFT_WEB_PANEL_FORWARD_BUTTON_TAG).assertIsDisplayed()
-        onNodeWithContentDescription("Back").assertIsDisplayed().assertIsNotEnabled()
-        onNodeWithContentDescription("Forward").assertIsDisplayed().assertIsNotEnabled()
+        // At root page on phone: only ← is shown (no redundant × next to it); tapping ← returns to Raft.
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_APP_BROWSER_EXIT_NAV_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).performClick()
 
+        // Inside sub-page with web history: both ← (web back) and compact × (1-tap return to Raft) appear.
+        runOnIdle { canGoBack = true }
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_APP_BROWSER_EXIT_NAV_TAG).assertIsDisplayed().performClick()
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).performClick()
+        onNodeWithTag(RAFT_APP_BROWSER_EXIT_NAV_TAG).assertDoesNotExist()
+
+        // In wide side column: ← stays hidden at root and appears when canGoBack, while trailing × exits column.
         runOnIdle {
-            history += "https://deck.example/page-2"
-            index = 1
+            inColumn = true
+            canGoBack = false
         }
-        onNodeWithContentDescription("Back").assertIsEnabled().performClick()
-        runOnIdle { assertEquals("https://deck.example/page-1", history[index]) }
-        onNodeWithContentDescription("Forward").assertIsEnabled().performClick()
-        runOnIdle { assertEquals("https://deck.example/page-2", history[index]) }
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_APP_BROWSER_EXIT_NAV_TAG).assertDoesNotExist()
+        onNodeWithContentDescription("Close").assertIsDisplayed().performClick()
 
-        onNodeWithTag(RAFT_APP_BROWSER_RELOAD_BUTTON_TAG).performClick()
-        onNodeWithTag(RAFT_WEB_PANEL_CLOSE_BUTTON_TAG).performClick()
+        runOnIdle { canGoBack = true }
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).assertIsDisplayed().performClick()
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).assertDoesNotExist()
 
-        assertEquals(listOf("back", "forward", "reload", "close"), callbacks)
+        assertEquals(
+            listOf("exit_to_raft", "quick_exit_to_raft", "web_back", "quick_exit_to_raft", "web_back"),
+            callbacks,
+        )
     }
 
     @Test
