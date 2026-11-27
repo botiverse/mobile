@@ -28,35 +28,109 @@ env -u SLOCK_CREATE_HANDS_DRAFT \
   grep -q 'create_hands_draft=true' || fail "canonical wrapper help does not expose draft creation"
 
 ruby -e '
+  require "open3"
+  require "tempfile"
   require "yaml"
   workflow = YAML.load_file(".github/workflows/android-release.yml")
   ios_workflow = YAML.load_file(".github/workflows/ios-release.yml")
   update_workflow = YAML.load_file(".github/workflows/android-update-qa.yml")
 
+  call_inputs = workflow.fetch(true).fetch("workflow_call").fetch("inputs")
   inputs = workflow.fetch(true).fetch("workflow_dispatch").fetch("inputs")
   raise "manual release must not expose a skip-draft switch" if inputs.key?("publish_hands") || inputs.key?("create_hands_draft")
   upload_input = inputs.fetch("upload_android_artifacts")
   raise "manual artifact upload must default off" unless upload_input.fetch("default") == false
+  raise "workflow_call must expose optional android_abi_filters defaulting to empty" unless call_inputs.fetch("android_abi_filters").fetch("default") == ""
+  raise "workflow_dispatch must expose optional android_abi_filters defaulting to empty" unless inputs.fetch("android_abi_filters").fetch("default") == ""
 
   jobs = workflow.fetch("jobs")
   resolve_job = jobs.fetch("resolve")
+  resolve_outputs = resolve_job.fetch("outputs")
+  raise "resolve job must output android_abi_filters" unless resolve_outputs.fetch("android_abi_filters") == "${{ steps.p.outputs.android_abi_filters }}"
+  raise "resolve job must output hands_arch" unless resolve_outputs.fetch("hands_arch") == "${{ steps.p.outputs.hands_arch }}"
   resolve_input_step = resolve_job.fetch("steps").find { |step| step["id"] == "p" }
   raise "missing canonical release input resolver step" unless resolve_input_step
   resolve_env = resolve_input_step.fetch("env")
   unless resolve_env.fetch("INPUT_DEX_PACKAGING") == "${{ inputs.dex_packaging }}" &&
-      resolve_env.fetch("INPUT_JNI_PACKAGING") == "${{ inputs.jni_packaging }}"
-    raise "packaging inputs must cross into the resolver through step env"
+      resolve_env.fetch("INPUT_JNI_PACKAGING") == "${{ inputs.jni_packaging }}" &&
+      resolve_env.fetch("INPUT_HANDS_CHANNEL") == "${{ inputs.hands_channel }}" &&
+      resolve_env.fetch("INPUT_ANDROID_ABI_FILTERS") == "${{ inputs.android_abi_filters }}"
+    raise "packaging and ABI inputs must cross into the resolver through step env"
   end
   resolve_run = resolve_input_step.fetch("run")
   unless resolve_run.include?("DEX_PACKAGING=\"${INPUT_DEX_PACKAGING}\"") &&
-      resolve_run.include?("JNI_PACKAGING=\"${INPUT_JNI_PACKAGING}\"")
-    raise "packaging resolver does not read env-bound inputs"
+      resolve_run.include?("JNI_PACKAGING=\"${INPUT_JNI_PACKAGING}\"") &&
+      resolve_run.include?("\"${INPUT_ANDROID_ABI_FILTERS}\"")
+    raise "packaging/ABI resolver does not read env-bound inputs"
   end
   if resolve_run.include?("DEX_PACKAGING=\"${{ inputs.dex_packaging }}\"") ||
-      resolve_run.include?("JNI_PACKAGING=\"${{ inputs.jni_packaging }}\"")
-    raise "packaging input expression is injected into shell source"
+      resolve_run.include?("JNI_PACKAGING=\"${{ inputs.jni_packaging }}\"") ||
+      resolve_run.include?("${{ inputs.android_abi_filters }}")
+    raise "packaging/ABI input expression is injected into shell source"
   end
+
+  # Execute the real resolve step shell body across channel/variant/override combinations.
+  rendered_resolve = resolve_run
+    .gsub("${{ inputs.version_major }}", "1")
+    .gsub("${{ inputs.version_minor }}", "31")
+    .gsub("${{ inputs.version_patch }}", "0")
+    .gsub("${{ inputs.version_build }}", "8")
+    .gsub("${{ inputs.version_suffix }}", "")
+    .gsub("${{ inputs.create_share_page }}", "false")
+    .gsub("${{ inputs.share_ttl_seconds }}", "")
+    .gsub("${{ github.event_name }}", "workflow_dispatch")
+  abi_cases = [
+    ["release", "main", "", "false", "arm64-v8a", "arm64-v8a"],
+    ["release", "preview", "", "false", "arm64-v8a", "arm64-v8a"],
+    ["release", "debug", "", "false", "arm64-v8a,x86_64", "universal"],
+    ["release", "alpha", "", "false", "arm64-v8a,x86_64", "universal"],
+    ["release", "nightly", "", "false", "arm64-v8a,x86_64", "universal"],
+    ["play", "main", "", "true", "arm64-v8a,x86_64", "universal"],
+    ["debug", "main", "", "false", "arm64-v8a,x86_64", "universal"],
+    ["release", "debug", "arm64-v8a", "false", "arm64-v8a", "arm64-v8a"],
+    ["release", "main", "x86_64", "false", "x86_64", "x86_64"],
+    ["release", "preview", "arm64-v8a,x86_64", "false", "arm64-v8a,x86_64", "universal"],
+    ["release", "preview", "x86_64, arm64-v8a", "false", "arm64-v8a,x86_64", "universal"],
+  ]
+  abi_cases.each do |variant, channel, raw_abi, upload_flag, want_abi, want_arch|
+    Tempfile.create("resolve-out") do |out|
+      env = {
+        "GITHUB_OUTPUT" => out.path,
+        "INPUT_CREATE_HANDS_DRAFT" => "",
+        "INPUT_DEX_PACKAGING" => "compressed",
+        "INPUT_JNI_PACKAGING" => "current",
+        "INPUT_ANDROID_VARIANT" => variant,
+        "INPUT_HANDS_CHANNEL" => channel,
+        "INPUT_ANDROID_ABI_FILTERS" => raw_abi,
+        "INPUT_UPLOAD_ANDROID_ARTIFACTS" => upload_flag,
+      }
+      _stdout, stderr, status = Open3.capture3(env, "bash", "-c", rendered_resolve)
+      raise "resolve failed for #{variant}/#{channel}/#{raw_abi.inspect}: #{stderr}" unless status.success?
+      parsed = File.readlines(out.path, chomp: true).map { |line| line.split("=", 2) }.to_h
+      unless parsed["android_abi_filters"] == want_abi && parsed["hands_arch"] == want_arch
+        raise "resolve mismatch for #{variant}/#{channel}/#{raw_abi.inspect}: got abi=#{parsed["android_abi_filters"].inspect} arch=#{parsed["hands_arch"].inspect}, want abi=#{want_abi.inspect} arch=#{want_arch.inspect}"
+      end
+    end
+  end
+  ["armeabi-v7a", "arm64-v8a,", "invalid"].each do |bad_abi|
+    Tempfile.create("resolve-bad") do |out|
+      env = {
+        "GITHUB_OUTPUT" => out.path,
+        "INPUT_CREATE_HANDS_DRAFT" => "",
+        "INPUT_DEX_PACKAGING" => "compressed",
+        "INPUT_JNI_PACKAGING" => "current",
+        "INPUT_ANDROID_VARIANT" => "release",
+        "INPUT_HANDS_CHANNEL" => "main",
+        "INPUT_ANDROID_ABI_FILTERS" => bad_abi,
+        "INPUT_UPLOAD_ANDROID_ARTIFACTS" => "false",
+      }
+      _stdout, _stderr, status = Open3.capture3(env, "bash", "-c", rendered_resolve)
+      raise "resolve failed to reject unsupported android_abi_filters=#{bad_abi.inspect}" if status.success?
+    end
+  end
+
   publish_job = jobs.fetch("create_hands_draft")
+  raise "create_hands_draft does not pass resolved hands_arch to publish_android_hands_release.sh" unless publish_job.fetch("env").fetch("SLOCK_ANDROID_ARCH") == "${{ needs.resolve.outputs.hands_arch }}"
   expected_draft_gate = "github.event_name == '\''workflow_dispatch'\'' &&\n" \
     "needs.resolve.outputs.create_hands_draft == '\''true'\'' &&\n" \
     "needs.resolve.outputs.android_variant != '\''play'\''"
@@ -159,6 +233,12 @@ ruby -e '
   repair_runs = repair.fetch("steps").map { |step| step.fetch("run", "") }.join("\n")
   raise "repair runs a build or publishes" if repair_runs.match?(/gradlew|upload_android_hands_artifacts|hands publish/)
 
+  gradle_build_step = release_steps.find { |step| step["name"]&.start_with?("Gradle build") }
+  raise "missing Gradle build step in build_android_release" unless gradle_build_step
+  unless gradle_build_step.fetch("run").include?("-PSLOCK_ANDROID_ABI_FILTERS=${{ needs.resolve.outputs.android_abi_filters }}")
+    raise "release workflow does not pass resolved SLOCK_ANDROID_ABI_FILTERS to Gradle"
+  end
+
   release_verify = release_steps.fetch(verify_index).fetch("run")
   unless release_verify.include?("scripts/verify_android_apk_with_rotation.sh")
     raise "release workflow bypasses the canonical API 24-32 rotation verifier"
@@ -172,17 +252,48 @@ ruby -e '
   end
   unless release_verify.include?("scripts/verify_android_elf_alignment.py") &&
       release_verify.include?("--expect-native-method") &&
-      release_verify.include?("--require-abi arm64-v8a") &&
-      release_verify.include?("--require-abi x86_64")
-    raise "release workflow bypasses the 16 KB ELF/native packaging contract"
+      release_verify.include?("--require-abi") &&
+      release_verify.include?("--forbid-abi x86_64") &&
+      release_verify.include?("needs.resolve.outputs.android_abi_filters")
+    raise "release workflow bypasses the 16 KB ELF/native packaging and ABI split contract"
+  end
+  unless release_verify.include?("android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION") &&
+      release_verify.include?("io.livekit.android.room.track.screencapture.ScreenCaptureService") &&
+      release_verify.include?("Play APK must not declare any FOREGROUND_SERVICE* permission")
+    raise "release workflow bypasses the FGS and LiveKit ScreenCaptureService manifest verification contract"
   end
 
   android_gradle = File.read("compose/androidApp/build.gradle.kts")
   raise "Play carrier leaves Hands APK updates enabled" unless android_gradle.include?(%q{buildConfigField("Boolean", "HANDS_APK_UPDATE_ENABLED", "false")})
+  unless android_gradle.include?(%q{raftBuildConfigRawString("SLOCK_ANDROID_ABI_FILTERS")}) &&
+      android_gradle.include?(%q{setOf("arm64-v8a", "x86_64")}) &&
+      android_gradle.include?(%q{abiFilters += raftAndroidAbiFilters})
+    raise "compose/androidApp/build.gradle.kts does not wire validated SLOCK_ANDROID_ABI_FILTERS into ndk.abiFilters"
+  end
   play_manifest = File.read("compose/androidApp/src/play/AndroidManifest.xml")
-  raise "Play manifest does not remove REQUEST_INSTALL_PACKAGES" unless play_manifest.include?(%q{android.permission.REQUEST_INSTALL_PACKAGES}) && play_manifest.include?(%q{tools:node="remove"})
+  %w[
+    android.permission.REQUEST_INSTALL_PACKAGES
+    android.permission.FOREGROUND_SERVICE
+    android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING
+    android.permission.FOREGROUND_SERVICE_DATA_SYNC
+    android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+    build.raft.app.shared.RaftBackgroundConnectionService
+    build.raft.app.shared.RaftDownloadForegroundService
+  ].each do |node_name|
+    unless play_manifest.match?(/android:name="#{Regexp.escape(node_name)}"\s+tools:node="remove"/)
+      raise "Play manifest does not remove #{node_name}"
+    end
+  end
   main_manifest = File.read("compose/androidApp/src/main/AndroidManifest.xml")
   raise "Hands source manifest no longer declares REQUEST_INSTALL_PACKAGES" unless main_manifest.include?(%q{android.permission.REQUEST_INSTALL_PACKAGES})
+  %w[
+    android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION
+    io.livekit.android.room.track.screencapture.ScreenCaptureService
+  ].each do |node_name|
+    unless main_manifest.match?(/android:name="#{Regexp.escape(node_name)}"\s+tools:node="remove"/)
+      raise "main manifest does not strip unused LiveKit screen-capture node #{node_name}"
+    end
+  end
   raise "Hands release manifest must retain the source permission" if File.exist?("compose/androidApp/src/release/AndroidManifest.xml") && File.read("compose/androidApp/src/release/AndroidManifest.xml").include?(%q{tools:node="remove"})
   raise "release resolver does not receive artifact-upload input" unless resolve_env.fetch("INPUT_UPLOAD_ANDROID_ARTIFACTS") == "${{ inputs.upload_android_artifacts }}"
 

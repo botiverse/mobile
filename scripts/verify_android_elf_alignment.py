@@ -118,14 +118,34 @@ def archive_abi(filename: str) -> str | None:
     return None
 
 
+def archive_abi_dir(filename: str) -> str | None:
+    parts = filename.split("/")
+    if (
+        len(parts) >= 3
+        and parts[0] in {"jni", "lib"}
+        and parts[1] in SUPPORTED_ABIS
+        and parts[-1] != ""
+    ):
+        return parts[1]
+    return archive_abi(filename)
+
+
 def verify_archive(
     archive_path: Path,
     *,
     required_abis: tuple[str, ...] = (),
+    forbidden_abis: tuple[str, ...] = (),
     expected_native_method: str | None = None,
 ) -> dict[str, object]:
+    overlap_abis = sorted(set(required_abis) & set(forbidden_abis))
+    if overlap_abis:
+        raise ValueError(
+            f"ABIs cannot be both required and forbidden: {', '.join(overlap_abis)}"
+        )
+
     results: dict[str, object] = {}
     seen_abis: set[str] = set()
+    seen_abi_dirs: set[str] = set()
 
     with zipfile.ZipFile(archive_path) as archive:
         duplicate_names = sorted(
@@ -139,6 +159,11 @@ def verify_archive(
             raise ValueError(
                 f"archive contains duplicate members: {', '.join(duplicate_names)}"
             )
+
+        for entry in archive.infolist():
+            dir_abi = archive_abi_dir(entry.filename)
+            if dir_abi is not None:
+                seen_abi_dirs.add(dir_abi)
 
         entries = sorted(
             (entry for entry in archive.infolist() if archive_abi(entry.filename)),
@@ -214,10 +239,17 @@ def verify_archive(
     if missing_abis:
         raise ValueError(f"archive is missing required ABIs: {', '.join(missing_abis)}")
 
+    present_forbidden_abis = sorted((seen_abis | seen_abi_dirs) & set(forbidden_abis))
+    if present_forbidden_abis:
+        raise ValueError(
+            f"archive contains forbidden ABIs: {', '.join(present_forbidden_abis)}"
+        )
+
     return {
         "archive": str(archive_path),
         "minimum_page_alignment": MIN_PAGE_ALIGNMENT,
         "required_abis": list(required_abis),
+        "forbidden_abis": list(forbidden_abis),
         "libraries": results,
     }
 
@@ -235,11 +267,18 @@ def main() -> int:
         choices=SUPPORTED_ABIS,
         default=[],
     )
+    parser.add_argument(
+        "--forbid-abi",
+        action="append",
+        choices=SUPPORTED_ABIS,
+        default=[],
+    )
     args = parser.parse_args()
     try:
         report = verify_archive(
             args.archive,
             required_abis=tuple(args.require_abi),
+            forbidden_abis=tuple(args.forbid_abi),
             expected_native_method=args.expect_native_method,
         )
     except (OSError, ValueError, zipfile.BadZipFile) as error:
