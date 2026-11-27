@@ -860,6 +860,7 @@ internal fun SharedHandsFeedbackContent(
             error = copy.messageRequired
             return
         }
+        currentVoiceDictationHost?.controller?.reportComposerSubmitted(submittedMessage)
         feedbackDraftResetGeneration += 1L
         abortAllOwnedImageEditSessions()
         pendingImageEditSession = null

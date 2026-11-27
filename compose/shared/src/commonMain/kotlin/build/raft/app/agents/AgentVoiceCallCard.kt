@@ -69,10 +69,13 @@ import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.data.AGENT_VOICE_CALL_MAX_MINUTES
 import build.raft.app.data.AgentVoiceCallEndReason
+import build.raft.app.data.AgentVoiceCallFeedbackRequest
 import build.raft.app.data.AgentVoiceCallPhase
 import build.raft.app.data.AgentVoiceCallProblem
 import build.raft.app.data.AgentVoiceCallState
+import build.raft.app.data.RaftTelemetryPrivacy
 import build.raft.app.data.SharedAgentVoiceCallStore
+import build.raft.app.data.VoiceFeedbackSubmitOutcome
 import build.raft.app.data.formatAgentVoiceCallClock
 import build.raft.app.data.raftNowEpochMillis
 import build.raft.app.model.MemberKind
@@ -431,6 +434,20 @@ internal fun AgentVoiceCallOverlayHost(
             nowEpochMs = raftNowEpochMillis()
         }
     }
+    val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
+    val onSubmitFeedback: (suspend (AgentVoiceCallFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? =
+        if (
+            canShowAgentVoiceCallFeedback(
+                phase = currentCall.phase,
+                callId = currentCall.callId,
+                privacyMode = privacyMode,
+                hasSubmitHandler = store.hasFeedbackApi,
+            )
+        ) {
+            store::submitFeedback
+        } else {
+            null
+        }
     AgentVoiceCallDraggableOverlay(
         call = currentCall,
         nowEpochMs = nowEpochMs,
@@ -444,6 +461,7 @@ internal fun AgentVoiceCallOverlayHost(
         topSafeArea = topSafeArea,
         horizontalSafeArea = horizontalSafeArea,
         positionHolder = positionHolder,
+        onSubmitFeedback = onSubmitFeedback,
     )
 }
 
@@ -465,6 +483,7 @@ internal fun AgentVoiceCallDraggableOverlay(
     topSafeArea: Dp? = null,
     horizontalSafeArea: RaftHorizontalSafeArea? = null,
     positionHolder: AgentVoiceCallFloatingPositionHolder = DefaultAgentVoiceCallFloatingPositionHolder,
+    onSubmitFeedback: (suspend (AgentVoiceCallFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? = null,
 ) {
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -539,6 +558,7 @@ internal fun AgentVoiceCallDraggableOverlay(
             onRetry = onRetry,
             draggable = true,
             isDragging = isDragging,
+            onSubmitFeedback = onSubmitFeedback,
             modifier =
                 Modifier
                     .align(AbsoluteAlignment.TopLeft)
@@ -704,11 +724,14 @@ internal fun AgentVoiceCallCard(
     modifier: Modifier = Modifier,
     draggable: Boolean = false,
     isDragging: Boolean = false,
+    onSubmitFeedback: (suspend (AgentVoiceCallFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
+    val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
     val agentName = call.agent.name
     val phase = call.phase
+    val callId = call.callId
     val inCall = phase == AgentVoiceCallPhase.Live || phase == AgentVoiceCallPhase.Reconnecting
     val over = !call.isActive
 
@@ -897,6 +920,22 @@ internal fun AgentVoiceCallCard(
                             )
                         }
                     }
+                }
+
+                if (
+                    onSubmitFeedback != null &&
+                    callId != null &&
+                    canShowAgentVoiceCallFeedback(
+                        phase = phase,
+                        callId = callId,
+                        privacyMode = privacyMode,
+                        hasSubmitHandler = true,
+                    )
+                ) {
+                    AgentVoiceCallFeedbackSection(
+                        callId = callId,
+                        onSubmitFeedback = onSubmitFeedback,
+                    )
                 }
 
                 Row(

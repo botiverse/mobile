@@ -280,6 +280,8 @@ enum class RaftLucideIconName(val wireName: String) {
     Terminal("terminal"),
     TextAlignStart("text-align-start"),
     TextQuote("text-quote"),
+    ThumbsDown("thumbs-down"),
+    ThumbsUp("thumbs-up"),
     TimerReset("timer-reset"),
     Thread("thread"),
     Message("message"),

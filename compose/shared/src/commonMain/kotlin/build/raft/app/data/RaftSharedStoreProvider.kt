@@ -2243,6 +2243,7 @@ internal class RaftSharedStoreProvider private constructor(
         SharedAgentVoiceCallStore(
             api = RaftAgentVoiceCallNetworkApi(networkClient),
             scope = threadSendScope,
+            feedbackApi = RaftVoiceFeedbackNetworkApi(networkClient),
         ).also { store ->
             threadSendScope.launch {
                 authStore.authSessionEvents.collect { event ->

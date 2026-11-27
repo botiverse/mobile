@@ -54,6 +54,7 @@ import build.raft.app.components.RaftSlotIcon
 import build.raft.app.currentRaftEffectiveDateTimeContext
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.data.RaftTelemetryPrivacy
 import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
 import build.raft.app.data.RaftVoiceDictationV2PermitApi
@@ -61,6 +62,8 @@ import build.raft.app.data.RaftVoiceFeedbackNetworkApi
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.VoiceDictationButtonGesture
+import build.raft.app.data.VoiceDictationFeedbackRequest
+import build.raft.app.data.VoiceDictationFeedbackTarget
 import build.raft.app.data.VoiceDictationGestureMode
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Error
@@ -74,6 +77,7 @@ import build.raft.app.data.VoiceDictationV2StreamClient
 import build.raft.app.data.VoiceDictationV2StreamConnection
 import build.raft.app.data.VoiceDictationV2StreamConnector
 import build.raft.app.data.VoiceFeedbackApi
+import build.raft.app.data.VoiceFeedbackSubmitOutcome
 import build.raft.app.data.normalizeVoiceDictationLanguage
 import build.raft.app.data.offsetMinutesAt
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -295,6 +299,8 @@ internal class ThreadVoiceDictationHost(
     val threadId: String?,
     val languageHint: String?,
     val controller: VoiceDictationV2Controller,
+    val sampleFeedbackEnabled: Boolean = false,
+    val onSubmitFeedback: (suspend (serverId: String, request: VoiceDictationFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? = null,
 ) {
     fun canShow(composerEditable: Boolean): Boolean =
         canShowComposerVoiceDictation(
@@ -358,6 +364,10 @@ internal fun rememberComposerVoiceDictationHost(
         remember(serverFeatureFlags, serverIdObj, flagRevision) {
             serverFeatureFlags.isVoiceDictationEnabled(serverIdObj)
         }
+    val sampleFeedbackEnabled =
+        remember(serverFeatureFlags, serverIdObj, flagRevision) {
+            serverFeatureFlags.isVoiceFeedbackSampleEnabled(serverIdObj)
+        }
     val recorderAvailable = audioRecorderProvider() != null
     val effectiveChannelId = channelId?.trim()?.takeIf { it.isNotEmpty() }
     val effectiveThreadId = threadId?.trim()?.takeIf { it.isNotEmpty() }
@@ -365,6 +375,14 @@ internal fun rememberComposerVoiceDictationHost(
     val languageHint = remember(localeTag) { normalizeVoiceDictationLanguage(localeTag) }
 
     val dictationScope = rememberCoroutineScope()
+    val submitFeedbackHandler: (suspend (String, VoiceDictationFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? =
+        remember(feedbackApi) {
+            feedbackApi?.let { api ->
+                { targetServerId, request ->
+                    api.submitDictationFeedback(serverId = targetServerId, request = request)
+                }
+            }
+        }
     val controller =
         remember(permitApi, streamConnector, dictationScope, audioRecorderProvider, feedbackApi) {
             VoiceDictationV2Controller(
@@ -412,6 +430,7 @@ internal fun rememberComposerVoiceDictationHost(
 
     return remember(
         flagEnabled,
+        sampleFeedbackEnabled,
         viewerIsGuest,
         recorderAvailable,
         effectiveServerId,
@@ -420,10 +439,12 @@ internal fun rememberComposerVoiceDictationHost(
         signedInUserId,
         languageHint,
         controller,
+        submitFeedbackHandler,
         surfaceEditable,
     ) {
+        val dictationEligible = flagEnabled && surfaceEditable && effectiveServerId != null && signedInUserId != null
         ThreadVoiceDictationHost(
-            flagEnabled = flagEnabled && surfaceEditable && effectiveServerId != null && signedInUserId != null,
+            flagEnabled = dictationEligible,
             viewerIsGuest = viewerIsGuest,
             recorderAvailable = recorderAvailable,
             serverId = effectiveServerId,
@@ -431,6 +452,8 @@ internal fun rememberComposerVoiceDictationHost(
             threadId = effectiveThreadId,
             languageHint = languageHint,
             controller = controller,
+            sampleFeedbackEnabled = sampleFeedbackEnabled && dictationEligible,
+            onSubmitFeedback = submitFeedbackHandler,
         )
     }
 }
@@ -525,12 +548,14 @@ internal fun ThreadVoiceDictationNoticeSlot(
 ) {
     if (host == null) return
     val state by host.controller.state.collectAsState()
+    val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
     val error = state.error
     val quota = state.quota
     var dismissedLowQuotaResetsAt by remember(host.controller) { mutableStateOf<String?>(null) }
     var dismissedLowQuotaRemaining by remember(host.controller) { mutableStateOf<Int?>(null) }
 
-    if (error == null && !host.canShow(composerEditable)) return
+    val canShowSurface = host.canShow(composerEditable)
+    if (error == null && !canShowSurface) return
 
     val currentResetsKey = quota?.resetsAtIso ?: ""
     val dismissedForThisWindow =
@@ -546,6 +571,25 @@ internal fun ThreadVoiceDictationNoticeSlot(
             isVoiceDictationV2QuotaLow(quota = quota, quotaDegraded = state.quotaDegraded) &&
             !dismissedForThisWindow
 
+    val recentFeedbackTarget = state.recentFeedbackTarget
+    val visibleFeedbackTarget =
+        if (
+            canShowSurface &&
+            host.onSubmitFeedback != null &&
+            canShowVoiceDictationFeedbackStrip(
+                recentFeedbackTarget = recentFeedbackTarget,
+                sampleFeedbackEnabled = host.sampleFeedbackEnabled,
+                privacyMode = privacyMode,
+                hasError = error != null,
+                isDictationActive = state.isActive,
+                showLowQuota = showLowQuota,
+            )
+        ) {
+            recentFeedbackTarget
+        } else {
+            null
+        }
+
     ThreadVoiceDictationNotice(
         error = error,
         quota = quota,
@@ -556,11 +600,15 @@ internal fun ThreadVoiceDictationNoticeSlot(
             dismissedLowQuotaRemaining = quota?.remainingSeconds
         },
         modifier = modifier,
+        feedbackTarget = visibleFeedbackTarget,
+        onDismissFeedback = host.controller::dismissFeedbackTarget,
+        onSubmitFeedback = host.onSubmitFeedback,
     )
 }
 
 /**
- * Pure presentation composable for the composer voice dictation warning/info banner.
+ * Pure presentation composable for the composer voice dictation warning/info banner and
+ * internal-only post-dictation issue strip.
  */
 @Composable
 internal fun ThreadVoiceDictationNotice(
@@ -571,6 +619,9 @@ internal fun ThreadVoiceDictationNotice(
     onDismissLowQuota: () -> Unit,
     modifier: Modifier = Modifier,
     timeContext: RaftTimeContext? = null,
+    feedbackTarget: VoiceDictationFeedbackTarget? = null,
+    onDismissFeedback: (() -> Unit)? = null,
+    onSubmitFeedback: (suspend (serverId: String, request: VoiceDictationFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? = null,
 ) {
     val effectiveTimeContext = currentRaftEffectiveDateTimeContext(timeContext)
     val dismissLabel = stringResource(Res.string.thread_voice_dictation_dismiss_notice)
@@ -610,6 +661,16 @@ internal fun ThreadVoiceDictationNotice(
             onDismiss = onDismissLowQuota,
             dismissLabel = dismissLabel,
             modifier = modifier.testTag(ThreadVoiceDictationQuotaTestTag),
+        )
+        return
+    }
+
+    if (feedbackTarget != null && onDismissFeedback != null && onSubmitFeedback != null) {
+        ThreadVoiceDictationFeedbackStrip(
+            target = feedbackTarget,
+            onDismiss = onDismissFeedback,
+            onSubmit = onSubmitFeedback,
+            modifier = modifier,
         )
     }
 }
