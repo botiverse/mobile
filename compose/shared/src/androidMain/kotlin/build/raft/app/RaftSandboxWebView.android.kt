@@ -1726,22 +1726,39 @@ internal class RaftAndroidSandboxWebView(
         }
     }
 
-    private fun loadUrlWithRaftHost(targetUrl: String, includeHeader: Boolean) {
+    private fun loadUrlWithRaftHost(
+        targetUrl: String,
+        includeHeader: Boolean,
+        referer: String? = null,
+    ) {
         val activeWebView = webView ?: return
         val headerValue = if (includeHeader) raftHostHeaderValueFor(targetUrl, raftHost) else null
         navChainCarriesRaftHost = headerValue != null
         if (headerValue != null) {
-            activeWebView.loadUrl(targetUrl, mapOf(RAFT_HOST_HEADER to headerValue))
+            val sanitizedReferer =
+                referer?.takeIf { value -> value.isNotBlank() && value.none { ch -> ch == '\r' || ch == '\n' } }
+            val headers =
+                if (sanitizedReferer != null) {
+                    linkedMapOf("Referer" to sanitizedReferer, RAFT_HOST_HEADER to headerValue)
+                } else {
+                    mapOf(RAFT_HOST_HEADER to headerValue)
+                }
+            activeWebView.loadUrl(targetUrl, headers)
         } else {
             activeWebView.loadUrl(targetUrl)
         }
     }
 
-    private fun postReissueLoad(targetView: WebView?, targetUrl: String, includeHeader: Boolean) {
+    private fun postReissueLoad(
+        targetView: WebView?,
+        targetUrl: String,
+        includeHeader: Boolean,
+        referer: String? = null,
+    ) {
         val view = targetView ?: webView ?: return
         shareMainHandler.post {
             if (!destroyed && !isolatedProfileUnavailable && view === webView) {
-                loadUrlWithRaftHost(targetUrl, includeHeader = includeHeader)
+                loadUrlWithRaftHost(targetUrl, includeHeader = includeHeader, referer = referer)
             }
         }
     }
@@ -1821,6 +1838,11 @@ internal class RaftAndroidSandboxWebView(
                 requestHasHeader || (isRedirect && navChainCarriesRaftHost)
             }
         val kind = if (isRedirect) RaftHostNavigationKind.Redirect else RaftHostNavigationKind.Page
+        val requestReferer =
+            request.requestHeaders
+                ?.entries
+                ?.firstOrNull { (name, value) -> name.equals("Referer", ignoreCase = true) && value.isNotBlank() }
+                ?.value
         val decision =
             raftHostNavigationDecision(
                 url = target,
@@ -1853,7 +1875,7 @@ internal class RaftAndroidSandboxWebView(
             RaftHostNavigationDecision.ReissueWithHeader -> {
                 navChainReissueBudget = (navChainReissueBudget - 1).coerceAtLeast(0)
                 navChainCarriesRaftHost = true
-                postReissueLoad(view, target, includeHeader = true)
+                postReissueLoad(view, target, includeHeader = true, referer = requestReferer)
                 true
             }
             RaftHostNavigationDecision.ReissueWithoutHeader -> {
