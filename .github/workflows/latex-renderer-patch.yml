@@ -1,0 +1,381 @@
+name: latex-renderer patch (1.7.2 iOS klibs)
+
+# Rebuilds ONLY io.github.huarangmeng:latex-renderer-iosarm64 and :latex-renderer-iossimulatorarm64
+# from upstream huarangmeng/latex release-1.7.2 plus third_party/latex-renderer-1.7.2/*.patch, as
+# 1.7.2-raft.1. Everything else keeps resolving the official 1.7.2 artifacts.
+# Before building it reproduces the crash on the unpatched source (iOS simulator) and records a
+# layout fingerprint that the patched build must match.
+# See third_party/latex-renderer-1.7.2/README.md. Manual only: never runs on push or pull_request.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the verified klibs to the patched-dependency Maven repository
+        type: boolean
+        default: false
+      runner:
+        description: macOS arm64 runner label
+        type: string
+        default: macos-26
+      xcode_app_path:
+        description: Xcode used to build
+        type: string
+        default: /Applications/Xcode_26.5.app
+
+permissions:
+  contents: read
+
+concurrency:
+  group: latex-renderer-patch
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: https://github.com/huarangmeng/latex.git
+  UPSTREAM_TAG: release-1.7.2
+  UPSTREAM_SHA: 7cfc3a7a4a98cf7888feedc3c18441313fbef022
+  UPSTREAM_VERSION: "1.7.2"
+  PATCHED_VERSION: 1.7.2-raft.1
+  # Kotlin compiler of the official 1.7.2 klibs (default/manifest compiler_version); upstream's
+  # gradle/libs.versions.toml at the tag pins the same, checked below.
+  KOTLIN_VERSION: 2.4.21
+  MAVEN_GROUP: io.github.huarangmeng
+  ARTIFACTS: latex-renderer-iosarm64 latex-renderer-iossimulatorarm64
+  OFFICIAL_REPO: https://repo1.maven.org/maven2
+  PATCH_DIR: third_party/latex-renderer-1.7.2
+  # Generic Maven helpers shared with the Compose UI patch.
+  TOOLS_DIR: third_party/compose-ui-1.12.2
+  # Applied alone for the reproduction run; every *.patch (name order) for the patched build.
+  TEST_PATCH: 0002-ios-simulator-glyph-regression-tests.patch
+  TEST_CLASS: com.hrm.latex.renderer.utils.GlyphBoundsTextEncodingTest
+
+jobs:
+  build:
+    name: Reproduce, test, build and verify patched latex-renderer iOS klibs
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 150
+    env:
+      UPSTREAM_DIR: ${{ github.workspace }}/upstream
+      OUT_DIR: ${{ github.workspace }}/latex-patch-out
+      STAGING_DIR: ${{ github.workspace }}/latex-patch-out/maven
+      OFFICIAL_DIR: ${{ github.workspace }}/latex-patch-out/official
+      LOCAL_REPO: ${{ github.workspace }}/latex-patch-out/m2
+      # -PVERSION is how upstream's publish workflow sets the version of every module, so the
+      # project dependencies in the generated .pom/.module are written exactly as in the release.
+      GRADLE_ARGS: -PVERSION=1.7.2 --no-configuration-cache --stacktrace --console=plain
+    steps:
+      - name: Refuse to publish from a non-default branch
+        if: ${{ inputs.publish && github.ref_name != github.event.repository.default_branch }}
+        run: |
+          echo "::error::publish=true is only allowed from the default branch"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Fetch upstream tag and verify commit
+        run: |
+          set -euo pipefail
+          git init -q "$UPSTREAM_DIR"
+          cd "$UPSTREAM_DIR"
+          git fetch --quiet --depth 1 --no-tags "$UPSTREAM_REPO" "+refs/tags/$UPSTREAM_TAG:refs/tags/$UPSTREAM_TAG"
+          sha="$(git rev-parse "refs/tags/$UPSTREAM_TAG^{commit}")"
+          if [ "$sha" != "$UPSTREAM_SHA" ]; then
+            echo "::error::$UPSTREAM_TAG is $sha, expected $UPSTREAM_SHA"
+            exit 1
+          fi
+          git -c advice.detachedHead=false checkout --quiet "$sha"
+          kotlin="$(sed -n 's/^kotlin[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' gradle/libs.versions.toml | head -n 1)"
+          if [ "$kotlin" != "$KOTLIN_VERSION" ]; then
+            echo "::error::upstream pins Kotlin $kotlin, expected $KOTLIN_VERSION"
+            exit 1
+          fi
+          echo "upstream $UPSTREAM_TAG = $sha, Kotlin $kotlin, Gradle wrapper: $(grep distributionUrl gradle/wrapper/gradle-wrapper.properties)"
+
+      - name: Select Xcode
+        env:
+          XCODE_APP_PATH: ${{ inputs.xcode_app_path }}
+        run: bash scripts/ci/select_ios_xcode.sh
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: corretto
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Apply Gradle cache policy
+        uses: ./.github/actions/gradle-cache-policy
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Size Gradle for this runner
+        run: |
+          set -euo pipefail
+          mem_gb="$(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))"
+          heap_gb="$(( mem_gb - 2 ))"
+          [ "$heap_gb" -le 8 ] || heap_gb=8
+          [ "$heap_gb" -ge 4 ] || { echo "::error::${mem_gb} GB RAM is too little for this build"; exit 1; }
+          props="${GRADLE_USER_HOME:-$HOME/.gradle}/gradle.properties"
+          mkdir -p "$(dirname "$props")"
+          {
+            echo "org.gradle.jvmargs=-Xmx${heap_gb}g -Xss4m -XX:MaxMetaspaceSize=1g -XX:+UseParallelGC -Dfile.encoding=UTF-8"
+            echo "org.gradle.workers.max=2"
+            echo "kotlin.compiler.execution.strategy=in-process"
+          } >> "$props"
+          echo "RAM ${mem_gb} GB, CPUs $(sysctl -n hw.ncpu)"; cat "$props"
+
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v6
+        with:
+          path: ~/.konan
+          key: konan-v1-latex-renderer-patch-${{ runner.os }}-${{ runner.arch }}-kotlin-${{ env.KOTLIN_VERSION }}
+
+      # Reproduction: only the test patch, on the unpatched renderer. Each case runs in its own
+      # Gradle invocation because an abort kills the whole test process.
+      - name: Reproduce on unpatched source (iosSimulatorArm64)
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          git apply --check "$GITHUB_WORKSPACE/$PATCH_DIR/$TEST_PATCH"
+          git apply "$GITHUB_WORKSPACE/$PATCH_DIR/$TEST_PATCH"
+          mkdir -p "$OUT_DIR/unpatched"
+          results=latex-renderer/build/test-results/iosSimulatorArm64Test
+          run_case() {
+            local name="$1" rc=0
+            rm -rf "$results"
+            ./gradlew :latex-renderer:iosSimulatorArm64Test --tests "$TEST_CLASS.$name" $GRADLE_ARGS \
+              > "$OUT_DIR/unpatched/$name.log" 2>&1 || rc=$?
+            mkdir -p "$OUT_DIR/unpatched/$name"
+            cp -R "$results"/. "$OUT_DIR/unpatched/$name/" 2>/dev/null || true
+            markers="$(grep -E -o 'SIGABRT|signal 6|Abort trap|exit code 134|exited with (code|signal)[^.]*|terminated with signal[^.]*|onCharsToGlyphs|sk_abort[a-z_]*' "$OUT_DIR/unpatched/$name.log" | sort | uniq -c | tr '\n' ';' || true)"
+            echo "$name exit=$rc markers=${markers:-none}" | tee -a "$OUT_DIR/unpatched/summary.txt"
+            tail -n 40 "$OUT_DIR/unpatched/$name.log"
+            return 0
+          }
+          # Must pass on the unpatched source: its output is the layout baseline.
+          run_case layoutFingerprint
+          grep -q '^layoutFingerprint exit=0 ' "$OUT_DIR/unpatched/summary.txt" || {
+            echo "::error::layoutFingerprint failed on the unpatched source; no layout baseline"; exit 1; }
+          run_case bmpTextWhoseUtf8ReadsAsUnpairedSurrogateDoesNotAbort
+          run_case multiCharAsciiDoesNotAbort
+          run_case symbolsAndNonBmpDoNotAbort
+          {
+            echo "### Unpatched latex-renderer $UPSTREAM_VERSION on iosSimulatorArm64"
+            echo '```'
+            cat "$OUT_DIR/unpatched/summary.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply patches
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          git checkout --quiet -- .
+          git clean -fdq -e latex-renderer/build -e build -e .gradle -e '*/build'
+          shopt -s nullglob
+          patches=("$GITHUB_WORKSPACE/$PATCH_DIR"/*.patch)
+          [ "${#patches[@]}" -ge 2 ] || { echo "::error::expected the fix and test patches in $PATCH_DIR"; exit 1; }
+          for patch in "${patches[@]}"; do
+            echo "== applying ${patch##*/}"
+            git apply --check "$patch"
+            git apply "$patch"
+          done
+          git status --short
+          git diff --stat
+
+      - name: Run regression tests (iosSimulatorArm64 + JVM width check)
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          results=latex-renderer/build/test-results/iosSimulatorArm64Test
+          # The layout fingerprint runs alone, exactly like its unpatched baseline (no other test
+          # warms caches or counters first).
+          rm -rf "$results" latex-renderer/build/test-results/jvmTest
+          ./gradlew :latex-renderer:iosSimulatorArm64Test --tests "$TEST_CLASS.layoutFingerprint" $GRADLE_ARGS
+          mkdir -p "$OUT_DIR/patched/layoutFingerprint"
+          cp -R "$results"/. "$OUT_DIR/patched/layoutFingerprint/"
+          rm -rf "$results"
+          ./gradlew :latex-renderer:iosSimulatorArm64Test \
+            --tests "$TEST_CLASS" \
+            --tests 'com.hrm.latex.renderer.SkiaPlatformRenderingTest' $GRADLE_ARGS
+          ./gradlew :latex-renderer:jvmTest \
+            --tests 'com.hrm.latex.renderer.utils.GlyphBoundsWidthJvmTest' $GRADLE_ARGS
+
+      - name: Check test results and layout fingerprint
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          python3 -I - "$OUT_DIR/unpatched/layoutFingerprint" "$OUT_DIR/patched/layoutFingerprint" latex-renderer/build/test-results <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          baseline_dir, patched_dir, results = sys.argv[1], sys.argv[2], sys.argv[3]
+
+          def cases(pattern):
+              out = {}
+              for f in glob.glob(pattern, recursive=True):
+                  for case in ET.parse(f).getroot().iter("testcase"):
+                      out[(case.get("classname"), case.get("name"))] = case
+              return out
+
+          def lines(pattern, prefix):
+              # Gradle writes test output per suite (or per case): read every <system-out>.
+              found = []
+              for f in glob.glob(pattern, recursive=True):
+                  for el in ET.parse(f).getroot().iter("system-out"):
+                      found += [l.strip() for l in (el.text or "").splitlines() if l.strip().startswith(prefix)]
+              return found
+
+          ios = cases(f"{results}/iosSimulatorArm64Test/**/TEST-*.xml")
+          jvm = cases(f"{results}/jvmTest/**/TEST-*.xml")
+          problems = []
+          for (cls, name), case in sorted(ios.items()) + sorted(jvm.items()):
+              bad = case.find("failure") is not None or case.find("error") is not None
+              skipped = case.find("skipped") is not None
+              print(("FAIL " if bad else "SKIP " if skipped else "ok   ") + f"{cls}.{name}")
+              if bad or skipped:
+                  problems.append(f"{cls}.{name}")
+          required_ios = {"multiCharAsciiDoesNotAbort", "bmpTextWhoseUtf8ReadsAsUnpairedSurrogateDoesNotAbort",
+                          "symbolsAndNonBmpDoNotAbort", "widthMatchesSkiaAdvanceSum"}
+          ran_ios = {name.split("[")[0] for (cls, name) in ios if cls.endswith("GlyphBoundsTextEncodingTest")}
+          if required_ios - ran_ios:
+              problems.append(f"missing iOS cases {sorted(required_ios - ran_ios)}")
+          if not any(cls.endswith("SkiaPlatformRenderingTest") for (cls, _) in ios):
+              problems.append("SkiaPlatformRenderingTest did not run on iosSimulatorArm64")
+          if not any(name.startswith("glyphAdvanceSumEqualsMeasureTextWidth") for (_, name) in jvm):
+              problems.append("GlyphBoundsWidthJvmTest did not run")
+
+          after = sorted(set(lines(f"{patched_dir}/**/TEST-*.xml", "LAYOUT_FINGERPRINT|")))
+          before = sorted(set(lines(f"{baseline_dir}/**/TEST-*.xml", "LAYOUT_FINGERPRINT|")))
+          print(f"layout fingerprints: {len(before)} unpatched, {len(after)} patched")
+          for (cls, name), case in cases(f"{patched_dir}/**/TEST-*.xml").items():
+              if case.find("failure") is not None or case.find("error") is not None:
+                  problems.append(f"patched {cls}.{name}")
+          if not before or len(before) != 20:
+              problems.append(f"expected 20 unpatched layout fingerprints, found {len(before)}")
+          elif before != after:
+              problems.append("layout fingerprint differs from the unpatched build")
+              for l in sorted(set(before) ^ set(after)):
+                  print(("unpatched " if l in before else "patched   ") + l)
+          else:
+              print("layout identical to unpatched 1.7.2:")
+              print("\n".join(after))
+          if problems:
+              sys.exit("; ".join(problems))
+          PY
+
+      - name: Build iosArm64 + iosSimulatorArm64 publications (local repo)
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          # The release build signs every publication. A throwaway key lets the signing tasks run;
+          # reversion_artifact.py drops the .asc files, so nothing signed by it is published.
+          command -v gpg >/dev/null || brew install --quiet gnupg
+          GNUPGHOME="$(mktemp -d)"; export GNUPGHOME
+          trap 'rm -rf "$GNUPGHOME"' EXIT
+          gpg --batch --pinentry-mode loopback --passphrase '' --quick-gen-key 'raft throwaway build key' rsa3072 sign 1d
+          ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --batch --armor --export-secret-keys)"
+          export ORG_GRADLE_PROJECT_signingInMemoryKey
+          rm -rf "$LOCAL_REPO"
+          ./gradlew \
+            :latex-renderer:publishIosArm64PublicationToMavenLocal \
+            :latex-renderer:publishIosSimulatorArm64PublicationToMavenLocal \
+            "-Dmaven.repo.local=$LOCAL_REPO" $GRADLE_ARGS
+          find "$LOCAL_REPO/io/github/huarangmeng" -type f | sort
+
+      - name: Re-version to ${{ env.PATCHED_VERSION }}
+        run: |
+          set -euo pipefail
+          rm -rf "$STAGING_DIR"
+          for artifact in $ARTIFACTS; do
+            python3 -I "$TOOLS_DIR/reversion_artifact.py" "$LOCAL_REPO" "$STAGING_DIR" \
+              "$MAVEN_GROUP" "$artifact" "$UPSTREAM_VERSION" "$PATCHED_VERSION"
+          done
+
+      - name: Verify against official ${{ env.UPSTREAM_VERSION }} (metadata, dependencies, klib manifest)
+        run: |
+          set -euo pipefail
+          mkdir -p "$OFFICIAL_DIR"
+          group_path="${MAVEN_GROUP//.//}"
+          for artifact in $ARTIFACTS; do
+            for ext in module pom klib; do
+              curl --fail --silent --show-error --location -o "$OFFICIAL_DIR/$artifact-$UPSTREAM_VERSION.$ext" \
+                "$OFFICIAL_REPO/$group_path/$artifact/$UPSTREAM_VERSION/$artifact-$UPSTREAM_VERSION.$ext"
+            done
+            python3 -I "$TOOLS_DIR/compare_with_official.py" \
+              "$STAGING_DIR/$group_path/$artifact/$PATCHED_VERSION" "$OFFICIAL_DIR" \
+              "$artifact" "$UPSTREAM_VERSION" "$PATCHED_VERSION"
+          done
+
+      - name: Verify public ABI equals official ${{ env.UPSTREAM_VERSION }} (klib dump-abi)
+        run: |
+          set -euo pipefail
+          tool=""
+          for candidate in "$HOME"/.konan/kotlin-native-prebuilt-macos-aarch64-"$KOTLIN_VERSION"/bin/klib \
+                           "$HOME"/.konan/*/kotlin-native-prebuilt-macos-aarch64-"$KOTLIN_VERSION"/bin/klib; do
+            [ -x "$candidate" ] && { tool="$candidate"; break; }
+          done
+          [ -n "$tool" ] || { echo "::error::Kotlin/Native $KOTLIN_VERSION klib tool not found in ~/.konan"; ls "$HOME/.konan" || true; exit 1; }
+          group_path="${MAVEN_GROUP//.//}"
+          for artifact in $ARTIFACTS; do
+            ours="$STAGING_DIR/$group_path/$artifact/$PATCHED_VERSION/$artifact-$PATCHED_VERSION.klib"
+            official="$OFFICIAL_DIR/$artifact-$UPSTREAM_VERSION.klib"
+            "$tool" dump-abi "$ours" > "$RUNNER_TEMP/$artifact-ours.abi"
+            "$tool" dump-abi "$official" > "$RUNNER_TEMP/$artifact-official.abi"
+            [ -s "$RUNNER_TEMP/$artifact-official.abi" ] || { echo "::error::empty ABI dump for $artifact"; exit 1; }
+            if diff -u "$RUNNER_TEMP/$artifact-official.abi" "$RUNNER_TEMP/$artifact-ours.abi"; then
+              echo "$artifact: public ABI identical to official ($(wc -l < "$RUNNER_TEMP/$artifact-ours.abi") lines)"
+            else
+              echo "::error::$artifact public ABI differs from official $UPSTREAM_VERSION"
+              exit 1
+            fi
+          done
+
+      - name: List staged files
+        run: |
+          set -euo pipefail
+          cd "$STAGING_DIR"
+          find . -type f | sort | while IFS= read -r f; do
+            printf '%10d  %s  %s\n' "$(stat -f %z "$f")" "$(shasum -a 256 "$f" | cut -c1-16)" "${f#./}"
+          done
+          for f in $(find . -type f -name "*-$PATCHED_VERSION.klib" | sort); do
+            echo "sha256 $(shasum -a 256 "$f" | cut -d' ' -f1)  ${f##*/}"
+          done
+          count="$(find . -type f -name "*-$PATCHED_VERSION.klib" | wc -l | tr -d ' ')"
+          [ "$count" = 2 ] || { echo "::error::expected 2 klibs at $PATCHED_VERSION, found $count"; exit 1; }
+          if find . -type f | grep -v -- "-$PATCHED_VERSION" | grep -q .; then
+            echo "::error::staged files without $PATCHED_VERSION in their name"; exit 1
+          fi
+
+      - name: Upload staged Maven repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: latex-renderer-${{ env.PATCHED_VERSION }}-maven
+          path: latex-patch-out/maven
+          if-no-files-found: error
+
+      - name: Upload test reports and reproduction logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: latex-renderer-patch-test-reports
+          path: |
+            latex-patch-out/unpatched/**
+            latex-patch-out/patched/**
+            upstream/latex-renderer/build/test-results/**
+            upstream/latex-renderer/build/reports/tests/**
+          if-no-files-found: ignore
+
+      - name: Publish to patched-dependency Maven repository
+        if: ${{ inputs.publish }}
+        env:
+          MAVEN_URL: ${{ secrets.COMPOSE_PATCH_MAVEN_URL }}
+          MAVEN_USER: ${{ secrets.COMPOSE_PATCH_MAVEN_USER }}
+          MAVEN_PASS: ${{ secrets.COMPOSE_PATCH_MAVEN_TOKEN }}
+        run: bash third_party/compose-ui-1.12.2/upload_maven_dir.sh latex-patch-out/maven

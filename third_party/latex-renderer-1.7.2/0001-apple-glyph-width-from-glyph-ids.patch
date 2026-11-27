@@ -1,0 +1,18 @@
+diff --git a/latex-renderer/src/appleMain/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsProvider.apple.kt b/latex-renderer/src/appleMain/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsProvider.apple.kt
+index 3244dd1..a3abba1 100644
+--- a/latex-renderer/src/appleMain/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsProvider.apple.kt
++++ b/latex-renderer/src/appleMain/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsProvider.apple.kt
+@@ -76,7 +76,12 @@ actual fun measureGlyphBounds(
+ 
+                     val ascentPx = (-minTop).coerceAtLeast(0f)
+                     val descentPx = maxBottom.coerceAtLeast(0f)
+-                    val inkWidth = font.measureTextWidth(text)
++                    // Sum of the advances of the glyphs measured above. Not Font.measureTextWidth(text):
++                    // on Kotlin/Native, Skiko passes a String as zero-terminated UTF-8 while its
++                    // _nMeasureTextWidth reads text.length UTF-16 code units from it, so it reads past the
++                    // buffer and can hit an invalid surrogate, which aborts in SkTypeface_Mac::onCharsToGlyphs.
++                    // SkFont::measureText without a paint returns the same advance sum.
++                    val inkWidth = font.getWidths(glyphIds).sum()
+ 
+                     GlyphBounds(ascentPx, descentPx, inkWidth)
+                 }
