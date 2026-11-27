@@ -77,7 +77,7 @@ internal fun SharedCreateExternalChannelReviewBody(
                 description = stringResource(Res.string.channel_create_external_created, created.channel.name.removePrefix("#")),
                 status = RaftBannerStatus.Warning,
                 size = RaftBannerSize.Sm,
-                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp).testTag(CreateExternalChannelCreatedTag),
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp).testTag(CreateExternalChannelCreatedTag),
             )
         }
         // A new channel is created private: no "becomes private" line, no slots before it exists.

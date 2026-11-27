@@ -408,7 +408,7 @@ class ExternalInvitesUiTest {
             }
         }
         waitForIdle()
-        onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+        onNode(hasSetTextAction() and hasContentDescription("Invite by email"), useUnmergedTree = true).assertIsFocused()
         assertEquals(0, count(ExternalInviteConnectServersLinkTag))
     }
 }
