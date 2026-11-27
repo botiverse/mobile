@@ -502,6 +502,19 @@ sealed interface WebContainerTelemetryEvent {
         val origin: String,
         val isMainFrame: Boolean,
     ) : WebContainerTelemetryEvent
+
+    /**
+     * Sanitized main-frame navigation breadcrumb (`scheme://host[:port]/path`, never query or
+     * fragment) for diagnosing in-app browser redirect, POST, and host-interception lifecycles.
+     */
+    data class MainFrameNavigation(
+        val surfaceId: String,
+        val action: String,
+        val sanitizedUrl: String,
+        val method: String = "GET",
+        val isRedirect: Boolean = false,
+        val carriesHeader: Boolean = false,
+    ) : WebContainerTelemetryEvent
 }
 
 /** Host-provided sink receiving [WebContainerTelemetryEvent]s for logging or metrics export. */

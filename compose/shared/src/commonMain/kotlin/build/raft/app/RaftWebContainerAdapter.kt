@@ -625,6 +625,15 @@ internal fun formatWebContainerTelemetryLog(event: WebContainerTelemetryEvent): 
                     if (event.missingKeys.isNotEmpty()) append(" missingKeys=${event.missingKeys.joinToString(",")}")
                     append(" mainFrame=${event.isMainFrame} origin=${event.origin}")
                 }
+        is WebContainerTelemetryEvent.MainFrameNavigation ->
+            false to
+                buildString {
+                    append("web_container_nav surface=${event.surfaceId} action=${event.action}")
+                    if (event.method != "GET") append(" method=${event.method}")
+                    if (event.isRedirect) append(" redirect=true")
+                    if (event.carriesHeader) append(" header=true")
+                    append(" url=${event.sanitizedUrl}")
+                }
     }
 
 /**

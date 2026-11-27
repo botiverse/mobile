@@ -478,6 +478,117 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
+    fun nonRedirectOAuthAndGitHubAppInstallStayInAppTabWhileOrdinaryCrossOriginLinksRouteOut() {
+        val appScope = "https://stamp.build"
+        val webBase = "https://app.raft.build"
+        val apiBase = "https://api.raft.build"
+        val committedAppUrl = "https://stamp.build/requests/req_123"
+
+        // GitHub App installation (e.g. window.location.assign(install_url) with isRedirect=false) stays in-tab.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/apps/stamp-build/installations/new?state=opaque-123",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/apps/stamp-build/installations/select_target",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+        // Direct link or JS navigation to GitHub OAuth authorize stays in-tab.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/login/oauth/authorize?client_id=Iv1.abc&scope=repo",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+        // Generic third-party OAuth/OIDC with redirect_uri returning to scopeOrigin stays in-tab.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://accounts.google.com/o/oauth2/v2/auth?client_id=abc&response_type=code&redirect_uri=https%3A%2F%2Fstamp.build%2Fauth%2Fgoogle%2Fcallback",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+        // OAuth URL whose redirect_uri targets a DIFFERENT origin still routes out.
+        assertTrue(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://accounts.google.com/o/oauth2/v2/auth?client_id=abc&redirect_uri=https%3A%2F%2Fother.example%2Fcallback",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+        // Plain HTTP OAuth target from an HTTPS App still routes out.
+        assertTrue(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "http://idp.example/authorize?client_id=abc&redirect_uri=https%3A%2F%2Fstamp.build%2Fcb",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+        // Ordinary GitHub repo/PR/app-info links still route out to isolated outbound child pages.
+        assertTrue(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/botiverse/mobile/pull/5963",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+        assertTrue(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/apps/stamp-build",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+                isRedirect = false,
+                committedDocumentUrl = committedAppUrl,
+            ),
+        )
+    }
+
+    @Test
     fun declinedSignInCloseAndUncommittedReloadRecoverWithoutBlankWhiteScreen() {
         assertEquals(
             RaftMobileWebPanelDeclinedCloseAction.ClosePage,

@@ -9,6 +9,8 @@ import android.webkit.TestWebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import build.raft.webcontainer.jsb.JsbRegistry
+import build.raft.webcontainer.pool.WebContainerTelemetryEvent
+import build.raft.webcontainer.pool.WebContainerTelemetrySink
 import build.raft.webcontainer.resilience.WebContainerWatchdogPolicy
 import java.time.Duration
 import org.junit.After
@@ -64,6 +66,8 @@ class WebContainerAndroidSignInInterceptionTest {
         initialUrl: String,
         events: WebContainerEvents,
         requestHeaderRule: WebRequestHeaderRule? = null,
+        surfaceId: String = "default",
+        telemetrySink: WebContainerTelemetrySink? = null,
     ): WebContainerAndroidView {
         val controller = Robolectric.buildActivity(Activity::class.java).create()
         val activity = controller.get()
@@ -73,6 +77,7 @@ class WebContainerAndroidSignInInterceptionTest {
                 initialConfig =
                     WebContainerConfig(
                         url = initialUrl,
+                        surfaceId = surfaceId,
                         allowScripts = true,
                         navigationPolicy =
                             WebNavigationPolicy(
@@ -85,7 +90,7 @@ class WebContainerAndroidSignInInterceptionTest {
                 events = events,
                 jsbRegistry = JsbRegistry.Empty,
                 resourceInterceptor = null,
-                telemetrySink = null,
+                telemetrySink = telemetrySink,
                 fileChooser = null,
                 watchdogPolicy = WebContainerWatchdogPolicy(),
                 nowMs = SystemClock::uptimeMillis,
@@ -596,5 +601,121 @@ class WebContainerAndroidSignInInterceptionTest {
         assertEquals(1, caught.size)
         assertEquals(WebNavigationStarter.Link, caught.single().starter)
         assertEquals(listOf(consentLoginUrl), caught.single().priorHops)
+    }
+
+    @Test
+    fun postFormSubmissionAndServerRedirectsShowImmediateLoadingAndNeverStickAcrossRacesOrBlocks() {
+        val observedStates = mutableListOf<WebNavigationState>()
+        val navEvents = mutableListOf<WebContainerTelemetryEvent.MainFrameNavigation>()
+        val approvalUrl = "https://stamp.build/requests/req_1"
+        val postConnectUrl = "https://stamp.build/s/raft/settings/github/full/connect?secret=do-not-log"
+        val githubAuthorizeUrl = "https://github.com/login/oauth/authorize?client_id=stamp&state=secret-state"
+        val callbackUrl = "https://stamp.build/login/raft/callback?code=secret-code&state=secret-state"
+        val routedExternalUrl = "https://external.example/blocked?tok=1"
+
+        val controller = WebContainerController()
+        val host =
+            createAttachedHost(
+                initialUrl = approvalUrl,
+                surfaceId = "in_app_browser",
+                telemetrySink =
+                    WebContainerTelemetrySink { event ->
+                        if (event is WebContainerTelemetryEvent.MainFrameNavigation) {
+                            navEvents += event
+                        }
+                    },
+                events =
+                    WebContainerEvents(
+                        onNavigationStateChange = { observedStates += it },
+                        routesMainFrameNavigation = { url -> url.startsWith("https://external.example/") },
+                    ),
+            )
+        host.bindController(controller)
+        val webView = host.getChildAt(0) as WebView
+        val client = shadowOf(webView).webViewClient
+
+        client.onPageStarted(webView, approvalUrl, null)
+        client.onPageCommitVisible(webView, approvalUrl)
+        client.onPageFinished(webView, approvalUrl)
+        assertFalse(observedStates.last().isLoading)
+
+        // 1) Main-frame <form method="post"> fires shouldInterceptRequest (not shouldOverrideUrlLoading):
+        // speculative loading must turn on as soon as the main-thread post drains.
+        client.shouldInterceptRequest(webView, fakeRequest(postConnectUrl, hasGesture = true, method = "POST"))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(observedStates.last().isLoading, "Main-frame POST must immediately show loading bar")
+        assertEquals(0, observedStates.last().progress)
+
+        // 2) Server 302 redirect to GitHub OAuth stays in loading state and completes cleanly.
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest(githubAuthorizeUrl, isRedirect = true)))
+        assertTrue(observedStates.last().isLoading)
+        client.onPageStarted(webView, githubAuthorizeUrl, null)
+        client.onPageCommitVisible(webView, githubAuthorizeUrl)
+        client.onPageFinished(webView, githubAuthorizeUrl)
+        assertFalse(observedStates.last().isLoading)
+
+        // 3) Server 302 redirect even without prior speculative POST starts loading immediately.
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest(callbackUrl, isRedirect = true)))
+        assertTrue(observedStates.last().isLoading, "Server redirect must start speculative loading immediately")
+        client.onPageStarted(webView, callbackUrl, null)
+        client.onPageFinished(webView, callbackUrl)
+        assertFalse(observedStates.last().isLoading)
+
+        // 4) Race guard: if POST responds and finishes BEFORE mainHandler.post runs, stale runnable must NOT stick loading=true.
+        client.shouldInterceptRequest(webView, fakeRequest(postConnectUrl, hasGesture = true, method = "POST"))
+        client.onPageStarted(webView, approvalUrl, null)
+        client.onPageFinished(webView, approvalUrl)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertFalse(observedStates.last().isLoading, "Stale POST runnable must not re-enable loading after completion")
+
+        // 5) POST followed by a blocked/routed redirect must clear speculative loading instead of hanging.
+        client.shouldInterceptRequest(webView, fakeRequest(postConnectUrl, hasGesture = true, method = "POST"))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(observedStates.last().isLoading)
+        assertTrue(client.shouldOverrideUrlLoading(webView, fakeRequest(routedExternalUrl, isRedirect = true)))
+        assertFalse(observedStates.last().isLoading, "Blocked redirect must clear speculative loading")
+
+        // 6) Host controller LoadUrl (e.g. Raft Sign-In callback) immediately starts speculative loading.
+        assertTrue(controller.loadUrl(callbackUrl))
+        assertTrue(observedStates.last().isLoading, "Controller loadUrl should show immediate loading bar")
+        client.onPageStarted(webView, callbackUrl, null)
+        client.onPageFinished(webView, callbackUrl)
+        assertFalse(observedStates.last().isLoading)
+
+        // 7) Silent 204 POST that never emits onPageStarted or progress=100 clears via safety timeout.
+        client.shouldInterceptRequest(webView, fakeRequest(postConnectUrl, hasGesture = true, method = "POST"))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(observedStates.last().isLoading)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(16))
+        assertFalse(observedStates.last().isLoading, "Speculative loading safety timeout must clear silent 204 POST")
+
+        // 8) Verify in_app_browser nav telemetry records lifecycle actions and NEVER leaks query params/tokens.
+        assertTrue(navEvents.any { it.action == "launch" && it.sanitizedUrl == "https://stamp.build/requests/req_1" })
+        assertTrue(navEvents.any { it.action == "post_submit" && it.method == "POST" && it.sanitizedUrl == "https://stamp.build/s/raft/settings/github/full/connect" })
+        assertTrue(navEvents.any { it.action == "override_redirect" && it.isRedirect && it.sanitizedUrl == "https://github.com/login/oauth/authorize" })
+        assertTrue(navEvents.any { it.action == "cmd_load_url" && it.sanitizedUrl == "https://stamp.build/login/raft/callback" })
+        assertTrue(navEvents.none { "?" in it.sanitizedUrl || "secret" in it.sanitizedUrl })
+    }
+
+    @Test
+    fun mainFrameNavTelemetryStaysSilentOnNonInAppBrowserSurfaces() {
+        val navEvents = mutableListOf<WebContainerTelemetryEvent.MainFrameNavigation>()
+        val host =
+            createAttachedHost(
+                initialUrl = "https://app.raft.build/s/raft/settings/integrations",
+                surfaceId = "settings_marketplace",
+                telemetrySink =
+                    WebContainerTelemetrySink { event ->
+                        if (event is WebContainerTelemetryEvent.MainFrameNavigation) {
+                            navEvents += event
+                        }
+                    },
+                events = WebContainerEvents(),
+            )
+        val webView = host.getChildAt(0) as WebView
+        val client = shadowOf(webView).webViewClient
+        client.onPageStarted(webView, "https://app.raft.build/s/raft/settings/integrations", null)
+        client.onPageCommitVisible(webView, "https://app.raft.build/s/raft/settings/integrations")
+        assertTrue(navEvents.isEmpty(), "Non-in_app_browser surfaces must not emit nav breadcrumb telemetry: $navEvents")
     }
 }

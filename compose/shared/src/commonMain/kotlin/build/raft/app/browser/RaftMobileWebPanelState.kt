@@ -263,7 +263,61 @@ internal fun raftAppShouldRouteCrossOriginOutbound(
     if (raftInAppBrowserIsRaftHost(trimmed, activeWebBaseUrl, activeApiBaseUrl, appHosts)) {
         return false
     }
+    if (raftAppIsInTabAuthHandoffUrl(trimmed, cleanScope)) {
+        return false
+    }
     return true
+}
+
+private val RaftAppOAuthCallbackQueryKeys =
+    listOf("redirect_uri", "return_to", "callback_url", "post_logout_redirect_uri")
+
+private val RaftAppGitHubInstallPathRegex =
+    Regex("^/apps/[A-Za-z0-9-]+/installations/(?:new|select_target)/?$", RegexOption.IGNORE_CASE)
+
+/**
+ * Whether a non-redirect cross-origin navigation from an installed Raft App on [scopeOrigin] is an
+ * explicit third-party OAuth / IdP App-install handoff that must stay inside the App's own WebView
+ * (preserving its cookie jar and session across the callback round-trip, even on pre-Chromium-119
+ * Android devices without `MULTI_PROFILE` where outbound child pages would otherwise hand off to
+ * the system browser).
+ *
+ * Matches ONLY:
+ * 1. Standard OAuth/OIDC authorization URLs carrying `client_id` or `response_type` together with a
+ *    callback parameter (`redirect_uri`, `return_to`, `callback_url`, `post_logout_redirect_uri`)
+ *    whose origin strictly matches [scopeOrigin]; OR
+ * 2. GitHub's OAuth authorize (`/login/oauth/authorize`) and GitHub App installation endpoints
+ *    (`/apps/<slug>/installations/new`, `/apps/<slug>/installations/select_target`) over HTTPS.
+ *
+ * Ordinary cross-origin links (e.g. viewing a GitHub pull request or external docs) return `false`
+ * and continue routing into an isolated outbound child page.
+ */
+internal fun raftAppIsInTabAuthHandoffUrl(
+    candidateUrl: String,
+    scopeOrigin: String,
+): Boolean {
+    val parsed = raftBrowserUrlOf(candidateUrl)?.takeIf { it.userInfo == null } ?: return false
+    val scopeParsed = raftBrowserUrlOf(scopeOrigin)?.takeIf { it.userInfo == null } ?: return false
+    val secureTarget = parsed.scheme == "https"
+    val loopbackHttpAllowed = scopeParsed.scheme == "http" && parsed.scheme == "http" && parsed.host in RaftBrowserDebugLoopbackHosts
+    if (!secureTarget && !loopbackHttpAllowed) return false
+
+    if (secureTarget && parsed.host == "github.com" && parsed.port == null) {
+        val normalizedPath = parsed.path.trimEnd('/').lowercase()
+        if (normalizedPath == "/login/oauth/authorize" || RaftAppGitHubInstallPathRegex.matches(parsed.path)) {
+            return true
+        }
+    }
+
+    val query = RaftBrowserQuery.parse(parsed.query) ?: return false
+    val hasOAuthStartParam =
+        !query.first("client_id").isNullOrBlank() || !query.first("response_type").isNullOrBlank()
+    if (!hasOAuthStartParam) return false
+    return RaftAppOAuthCallbackQueryKeys.any { key ->
+        query.all(key).any { callback ->
+            raftAppEntryOriginOf(callback) == scopeOrigin
+        }
+    }
 }
 
 /**
