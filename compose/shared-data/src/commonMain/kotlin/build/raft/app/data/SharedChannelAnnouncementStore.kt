@@ -104,9 +104,11 @@ data class ChannelAnnouncementSlice(
     val read: Boolean,
     val announcement: RaftChannelAnnouncement?,
     val unavailable: ChannelAnnouncementUnavailableReason? = null,
+    /** True when an initial load failed while unread; keeps retries silent with no placeholder bounce (slock #17116). */
+    val failed: Boolean = false,
 ) {
     companion object {
-        val Unread = ChannelAnnouncementSlice(read = false, announcement = null, unavailable = null)
+        val Unread = ChannelAnnouncementSlice(read = false, announcement = null, unavailable = null, failed = false)
     }
 }
 
@@ -132,6 +134,8 @@ data class ChannelAnnouncementState(
     val byChannel: Map<ChannelAnnouncementKey, RaftChannelAnnouncement?> = emptyMap(),
     /** By channel: why it can't have one now, from the same answer; absent when it can (or an older server). */
     val unavailableByChannel: Map<ChannelAnnouncementKey, ChannelAnnouncementUnavailableReason> = emptyMap(),
+    /** Channels whose initial unread fetch failed; cleared only on a successful read or Reset (slock #17116). */
+    val failedByChannel: Set<ChannelAnnouncementKey> = emptySet(),
     val mutations: Map<ChannelAnnouncementKey, ChannelAnnouncementMutation> = emptyMap(),
 )
 
@@ -222,35 +226,33 @@ sealed interface ChannelAnnouncementIntent {
     /** [key]'s slice alone, re-emitted only when it changes. */
     fun slice(key: ChannelAnnouncementKey): Flow<ChannelAnnouncementSlice> =
         state
-            .map { current ->
-                if (key in current.byChannel) {
-                    ChannelAnnouncementSlice(
-                        read = true,
-                        announcement = current.byChannel[key],
-                        unavailable = current.unavailableByChannel[key],
-                    )
-                } else {
-                    ChannelAnnouncementSlice.Unread
-                }
-            }
+            .map { current -> sliceOf(current, key) }
             .distinctUntilChanged()
 
     /** [key]'s mutation alone, re-emitted only when it changes. */
     fun mutation(key: ChannelAnnouncementKey): Flow<ChannelAnnouncementMutation?> =
         state.map { it.mutations[key] }.distinctUntilChanged()
 
-    fun current(key: ChannelAnnouncementKey): ChannelAnnouncementSlice {
-        val current = state.value
-        return if (key in current.byChannel) {
-            ChannelAnnouncementSlice(
-                read = true,
-                announcement = current.byChannel[key],
-                unavailable = current.unavailableByChannel[key],
-            )
-        } else {
-            ChannelAnnouncementSlice.Unread
+    fun current(key: ChannelAnnouncementKey): ChannelAnnouncementSlice = sliceOf(state.value, key)
+
+    private fun sliceOf(current: ChannelAnnouncementState, key: ChannelAnnouncementKey): ChannelAnnouncementSlice =
+        when {
+            key in current.byChannel ->
+                ChannelAnnouncementSlice(
+                    read = true,
+                    announcement = current.byChannel[key],
+                    unavailable = current.unavailableByChannel[key],
+                    failed = false,
+                )
+            key in current.failedByChannel ->
+                ChannelAnnouncementSlice(
+                    read = false,
+                    announcement = null,
+                    unavailable = null,
+                    failed = true,
+                )
+            else -> ChannelAnnouncementSlice.Unread
         }
-    }
 
     fun dispatch(intent: ChannelAnnouncementIntent) {
         when (intent) {
@@ -544,8 +546,12 @@ sealed interface ChannelAnnouncementIntent {
                             cancelWaitingReconnectIfSuperseded(key, readId)
                         }
                     }
-                    // A failure keeps what is shown (web: `() => {}`).
-                    else -> logger("channel_announcement_load_failed channel=${key.channelId} reason=$reason result=${result::class.simpleName}")
+                    // A failure keeps what is shown (web: `apply.fail()` marks unread channels failed so
+                    // height reservation collapses and later retries stay silent without bouncing back).
+                    else -> {
+                        markFailedIfCurrent(key, generation, startedEpoch)
+                        logger("channel_announcement_load_failed channel=${key.channelId} reason=$reason result=${result::class.simpleName}")
+                    }
                 }
             } catch (cancellation: CancellationException) {
                 throw cancellation
@@ -641,6 +647,24 @@ sealed interface ChannelAnnouncementIntent {
         return next
     }
 
+    /** Marks an unread channel failed while still current; never overrides an already-held answer (slock #17116). */
+    private fun markFailedIfCurrent(
+        key: ChannelAnnouncementKey,
+        generation: Long,
+        startedEpoch: Long,
+    ) {
+        synchronized(lock) {
+            if (generations[key] != generation || epoch != startedEpoch) return
+            mutableState.update { state ->
+                if (key in state.byChannel || key in state.failedByChannel) {
+                    state
+                } else {
+                    state.copy(failedByChannel = state.failedByChannel + key)
+                }
+            }
+        }
+    }
+
     /** Applies an answer still the newest for its channel and from before no reset; only then is it a read (rule 13). */
     private fun applyIfCurrent(
         key: ChannelAnnouncementKey,
@@ -655,7 +679,8 @@ sealed interface ChannelAnnouncementIntent {
                 if (
                     key in state.byChannel &&
                     state.byChannel[key] == read.announcement &&
-                    state.unavailableByChannel[key] == read.unavailable
+                    state.unavailableByChannel[key] == read.unavailable &&
+                    key !in state.failedByChannel
                 ) {
                     state
                 } else {
@@ -668,6 +693,7 @@ sealed interface ChannelAnnouncementIntent {
                     state.copy(
                         byChannel = state.byChannel + (key to read.announcement),
                         unavailableByChannel = nextUnavailable,
+                        failedByChannel = state.failedByChannel - key,
                     )
                 }
             }

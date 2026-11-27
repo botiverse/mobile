@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key as composeKey
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -37,6 +38,7 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedChannelAnnouncementStore
+import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.answersFor
@@ -272,9 +274,45 @@ internal fun channelAnnouncementWebBaseUrl(sharedStores: RaftSharedStoreProvider
     sharedSettingsResolvedWebBaseUrl(standaloneSettingsWebBaseUrl(sharedStores.apiEnvironmentStore))
 
 /**
- * The conversation's strip, or nothing: the flag off, a thread or task, no announcement, or not yet
- * read. Copy link copies the Artifact's web link; Pinned content settings ([onOpenSettings]) only
- * for who may change it.
+ * Web `channelRowHasAnnouncement` (slock #17116): resolves the Home snapshot's announcement hint
+ * for [channelId], returning `null` only when the row is absent from [snapshot] so callers can
+ * fall back to the conversation directory without letting a stale directory override an
+ * authoritative `false` on the live snapshot.
+ */
+internal fun homeSnapshotHasAnnouncementHintOrNull(
+    snapshot: HomeSnapshot?,
+    serverId: String,
+    channelId: String,
+    channelType: String?,
+): Boolean? {
+    if (!channelTypeSupportsAnnouncement(channelType)) return false
+    val matching = snapshot?.takeIf { it.server.id.value == serverId } ?: return null
+    if (channelType == "dm") {
+        val dm = matching.directMessages.firstOrNull { it.channelId.value == channelId } ?: return null
+        return dm.hasAnnouncement
+    }
+    val row = matching.channels.firstOrNull { it.channelId.value == channelId } ?: return null
+    return row.loungeAgentId.isNullOrBlank() && row.hasAnnouncement
+}
+
+internal fun homeSnapshotHasAnnouncementHint(
+    snapshot: HomeSnapshot?,
+    serverId: String,
+    channelId: String,
+    channelType: String?,
+): Boolean = homeSnapshotHasAnnouncementHintOrNull(snapshot, serverId, channelId, channelType) == true
+
+/** Web `useChannelAnnouncementPending` (slock #17116): reserve 40dp while unread, hinted, and not failed. */
+internal fun shouldReserveChannelAnnouncementStrip(
+    key: ChannelAnnouncementKey?,
+    slice: ChannelAnnouncementSlice,
+    hasAnnouncementHint: Boolean,
+): Boolean = key != null && hasAnnouncementHint && !slice.read && !slice.failed
+
+/**
+ * The conversation's strip, its 40dp reserved placeholder while loading a hinted announcement, or
+ * nothing: the flag off, a thread or task, no announcement, or failed. Copy link copies the
+ * Artifact's web link; Pinned content settings ([onOpenSettings]) only for who may change it.
  */
 @Composable
 internal fun ThreadChannelAnnouncementStrip(
@@ -286,9 +324,18 @@ internal fun ThreadChannelAnnouncementStrip(
     onOpenSettings: (() -> Unit)?,
     modifier: Modifier = Modifier,
     conversation: RaftConversationHeaderKind = RaftConversationHeaderKind.Channel,
+    hasAnnouncementHint: Boolean = false,
 ) {
     val slice = rememberChannelAnnouncementSlice(sharedStores, storeScope, key, active)
-    val announcement = slice.announcement ?: return
+    val announcement = slice.announcement
+    if (announcement == null) {
+        if (shouldReserveChannelAnnouncementStrip(key, slice, hasAnnouncementHint)) {
+            composeKey(key) {
+                ChannelAnnouncementStripPlaceholder(modifier = modifier)
+            }
+        }
+        return
+    }
     val webBaseUrl = remember(sharedStores) { channelAnnouncementWebBaseUrl(sharedStores) }
     val open = rememberChannelAnnouncementOpener(webBaseUrl)
     val copiedMessage = stringResource(Res.string.channel_announcement_strip_link_copied)
@@ -367,9 +414,25 @@ internal fun rememberThreadChannelAnnouncementStripSlot(
             channelArchivedFallback = channelArchived,
         )
     val conversation = if (channelType == "dm") RaftConversationHeaderKind.Dm else RaftConversationHeaderKind.Channel
+    val directoryFlow =
+        remember(sharedStores, storeScope, key.serverId) {
+            sharedStores.conversationIdentityProvider(storeScope)
+                ?.observeServer(build.raft.app.model.ServerId(key.serverId))
+                ?: kotlinx.coroutines.flow.flowOf(SharedConversationDirectoryState())
+        }
+    val directoryState by directoryFlow.collectAsState(SharedConversationDirectoryState())
+    val hasAnnouncementHint =
+        homeSnapshotHasAnnouncementHintOrNull(snapshot, key.serverId, key.channelId, channelType)
+            ?: (
+                channelTypeSupportsAnnouncement(channelType) &&
+                    directoryState.resolve(key.channelId)?.takeIf {
+                        it.serverId == key.serverId && it.loungeAgentId.isNullOrBlank()
+                    }?.hasAnnouncement == true
+                )
     val latestActive by rememberUpdatedState(active)
     val latestCanEdit by rememberUpdatedState(canEdit)
     val latestConversation by rememberUpdatedState(conversation)
+    val latestHasAnnouncementHint by rememberUpdatedState(hasAnnouncementHint)
     return remember(sharedStores, storeScope, bridge, key) {
         { onOpenSettings ->
             ThreadChannelAnnouncementStrip(
@@ -380,6 +443,7 @@ internal fun rememberThreadChannelAnnouncementStripSlot(
                 active = latestActive,
                 onOpenSettings = if (latestCanEdit) onOpenSettings else null,
                 conversation = latestConversation,
+                hasAnnouncementHint = latestHasAnnouncementHint,
             )
         }
     }

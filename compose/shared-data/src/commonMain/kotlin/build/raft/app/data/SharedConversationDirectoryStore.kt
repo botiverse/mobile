@@ -80,6 +80,8 @@ import kotlinx.coroutines.flow.map
     val guestVisible: Boolean = false,
     /** Channel `hasExternalRelation` from the Home channel row; threads/DMs/inbox projections never carry it. */
     val hasExternalRelation: Boolean = false,
+    /** Whether this channel or DM has a pinned announcement (slock #17116). */
+    val hasAnnouncement: Boolean = false,
     /** Shared joint-channel UUID (`jointChannelId`) across all participating servers; only channels carry one. */
     val jointChannelId: String? = null,
     /** A joint channel's `jointRole` (`host`, ...) from the Home channel row; only channels carry one. */
@@ -697,6 +699,7 @@ private fun MutableMap<String, MutableSet<String>>.putAlias(aliasId: String, can
         slackSyncProblem = if (kind == ConversationKind.Thread) null else slackSyncProblem,
         guestVisible = kind != ConversationKind.Thread && guestVisible,
         hasExternalRelation = kind != ConversationKind.Thread && kind != ConversationKind.DirectMessage && hasExternalRelation,
+        hasAnnouncement = kind != ConversationKind.Thread && loungeAgentId.isNullOrBlank() && hasAnnouncement,
         jointChannelId = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointChannelId?.takeIf(String::isNotBlank),
         jointRole = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) null else jointRole?.takeIf(String::isNotBlank),
         jointServers = if (kind == ConversationKind.Thread || kind == ConversationKind.DirectMessage) emptyList() else jointServers,

@@ -25,8 +25,10 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,7 @@ import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.LocalRaftListRowInks
+import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
@@ -64,8 +67,11 @@ import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.designsystem.components.RaftRowTone
 import build.raft.designsystem.components.RaftSectionEyebrow
+import build.raft.designsystem.components.RaftSkeleton
+import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusVariant
+import build.raft.designsystem.components.rememberRaftSkeletonDelayPassed
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -79,6 +85,8 @@ import build.raft.designsystem.theme.RaftTheme
 /** Test tags: the web's `data-testid`s. */
 internal object ChannelAnnouncementTestTags {
     const val Strip = "channel-announcement-strip"
+    const val StripPlaceholder = "channel-announcement-strip-placeholder"
+    const val StripPlaceholderSkeleton = "channel-announcement-strip-placeholder-skeleton"
     const val StripLink = "channel-announcement-strip-link"
     const val StripLine = "channel-announcement-strip-line"
     const val StripDot = "channel-announcement-strip-dot"
@@ -124,6 +132,74 @@ internal fun channelAnnouncementStripLine(announcement: RaftChannelAnnouncement,
         !announcement.seen -> stringResource(Res.string.channel_announcement_strip_updated, authorName)
         excerpt != null -> excerpt
         else -> stringResource(Res.string.channel_announcement_strip_updated_by, authorName)
+    }
+}
+
+/**
+ * Reserved 40dp placeholder for a pinned announcement whose full payload is still loading
+ * (web `ChannelAnnouncementStripPlaceholder`, slock #17116): blank for the first [delayMillis]
+ * (1000ms by default) so fast loads never flash, then paints quiet skeleton bars matching the
+ * strip's layout without an options button.
+ */
+@Composable
+internal fun ChannelAnnouncementStripPlaceholder(
+    modifier: Modifier = Modifier,
+    delayMillis: Long = LocalRaftListSkeletonDelayMillis.current,
+) {
+    val colors = RaftTheme.colors
+    val seam = colors.lineSeam
+    val shown = rememberRaftSkeletonDelayPassed(delayMillis = delayMillis)
+    BoxWithConstraints(
+        modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .background(colors.layerCanvas)
+            .drawBehind {
+                val y = size.height - 0.5.dp.toPx()
+                drawLine(seam, Offset(0f, y), Offset(size.width, y), strokeWidth = 1.dp.toPx())
+            }
+            .clearAndSetSemantics {
+                testTag = ChannelAnnouncementTestTags.StripPlaceholder
+            },
+    ) {
+        val wide = maxWidth >= ChannelAnnouncementStripWideFrom
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(40.dp)
+                .raftSafeAreaHorizontalPadding()
+                .padding(start = if (wide) 20.dp else 16.dp, end = if (wide) 12.dp else 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (shown) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .testTag(ChannelAnnouncementTestTags.StripPlaceholderSkeleton),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftSkeleton(Modifier.size(16.dp), variant = RaftSkeletonVariant.Block)
+                    BoxWithConstraints(Modifier.weight(1f)) {
+                        val titleWidth = minOf(112.dp, maxWidth * 0.4f)
+                        val excerptWidth = minOf(176.dp, (maxWidth - titleWidth - 8.dp).coerceAtLeast(0.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RaftSkeleton(Modifier.width(titleWidth), variant = RaftSkeletonVariant.Line)
+                            if (excerptWidth > 0.dp) {
+                                RaftSkeleton(Modifier.width(excerptWidth), variant = RaftSkeletonVariant.Line)
+                            }
+                        }
+                    }
+                    if (wide) {
+                        RaftSkeleton(Modifier.width(40.dp), variant = RaftSkeletonVariant.Line)
+                    }
+                }
+            }
+        }
     }
 }
 
