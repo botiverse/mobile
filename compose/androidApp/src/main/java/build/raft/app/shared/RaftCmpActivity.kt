@@ -267,11 +267,6 @@ private class ThreadAttachmentImageCompressionException(
         cause: Throwable? = null,
 ) : IOException(message, cause)
 
-// Hands 1af517cc: how long a prepared IME animation may wait for onStart, and how long past its
-// stated duration a started one may run without onEnd, before pages stop following it.
-private const val IME_ANIMATION_START_GRACE_MILLIS = 300L
-private const val IME_ANIMATION_END_GRACE_MILLIS = 150L
-
 private class ThreadImageCompressionCancelledException : IOException("cancelled")
 
 private const val THREAD_IMAGE_COMPRESSION_CACHE_DIR_NAME = RAFT_PICKED_THREAD_ATTACHMENT_CACHE_DIR_NAME
@@ -931,13 +926,9 @@ internal open class RaftCmpActivity :
     // only, where the window is edge to edge and Compose owns the keyboard inset.
     private val hostImeInsets: RaftHostImeInsets? =
             if (Build.VERSION.SDK_INT >= 30) RaftHostImeInsets() else null
-    private var imeAnimationGeneration = 0
-    private val runningImeAnimations = HashSet<WindowInsetsAnimation>()
-    // Hands 1af517cc: a 356ms composer lag matched one IME animation whose frames seemed to carry
-    // no keyboard height. One summary line per IME animation proves or disproves that on device.
-    private var imeTracePreparedAtMs = 0L
-    private var imeTraceProgressFrames = 0
-    private var imeTraceMaxProgressImePx = 0
+    // Hands 1af517cc / 5f4a14be: tracks platform IME animations with progress-renewed idle grace
+    // and an absolute hard cap, plus one summary log per animation.
+    private var imeAnimationTracker: AndroidImeAnimationTracker<WindowInsetsAnimation>? = null
     private var cmpFirstFrameListener: ViewTreeObserver.OnDrawListener? = null
     private var databaseLaunchDrawListener: ViewTreeObserver.OnDrawListener? = null
     private val threadAttachmentPickerLatch = AndroidPendingAttachmentPickerLatch<PendingThreadAttachmentUpload>()
@@ -1815,6 +1806,11 @@ internal open class RaftCmpActivity :
         removeHomeColdStartNativeHold(reason = "destroy")
         removeCmpFirstFrameListener()
         whiteScreenHandler.removeCallbacks(whiteScreenWatch)
+        imeAnimationTracker?.dispose()
+        imeAnimationTracker = null
+        if (Build.VERSION.SDK_INT >= 30) {
+            findViewById<View>(android.R.id.content)?.setWindowInsetsAnimationCallback(null)
+        }
         cancelPendingAttachmentPickerRecovery()
         if (isFinishing) {
             pendingThreadCameraCapture?.file?.let { runCatching { it.delete() } }
@@ -3378,18 +3374,28 @@ internal open class RaftCmpActivity :
     // stays up until the last IME animation ends.
     private fun trackImeInsetsAnimations(content: View) {
         val state = hostImeInsets ?: return
-        fun expireAfter(delayMillis: Long) {
-            val generation = ++imeAnimationGeneration
-            content.postDelayed(
-                    {
-                        if (generation == imeAnimationGeneration) {
-                            runningImeAnimations.clear()
-                            state.imeAnimationRunning = false
-                        }
-                    },
-                    delayMillis,
-            )
+        imeAnimationTracker?.dispose()
+        var pendingExpireAction: (() -> Unit)? = null
+        val expireRunnable = Runnable {
+            val action = pendingExpireAction
+            pendingExpireAction = null
+            action?.invoke()
         }
+        val tracker =
+                AndroidImeAnimationTracker<WindowInsetsAnimation>(
+                        state = state,
+                        nowMillis = SystemClock::uptimeMillis,
+                        scheduleExpiry = { delayMillis, onExpire ->
+                            pendingExpireAction = onExpire
+                            content.removeCallbacks(expireRunnable)
+                            content.postDelayed(expireRunnable, delayMillis)
+                        },
+                        cancelExpiry = {
+                            pendingExpireAction = null
+                            content.removeCallbacks(expireRunnable)
+                        },
+                )
+        imeAnimationTracker = tracker
         content.setWindowInsetsAnimationCallback(
                 object :
                         WindowInsetsAnimation.Callback(
@@ -3397,14 +3403,7 @@ internal open class RaftCmpActivity :
                         ) {
                     override fun onPrepare(animation: WindowInsetsAnimation) {
                         if (animation.typeMask and WindowInsets.Type.ime() == 0) return
-                        if (runningImeAnimations.isEmpty()) {
-                            imeTracePreparedAtMs = SystemClock.uptimeMillis()
-                            imeTraceProgressFrames = 0
-                            imeTraceMaxProgressImePx = 0
-                        }
-                        runningImeAnimations += animation
-                        state.imeAnimationRunning = true
-                        expireAfter(IME_ANIMATION_START_GRACE_MILLIS)
+                        tracker.onPrepare(animation)
                     }
 
                     override fun onStart(
@@ -3412,15 +3411,7 @@ internal open class RaftCmpActivity :
                             bounds: WindowInsetsAnimation.Bounds,
                     ): WindowInsetsAnimation.Bounds {
                         if (animation.typeMask and WindowInsets.Type.ime() != 0) {
-                            runningImeAnimations += animation
-                            state.imeAnimationRunning = true
-                            if (animation.durationMillis >= 0L) {
-                                expireAfter(animation.durationMillis + IME_ANIMATION_END_GRACE_MILLIS)
-                            } else {
-                                // User-driven (e.g. predictive back): duration is -1 and only
-                                // onEnd tells us when the finger lets go; drop the start timer.
-                                imeAnimationGeneration++
-                            }
+                            tracker.onStart(animation, animation.durationMillis)
                         }
                         return bounds
                     }
@@ -3430,27 +3421,22 @@ internal open class RaftCmpActivity :
                             runningAnimations: MutableList<WindowInsetsAnimation>,
                     ): WindowInsets {
                         if (runningAnimations.any { it.typeMask and WindowInsets.Type.ime() != 0 }) {
-                            imeTraceProgressFrames++
-                            imeTraceMaxProgressImePx =
-                                    maxOf(imeTraceMaxProgressImePx, insets.getInsets(WindowInsets.Type.ime()).bottom)
+                            tracker.onProgress(insets.getInsets(WindowInsets.Type.ime()).bottom)
                         }
                         return insets
                     }
 
                     override fun onEnd(animation: WindowInsetsAnimation) {
                         if (animation.typeMask and WindowInsets.Type.ime() == 0) return
-                        runningImeAnimations -= animation
-                        if (runningImeAnimations.isNotEmpty()) return
+                        val summary = tracker.onEnd(animation, animation.durationMillis) ?: return
                         RaftAppLog.w(
                                 "SlockIme",
-                                "ime_animation_end durationMs=${animation.durationMillis} " +
-                                        "elapsedMs=${SystemClock.uptimeMillis() - imeTracePreparedAtMs} " +
-                                        "progressFrames=$imeTraceProgressFrames " +
-                                        "maxProgressImePx=$imeTraceMaxProgressImePx " +
-                                        "windowImePx=${state.imeBottomPx} timedOut=${!state.imeAnimationRunning}",
+                                "ime_animation_end durationMs=${summary.durationMs} " +
+                                        "elapsedMs=${summary.elapsedMs} " +
+                                        "progressFrames=${summary.progressFrames} " +
+                                        "maxProgressImePx=${summary.maxProgressImePx} " +
+                                        "windowImePx=${summary.windowImePx} timedOut=${summary.timedOut}",
                         )
-                        imeAnimationGeneration++
-                        state.imeAnimationRunning = false
                     }
                 }
         )
