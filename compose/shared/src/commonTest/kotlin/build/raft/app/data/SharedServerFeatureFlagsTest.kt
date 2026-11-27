@@ -1207,6 +1207,47 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
+    fun voiceFeedbackSampleV0FlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
+        assertEquals("voice_feedback_sample_v0", VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY)
+        assertTrue(VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
+        assertFalse(VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
+        assertFalse(VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        val enabled =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY","enabled":true,"reason":"server_rule"}]}"""))
+            )
+        assertFalse(enabled.isVoiceFeedbackSampleEnabled(null))
+        assertFalse(enabled.isVoiceFeedbackSampleEnabled(server), "unresolved defaults OFF")
+        enabled.prefetch(server)
+        assertTrue(enabled.isVoiceFeedbackSampleEnabled(server))
+        assertFalse(enabled.isVoiceFeedbackSampleEnabled(ServerId("s2")), "other server stays OFF until evaluated")
+
+        val missing = SharedServerFeatureFlags(FakeApi(ok("""{"evaluations":[]}""")))
+        missing.prefetch(server)
+        assertFalse(missing.isVoiceFeedbackSampleEnabled(server), "missing_flag stays OFF")
+
+        val defaultOff =
+            SharedServerFeatureFlags(
+                FakeApi(ok("""{"evaluations":[{"key":"$VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY","enabled":false,"reason":"default"}]}"""))
+            )
+        defaultOff.prefetch(server)
+        assertFalse(defaultOff.isVoiceFeedbackSampleEnabled(server))
+
+        val failed = SharedServerFeatureFlags(FakeApi(HomeNetworkResponse(code = 500, bodyText = null)))
+        assertFalse(failed.prefetch(server).resolved)
+        assertFalse(failed.isVoiceFeedbackSampleEnabled(server))
+
+        val overriddenOff =
+            SharedServerFeatureFlags(
+                api = FakeApi(ok("""{"evaluations":[{"key":"$VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY","enabled":true}]}""")),
+                diagnosticOverride = { _, key, eff -> if (key == VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY) false else eff },
+            )
+        overriddenOff.prefetch(server)
+        assertFalse(overriddenOff.isVoiceFeedbackSampleEnabled(server))
+    }
+
+    @Test
     fun proSeatAddFlagDefaultsOffAndFollowsPerServerEvaluation() = runTest {
         assertEquals("pro_seat_add", PRO_SEAT_ADD_FEATURE_FLAG_KEY)
         assertTrue(PRO_SEAT_ADD_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)

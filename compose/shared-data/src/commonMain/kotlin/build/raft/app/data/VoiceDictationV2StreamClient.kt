@@ -1,18 +1,22 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
+import build.raft.app.network.newRaftTraceIds
+import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.realtime.socket.RaftWebSocketConnector
 import build.raft.realtime.socket.RaftWebSocketFrame
 import build.raft.realtime.socket.RaftWebSocketSession
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -224,10 +228,46 @@ interface VoiceDictationV2StreamConnection {
     )
 }
 
+private val voiceDictationSpanIdPattern = Regex("^[0-9a-f]{16}$")
+private val voiceDictationAllZeroSpanPattern = Regex("^0+$")
+
+/**
+ * Builds the native `/v1/stream` WebSocket URL, optionally attaching `?tp=00-<traceId>-<spanId>-01`
+ * for W3C trace stitching (`docs/contracts/voice-dictation-v2.md`, `slock#17246`). Never appends
+ * `?permit=` (native auth always goes via `Authorization: Bearer <permit>` header).
+ */
+@RaftCoreInternalApi
+fun buildVoiceDictationV2StreamUrl(
+    baseUrl: String,
+    traceId: String? = null,
+    spanId: String? = null,
+): String {
+    require(isValidVoiceDictationStreamUrl(baseUrl)) { "Invalid voice dictation stream URL" }
+    val validTraceId = raftValidTraceIdOrNull(traceId) ?: return baseUrl
+    val normalizedSpanId =
+        spanId
+            ?.trim()
+            ?.lowercase()
+            ?.takeIf { voiceDictationSpanIdPattern.matches(it) && !voiceDictationAllZeroSpanPattern.matches(it) }
+            ?: newRaftTraceIds().spanId
+    val traceparent = "00-$validTraceId-$normalizedSpanId-01"
+    val hashIndex = baseUrl.indexOf('#')
+    val beforeHash = if (hashIndex >= 0) baseUrl.substring(0, hashIndex) else baseUrl
+    val fragment = if (hashIndex >= 0) baseUrl.substring(hashIndex) else ""
+    val separator = if ('?' in beforeHash) '&' else '?'
+    return "$beforeHash${separator}tp=$traceparent$fragment"
+}
+
 /** Connector seam for opening a v2 dictation stream. */
 @RaftCoreInternalApi
 interface VoiceDictationV2StreamConnector {
     suspend fun connect(url: String, permit: String): VoiceDictationV2StreamConnection
+
+    suspend fun connect(
+        url: String,
+        permit: String,
+        traceId: String?,
+    ): VoiceDictationV2StreamConnection = connect(url = url, permit = permit)
 }
 
 /**
@@ -238,12 +278,20 @@ interface VoiceDictationV2StreamConnector {
 class VoiceDictationV2StreamClient(
     private val webSocketConnector: RaftWebSocketConnector,
 ) : VoiceDictationV2StreamConnector {
-    override suspend fun connect(url: String, permit: String): VoiceDictationV2StreamConnection {
+    override suspend fun connect(url: String, permit: String): VoiceDictationV2StreamConnection =
+        connect(url = url, permit = permit, traceId = null)
+
+    override suspend fun connect(
+        url: String,
+        permit: String,
+        traceId: String?,
+    ): VoiceDictationV2StreamConnection {
         require(isValidVoiceDictationStreamUrl(url)) { "Invalid voice dictation stream URL" }
         require(permit.isNotBlank() && permit.none(Char::isWhitespace)) { "Invalid voice dictation permit" }
+        val resolvedUrl = buildVoiceDictationV2StreamUrl(baseUrl = url, traceId = traceId)
         val session =
             webSocketConnector.connect(
-                url = url,
+                url = resolvedUrl,
                 headers = mapOf("Authorization" to "Bearer $permit"),
             )
         return RaftVoiceDictationV2StreamConnection(session)
@@ -352,7 +400,9 @@ private class RaftVoiceDictationV2StreamConnection(
                 }
             }
         if (shouldClose) {
-            runCatching { session.close(code = code, reason = reason) }
+            withContext(NonCancellable) {
+                runCatching { session.close(code = code, reason = reason) }
+            }
         }
     }
 

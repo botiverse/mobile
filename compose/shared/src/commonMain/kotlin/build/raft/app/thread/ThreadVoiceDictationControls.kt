@@ -57,6 +57,7 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
 import build.raft.app.data.RaftVoiceDictationV2PermitApi
+import build.raft.app.data.RaftVoiceFeedbackNetworkApi
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.VoiceDictationButtonGesture
@@ -72,6 +73,7 @@ import build.raft.app.data.VoiceDictationV2State
 import build.raft.app.data.VoiceDictationV2StreamClient
 import build.raft.app.data.VoiceDictationV2StreamConnection
 import build.raft.app.data.VoiceDictationV2StreamConnector
+import build.raft.app.data.VoiceFeedbackApi
 import build.raft.app.data.normalizeVoiceDictationLanguage
 import build.raft.app.data.offsetMinutesAt
 import build.raft.app.data.runCatchingPreservingCancellation
@@ -104,6 +106,7 @@ import kotlin.time.Clock
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 // Composer streaming voice dictation UI controls, gating, dual-mode gesture, hold pill, and
 // localized feedback (`#wg-mobile-sync:#334`). Mirrors web `ComposerVoiceDictationControls.tsx`,
@@ -271,6 +274,12 @@ private object SharedVoiceDictationStreamConnector : VoiceDictationV2StreamConne
 
     override suspend fun connect(url: String, permit: String): VoiceDictationV2StreamConnection =
         delegate.connect(url, permit)
+
+    override suspend fun connect(
+        url: String,
+        permit: String,
+        traceId: String?,
+    ): VoiceDictationV2StreamConnection = delegate.connect(url = url, permit = permit, traceId = traceId)
 }
 
 /**
@@ -329,6 +338,7 @@ internal fun rememberComposerVoiceDictationHost(
     streamConnector: VoiceDictationV2StreamConnector = SharedVoiceDictationStreamConnector,
     audioRecorderProvider: () -> RaftVoiceDictationAudioRecorder? =
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
+    feedbackApi: VoiceFeedbackApi? = null,
 ): ThreadVoiceDictationHost {
     val flagRevision by key(serverFeatureFlags) { serverFeatureFlags.snapshotRevision.collectAsState() }
     val effectiveServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
@@ -356,12 +366,25 @@ internal fun rememberComposerVoiceDictationHost(
 
     val dictationScope = rememberCoroutineScope()
     val controller =
-        remember(permitApi, streamConnector, dictationScope, audioRecorderProvider) {
+        remember(permitApi, streamConnector, dictationScope, audioRecorderProvider, feedbackApi) {
             VoiceDictationV2Controller(
                 permitApi = permitApi,
                 streamConnector = streamConnector,
                 scope = dictationScope,
                 audioRecorderProvider = audioRecorderProvider,
+                onOutcomeReport =
+                    feedbackApi?.let { api ->
+                        { report ->
+                            dictationScope.launch {
+                                runCatching {
+                                    api.submitDictationFeedback(
+                                        serverId = report.serverId,
+                                        request = report.toFeedbackRequest(),
+                                    )
+                                }
+                            }
+                        }
+                    },
             )
         }
 
@@ -433,6 +456,7 @@ internal fun rememberComposerVoiceDictationHost(
 ): ThreadVoiceDictationHost {
     val networkClient = remember(sharedStores, storeScope) { sharedStores.networkClient(storeScope) }
     val permitApi = remember(networkClient) { RaftVoiceDictationV2PermitApi(networkClient) }
+    val feedbackApi = remember(networkClient) { RaftVoiceFeedbackNetworkApi(networkClient) }
     return rememberComposerVoiceDictationHost(
         serverFeatureFlags = sharedStores.serverFeatureFlags,
         permitApi = permitApi,
@@ -445,6 +469,7 @@ internal fun rememberComposerVoiceDictationHost(
         surfaceEditable = surfaceEditable,
         prefetchIfUnresolved = prefetchIfUnresolved,
         audioRecorderProvider = audioRecorderProvider,
+        feedbackApi = feedbackApi,
     )
 }
 

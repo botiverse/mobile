@@ -1260,6 +1260,8 @@ class VoiceDictationV2Test {
         assertEquals(VoiceDictationV2Phase.Idle, controller2b.state.value.phase)
         assertEquals(1, recorder2b.stopCalls)
         assertEquals(1, lateSocket.closeCalls, "socket returned after concurrent cancel must be closed immediately")
+        assertEquals(RaftWebSocketSession.NORMAL_CLOSURE, lateSocket.lastCloseCode)
+        assertEquals(VOICE_DICTATION_CLOSE_REASON_USER_CANCEL, lateSocket.lastCloseReason)
         assertTrue(lateSocket.sentText.isEmpty(), "must not send start frame on an already-cancelled session")
 
         // 3) Cancel while AudioRecorder.start() is suspended (Connecting phase)
@@ -1425,13 +1427,429 @@ class VoiceDictationV2Test {
         )
         assertEquals(1, recorder.stopCalls)
         assertEquals(1, wsSession.closeCalls)
+        assertEquals(RaftWebSocketSession.NORMAL_CLOSURE, wsSession.lastCloseCode)
+        assertEquals(VOICE_DICTATION_CLOSE_REASON_ERROR, wsSession.lastCloseReason)
+    }
+
+    @Test
+    fun permitResponseParsesOptionalSessionIdTraceIdAndStreamUrlSourceAndToleratesOlderServers() {
+        // Older server omitting sessionId / traceId / streamUrlSource still parses cleanly with nulls.
+        val legacy = assertNotNull(parseVoiceDictationV2Permit(validPermitJson))
+        assertNull(legacy.sessionId)
+        assertNull(legacy.traceId)
+        assertNull(legacy.streamUrlSource)
+
+        // Newer server (slock#17246) returning all three optional metadata fields.
+        val upperTraceId = "4BF92F3577B34DA6A3CE929D0E0E4736"
+        val enrichedJson =
+            """
+            {
+              "permit": "hv2.k1.payload.sig",
+              "url": "wss://live.holt.botiverse.build/v1/stream",
+              "expiresAt": "2026-11-26T20:01:00.000Z",
+              "maxDurationSeconds": 600,
+              "quota": {
+                "usedSeconds": 120,
+                "limitSeconds": 7200,
+                "remainingSeconds": 7080,
+                "resetsAt": "2026-11-27T00:00:00.000Z"
+              },
+              "sessionId": "jti_0123456789abcdef",
+              "traceId": "$upperTraceId",
+              "streamUrlSource": "raft_edge"
+            }
+            """.trimIndent()
+        val enriched = assertNotNull(parseVoiceDictationV2Permit(enrichedJson))
+        assertEquals("jti_0123456789abcdef", enriched.sessionId)
+        assertEquals(upperTraceId.lowercase(), enriched.traceId)
+        assertEquals(VoiceStreamUrlSource.RaftEdge, enriched.streamUrlSource)
+
+        // Direct source parses cleanly; invalid traceId/sessionId/streamUrlSource fail soft to null (permit still valid).
+        val invalidMetaJson =
+            """
+            {
+              "permit": "hv2.k1.payload.sig",
+              "url": "wss://live.holt.botiverse.build/v1/stream",
+              "expiresAt": "2026-11-26T20:01:00.000Z",
+              "maxDurationSeconds": 600,
+              "quota": {
+                "usedSeconds": 0,
+                "limitSeconds": 7200,
+                "remainingSeconds": 7200,
+                "resetsAt": "2026-11-27T00:00:00.000Z"
+              },
+              "sessionId": "${"x".repeat(VOICE_FEEDBACK_SESSION_ID_MAX_CHARS + 1)}",
+              "traceId": "00000000000000000000000000000000",
+              "streamUrlSource": "unknown_route"
+            }
+            """.trimIndent()
+        val invalidMeta = assertNotNull(parseVoiceDictationV2Permit(invalidMetaJson))
+        assertNull(invalidMeta.sessionId)
+        assertNull(invalidMeta.traceId)
+        assertNull(invalidMeta.streamUrlSource)
+
+        val directJson =
+            enrichedJson.replace("\"raft_edge\"", "\"direct\"")
+        assertEquals(VoiceStreamUrlSource.Direct, assertNotNull(parseVoiceDictationV2Permit(directJson)).streamUrlSource)
+    }
+
+    @Test
+    fun streamClientAttachesTraceparentQueryParamWhenTraceIdPresentAndNeverAddsPermit() = runTest {
+        val traceId = "4bf92f3577b34da6a3ce929d0e0e4736"
+        val spanId = "00f067aa0ba902b7"
+        assertEquals(
+            "wss://live.holt.botiverse.build/v1/stream?tp=00-$traceId-$spanId-01",
+            buildVoiceDictationV2StreamUrl(
+                baseUrl = "wss://live.holt.botiverse.build/v1/stream",
+                traceId = traceId.uppercase(),
+                spanId = spanId,
+            ),
+        )
+        assertEquals(
+            "wss://live.holt.botiverse.build/v1/stream?region=us&tp=00-$traceId-$spanId-01",
+            buildVoiceDictationV2StreamUrl(
+                baseUrl = "wss://live.holt.botiverse.build/v1/stream?region=us",
+                traceId = traceId,
+                spanId = spanId,
+            ),
+        )
+        assertEquals(
+            "wss://live.holt.botiverse.build/v1/stream",
+            buildVoiceDictationV2StreamUrl(
+                baseUrl = "wss://live.holt.botiverse.build/v1/stream",
+                traceId = "not-a-valid-trace-id",
+            ),
+        )
+
+        val wsSession = FakeDictationWebSocketSession()
+        var capturedUrl: String? = null
+        var capturedHeaders: Map<String, String>? = null
+        val streamClient =
+            VoiceDictationV2StreamClient { url, headers ->
+                capturedUrl = url
+                capturedHeaders = headers
+                wsSession
+            }
+        val conn =
+            streamClient.connect(
+                url = "wss://live.holt.botiverse.build/v1/stream",
+                permit = "hv2.k1.body.sig",
+                traceId = traceId,
+            )
+        val actualUrl = assertNotNull(capturedUrl)
+        assertTrue(actualUrl.startsWith("wss://live.holt.botiverse.build/v1/stream?tp=00-$traceId-"))
+        assertTrue(actualUrl.endsWith("-01"))
+        assertFalse(actualUrl.contains("permit="))
+        assertEquals(mapOf("Authorization" to "Bearer hv2.k1.body.sig"), capturedHeaders)
+        conn.close(RaftWebSocketSession.NORMAL_CLOSURE, VOICE_DICTATION_CLOSE_REASON_DONE)
+        assertEquals(RaftWebSocketSession.NORMAL_CLOSURE, wsSession.lastCloseCode)
+        assertEquals(VOICE_DICTATION_CLOSE_REASON_DONE, wsSession.lastCloseReason)
+    }
+
+    @Test
+    fun controllerClosesWebSocketWithCode1000AndExplicitReasonAcrossEveryLifecyclePath() = runTest {
+        // 1. Normal completion (`done`)
+        val wsDone = FakeDictationWebSocketSession()
+        val cDone =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsDone },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cDone.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsDone.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cDone.stop()
+        runCurrent()
+        wsDone.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_DONE), wsDone.closeEvents)
+
+        // 2. Explicit user cancel (`user_cancel`)
+        val wsCancel = FakeDictationWebSocketSession()
+        val cCancel =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsCancel },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cCancel.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsCancel.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cCancel.cancel()
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_USER_CANCEL), wsCancel.closeEvents)
+
+        // 3. Owner changed (`owner_changed`)
+        val wsOwner = FakeDictationWebSocketSession()
+        val cOwner =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsOwner },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cOwner.start(serverId = "srv-1", channelId = validChannelUuid, onComposerUpdate = {})
+        runCurrent()
+        wsOwner.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cOwner.onOwnerChanged(serverId = "srv-2", channelId = validChannelUuid)
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_OWNER_CHANGED), wsOwner.closeEvents)
+
+        // 4. Finish for submit (`submit`)
+        val wsSubmit = FakeDictationWebSocketSession()
+        val cSubmit =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsSubmit },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cSubmit.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsSubmit.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cSubmit.stop()
+        runCurrent()
+        cSubmit.finishForSubmit()
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_SUBMIT), wsSubmit.closeEvents)
+
+        // 5. Post-stop drain timeout (`drain_timeout`)
+        val wsDrain = FakeDictationWebSocketSession()
+        val cDrain =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsDrain },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cDrain.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsDrain.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cDrain.stop()
+        runCurrent()
+        advanceTimeBy(VOICE_DICTATION_DEFAULT_STOP_DRAIN_TIMEOUT_MS)
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_DRAIN_TIMEOUT), wsDrain.closeEvents)
+
+        // 6. Pre-ready audio buffer overflow (`pre_ready_overflow`)
+        val wsOverflow = FakeDictationWebSocketSession()
+        val recOverflow = FakeDictationAudioRecorder()
+        val cOverflow =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsOverflow },
+                scope = backgroundScope,
+                audioRecorderProvider = { recOverflow },
+            )
+        cOverflow.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        for (i in 0..VOICE_DICTATION_MAX_PRE_READY_CHUNKS) {
+            recOverflow.emitChunk(byteArrayOf(i.toByte()))
+        }
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_PRE_READY_OVERFLOW), wsOverflow.closeEvents)
+
+        // 7. Superseded by new start (`superseded`)
+        val wsFirst = FakeDictationWebSocketSession()
+        val wsSecond = FakeDictationWebSocketSession()
+        var idx = 0
+        val cSuperseded =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> if (idx++ == 0) wsFirst else wsSecond },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cSuperseded.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsFirst.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cSuperseded.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_SUPERSEDED), wsFirst.closeEvents)
+        cSuperseded.cancel()
+        runCurrent()
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_USER_CANCEL), wsSecond.closeEvents)
+    }
+
+    @Test
+    fun controllerTracksImplicitOutcomeMetricsAndFeedbackTargetAcrossSubmitClearAndReRecord() = runTest {
+        var fakeNowMs = 10_000L
+        val outcomes = mutableListOf<VoiceDictationOutcomeReport>()
+        val ws1 = FakeDictationWebSocketSession()
+        val controller =
+            VoiceDictationV2Controller(
+                permitApi =
+                    FakeDictationPermitApi(
+                        defaultPermitOutcome(
+                            sessionId = "jti_sent_asis",
+                            traceId = "4bf92f3577b34da6a3ce929d0e0e4736",
+                            streamUrlSource = VoiceStreamUrlSource.RaftEdge,
+                        ),
+                    ),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws1 },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onOutcomeReport = { outcomes += it },
+                privacyModeProvider = { RaftPrivacyMode.Off },
+                clientPlatformProvider = { VoiceFeedbackClientPlatform.Mobile },
+            )
+
+        // 1. Sent as-is after clean `done`
+        controller.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        fakeNowMs += 120L
+        ws1.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        fakeNowMs += 250L
+        ws1.pushText("""{"deck":"text","text":"Ship it","stable_len":0}""")
+        ws1.pushText("""{"deck":"text","text":"Ship it.","stable_len":8,"refined":true}""")
+        runCurrent()
+        controller.stop()
+        runCurrent()
+        ws1.pushText("""{"deck":"done"}""")
+        runCurrent()
+
+        assertEquals(
+            VoiceDictationFeedbackTarget(
+                serverId = "srv-1",
+                sessionId = "jti_sent_asis",
+                raw = "Ship it",
+                refined = "Ship it.",
+            ),
+            controller.state.value.recentFeedbackTarget,
+        )
+
+        val submittedTarget = assertNotNull(controller.reportComposerSubmitted("Ship it."))
+        assertEquals("Ship it.", submittedTarget.sent)
+        assertEquals("Ship it.", controller.state.value.recentFeedbackTarget?.sent)
+        assertEquals(1, outcomes.size)
+        val first = outcomes.single()
+        assertEquals("srv-1", first.serverId)
+        assertEquals("jti_sent_asis", first.sessionId)
+        assertEquals(true, first.clientMetrics.sentAsIs)
+        assertEquals(0, first.clientMetrics.editDistance)
+        assertEquals(0.0, first.clientMetrics.editRatio)
+        assertEquals(false, first.clientMetrics.abandoned)
+        assertEquals(false, first.clientMetrics.reRecorded)
+        assertEquals(false, first.clientMetrics.sentBeforeRefineDone)
+        assertEquals(120, first.clientMetrics.clientConnectMs)
+        assertEquals(370, first.clientMetrics.clientFirstPartialMs)
+        assertEquals(VoiceFeedbackClientPlatform.Mobile, first.clientMetrics.clientPlatform)
+
+        // 2. Sent before background refine done (`finishForSubmit` while background drain active)
+        val ws2 = FakeDictationWebSocketSession()
+        val outcomes2 = mutableListOf<VoiceDictationOutcomeReport>()
+        val c2 =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(sessionId = "jti_early_send")),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws2 },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onOutcomeReport = { outcomes2 += it },
+                privacyModeProvider = { RaftPrivacyMode.Off },
+                clientPlatformProvider = { VoiceFeedbackClientPlatform.Mobile },
+            )
+        c2.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        ws2.pushText("""{"deck":"ready"}""")
+        ws2.pushText("""{"deck":"text","text":"hello world","stable_len":11}""")
+        runCurrent()
+        c2.stop()
+        runCurrent()
+        c2.finishForSubmit()
+        runCurrent()
+        c2.reportComposerSubmitted("hello Raft!")
+        assertEquals(1, outcomes2.size)
+        assertEquals(true, outcomes2.single().clientMetrics.sentBeforeRefineDone)
+        assertEquals(false, outcomes2.single().clientMetrics.sentAsIs)
+        assertTrue((outcomes2.single().clientMetrics.editRatio ?: 0.0) > 0.0)
+
+        // 3. Clearing composer after completion reports abandoned = true, reRecorded = false
+        val ws3 = FakeDictationWebSocketSession()
+        val outcomes3 = mutableListOf<VoiceDictationOutcomeReport>()
+        val c3 =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(sessionId = "jti_cleared")),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws3 },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onOutcomeReport = { outcomes3 += it },
+                privacyModeProvider = { RaftPrivacyMode.Off },
+                clientPlatformProvider = { VoiceFeedbackClientPlatform.Mobile },
+            )
+        c3.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        ws3.pushText("""{"deck":"ready"}""")
+        ws3.pushText("""{"deck":"text","text":"wrong words","stable_len":11}""")
+        runCurrent()
+        c3.stop()
+        runCurrent()
+        ws3.pushText("""{"deck":"done"}""")
+        runCurrent()
+        c3.onUserEditedComposer("")
+        assertEquals(1, outcomes3.size)
+        assertEquals("jti_cleared", outcomes3.single().sessionId)
+        assertEquals(true, outcomes3.single().clientMetrics.abandoned)
+        assertEquals(false, outcomes3.single().clientMetrics.reRecorded)
+
+        // 4. Starting a new dictation within 10 s without sending reports abandoned = true, reRecorded = true
+        val ws4a = FakeDictationWebSocketSession()
+        val ws4b = FakeDictationWebSocketSession()
+        var ws4Idx = 0
+        val outcomes4 = mutableListOf<VoiceDictationOutcomeReport>()
+        val c4 =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(sessionId = "jti_rerecord")),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> if (ws4Idx++ == 0) ws4a else ws4b },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onOutcomeReport = { outcomes4 += it },
+                privacyModeProvider = { RaftPrivacyMode.Off },
+                clientPlatformProvider = { VoiceFeedbackClientPlatform.Mobile },
+            )
+        c4.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        ws4a.pushText("""{"deck":"ready"}""")
+        ws4a.pushText("""{"deck":"text","text":"first try","stable_len":9}""")
+        runCurrent()
+        c4.stop()
+        runCurrent()
+        ws4a.pushText("""{"deck":"done"}""")
+        runCurrent()
+        fakeNowMs += 4_000L
+        c4.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        assertEquals(1, outcomes4.size)
+        assertEquals("jti_rerecord", outcomes4.single().sessionId)
+        assertEquals(true, outcomes4.single().clientMetrics.abandoned)
+        assertEquals(true, outcomes4.single().clientMetrics.reRecorded)
+        c4.cancel()
+        runCurrent()
     }
 
     // -------------------------------------------------------------------------
     // Test helpers
     // -------------------------------------------------------------------------
 
-    private fun defaultPermitOutcome(quotaDegraded: Boolean = false): VoiceDictationV2PermitOutcome =
+    private fun defaultPermitOutcome(
+        quotaDegraded: Boolean = false,
+        sessionId: String? = null,
+        traceId: String? = null,
+        streamUrlSource: VoiceStreamUrlSource? = null,
+    ): VoiceDictationV2PermitOutcome =
         VoiceDictationV2PermitOutcome.Issued(
             permit =
                 VoiceDictationV2Permit(
@@ -1449,6 +1867,9 @@ class VoiceDictationV2Test {
                             resetsAtEpochMs = 1_795_737_600_000L,
                         ),
                     quotaDegraded = quotaDegraded,
+                    sessionId = sessionId,
+                    traceId = traceId,
+                    streamUrlSource = streamUrlSource,
                 ),
         )
 
@@ -1536,6 +1957,9 @@ class VoiceDictationV2Test {
         val sentText = mutableListOf<String>()
         val sentBinary = mutableListOf<ByteArray>()
         var closeCalls: Int = 0
+        var lastCloseCode: Int? = null
+        var lastCloseReason: String? = null
+        val closeEvents = mutableListOf<Pair<Int, String>>()
 
         override suspend fun send(text: String) {
             sentText += text
@@ -1547,6 +1971,9 @@ class VoiceDictationV2Test {
 
         override suspend fun close(code: Int, reason: String) {
             closeCalls += 1
+            lastCloseCode = code
+            lastCloseReason = reason
+            closeEvents += code to reason
             toClient.close()
         }
 
