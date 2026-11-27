@@ -6889,6 +6889,8 @@
     <string name="agent_voice_call_mic_unavailable">Microfone indisponível</string>
     <string name="agent_voice_call_playback_blocked">Seu navegador está segurando o som. Selecione Som para ouvir %1$s.</string>
     <string name="agent_voice_call_hang_up">Desligar</string>
+    <string name="agent_voice_call_collapse_to_pill">Recolher para cápsula flutuante</string>
+    <string name="agent_voice_call_pill_expand_a11y">Expandir chamada com %1$s (%2$s)</string>
     <string name="agent_voice_call_mic_permission">O Raft não consegue usar seu microfone. Permita nas configurações do site no navegador e ligue de novo.</string>
     <string name="agent_voice_call_mic_busy">Outro app está usando seu microfone. Feche-o e ligue de novo.</string>
     <string name="agent_voice_call_mic_none">Nenhum microfone encontrado. Conecte um e ligue de novo.</string>

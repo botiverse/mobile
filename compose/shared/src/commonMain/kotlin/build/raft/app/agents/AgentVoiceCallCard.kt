@@ -14,13 +14,16 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,8 +67,10 @@ import build.raft.app.RaftAppAvatarSticker
 import build.raft.app.shell.RaftAppBottomTabBarHostZIndex
 import build.raft.app.RaftAvatarKind
 import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftFloatingPillEdge
 import build.raft.app.shell.RaftHorizontalSafeArea
 import build.raft.app.RaftLucideIconName
+import build.raft.app.resolveRaftFloatingPillChromeSpec
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.raftImeBottomPx
 import build.raft.app.data.AGENT_VOICE_CALL_MAX_MINUTES
@@ -91,10 +97,14 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
 import build.raft.designsystem.components.RaftIconToggleButton
+import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.gesture.raftKeepsBackSwipe
+import build.raft.designsystem.gesture.raftKeepsEdgeTouches
+import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor
@@ -105,6 +115,7 @@ import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -123,6 +134,13 @@ internal val LocalAgentVoiceCallHostMounted = compositionLocalOf { false }
 /** Above content and bottom tab bar, below modals/popovers/banners/toasts (mirrors web `z-app`). */
 internal const val AgentVoiceCallOverlayZIndex: Float = RaftAppBottomTabBarHostZIndex + 0.25f
 
+internal const val AgentVoiceCallCollapseButtonTestTag: String = "agent-voice-call-collapse"
+internal const val AgentVoiceCallEdgePillTestTag: String = "agent-voice-call-edge-pill"
+internal const val AgentVoiceCallPillClockTestTag: String = "agent-voice-call-pill-clock"
+internal const val AgentVoiceCallPillMutedTestTag: String = "agent-voice-call-pill-muted"
+internal const val AgentVoiceCallPillSpeakingRingTestTag: String = "agent-voice-call-pill-speaking-ring"
+internal const val AgentVoiceCallPillStatusDotTestTag: String = "agent-voice-call-pill-status-dot"
+
 private val AgentVoiceCallCardMaxWidth = 360.dp
 private val AgentVoiceCallCardHorizontalInset = 12.dp
 private val AgentVoiceCallCardTopGap = 12.dp
@@ -140,6 +158,7 @@ private val AgentVoiceCallCardDragElevationDark = 14.dp
 private const val AgentVoiceCallOverscrollSpringDamping = 0.78f
 private val AgentVoiceCallSpeakingRingStroke = 2.dp
 private val AgentVoiceCallSpeakingRingPadding = 2.dp
+private const val AgentVoiceCallTabularFiguresFeature = "tnum"
 
 /** Physical top-left pixel coordinate of the floating voice call card inside its overlay host. */
 internal data class AgentVoiceCallFloatingOffset(
@@ -362,6 +381,48 @@ private class AgentVoiceCallMeasuredSizeBox(
     var value: IntSize = IntSize.Zero,
 )
 
+private class AgentVoiceCallPillMeasuredSizeBox(
+    var widthPx: Float,
+    var heightPx: Float,
+)
+
+private data class AgentVoiceCallPillHostMetrics(
+    val viewportWidthPx: Float,
+    val viewportHeightPx: Float,
+    val leftSafeAreaPx: Float,
+    val rightSafeAreaPx: Float,
+    val topSafeAreaPx: Float,
+    val bottomSafeAreaPx: Float,
+    val topGapPx: Float,
+    val bottomGapPx: Float,
+    val density: Density,
+) {
+    fun toBounds(
+        pillWidthPx: Float,
+        pillHeightPx: Float,
+        imeBottomPx: Float,
+    ): AgentVoiceCallPillBounds =
+        AgentVoiceCallPillBounds(
+            viewportWidthPx = viewportWidthPx,
+            viewportHeightPx = viewportHeightPx,
+            pillWidthPx = pillWidthPx,
+            pillHeightPx = pillHeightPx,
+            leftSafeAreaPx = leftSafeAreaPx,
+            rightSafeAreaPx = rightSafeAreaPx,
+            topSafeAreaPx = topSafeAreaPx,
+            bottomSafeAreaPx = bottomSafeAreaPx,
+            imeBottomPx = imeBottomPx,
+            topGapPx = topGapPx,
+            bottomGapPx = bottomGapPx,
+        )
+}
+
+private data class AgentVoiceCallPillLiveYBounds(
+    val minY: Float,
+    val maxY: Float,
+    val bounds: AgentVoiceCallPillBounds,
+)
+
 private data class AgentVoiceCallHostMetrics(
     val hostWidthPx: Float,
     val hostHeightPx: Float,
@@ -401,7 +462,8 @@ private data class AgentVoiceCallHostMetrics(
 }
 
 /**
- * Observes [store] and floats a draggable [AgentVoiceCallCard] inside visible safe-area bounds
+ * Observes [store] and floats a draggable [AgentVoiceCallCard] (collapsible into a bilateral
+ * magnetic edge-docked [AgentVoiceCallEdgePill] while active) inside visible safe-area bounds
  * while a call is active, ended, or failed. Emits nothing while idle.
  */
 @Composable
@@ -412,13 +474,15 @@ internal fun AgentVoiceCallOverlayHost(
     topSafeArea: Dp? = null,
     horizontalSafeArea: RaftHorizontalSafeArea? = null,
     positionHolder: AgentVoiceCallFloatingPositionHolder = DefaultAgentVoiceCallFloatingPositionHolder,
+    floatingStateHolder: AgentVoiceCallFloatingStateHolder = DefaultAgentVoiceCallFloatingStateHolder,
 ) {
     if (store == null) return
     val call by store.call.collectAsState()
     val currentCall = call
-    LaunchedEffect(currentCall == null, positionHolder) {
+    LaunchedEffect(currentCall == null, positionHolder, floatingStateHolder) {
         if (currentCall == null) {
             positionHolder.clear()
+            floatingStateHolder.clearSession()
         }
     }
     if (currentCall == null) return
@@ -461,13 +525,15 @@ internal fun AgentVoiceCallOverlayHost(
         topSafeArea = topSafeArea,
         horizontalSafeArea = horizontalSafeArea,
         positionHolder = positionHolder,
+        floatingStateHolder = floatingStateHolder,
         onSubmitFeedback = onSubmitFeedback,
     )
 }
 
 /**
- * Draggable overlay surface hosting [AgentVoiceCallCard] with safe-area + IME clamping, smooth
- * rubber-band edge feedback, and session-scoped position persistence.
+ * Draggable overlay surface hosting [AgentVoiceCallCard] and its collapsed bilateral edge-docked
+ * [AgentVoiceCallEdgePill] with safe-area + IME clamping, full touch pass-through outside bounds,
+ * and session-scoped position/presentation persistence.
  */
 @Composable
 internal fun AgentVoiceCallDraggableOverlay(
@@ -483,19 +549,92 @@ internal fun AgentVoiceCallDraggableOverlay(
     topSafeArea: Dp? = null,
     horizontalSafeArea: RaftHorizontalSafeArea? = null,
     positionHolder: AgentVoiceCallFloatingPositionHolder = DefaultAgentVoiceCallFloatingPositionHolder,
+    floatingStateHolder: AgentVoiceCallFloatingStateHolder = DefaultAgentVoiceCallFloatingStateHolder,
     onSubmitFeedback: (suspend (AgentVoiceCallFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? = null,
+) {
+    val resolvedTopSafeArea = (topSafeArea ?: raftWindowTopSafeAreaPadding()).coerceAtLeast(0.dp)
+    val resolvedBottomClearance = bottomClearance.coerceAtLeast(0.dp)
+    val resolvedHorizontalSafeArea = horizontalSafeArea ?: raftHorizontalSafeArea()
+    val rawFloatingState by floatingStateHolder.state.collectAsState()
+    val effectiveFloatingState = reconcileAgentVoiceCallFloatingState(rawFloatingState, call)
+
+    LaunchedEffect(
+        call.serverId,
+        call.agent.id,
+        call.callId,
+        call.phase,
+        call.focusNonce,
+        floatingStateHolder,
+    ) {
+        floatingStateHolder.syncWithCall(call)
+    }
+
+    if (effectiveFloatingState.mode == AgentVoiceCallPresentationMode.EdgePill) {
+        AgentVoiceCallEdgePillOverlay(
+            call = call,
+            nowEpochMs = nowEpochMs,
+            pillEdge = effectiveFloatingState.pillEdge,
+            pillYFraction = effectiveFloatingState.pillYFraction,
+            onPillDockPositionChange = floatingStateHolder::setPillDockPosition,
+            onExpand = floatingStateHolder::expandToCard,
+            bottomClearance = resolvedBottomClearance,
+            topSafeArea = resolvedTopSafeArea,
+            horizontalSafeArea = resolvedHorizontalSafeArea,
+            modifier = modifier,
+        )
+    } else {
+        AgentVoiceCallDraggableCardOverlay(
+            call = call,
+            nowEpochMs = nowEpochMs,
+            onToggleMute = onToggleMute,
+            onToggleSpeaker = onToggleSpeaker,
+            onHangUp = onHangUp,
+            onClose = onClose,
+            onRetry = onRetry,
+            onCollapseToPill =
+                if (canCollapseAgentVoiceCallToPill(call)) {
+                    { floatingStateHolder.collapseToPill(call) }
+                } else {
+                    null
+                },
+            bottomClearance = resolvedBottomClearance,
+            topSafeArea = resolvedTopSafeArea,
+            horizontalSafeArea = resolvedHorizontalSafeArea,
+            positionHolder = positionHolder,
+            onSubmitFeedback = onSubmitFeedback,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun AgentVoiceCallDraggableCardOverlay(
+    call: AgentVoiceCallState,
+    nowEpochMs: Long,
+    onToggleMute: () -> Unit,
+    onToggleSpeaker: () -> Unit,
+    onHangUp: () -> Unit,
+    onClose: () -> Unit,
+    onRetry: () -> Unit,
+    onCollapseToPill: (() -> Unit)?,
+    bottomClearance: Dp,
+    topSafeArea: Dp,
+    horizontalSafeArea: RaftHorizontalSafeArea,
+    positionHolder: AgentVoiceCallFloatingPositionHolder,
+    onSubmitFeedback: (suspend (AgentVoiceCallFeedbackRequest) -> VoiceFeedbackSubmitOutcome)?,
+    modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val isWide = RaftTheme.scale == RaftScale.Wide
     val isLtr = layoutDirection == LayoutDirection.Ltr
-    val resolvedTopSafeArea = (topSafeArea ?: raftWindowTopSafeAreaPadding()).coerceAtLeast(0.dp)
+    val resolvedTopSafeArea = topSafeArea.coerceAtLeast(0.dp)
     val resolvedBottomClearance = bottomClearance.coerceAtLeast(0.dp)
-    val resolvedHorizontalSafeArea = horizontalSafeArea ?: raftHorizontalSafeArea()
+    val resolvedHorizontalSafeArea = horizontalSafeArea
     val imeInsets = WindowInsets.ime
     val hostImeInsets = LocalRaftHostImeInsets.current
     val scope = rememberCoroutineScope()
-    val sessionKey = "${call.serverId}:${call.agent.id}"
+    val sessionKey = agentVoiceCallSessionKey(call)
 
     val savedPosition by positionHolder.position.collectAsState()
     var localPositionPx by remember(sessionKey) {
@@ -559,6 +698,7 @@ internal fun AgentVoiceCallDraggableOverlay(
             draggable = true,
             isDragging = isDragging,
             onSubmitFeedback = onSubmitFeedback,
+            onCollapseToPill = onCollapseToPill,
             modifier =
                 Modifier
                     .align(AbsoluteAlignment.TopLeft)
@@ -707,10 +847,433 @@ internal fun AgentVoiceCallDraggableOverlay(
 }
 
 /**
+ * Draggable magnetic edge-docked pill overlay for a collapsed active Agent Voice call.
+ *
+ * Reads live IME, drag, and spring-snap state strictly inside `.layout` placement so drag, snap,
+ * and keyboard frames skip composition and measurement. Leaves all viewport area outside the pill
+ * unobstructed for touch pass-through.
+ */
+@Composable
+internal fun AgentVoiceCallEdgePillOverlay(
+    call: AgentVoiceCallState,
+    nowEpochMs: Long,
+    pillEdge: RaftFloatingPillEdge,
+    pillYFraction: Float,
+    onPillDockPositionChange: (RaftFloatingPillEdge, Float) -> Unit,
+    onExpand: () -> Unit,
+    bottomClearance: Dp = raftBottomSafeAreaPadding(),
+    topSafeArea: Dp = raftWindowTopSafeAreaPadding(),
+    horizontalSafeArea: RaftHorizontalSafeArea = RaftHorizontalSafeArea.Zero,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val hostImeInsets = LocalRaftHostImeInsets.current
+    val reducedMotion = rememberRaftReducedMotion()
+    val coroutineScope = rememberCoroutineScope()
+    val leftSafeAreaPx = with(density) { horizontalSafeArea.left.coerceAtLeast(0.dp).toPx() }
+    val rightSafeAreaPx = with(density) { horizontalSafeArea.right.coerceAtLeast(0.dp).toPx() }
+    val topSafeAreaPx = with(density) { topSafeArea.coerceAtLeast(0.dp).toPx() }
+    val bottomSafeAreaPx = with(density) { bottomClearance.coerceAtLeast(0.dp).toPx() }
+    val topGapPx = with(density) { AgentVoiceCallCardTopGap.toPx() }
+    val bottomGapPx = with(density) { AgentVoiceCallCardBottomGap.toPx() }
+    val defaultPillWidthPx = with(density) { 88.dp.toPx() }
+    val defaultPillHeightPx = with(density) { 48.dp.toPx() }
+
+    val measuredPillSize = remember { AgentVoiceCallPillMeasuredSizeBox(defaultPillWidthPx, defaultPillHeightPx) }
+    var localPillEdge by remember { mutableStateOf(pillEdge) }
+    var localPillYFraction by remember { mutableFloatStateOf(normalizeAgentVoiceCallPillYFraction(pillYFraction)) }
+    var dragging by remember { mutableStateOf(false) }
+    var snapAnimating by remember { mutableStateOf(false) }
+    var dragXPx by remember { mutableFloatStateOf(0f) }
+    var dragYPx by remember { mutableFloatStateOf(0f) }
+    val snapOffsetFromDockedX = remember { Animatable(0f) }
+
+    LaunchedEffect(pillEdge) {
+        if (!dragging && localPillEdge != pillEdge) {
+            localPillEdge = pillEdge
+            snapAnimating = false
+            if (snapOffsetFromDockedX.isRunning || snapOffsetFromDockedX.value != 0f) {
+                snapOffsetFromDockedX.snapTo(0f)
+            }
+        }
+    }
+
+    LaunchedEffect(pillYFraction) {
+        if (!dragging) {
+            localPillYFraction = normalizeAgentVoiceCallPillYFraction(pillYFraction)
+        }
+    }
+
+    BoxWithConstraints(
+        modifier = modifier.fillMaxSize().zIndex(AgentVoiceCallOverlayZIndex),
+    ) {
+        val viewportWidthPx = constraints.maxWidth.toFloat().coerceAtLeast(1f)
+        val viewportHeightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
+        val hostMetrics =
+            AgentVoiceCallPillHostMetrics(
+                viewportWidthPx = viewportWidthPx,
+                viewportHeightPx = viewportHeightPx,
+                leftSafeAreaPx = leftSafeAreaPx,
+                rightSafeAreaPx = rightSafeAreaPx,
+                topSafeAreaPx = topSafeAreaPx,
+                bottomSafeAreaPx = bottomSafeAreaPx,
+                topGapPx = topGapPx,
+                bottomGapPx = bottomGapPx,
+                density = density,
+            )
+        val latestMetrics by rememberUpdatedState(hostMetrics)
+        val latestReducedMotion by rememberUpdatedState(reducedMotion)
+        val latestOnPillDockPositionChange by rememberUpdatedState(onPillDockPositionChange)
+
+        AgentVoiceCallEdgePill(
+            call = call,
+            nowEpochMs = nowEpochMs,
+            onExpand = onExpand,
+            edge = localPillEdge,
+            isDetached = dragging || snapAnimating,
+            modifier =
+                Modifier
+                    .align(AbsoluteAlignment.TopLeft)
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        if (placeable.width > 0) {
+                            measuredPillSize.widthPx = placeable.width.toFloat()
+                        }
+                        if (placeable.height > 0) {
+                            measuredPillSize.heightPx = placeable.height.toFloat()
+                        }
+                        layout(placeable.width, placeable.height) {
+                            // Read live IME, drag, and spring state strictly in placement so drag,
+                            // snap, and keyboard frames skip composition and measurement.
+                            val liveImeBottomPx = raftImeBottomPx(imeInsets, hostImeInsets, hostMetrics.density).toFloat()
+                            val liveBounds =
+                                hostMetrics.toBounds(
+                                    pillWidthPx = placeable.width.toFloat(),
+                                    pillHeightPx = placeable.height.toFloat(),
+                                    imeBottomPx = liveImeBottomPx,
+                                )
+                            val minY = agentVoiceCallPillTopBoundPx(liveBounds)
+                            val maxY =
+                                (liveBounds.viewportHeightPx - agentVoiceCallPillBottomBoundPx(liveBounds) - liveBounds.pillHeightPx)
+                                    .coerceAtLeast(minY)
+                            val yPx =
+                                if (dragging) {
+                                    dragYPx.coerceIn(minY, maxY)
+                                } else {
+                                    resolveAgentVoiceCallPillOffsetYPx(liveBounds, localPillYFraction)
+                                }
+                            val activeEdge = localPillEdge
+                            val dockedX = resolveAgentVoiceCallPillDockedOffsetXPx(activeEdge, liveBounds)
+                            val xPx =
+                                if (dragging) {
+                                    clampAgentVoiceCallPillOffsetXPx(
+                                        offsetXPx = dragXPx,
+                                        bounds = liveBounds,
+                                        fallbackEdge = activeEdge,
+                                    )
+                                } else {
+                                    clampAgentVoiceCallPillOffsetXPx(
+                                        offsetXPx = dockedX + snapOffsetFromDockedX.value,
+                                        bounds = liveBounds,
+                                        fallbackEdge = activeEdge,
+                                    )
+                                }
+                            placeable.place(
+                                x = xPx.roundToInt(),
+                                y = yPx.roundToInt(),
+                            )
+                        }
+                    }
+                    .raftKeepsEdgeTouches()
+                    .pointerInput(Unit) {
+                        var snapGeneration = 0
+
+                        fun resolveLiveYBounds(): AgentVoiceCallPillLiveYBounds {
+                            val metrics = latestMetrics
+                            val liveImeBottomPx = raftImeBottomPx(imeInsets, hostImeInsets, metrics.density).toFloat()
+                            val liveBounds =
+                                metrics.toBounds(
+                                    pillWidthPx = measuredPillSize.widthPx,
+                                    pillHeightPx = measuredPillSize.heightPx,
+                                    imeBottomPx = liveImeBottomPx,
+                                )
+                            val minY = agentVoiceCallPillTopBoundPx(liveBounds)
+                            val maxY =
+                                (liveBounds.viewportHeightPx - agentVoiceCallPillBottomBoundPx(liveBounds) - liveBounds.pillHeightPx)
+                                    .coerceAtLeast(minY)
+                            return AgentVoiceCallPillLiveYBounds(
+                                minY = minY,
+                                maxY = maxY,
+                                bounds = liveBounds,
+                            )
+                        }
+
+                        fun finishDrag(
+                            commitTargetEdge: Boolean,
+                            animateSnap: Boolean,
+                        ) {
+                            val live = resolveLiveYBounds()
+                            val currentEdge = localPillEdge
+                            val finalY = dragYPx.coerceIn(live.minY, live.maxY)
+                            val finalX =
+                                clampAgentVoiceCallPillOffsetXPx(
+                                    offsetXPx = dragXPx,
+                                    bounds = live.bounds,
+                                    fallbackEdge = currentEdge,
+                                )
+                            val fraction =
+                                clampAgentVoiceCallPillYFraction(
+                                    offsetYPx = finalY,
+                                    bounds = live.bounds,
+                                    fallbackYFraction = localPillYFraction,
+                                )
+                            val targetEdge =
+                                if (commitTargetEdge) {
+                                    resolveAgentVoiceCallPillSnapEdge(
+                                        offsetXPx = finalX,
+                                        bounds = live.bounds,
+                                        currentEdge = currentEdge,
+                                    )
+                                } else {
+                                    currentEdge
+                                }
+                            val targetDockedX = resolveAgentVoiceCallPillDockedOffsetXPx(targetEdge, live.bounds)
+                            val deltaFromTarget = finalX - targetDockedX
+
+                            localPillEdge = targetEdge
+                            localPillYFraction = fraction
+                            latestOnPillDockPositionChange(targetEdge, fraction)
+                            dragging = false
+
+                            val myGeneration = ++snapGeneration
+                            if (!animateSnap || latestReducedMotion || abs(deltaFromTarget) < 0.5f) {
+                                snapAnimating = false
+                                if (snapOffsetFromDockedX.isRunning || snapOffsetFromDockedX.value != 0f) {
+                                    coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                        snapOffsetFromDockedX.snapTo(0f)
+                                    }
+                                }
+                            } else {
+                                snapAnimating = true
+                                coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                    try {
+                                        snapOffsetFromDockedX.snapTo(deltaFromTarget)
+                                        snapOffsetFromDockedX.animateTo(
+                                            targetValue = 0f,
+                                            animationSpec =
+                                                spring(
+                                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                                    stiffness = Spring.StiffnessMedium,
+                                                ),
+                                        )
+                                    } finally {
+                                        if (snapGeneration == myGeneration) {
+                                            snapAnimating = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        detectDragGestures(
+                            onDragStart = {
+                                val live = resolveLiveYBounds()
+                                val currentEdge = localPillEdge
+                                val currentDockedY = resolveAgentVoiceCallPillOffsetYPx(live.bounds, localPillYFraction)
+                                val currentDockedX = resolveAgentVoiceCallPillDockedOffsetXPx(currentEdge, live.bounds)
+                                val currentVisualX =
+                                    clampAgentVoiceCallPillOffsetXPx(
+                                        offsetXPx = currentDockedX + snapOffsetFromDockedX.value,
+                                        bounds = live.bounds,
+                                        fallbackEdge = currentEdge,
+                                    )
+                                dragXPx = currentVisualX
+                                dragYPx = currentDockedY.coerceIn(live.minY, live.maxY)
+                                snapGeneration += 1
+                                snapAnimating = false
+                                dragging = true
+                                if (snapOffsetFromDockedX.isRunning || snapOffsetFromDockedX.value != 0f) {
+                                    coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
+                                        snapOffsetFromDockedX.snapTo(0f)
+                                    }
+                                }
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val live = resolveLiveYBounds()
+                                val xRange = agentVoiceCallPillHorizontalRange(live.bounds)
+                                dragXPx = (dragXPx + dragAmount.x).coerceIn(xRange.minX, xRange.maxX)
+                                dragYPx = (dragYPx + dragAmount.y).coerceIn(live.minY, live.maxY)
+                            },
+                            onDragEnd = { finishDrag(commitTargetEdge = true, animateSnap = true) },
+                            onDragCancel = { finishDrag(commitTargetEdge = false, animateSnap = false) },
+                        )
+                    },
+        )
+    }
+}
+
+/**
+ * Pure presentation for the collapsed bilateral edge-docked Agent Voice call pill:
+ * - Reuses [resolveRaftFloatingPillChromeSpec] for Left/Right flat outer edge and detached capsule.
+ * - Shows agent avatar (with a `presence-online` speaking ring while the agent speaks), live phase
+ *   status dot, muted/mic-blocked indicator when active, and compact tabular elapsed clock (`m:ss`).
+ * - Single tap expands back to [AgentVoiceCallCard] without interrupting the live call session.
+ */
+@Composable
+internal fun AgentVoiceCallEdgePill(
+    call: AgentVoiceCallState,
+    nowEpochMs: Long,
+    onExpand: () -> Unit,
+    modifier: Modifier = Modifier,
+    edge: RaftFloatingPillEdge = AgentVoiceCallPillDefaultEdge,
+    isDetached: Boolean = false,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val dark = RaftTheme.isDark
+    val layoutDirection = LocalLayoutDirection.current
+    val agentName = call.agent.name
+    val phase = call.phase
+    val blockedMic = !call.micBlockedReason.isNullOrBlank()
+    val inCall = phase == AgentVoiceCallPhase.Live || phase == AgentVoiceCallPhase.Reconnecting
+    val showMutedBadge = inCall && (call.muted || blockedMic)
+    val liveClock =
+        if (phase == AgentVoiceCallPhase.Live) {
+            val liveSince = call.connectedAtEpochMs ?: nowEpochMs
+            formatAgentVoiceCallClock((nowEpochMs - liveSince).coerceAtLeast(0L))
+        } else {
+            null
+        }
+    val statusSummary =
+        liveClock
+            ?: when (phase) {
+                AgentVoiceCallPhase.Starting,
+                AgentVoiceCallPhase.Connecting -> stringResource(Res.string.agent_voice_call_connecting)
+                AgentVoiceCallPhase.Reconnecting -> stringResource(Res.string.agent_voice_call_reconnecting)
+                AgentVoiceCallPhase.Live -> stringResource(Res.string.agent_voice_call_connected)
+                AgentVoiceCallPhase.Ended ->
+                    stringResource(Res.string.agent_voice_call_ended, formatAgentVoiceCallClock(call.durationMs ?: 0L))
+                AgentVoiceCallPhase.Failed -> stringResource(Res.string.agent_voice_call_not_connected)
+            }
+    val a11yLabel = stringResource(Res.string.agent_voice_call_pill_expand_a11y, agentName, statusSummary)
+    val statusDotColor =
+        when (phase) {
+            AgentVoiceCallPhase.Live -> RaftUiPalette.presenceOnline
+            AgentVoiceCallPhase.Reconnecting -> RaftUiPalette.warning
+            AgentVoiceCallPhase.Starting,
+            AgentVoiceCallPhase.Connecting -> RaftUiPalette.presenceBusy
+            AgentVoiceCallPhase.Ended,
+            AgentVoiceCallPhase.Failed -> colors.foregroundHint
+        }
+    val chromeSpec = resolveRaftFloatingPillChromeSpec(edge = edge, isDetached = isDetached)
+    val pillShape = chromeSpec.toShape(layoutDirection)
+
+    CompositionLocalProvider(
+        LocalRaftContentColor provides colors.foreground,
+        LocalRaftSurfaceColor provides colors.layerPopover,
+    ) {
+        Row(
+            modifier =
+                modifier
+                    .testTag(AgentVoiceCallEdgePillTestTag)
+                    .semantics { contentDescription = a11yLabel }
+                    .shadow(elevation = if (dark) 10.dp else 6.dp, shape = pillShape)
+                    .clip(pillShape)
+                    .background(colors.layerPopover, pillShape)
+                    .border(RaftStroke.Hairline, colors.lineSeam, pillShape)
+                    .raftClickable(onClick = onExpand, shape = pillShape, tier = RaftHoverTier.Subtle)
+                    .absolutePadding(
+                        left = chromeSpec.leftPaddingDp,
+                        right = chromeSpec.rightPaddingDp,
+                        top = 8.dp,
+                        bottom = 8.dp,
+                    ),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val ringShape = RoundedCornerShape(RaftRadius.Control)
+            val ringModifier =
+                if (call.agentSpeaking) {
+                    Modifier
+                        .testTag(AgentVoiceCallPillSpeakingRingTestTag)
+                        .border(AgentVoiceCallSpeakingRingStroke, RaftUiPalette.presenceOnline, ringShape)
+                        .padding(AgentVoiceCallSpeakingRingPadding)
+                } else {
+                    Modifier.padding(AgentVoiceCallSpeakingRingPadding)
+                }
+            Box {
+                Box(modifier = ringModifier) {
+                    RaftAppAvatarSticker(
+                        kind = RaftAvatarKind.Agent,
+                        avatarWireValue = call.agent.avatarWireValue,
+                        label = agentName,
+                        size = RaftAvatarSize.Sm,
+                        cacheSubject = raftMemberAvatarCacheSubject(MemberKind.Agent, call.agent.id),
+                        cacheServerId = call.serverId,
+                    )
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .testTag(AgentVoiceCallPillStatusDotTestTag)
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(colors.layerPopover, CircleShape)
+                            .padding(1.5.dp)
+                            .clip(CircleShape)
+                            .background(statusDotColor, CircleShape),
+                )
+            }
+            if (showMutedBadge) {
+                CompositionLocalProvider(LocalRaftContentColor provides colors.dangerStrong) {
+                    RaftContentLucideIcon(
+                        name = RaftLucideIconName.MicOff,
+                        size = 14.dp,
+                        modifier = Modifier.testTag(AgentVoiceCallPillMutedTestTag),
+                    )
+                }
+            }
+            if (liveClock != null) {
+                RaftText(
+                    text = liveClock,
+                    modifier = Modifier.testTag(AgentVoiceCallPillClockTestTag),
+                    style = typography.footnote.copy(fontFeatureSettings = AgentVoiceCallTabularFiguresFeature),
+                    color = colors.foreground,
+                    maxLines = 1,
+                    softWrap = false,
+                )
+            } else {
+                val phaseIconColor =
+                    if (phase == AgentVoiceCallPhase.Reconnecting) {
+                        colors.warningGraphic
+                    } else {
+                        colors.foregroundMuted
+                    }
+                val phaseIconName =
+                    if (phase == AgentVoiceCallPhase.Reconnecting) {
+                        RaftLucideIconName.WifiOff
+                    } else {
+                        RaftLucideIconName.Phone
+                    }
+                CompositionLocalProvider(LocalRaftContentColor provides phaseIconColor) {
+                    RaftContentLucideIcon(
+                        name = phaseIconName,
+                        size = 14.dp,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
  * Pure presentation for the floating Agent Voice call card (mirrors web `AgentVoiceCallPanel.tsx`):
  * agent avatar (with a still `presence-online` ring while speaking), agent name + live phase / clock,
- * last two caption lines, mid-call mic warning banner, typed failure/end notes, and Mute / Speaker /
- * Hang up (or Retry / Close once over).
+ * optional collapse-to-edge-pill control while active, last two caption lines, mid-call mic warning
+ * banner, typed failure/end notes, and Mute / Speaker / Hang up (or Retry / Close once over).
  */
 @Composable
 internal fun AgentVoiceCallCard(
@@ -725,6 +1288,7 @@ internal fun AgentVoiceCallCard(
     draggable: Boolean = false,
     isDragging: Boolean = false,
     onSubmitFeedback: (suspend (AgentVoiceCallFeedbackRequest) -> VoiceFeedbackSubmitOutcome)? = null,
+    onCollapseToPill: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
@@ -767,6 +1331,7 @@ internal fun AgentVoiceCallCard(
     val soundOffLabel = stringResource(Res.string.agent_voice_call_sound_off)
     val micUnavailableLabel = stringResource(Res.string.agent_voice_call_mic_unavailable)
     val hangUpLabel = stringResource(Res.string.agent_voice_call_hang_up)
+    val collapseLabel = stringResource(Res.string.agent_voice_call_collapse_to_pill)
     val youLabel = stringResource(Res.string.agent_voice_call_you)
     val cardShape = RoundedCornerShape(RaftRadius.Container)
     val targetElevation =
@@ -859,11 +1424,25 @@ internal fun AgentVoiceCallCard(
                                             liveRegion = LiveRegionMode.Polite
                                         }
                                     },
-                            style = typography.callout.copy(fontFeatureSettings = "tnum"),
+                            style = typography.callout.copy(fontFeatureSettings = AgentVoiceCallTabularFiguresFeature),
                             color = colors.foregroundMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    }
+                    if (onCollapseToPill != null && canCollapseAgentVoiceCallToPill(phase)) {
+                        RaftIconButton(
+                            onClick = onCollapseToPill,
+                            tooltip = collapseLabel,
+                            variant = RaftButtonVariant.Ghost,
+                            size = RaftIconButtonSize.Sm,
+                            modifier = Modifier.testTag(AgentVoiceCallCollapseButtonTestTag),
+                        ) {
+                            RaftContentLucideIcon(
+                                name = RaftLucideIconName.Minimize2,
+                                size = 16.dp,
+                            )
+                        }
                     }
                 }
 

@@ -6889,6 +6889,8 @@
     <string name="agent_voice_call_mic_unavailable">麥克風無法使用</string>
     <string name="agent_voice_call_playback_blocked">瀏覽器暫停了聲音。選擇「聲音」就能聽到 %1$s。</string>
     <string name="agent_voice_call_hang_up">掛斷</string>
+    <string name="agent_voice_call_collapse_to_pill">收合為浮動膠囊</string>
+    <string name="agent_voice_call_pill_expand_a11y">展開與 %1$s 的通話（%2$s）</string>
     <string name="agent_voice_call_mic_permission">Raft 無法使用你的麥克風。請在瀏覽器的網站設定裡允許，然後重新撥打。</string>
     <string name="agent_voice_call_mic_busy">另一個應用程式正在使用你的麥克風。關閉它，然後重新撥打。</string>
     <string name="agent_voice_call_mic_none">找不到麥克風。連接一個，然後重新撥打。</string>

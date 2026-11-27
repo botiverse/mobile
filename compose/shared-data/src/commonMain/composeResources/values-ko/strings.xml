@@ -6889,6 +6889,8 @@
     <string name="agent_voice_call_mic_unavailable">마이크를 사용할 수 없음</string>
     <string name="agent_voice_call_playback_blocked">브라우저가 소리를 막고 있어요. %1$s의 목소리를 들으려면 ‘소리’를 선택하세요.</string>
     <string name="agent_voice_call_hang_up">통화 종료</string>
+    <string name="agent_voice_call_collapse_to_pill">플로팅 버튼으로 접기</string>
+    <string name="agent_voice_call_pill_expand_a11y">%1$s와(과) 통화 펼치기 (%2$s)</string>
     <string name="agent_voice_call_mic_permission">Raft가 마이크를 사용할 수 없어요. 브라우저의 사이트 설정에서 허용한 뒤 다시 전화하세요.</string>
     <string name="agent_voice_call_mic_busy">다른 앱이 마이크를 사용 중이에요. 그 앱을 닫은 뒤 다시 전화하세요.</string>
     <string name="agent_voice_call_mic_none">마이크를 찾을 수 없어요. 마이크를 연결한 뒤 다시 전화하세요.</string>
