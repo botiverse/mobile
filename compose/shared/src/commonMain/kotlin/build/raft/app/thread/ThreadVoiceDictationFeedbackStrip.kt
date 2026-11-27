@@ -28,9 +28,7 @@ import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftTraceIdNote
-import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.VOICE_DICTATION_FEEDBACK_PATH
 import build.raft.app.data.VOICE_FEEDBACK_NOTE_MAX_CHARS
@@ -50,8 +48,8 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCheckboxIndicator
-import build.raft.designsystem.components.RaftIconButton
-import build.raft.designsystem.components.RaftIconButtonSize
+import build.raft.designsystem.components.RaftCloseButton
+import build.raft.designsystem.components.RaftCloseButtonSize
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldSize
 import build.raft.designsystem.components.raftClickable
@@ -215,16 +213,12 @@ internal fun ThreadVoiceDictationFeedbackStrip(
                             color = colors.foregroundMuted,
                             modifier = Modifier.weight(1f).testTag(ThreadVoiceDictationFeedbackSavedTestTag),
                         )
-                        RaftIconButton(
+                        RaftCloseButton(
                             onClick = onDismiss,
-                            tooltip = null,
-                            contentDescription = dismissLabel,
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Xs,
+                            label = dismissLabel,
+                            size = RaftCloseButtonSize.Dialog,
                             modifier = Modifier.testTag(ThreadVoiceDictationFeedbackDismissTestTag),
-                        ) {
-                            RaftSlotIcon(name = RaftLucideIconName.X)
-                        }
+                        )
                     }
                 }
 
@@ -251,16 +245,12 @@ internal fun ThreadVoiceDictationFeedbackStrip(
                                 size = RaftButtonSize.Md,
                                 modifier = Modifier.testTag(ThreadVoiceDictationFeedbackOpenTestTag),
                             )
-                            RaftIconButton(
+                            RaftCloseButton(
                                 onClick = onDismiss,
-                                tooltip = null,
-                                contentDescription = dismissLabel,
-                                variant = RaftButtonVariant.Ghost,
-                                size = RaftIconButtonSize.Xs,
+                                label = dismissLabel,
+                                size = RaftCloseButtonSize.Dialog,
                                 modifier = Modifier.testTag(ThreadVoiceDictationFeedbackDismissTestTag),
-                            ) {
-                                RaftSlotIcon(name = RaftLucideIconName.X)
-                            }
+                            )
                         }
                     }
                 }
@@ -277,16 +267,12 @@ internal fun ThreadVoiceDictationFeedbackStrip(
                             color = colors.foreground,
                             modifier = Modifier.weight(1f),
                         )
-                        RaftIconButton(
+                        RaftCloseButton(
                             onClick = onDismiss,
-                            tooltip = null,
-                            contentDescription = dismissLabel,
-                            variant = RaftButtonVariant.Ghost,
-                            size = RaftIconButtonSize.Xs,
+                            label = dismissLabel,
+                            size = RaftCloseButtonSize.Dialog,
                             modifier = Modifier.testTag(ThreadVoiceDictationFeedbackDismissTestTag),
-                        ) {
-                            RaftSlotIcon(name = RaftLucideIconName.X)
-                        }
+                        )
                     }
 
                     FlowRow(
