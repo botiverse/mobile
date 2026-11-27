@@ -189,7 +189,7 @@ class SharedChannelAnnouncementStoreTest {
             api.failing = true
             val store = store(api)
             open(store)
-            assertEquals(ChannelAnnouncementSlice.Unread, store.current(key))
+            assertEquals(ChannelAnnouncementSlice(read = false, announcement = null, failed = true), store.current(key))
             // Nothing held yet counts as different, a row naming none included.
             api.failing = false
             deliver(store, channelUpdated(null))
