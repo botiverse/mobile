@@ -73,6 +73,20 @@ class RaftSettingsLinkTest {
     }
 
     @Test
+    fun feedbackSubRoutesMapToFeedbackListDestination() {
+        for (url in listOf(
+            "$prod/settings/feedback/new",
+            "$prod/s/hq/settings/feedback/new",
+            "$prod/settings/feedback/ticket/11111111-2222-4333-8444-555555555555",
+            "$prod/s/hq/settings/feedback/ticket/11111111-2222-4333-8444-555555555555",
+        )) {
+            val link = assertNotNull(parse(url), url)
+            assertEquals(SettingsDestinationHandsFeedback, link.destinationKey, url)
+            assertEquals("feedback", link.webTab, url)
+        }
+    }
+
+    @Test
     fun accountLoginSecurityBlocksOpenTheInAppAccountAtTheirRow() {
         for ((url, anchor) in listOf(
             "$prod/settings/account#two-step" to "two-step",

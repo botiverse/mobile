@@ -226,8 +226,10 @@ private fun SettingsHandsFeedbackScreen(active: Boolean = true) {
         )
     val openTicketList: () -> Unit = {
         voiceDictationHost.controller.cancel()
-        pager.openSettingsFeedbackTicketsPage(environment.storeScope)
-        router.closePage()
+        pager.openSettingsFeedbackTicketsPage(
+            environment.storeScope,
+            replaceCurrentPage = true,
+        )
     }
 
     LaunchedEffect(environment.authStore) {
@@ -309,8 +311,11 @@ private fun SettingsHandsFeedbackScreen(active: Boolean = true) {
                             }
                         } else {
                             // Opened from elsewhere: the ticket list, on the new ticket, in its place.
-                            pager.openSettingsFeedbackTicketsPage(environment.storeScope, ticketId)
-                            router.closePage()
+                            pager.openSettingsFeedbackTicketsPage(
+                                environment.storeScope,
+                                ticketId = ticketId,
+                                replaceCurrentPage = true,
+                            )
                         }
                     }
                 )
