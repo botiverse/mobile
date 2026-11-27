@@ -38,6 +38,8 @@ import build.raft.app.image.rememberRaftAppInForeground
 import build.raft.app.image.raftAnimatedImage
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -2123,6 +2125,8 @@ internal fun TextField(
     inputTransformation: InputTransformation? = null,
     traceName: String = "TextField",
     keyboardIntent: RaftEditorKeyboardIntent = remember { RaftEditorKeyboardIntent() },
+    scrollState: ScrollState = rememberScrollState(),
+    innerTextFieldModifier: Modifier = Modifier,
 ) {
     val nativeEditingStateBindingOwner = remember { Any() }
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
@@ -2186,6 +2190,7 @@ internal fun TextField(
         visualTransformation = visualTransformation,
         inputTransformation = inputTransformation,
         traceName = traceName,
+        scrollState = scrollState,
         decorator = { innerTextField ->
             Box(contentAlignment = contentAlignment) {
                 if (state.text.isEmpty() && placeholder.isNotEmpty()) {
@@ -2197,7 +2202,11 @@ internal fun TextField(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                innerTextField()
+                // Keep one persistent Box around innerTextField so toggling innerTextFieldModifier
+                // (e.g. voice dictation composing underline) never remounts the native input session.
+                Box(modifier = innerTextFieldModifier) {
+                    innerTextField()
+                }
             }
         }
     )
@@ -2235,6 +2244,7 @@ private fun RaftAppStateTextField(
     decorator: TextFieldDecorator,
     inputTransformation: InputTransformation? = null,
     traceName: String = "TextField",
+    scrollState: ScrollState = rememberScrollState(),
 ) {
     val outputTransformation = remember(visualTransformation) { visualTransformation.toRaftOutputTransformation() }
     val traceTransformation = rememberRaftTextInputTraceTransformation(traceName)
@@ -2258,6 +2268,7 @@ private fun RaftAppStateTextField(
         cursorBrush = cursorBrush,
         outputTransformation = outputTransformation,
         decorator = decorator,
+        scrollState = scrollState,
     )
 }
 
