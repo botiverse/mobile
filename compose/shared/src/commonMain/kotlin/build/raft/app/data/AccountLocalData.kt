@@ -57,6 +57,9 @@ internal class AccountLocalData(
     /** Persisted Artifacts home filters and settled-seen state per (account, server): dropped with the server. */
     private val artifactsHomeFilters: ArtifactsHomeFilterRepository? = null,
     private val artifactsHomeSettledSeen: ArtifactsHomeSettledSeenRepository? = null,
+    /** Persisted mobile Recently Used list and Android phone tab count per (account, server): dropped with the server. */
+    private val mobileRecentlyUsed: build.raft.app.shell.MobileRecentlyUsedStore? = null,
+    private val mobilePhoneTabCount: build.raft.app.shell.MobilePhoneTabCountStore? = null,
 ) {
     /** Sign-out. Runs inside the auth terminal-revision gate: synchronous, no suspension. */
     fun onSignOut() {
@@ -71,6 +74,8 @@ internal class AccountLocalData(
         threadPayloadStore.clearAll()
         build.raft.app.raftFilePreviewAttachmentUrlCache().clear()
         clearViewerMemoryCaches()
+        mobileRecentlyUsed?.clearMemory()
+        mobilePhoneTabCount?.clearMemory()
         // Agent Lounge v0: Lounges are known per server only; another account must not see this one's.
         RaftAgentLounges.clear()
     }
@@ -92,6 +97,8 @@ internal class AccountLocalData(
         besideMemory?.dropServer(serverId, accountId)
         artifactsHomeFilters?.dropServer(serverId, accountId)
         artifactsHomeSettledSeen?.dropServer(serverId, accountId)
+        mobileRecentlyUsed?.dropServer(serverId, accountId)
+        mobilePhoneTabCount?.dropServer(serverId, accountId)
         if (messagePartition.consumerId == SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID) {
             messageEngine.clearPartition(messagePartition)
             logger("durable_access_evict scope=server server=${messagePartition.serverId}")

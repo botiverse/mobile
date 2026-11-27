@@ -975,7 +975,9 @@ class ThreadVoiceDictationUiTest {
             assertEquals("0:00", formatVoiceDictationClock(0L))
             assertEquals("0:04", formatVoiceDictationClock(4_900L))
             assertEquals("1:23", formatVoiceDictationClock(83_000L))
-            assertEquals(1.25f, voiceDictationHaloScale(0.9f, reducedMotion = true))
+            assertEquals(32f / 28f, voiceDictationHaloScale(0f, reducedMotion = false), 0.001f)
+            assertEquals(44f / 28f, voiceDictationHaloScale(1f, reducedMotion = false), 0.001f)
+            assertEquals(34f / 28f, voiceDictationHaloScale(0.9f, reducedMotion = true), 0.001f)
             assertEquals(0.35f, voiceDictationHaloAlpha(0.9f, reducedMotion = true))
 
             setContent {

@@ -101,6 +101,7 @@ import kotlinx.coroutines.launch
 
 /** Test tags for the upgraded phone Server Tab Popover (`tab_bar_places_v0`). */
 internal object RaftMobilePlacesPopoverTags {
+    const val SERVER_LIST = "mobile_places_server_list"
     const val RECENTLY_USED_SECTION = "mobile_places_recently_used_section"
     const val MORE_HEADER = "mobile_places_more_header"
     const val EDIT_BUTTON = "mobile_places_edit_button"
@@ -128,10 +129,12 @@ internal data class RaftServerMenuMobilePlacesConfig(
     val isGuest: Boolean,
     val recentlyUsed: List<MobileRecentlyUsedEntry>,
     val resolveAppIconUrl: (String?) -> String?,
+    val tabBarPlaceCount: Int = AppShellPhoneDefaultPlaceTabs,
     val initialEditMode: Boolean = false,
     val onInitialEditModeConsumed: () -> Unit = {},
     val onPickRecent: (MobileRecentlyUsedEntry) -> Unit,
     val onSaveOrder: (List<String>) -> Unit,
+    val onSaveTabCount: (Int) -> Unit = {},
     val onResetToDefault: () -> Unit,
 )
 
@@ -187,6 +190,7 @@ internal fun rememberRaftServerMenuMobilePlacesConfig(
         isGuest = mobilePlacesShell.isGuest,
         recentlyUsed = recentItems,
         resolveAppIconUrl = resolveAppIconUrl,
+        tabBarPlaceCount = mobilePlacesShell.placeTabCount,
         initialEditMode = initialEditMode,
         onInitialEditModeConsumed = onInitialEditModeConsumed,
         onPickRecent = { entry ->
@@ -240,10 +244,24 @@ internal fun rememberRaftServerMenuMobilePlacesConfig(
                 scope.launch { mobilePlacesShell.store.saveOrder(serverId, visibleOrder) }
             }
         },
+        onSaveTabCount = { tabCount ->
+            val serverId = readyServerId?.takeIf { it.isNotBlank() }
+            if (serverId != null) {
+                sharedStores.mobilePhoneTabCountStore.setTabCount(
+                    accountId = readyAccountId,
+                    serverId = serverId,
+                    count = tabCount,
+                )
+            }
+        },
         onResetToDefault = {
             val serverId = readyServerId?.takeIf { it.isNotBlank() }
             if (serverId != null) {
                 log("app_shell_mobile_places_edit_reset serverId=$serverId")
+                sharedStores.mobilePhoneTabCountStore.resetServer(
+                    accountId = readyAccountId,
+                    serverId = serverId,
+                )
                 scope.launch { mobilePlacesShell.store.reset(serverId) }
             }
         },
@@ -480,7 +498,7 @@ internal fun RaftMobilePlacesEditPopoverBody(
                 title = stringResource(Res.string.mobile_nav_edit_tab_bar),
             )
             MobilePlacesEditGrid(
-                columns = editState.maxTabBarCount,
+                columns = editState.tabBarIds.size.coerceIn(1, editState.maxTabBarCount),
                 gap = MobilePlacesEditGridGap,
                 modifier = Modifier.testTag(RaftMobilePlacesPopoverTags.EDIT_TAB_BAR_GRID).padding(horizontal = 8.dp, vertical = 4.dp),
             ) {

@@ -42,6 +42,7 @@ internal data class MobilePlacesEditState(
     val tabBarIds: List<String>,
     val moreIds: List<String>,
     val maxTabBarCount: Int = AppShellPhoneMaxPlaceTabs,
+    val defaultTabBarCount: Int = minOf(AppShellPhoneDefaultPlaceTabs, maxTabBarCount),
 ) {
     /** Unified flat visible order (`tabBarIds + moreIds`) ready to save via `SharedMobileRailPlacesStore.saveOrder`. */
     val orderedVisibleIds: List<String>
@@ -50,13 +51,15 @@ internal data class MobilePlacesEditState(
     /**
      * Whether removing a place from [tabBarIds] is allowed:
      * - Must keep at least 1 tab on the bar (`tabBarIds.size > 1`).
-     * - Under the flat `mobilePlaces` contract, moving a tab into More promotes `moreIds.first()`
-     *   into the vacated tab slot so the removed item stays at index 0 of More after save; when
+     * - When the user has manually expanded beyond [defaultTabBarCount] (e.g. Android 5 -> 4),
+     *   removing shrinks [tabBarIds] back down even if [moreIds] is empty.
+     * - Otherwise (at [defaultTabBarCount]), moving a tab into More promotes `moreIds.first()`
+     *   into the vacated tab slot so the removed item lands at index 0 of More after save; when
      *   `moreIds` is empty (e.g. a guest with Artifacts OFF who only has 4 visible built-ins),
      *   every visible place already occupies a tab slot, so `−` is disabled.
      */
     val canRemoveFromTabBar: Boolean
-        get() = tabBarIds.size > 1 && moreIds.isNotEmpty()
+        get() = tabBarIds.size > 1 && (tabBarIds.size > defaultTabBarCount || moreIds.isNotEmpty())
 
     fun sectionOf(placeId: String): MobilePlacesEditSection? =
         when {
@@ -74,9 +77,10 @@ internal data class MobilePlacesEditState(
 
     /**
      * Removes [placeId] from [tabBarIds] and places it at index 0 (front) of [moreIds].
-     * Because the server stores a flat ordered list where positions `0 until maxTabBarCount` form
-     * the tab bar, `moreIds.first()` slides up into the last tab slot so [placeId] cleanly lands
-     * at `moreIds[0]` and survives round-tripping through `mobilePlaces`.
+     * - When `tabBarIds.size > defaultTabBarCount` (Android 5 -> 4): shrinks [tabBarIds] directly
+     *   without promoting from [moreIds], restoring the default 5-tab bar (4 places + Server).
+     * - Otherwise: slides `moreIds.first()` up into the last tab slot so [placeId] cleanly lands
+     *   at `moreIds[0]` and survives round-tripping through `mobilePlaces`.
      * No-op when `!canRemoveFromTabBar` or [placeId] is not in [tabBarIds].
      */
     fun removeFromTabBar(placeId: String): MobilePlacesEditState {
@@ -84,6 +88,9 @@ internal data class MobilePlacesEditState(
         val fromIndex = tabBarIds.indexOf(placeId)
         if (fromIndex < 0) return this
         val remainingTabs = tabBarIds.toMutableList().apply { removeAt(fromIndex) }
+        if (tabBarIds.size > defaultTabBarCount) {
+            return copy(tabBarIds = remainingTabs, moreIds = listOf(placeId) + moreIds)
+        }
         val promoted = moreIds.first()
         val nextTabs = remainingTabs + promoted
         val nextMore = listOf(placeId) + moreIds.drop(1)
@@ -171,6 +178,12 @@ internal data class MobilePlacesEditState(
                 val fromTab = tabBarIds.indexOf(placeId)
                 if (fromTab < 0) return this
                 val remainingTabs = tabBarIds.toMutableList().apply { removeAt(fromTab) }
+                if (tabBarIds.size > defaultTabBarCount) {
+                    val nextMore = moreIds.toMutableList()
+                    val clampedTarget = targetIndex.coerceIn(0, nextMore.size)
+                    nextMore.add(clampedTarget, placeId)
+                    return copy(tabBarIds = remainingTabs, moreIds = nextMore)
+                }
                 val promoted = moreIds.first()
                 val remainingMore = moreIds.drop(1).toMutableList()
                 val clampedTarget = targetIndex.coerceIn(0, remainingMore.size)
@@ -207,14 +220,19 @@ internal data class MobilePlacesEditState(
         fun fromVisibleIds(
             visibleIds: List<String>,
             maxTabBarCount: Int = AppShellPhoneMaxPlaceTabs,
+            tabBarCount: Int = minOf(AppShellPhoneDefaultPlaceTabs, maxTabBarCount),
+            defaultTabBarCount: Int = minOf(AppShellPhoneDefaultPlaceTabs, maxTabBarCount),
         ): MobilePlacesEditState {
             val clampedMax = maxTabBarCount.coerceAtLeast(1)
+            val clampedDefault = defaultTabBarCount.coerceIn(1, clampedMax)
+            val clampedTabBarCount = tabBarCount.coerceIn(1, clampedMax)
             val distinct = visibleIds.distinct()
-            val tabCount = minOf(clampedMax, distinct.size)
+            val tabCount = minOf(clampedTabBarCount, distinct.size)
             return MobilePlacesEditState(
                 tabBarIds = distinct.take(tabCount),
                 moreIds = distinct.drop(tabCount),
                 maxTabBarCount = clampedMax,
+                defaultTabBarCount = clampedDefault,
             )
         }
 
@@ -223,6 +241,8 @@ internal data class MobilePlacesEditState(
             artifactsEnabled: Boolean,
             isGuest: Boolean,
             maxTabBarCount: Int = AppShellPhoneMaxPlaceTabs,
+            tabBarCount: Int = minOf(AppShellPhoneDefaultPlaceTabs, maxTabBarCount),
+            defaultTabBarCount: Int = minOf(AppShellPhoneDefaultPlaceTabs, maxTabBarCount),
         ): MobilePlacesEditState =
             fromVisibleIds(
                 visibleIds =
@@ -232,6 +252,8 @@ internal data class MobilePlacesEditState(
                         isGuest = isGuest,
                     ),
                 maxTabBarCount = maxTabBarCount,
+                tabBarCount = tabBarCount,
+                defaultTabBarCount = defaultTabBarCount,
             )
     }
 }

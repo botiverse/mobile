@@ -114,14 +114,14 @@ internal const val ThreadVoiceDictationHoldPillTestTag: String = "composer-voice
 internal const val ThreadVoiceDictationErrorTestTag: String = "composer-voice-dictation-error"
 internal const val ThreadVoiceDictationQuotaTestTag: String = "composer-voice-dictation-quota"
 
-/** Resting outer halo scale around the 24 dp active mic circle (28 dp outer, 2 dp flat ring). */
-private const val VOICE_DICTATION_HALO_SCALE_MIN: Float = 28f / 24f
+/** Resting outer halo scale around the 28 dp active mic circle (32 dp outer, 2 dp flat ring). */
+private const val VOICE_DICTATION_HALO_SCALE_MIN: Float = 32f / 28f
 
-/** Additional outward expansion at peak speech (+6 dp per side -> 40 dp outer). */
-private const val VOICE_DICTATION_HALO_SCALE_RANGE: Float = 12f / 24f
+/** Additional outward expansion at peak speech (+6 dp per side -> 44 dp outer). */
+private const val VOICE_DICTATION_HALO_SCALE_RANGE: Float = 12f / 28f
 
-/** Fixed still halo scale under reduced motion (matches web HALO_SCALE_REDUCED_MOTION). */
-private const val VOICE_DICTATION_HALO_SCALE_REDUCED_MOTION: Float = 1.25f
+/** Fixed still halo scale under reduced motion (34 dp outer around 28 dp disc; matches web HALO_SCALE_REDUCED_MOTION). */
+private const val VOICE_DICTATION_HALO_SCALE_REDUCED_MOTION: Float = 34f / 28f
 
 /** Outer halo alpha range matching web Kirby spec (`0.25` at rest -> `0.60` at peak speech). */
 private const val VOICE_DICTATION_HALO_ALPHA_MIN: Float = 0.25f
@@ -140,11 +140,8 @@ private const val VOICE_DICTATION_LOW_QUOTA_FRACTION: Double = 0.10
 private const val VOICE_DICTATION_HOLD_CLOCK_TICK_MS: Long = 250L
 private const val VOICE_DICTATION_MAX_RESET_TIMER_MS: Long = 86_400_000L
 
-// not a token: web ComposerVoiceDictationControls size-6 (24 px) active mic circle
-private val VoiceDictationActiveCircleSize = 24.dp
-
-// not a token: web ComposerVoiceDictationControls size-3.5 (14 px) mic glyph inside the active circle
-private val VoiceDictationActiveGlyphSize = 14.dp
+// not a token: web ComposerVoiceDictationControls size-7 (28 px) active mic circle keeping full idle glyph size (slock #17225)
+private val VoiceDictationActiveCircleSize = 28.dp
 
 // not a token: web ComposerVoiceDictationControls hold popover dot (`size-2` = 8 px) & `sideOffset={10}`
 private val VoiceDictationHoldDotSize = 8.dp
@@ -855,18 +852,15 @@ internal fun ThreadVoiceDictationButton(
                 size = RaftIconButtonSize.Md,
                 enabled = !isDisabled,
             ) {
-                if (isActive) {
-                    RaftSlotIcon(
-                        name = RaftLucideIconName.Mic,
-                        size = VoiceDictationActiveGlyphSize,
-                        color = RaftUiPalette.stickerInk,
-                    )
-                } else {
-                    RaftSlotIcon(
-                        name = RaftLucideIconName.Mic,
-                        color = RaftTheme.colors.foregroundMuted.takeIf { !isDisabled },
-                    )
-                }
+                RaftSlotIcon(
+                    name = RaftLucideIconName.Mic,
+                    color =
+                        if (isActive) {
+                            RaftUiPalette.stickerInk
+                        } else {
+                            RaftTheme.colors.foregroundMuted.takeIf { !isDisabled }
+                        },
+                )
             }
 
             if (isHolding) {

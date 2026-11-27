@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import build.raft.app.appShellArtifactsShown
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.RaftLastCountsPersistStorage
 import build.raft.app.data.RaftMobileBuiltInPlaceIds
 import build.raft.app.data.RaftMobilePlacesSnapshot
 import build.raft.app.data.RaftRailPlace
@@ -20,12 +21,14 @@ import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedMobileRailPlacesState
 import build.raft.app.data.SharedMobileRailPlacesStore
+import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.SharedRailPlacesStore
 import build.raft.app.data.SharedRailTabOrderIntent
 import build.raft.app.data.SharedRailTabOrderStore
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.TAB_BAR_PLACES_V0_FEATURE_FLAG_KEY
+import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.isRaftMobileBuiltInPlaceId
 import build.raft.app.data.raftRailPlacesWithVisibleReorder
 import build.raft.app.data.raftRailTabOrderWithVisibleOrder
@@ -47,18 +50,184 @@ import build.raft.app.settings.iconName
 import build.raft.app.settings.retainedAppShellSelectedTab
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.key
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.put
+
+/** Default number of dynamic place tabs placed before the fixed Server tab on both Android and iOS (4 + 1 = 5). */
+internal const val AppShellPhoneDefaultPlaceTabs: Int = 4
 
 /** Default/iOS maximum number of dynamic place tabs placed before the fixed Server tab (4 + 1 = 5; iOS UITabBar hard cap). */
 internal const val AppShellPhoneMaxPlaceTabs: Int = 4
 
-/** Android maximum number of dynamic place tabs placed before the fixed Server tab (5 + 1 = 6). */
+/** Android maximum number of dynamic place tabs placed before the fixed Server tab when the user manually adds a 5th place (5 + 1 = 6). */
 internal const val AppShellAndroidPhoneMaxPlaceTabs: Int = 5
 
 /** Platform-resolved phone bottom-bar editable place tab cap (Android 5+1=6, iOS 4+1=5). */
 internal fun appShellPhoneMaxPlaceTabs(isAndroid: Boolean = raftPlatformIsAndroid()): Int =
     if (isAndroid) AppShellAndroidPhoneMaxPlaceTabs else AppShellPhoneMaxPlaceTabs
+
+/** Lists every persisted phone tab-count scope written to [SharedPreferenceStore]. */
+internal const val MOBILE_PHONE_TAB_COUNT_INDEX_KEY: String = "mobilePhoneTabCount:v1:index"
+
+private const val MOBILE_PHONE_TAB_COUNT_VERSION: Int = 1
+private const val MOBILE_PHONE_TAB_COUNT_MAX_SERVERS: Int = 64
+
+internal fun mobilePhoneTabCountStorageKey(accountId: String, serverId: String): String =
+    "mobilePhoneTabCount:v1:user:$accountId:server:$serverId"
+
+internal fun encodeMobilePhoneTabCount(count: Int): String =
+    buildJsonObject {
+        put("v", MOBILE_PHONE_TAB_COUNT_VERSION)
+        put("count", count)
+    }.toString()
+
+internal fun decodeMobilePhoneTabCount(raw: String?): Int? {
+    if (raw.isNullOrBlank()) return null
+    val root = runCatching { Json.parseToJsonElement(raw) }.getOrNull() as? JsonObject ?: return null
+    val version = (root["v"] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull
+    if (version != MOBILE_PHONE_TAB_COUNT_VERSION) return null
+    return (root["count"] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull
+}
+
+/**
+ * Local per-account × per-server phone bottom-bar place tab count store:
+ * both Android and iOS default to [AppShellPhoneDefaultPlaceTabs] (4 places + Server = 5 tabs),
+ * while Android users may manually add a 5th place tab (5 + Server = 6 tabs) persisted locally
+ * without changing the server's flat `mobilePlaces` wire contract.
+ */
+internal class MobilePhoneTabCountStore(
+    preferenceStore: SharedPreferenceStore? = null,
+    nowMillis: () -> Long = ::defaultNowMillis,
+) {
+    private val lock = SynchronizedObject()
+    private val loadedScopes = HashSet<MobileRecentlyUsedScope>()
+    private val storage: RaftLastCountsPersistStorage? =
+        preferenceStore?.let { store ->
+            RaftLastCountsPersistStorage(
+                store = store,
+                indexKey = MOBILE_PHONE_TAB_COUNT_INDEX_KEY,
+                nowMillis = nowMillis,
+                maxAgeMillis = Long.MAX_VALUE,
+                maxServersPerUser = MOBILE_PHONE_TAB_COUNT_MAX_SERVERS,
+            )
+        }
+    private val mutableState = MutableStateFlow<Map<MobileRecentlyUsedScope, Int>>(emptyMap())
+    val state: StateFlow<Map<MobileRecentlyUsedScope, Int>> = mutableState.asStateFlow()
+
+    fun tabCount(
+        accountId: String?,
+        serverId: String?,
+        defaultCount: Int = AppShellPhoneDefaultPlaceTabs,
+        maxCount: Int = appShellPhoneMaxPlaceTabs(),
+    ): Int {
+        val clampedMax = maxCount.coerceAtLeast(1)
+        val clampedDefault = defaultCount.coerceIn(1, clampedMax)
+        if (clampedMax <= clampedDefault) return clampedDefault
+        val scope = scopeOrNull(accountId, serverId) ?: return clampedDefault
+        val stored = synchronized(lock) { ensureLoadedLocked(scope) }
+        return stored?.coerceIn(clampedDefault, clampedMax) ?: clampedDefault
+    }
+
+    fun setTabCount(
+        accountId: String?,
+        serverId: String?,
+        count: Int,
+        defaultCount: Int = AppShellPhoneDefaultPlaceTabs,
+        maxCount: Int = appShellPhoneMaxPlaceTabs(),
+    ) {
+        val clampedMax = maxCount.coerceAtLeast(1)
+        val clampedDefault = defaultCount.coerceIn(1, clampedMax)
+        val clamped = count.coerceIn(clampedDefault, clampedMax)
+        val scope = scopeOrNull(accountId, serverId) ?: return
+        synchronized(lock) {
+            loadedScopes += scope
+            if (clamped == clampedDefault) {
+                val current = mutableState.value
+                if (scope in current) mutableState.value = current - scope
+                storage?.let { store ->
+                    runCatching { store.remove(mobilePhoneTabCountStorageKey(scope.accountId, scope.serverId)) }
+                }
+            } else {
+                mutableState.value = mutableState.value + (scope to clamped)
+                storage?.let { store ->
+                    runCatching {
+                        store.write(
+                            mobilePhoneTabCountStorageKey(scope.accountId, scope.serverId),
+                            encodeMobilePhoneTabCount(clamped),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun resetServer(accountId: String?, serverId: String?) {
+        val scope = scopeOrNull(accountId, serverId) ?: return
+        synchronized(lock) {
+            loadedScopes += scope
+            val current = mutableState.value
+            if (scope in current) mutableState.value = current - scope
+            storage?.let { store ->
+                runCatching { store.remove(mobilePhoneTabCountStorageKey(scope.accountId, scope.serverId)) }
+            }
+        }
+    }
+
+    fun dropServer(serverId: String, accountId: String?) {
+        val normalizedServer = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        val normalizedAccount = accountId?.trim()?.takeIf { it.isNotEmpty() }
+        synchronized(lock) {
+            loadedScopes.removeAll { scope ->
+                scope.serverId == normalizedServer && (normalizedAccount == null || scope.accountId == normalizedAccount)
+            }
+            mutableState.value =
+                mutableState.value.filterKeys { scope ->
+                    !(scope.serverId == normalizedServer && (normalizedAccount == null || scope.accountId == normalizedAccount))
+                }
+            storage?.let { store ->
+                runCatching { store.dropServer(normalizedServer, normalizedAccount) }
+            }
+        }
+    }
+
+    fun clearMemory() {
+        synchronized(lock) {
+            loadedScopes.clear()
+            mutableState.value = emptyMap()
+        }
+    }
+
+    private fun ensureLoadedLocked(scope: MobileRecentlyUsedScope): Int? {
+        if (scope in loadedScopes) return mutableState.value[scope]
+        loadedScopes += scope
+        val store = storage ?: return mutableState.value[scope]
+        val decoded =
+            runCatching {
+                decodeMobilePhoneTabCount(store.read(mobilePhoneTabCountStorageKey(scope.accountId, scope.serverId)))
+            }.getOrNull()
+        if (decoded != null) {
+            mutableState.value = mutableState.value + (scope to decoded)
+        }
+        return decoded
+    }
+
+    private fun scopeOrNull(accountId: String?, serverId: String?): MobileRecentlyUsedScope? {
+        val normalizedAccount = accountId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val normalizedServer = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        return MobileRecentlyUsedScope(accountId = normalizedAccount, serverId = normalizedServer)
+    }
+}
 
 /** Number of columns in the phone Server popover's More grid (matches the 5-tab bottom bar density). */
 internal const val AppShellPhoneMoreGridColumns: Int = 5
@@ -325,6 +494,7 @@ internal data class AppShellMobilePlacesShellState(
     val isGuest: Boolean,
     val artifactsEnabled: Boolean,
     val activePhoneTabKeys: List<String>,
+    val placeTabCount: Int = AppShellPhoneDefaultPlaceTabs,
 )
 
 @Composable
@@ -343,6 +513,17 @@ internal fun rememberAppShellMobilePlacesShellState(
     val store = sharedStores.mobileRailPlacesStore
     val storeState = store.state.collectAsState()
     val stateValue by storeState
+    val tabCountMap by sharedStores.mobilePhoneTabCountStore.state.collectAsState()
+    val maxPlaceTabs = remember { appShellPhoneMaxPlaceTabs() }
+    val placeTabCount =
+        remember(tabCountMap, readySession?.user?.id, readyServerId, maxPlaceTabs) {
+            sharedStores.mobilePhoneTabCountStore.tabCount(
+                accountId = readySession?.user?.id,
+                serverId = readyServerId,
+                defaultCount = AppShellPhoneDefaultPlaceTabs,
+                maxCount = maxPlaceTabs,
+            )
+        }
     val activeSnapshot = if (enabled) stateValue.activeSnapshot else null
     val role =
         (homeState.content as? SharedHomeContentState.Content)
@@ -356,13 +537,13 @@ internal fun rememberAppShellMobilePlacesShellState(
             appShellArtifactsShown(sharedStores.serverFeatureFlags, readyServerId)
         }
     val activePhoneTabKeys =
-        remember(enabled, activeSnapshot?.mobilePlaces, artifactsEnabled, isGuest) {
+        remember(enabled, activeSnapshot?.mobilePlaces, artifactsEnabled, isGuest, placeTabCount) {
             appShellDynamicPhoneTabKeys(
                 enabled = enabled,
                 mobilePlaces = activeSnapshot?.mobilePlaces,
                 artifactsEnabled = artifactsEnabled,
                 isGuest = isGuest,
-                maxPlaceTabs = appShellPhoneMaxPlaceTabs(),
+                maxPlaceTabs = placeTabCount,
             )
         }
     return AppShellMobilePlacesShellState(
@@ -374,6 +555,7 @@ internal fun rememberAppShellMobilePlacesShellState(
         isGuest = isGuest,
         artifactsEnabled = artifactsEnabled,
         activePhoneTabKeys = activePhoneTabKeys,
+        placeTabCount = placeTabCount,
     )
 }
 
