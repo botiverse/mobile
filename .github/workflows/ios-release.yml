@@ -330,7 +330,10 @@ jobs:
           # Gradle stays at one worker.
           # GitHub's standard macos-latest / xcode-27 have only 7GB RAM: 20g would swap/kill,
           # so cap at 5g there and warn — the release devirtualization pass may OOM.
-          HEAP=20g
+          # 1.31.0 (run 45932861041) OOMed at 20g inside DevirtualizationAnalysis when
+          # :verifyComposeUiPatch + compile + link shared one JVM. Splitting compile into
+          # its own --no-daemon JVM and raising link heap to 24g gives K/N LTO clean headroom.
+          HEAP=24g
           if [ "${RAFT_MACOS_RUNNER}" = "macos-latest" ] || [ "${RAFT_MACOS_RUNNER}" = "xcode-27" ]; then
             HEAP=5g
             echo "::warning::${RAFT_MACOS_RUNNER} has ~7GB RAM; Kotlin/Native release archive runs with a 5g heap and may OOM. Prefer xcode-27-xlarge (the default; or blacksmith-12vcpu-macos-latest / macos-latest-xlarge for the Xcode 26.6 fallback)."
@@ -475,13 +478,26 @@ jobs:
       # The per-runner heap (20g, or 5g on macos-latest / xcode-27) comes from the
       # $GRADLE_USER_HOME/gradle.properties written by the heap step above,
       # which this ./gradlew reads like the Xcode-nested runs did.
+      - name: Verify Compose UI patch and compile iosArm64 klibs
+        working-directory: compose
+        shell: bash
+        run: |
+          # Run :verifyComposeUiPatch (CMP-10674 klib SHA-256 guard, which also touches
+          # iosSimulatorArm64 tasks) and :shared:compileKotlinIosArm64 in their own
+          # --no-daemon JVM so the release link step below starts with a completely fresh
+          # heap instead of sharing it with multi-target Kotlin/Native compile caches
+          # (1.31.0 run 45932861041 OOMed in DevirtualizationAnalysis when combined).
+          ./gradlew :verifyComposeUiPatch :shared:compileKotlinIosArm64 \
+            --no-daemon \
+            --console=plain \
+            --max-workers=${{ env.GRADLE_MAX_WORKERS }} \
+            --stacktrace
+
       - name: Build shared framework (Release, iosArm64)
         working-directory: compose
         shell: bash
         run: |
-          # :verifyComposeUiPatch: the CMP-10674 patched Compose UI klibs, byte for byte
-          # (compose/build.gradle.kts); a release must not fall back to the official ones.
-          ./gradlew :verifyComposeUiPatch :shared:syncFramework \
+          ./gradlew :shared:syncFramework \
             -Pkotlin.native.cocoapods.platform=iphoneos \
             -Pkotlin.native.cocoapods.archs=arm64 \
             -Pkotlin.native.cocoapods.configuration=Release \
