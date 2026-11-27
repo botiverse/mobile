@@ -3,7 +3,6 @@ package build.raft.webcontainer
 import android.app.Activity
 import android.content.MutableContextWrapper
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.os.Looper
 import android.os.SystemClock
 import android.webkit.WebView
@@ -137,9 +136,9 @@ class WebContainerAndroidBackgroundAndInsetsTest {
                     persistBackgroundAfterPaint = false,
                 ),
             )
-        assertEquals(darkCanvas, (defaultWebView.background as ColorDrawable).color)
+        assertEquals(darkCanvas, shadowOf(defaultWebView).backgroundColor)
         shadowOf(defaultWebView).webViewClient.onPageCommitVisible(defaultWebView, url)
-        assertEquals(Color.WHITE, (defaultWebView.background as ColorDrawable).color)
+        assertEquals(Color.WHITE, shadowOf(defaultWebView).backgroundColor)
 
         val persistedConfig =
             WebContainerConfig(
@@ -149,22 +148,22 @@ class WebContainerAndroidBackgroundAndInsetsTest {
                 isDarkTheme = true,
             )
         val (persistedHost, persistedWebView) = createAttachedHost(persistedConfig)
-        assertEquals(darkCanvas, (persistedWebView.background as ColorDrawable).color)
+        assertEquals(darkCanvas, shadowOf(persistedWebView).backgroundColor)
         val client = shadowOf(persistedWebView).webViewClient
         client.onPageCommitVisible(persistedWebView, url)
         client.onPageFinished(persistedWebView, url)
-        assertEquals(darkCanvas, (persistedWebView.background as ColorDrawable).color)
+        assertEquals(darkCanvas, shadowOf(persistedWebView).backgroundColor)
 
         // Live theme switch updates the painted WebView background immediately without waiting for reload.
         persistedHost.applyConfig(persistedConfig.copy(backgroundArgb = lightCanvas, isDarkTheme = false))
-        assertEquals(lightCanvas, (persistedWebView.background as ColorDrawable).color)
+        assertEquals(lightCanvas, shadowOf(persistedWebView).backgroundColor)
 
         // Renderer death recovery preserves persistent background color across WebView recreation.
         assertTrue(shadowOf(persistedWebView).webViewClient.onRenderProcessGone(persistedWebView, null))
         val recreated = persistedHost.getChildAt(0) as WebView
-        assertEquals(lightCanvas, (recreated.background as ColorDrawable).color)
+        assertEquals(lightCanvas, shadowOf(recreated).backgroundColor)
         shadowOf(recreated).webViewClient.onPageCommitVisible(recreated, url)
-        assertEquals(lightCanvas, (recreated.background as ColorDrawable).color)
+        assertEquals(lightCanvas, shadowOf(recreated).backgroundColor)
     }
 
     @Test

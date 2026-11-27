@@ -2,7 +2,6 @@ package build.raft.app
 
 import android.app.Activity
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.net.Uri
 import android.os.Looper
 import android.webkit.WebResourceRequest
@@ -219,19 +218,19 @@ class RaftAndroidArtifactViewerWebViewRulesTest {
         host.applyConfig(initialConfig)
         val webView = host.getChildAt(0) as WebView
 
-        assertEquals(darkCanvas, (webView.background as ColorDrawable).color)
+        assertEquals(darkCanvas, shadowOf(webView).backgroundColor)
         val client = shadowOf(webView).webViewClient
         client.onPageCommitVisible(webView, viewerUrl)
         client.onPageFinished(webView, viewerUrl)
-        assertEquals(darkCanvas, (webView.background as ColorDrawable).color)
+        assertEquals(darkCanvas, shadowOf(webView).backgroundColor)
 
         // Live theme switch updates the already-painted WebView background immediately.
         host.applyConfig(initialConfig.copy(backgroundArgb = lightCanvas))
-        assertEquals(lightCanvas, (webView.background as ColorDrawable).color)
+        assertEquals(lightCanvas, shadowOf(webView).backgroundColor)
 
         // Turning off persistence reverts a painted WebView back to default white.
         host.applyConfig(initialConfig.copy(backgroundArgb = darkCanvas, persistBackgroundAfterPaint = false))
-        assertEquals(Color.WHITE, (webView.background as ColorDrawable).color)
+        assertEquals(Color.WHITE, shadowOf(webView).backgroundColor)
 
         val rawInsets =
             WindowInsetsCompat.Builder()
