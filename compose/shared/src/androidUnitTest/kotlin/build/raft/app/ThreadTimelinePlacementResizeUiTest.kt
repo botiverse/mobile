@@ -40,6 +40,7 @@ import build.raft.app.thread.ThreadTimelinePlacementTracker
 import build.raft.app.thread.ThreadTimelineSlice
 import build.raft.app.thread.ThreadUserScrollGeneration
 import build.raft.app.thread.ThreadViewportOwnerTag
+import build.raft.app.thread.canScrollToThreadItem
 import build.raft.app.thread.reduceLazyViewport
 import build.raft.app.thread.scrollThreadItemToFocusedViewport
 import build.raft.app.thread.threadFocusedItemScrollOffset
