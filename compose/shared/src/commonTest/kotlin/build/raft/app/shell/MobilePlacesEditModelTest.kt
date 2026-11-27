@@ -229,4 +229,56 @@ class MobilePlacesEditModelTest {
         // Far away pointer (e.g. over static Settings tile outside registered slots) returns null.
         assertNull(findMobilePlacesDropTarget(Offset(300f, 300f), slots, gapTolerancePx = 16f))
     }
+
+    @Test
+    fun androidDefaultsToFourPlaceTabsAllowsAddingFifthAndShrinkingBackToFour() {
+        // Android (maxTabBarCount = 5) still defaults to 4 place tabs (+ Server = 5 total).
+        val initial = MobilePlacesEditState.fromVisibleIds(defaultVisibleAll, maxTabBarCount = 5)
+        assertEquals(listOf("chat", "activity", "tasks", "search"), initial.tabBarIds)
+        assertEquals(listOf("artifacts", "members", "computers", "apps"), initial.moreIds)
+        assertEquals(4, initial.defaultTabBarCount)
+        assertEquals(5, initial.maxTabBarCount)
+
+        // Manually tapping + on a More place expands Tab bar from 4 -> 5 (+ Server = 6 total) without bumping.
+        val expanded = initial.addToTabBar("artifacts")
+        assertEquals(listOf("chat", "activity", "tasks", "search", "artifacts"), expanded.tabBarIds)
+        assertEquals(listOf("members", "computers", "apps"), expanded.moreIds)
+
+        // Persisted tabBarCount = 5 restores all 5 place tabs cleanly on reload.
+        val restored =
+            MobilePlacesEditState.fromVisibleIds(
+                visibleIds = expanded.orderedVisibleIds,
+                maxTabBarCount = 5,
+                tabBarCount = 5,
+            )
+        assertEquals(expanded, restored)
+
+        // Tapping + while already at 5 swaps slot 5 without exceeding 5.
+        val swappedAtMax = expanded.addToTabBar("computers")
+        assertEquals(listOf("chat", "activity", "tasks", "search", "computers"), swappedAtMax.tabBarIds)
+        assertEquals(listOf("artifacts", "members", "apps"), swappedAtMax.moreIds)
+
+        // Tapping − while above default (5 > 4) shrinks Tab bar back to 4 without pulling from More.
+        val shrunk = swappedAtMax.removeFromTabBar("computers")
+        assertEquals(listOf("chat", "activity", "tasks", "search"), shrunk.tabBarIds)
+        assertEquals(listOf("computers", "artifacts", "members", "apps"), shrunk.moreIds)
+
+        // Dragging TabBar -> More while above default (5 > 4) also shrinks Tab bar back to 4.
+        val draggedBack = swappedAtMax.moveAcrossSections("computers", MobilePlacesEditSection.More, 1)
+        assertEquals(listOf("chat", "activity", "tasks", "search"), draggedBack.tabBarIds)
+        assertEquals(listOf("artifacts", "computers", "members", "apps"), draggedBack.moreIds)
+
+        // Even when More is empty at 5 tabs (e.g. guest with Artifacts ON), − stays enabled to shrink 5 -> 4.
+        val fiveVisibleOnly =
+            MobilePlacesEditState.fromVisibleIds(
+                visibleIds = listOf("chat", "activity", "tasks", "search", "artifacts"),
+                maxTabBarCount = 5,
+                tabBarCount = 5,
+            )
+        assertTrue(fiveVisibleOnly.moreIds.isEmpty())
+        assertTrue(fiveVisibleOnly.canRemoveFromTabBar)
+        val guestShrunk = fiveVisibleOnly.removeFromTabBar("artifacts")
+        assertEquals(listOf("chat", "activity", "tasks", "search"), guestShrunk.tabBarIds)
+        assertEquals(listOf("artifacts"), guestShrunk.moreIds)
+    }
 }

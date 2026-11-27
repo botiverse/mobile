@@ -24,10 +24,10 @@ const val VOICE_DICTATION_HOLD_THRESHOLD_MS: Long = 350L
 
 /**
  * Suppression window after `pointerUp` to absorb trailing `onClick` callbacks without double-toggling
- * (matches web 400 ms window so slow frames or desktop mouse clicks never immediately stop/reopen).
+ * (matches web 200 ms window so slow frames or desktop mouse clicks never immediately stop/reopen).
  */
 @RaftCoreInternalApi
-const val VOICE_DICTATION_CLICK_SUPPRESSION_RESET_MS: Long = 400L
+const val VOICE_DICTATION_CLICK_SUPPRESSION_RESET_MS: Long = 200L
 
 /**
  * Presentation mode for the single-button voice dictation control:
