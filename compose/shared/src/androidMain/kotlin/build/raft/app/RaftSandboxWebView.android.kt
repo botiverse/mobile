@@ -34,10 +34,12 @@ import androidx.core.view.ViewCompat
 import androidx.webkit.JavaScriptReplyProxy
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
+import build.raft.webcontainer.WebContainerAndroidAudioPermissionController
 import build.raft.webcontainer.WebContainerAndroidFullscreenController
 import build.raft.webcontainer.WebContainerAndroidInsetMode
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebContainerAndroidNewWindowTransport
+import build.raft.webcontainer.WebContainerOrigin
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
@@ -45,6 +47,7 @@ import build.raft.webcontainer.WebJsDialogTracker
 import build.raft.webcontainer.extractAndroidHitTestLinkUrl
 import build.raft.webcontainer.filterWebContainerAndroidInsets
 import build.raft.webcontainer.isWebJsDialogPermitted
+import build.raft.webcontainer.parseWebContainerOrigin
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import build.raft.app.matches
@@ -52,6 +55,10 @@ import build.raft.app.settings.matches
 import build.raft.app.thread.key
 import java.io.ByteArrayInputStream
 import java.net.URI
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import org.json.JSONObject as AndroidJSONObject
 
 /**
@@ -272,6 +279,22 @@ internal class RaftAndroidSandboxWebView(
     private val jsDialogTracker = WebJsDialogTracker()
     internal val fullscreenController = WebContainerAndroidFullscreenController()
     internal val newWindowTransport = WebContainerAndroidNewWindowTransport()
+    private var audioCaptureAllowedOrigin: WebContainerOrigin? = null
+    private val audioPermissionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    internal val audioPermissionController =
+        WebContainerAndroidAudioPermissionController(
+            scope = audioPermissionScope,
+            contextProvider = { context.applicationContext ?: context },
+            allowedOriginProvider = { audioCaptureAllowedOrigin },
+            isHostForegroundActive = { !destroyed && !parkedForKeepAlive && webView != null && isForegroundWindow() },
+            mainHandler = shareMainHandler,
+            onDecision = { granted, kind, reason, origin ->
+                diagnosticsInfo(
+                    "media_capture_permission decision=${if (granted) "grant" else "deny"} " +
+                        "kind=${kind.name} reason=$reason origin=$origin",
+                )
+            },
+        )
     /** Diagnostics: when the current main-frame load started (0: none), and the progress milestones logged. */
     private var loadStartedAtMs: Long = 0L
     private var loggedProgressMilestone: Int = 0
@@ -311,6 +334,7 @@ internal class RaftAndroidSandboxWebView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        audioPermissionController.cancelAll()
         super.onDetachedFromWindow()
     }
 
@@ -377,6 +401,7 @@ internal class RaftAndroidSandboxWebView(
     }
 
     private fun destroyDeadWebView(dead: WebView?) {
+        audioPermissionController.cancelAll()
         removeHostMessageListener()
         removeDownloadSupport()
         removeDocumentStartScript()
@@ -441,6 +466,11 @@ internal class RaftAndroidSandboxWebView(
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
         updateHostEventsEnabled(config.hostEventsEnabled)
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftDocumentStartScriptOriginRule)
+        val nextAudioOrigin = resolveEffectiveAudioCaptureOrigin(config)
+        if (audioCaptureAllowedOrigin != nextAudioOrigin) {
+            audioCaptureAllowedOrigin = nextAudioOrigin
+            audioPermissionController.cancelAll()
+        }
         raftHost = config.raftHost
         keepAliveKey =
             if (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) null else config.keepAliveKey
@@ -453,6 +483,13 @@ internal class RaftAndroidSandboxWebView(
         updatePlaceholderBackground(config.backgroundArgb, config.persistBackgroundAfterPaint)
         updateAndroidInsetMode(config.androidInsetMode)
         updateSrc(config.url)
+    }
+
+    private fun resolveEffectiveAudioCaptureOrigin(config: RaftWebViewConfig): WebContainerOrigin? {
+        if (config.effectiveStoragePartition == RaftWebViewStoragePartition.IsolatedThirdParty) return null
+        val lockedOrigin = config.mainFrameOrigin?.let(::parseWebContainerOrigin) ?: return null
+        val requestedOrigin = config.audioCaptureAllowedOrigin?.let(::parseWebContainerOrigin) ?: return null
+        return requestedOrigin.takeIf { it == lockedOrigin }
     }
 
     /**
@@ -499,6 +536,7 @@ internal class RaftAndroidSandboxWebView(
             return
         }
         // Chromium profiles must be attached right after WebView construction, before any load.
+        audioPermissionController.cancelAll()
         val previous = webView
         removeHostMessageListener()
         removeDownloadSupport()
@@ -586,6 +624,7 @@ internal class RaftAndroidSandboxWebView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        audioPermissionController.cancelAll()
         boundController?.unbindCommandDispatcher(this)
         boundController = null
         events = RaftWebViewEvents()
@@ -618,6 +657,8 @@ internal class RaftAndroidSandboxWebView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        audioPermissionController.cancelAll()
+        audioPermissionScope.cancel()
         pendingRenderProcessRestore = null
         boundController?.unbindCommandDispatcher(this)
         boundController = null
@@ -646,6 +687,7 @@ internal class RaftAndroidSandboxWebView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        audioPermissionController.cancelAll()
         diagnosticsInfo("recreate_webview previousSrc=${src.formatUrlForLog()}")
         pendingRenderProcessRestore = null
         loadedSrc = ""
@@ -816,9 +858,16 @@ internal class RaftAndroidSandboxWebView(
                 }
 
                 override fun onPermissionRequest(request: PermissionRequest?) {
-                    // Per product decision (#proj-mobile:#395 / #397): deny all web camera/microphone/media
-                    // permission requests on Android without forwarding system runtime permission prompts.
-                    runCatching { request?.deny() }
+                    if (configuredWebView !== webView) {
+                        runCatching { request?.deny() }
+                        return
+                    }
+                    audioPermissionController.onPermissionRequest(request)
+                }
+
+                override fun onPermissionRequestCanceled(request: PermissionRequest?) {
+                    if (configuredWebView !== webView) return
+                    audioPermissionController.onPermissionRequestCanceled(request)
                 }
 
                 override fun onShowFileChooser(
@@ -924,6 +973,7 @@ internal class RaftAndroidSandboxWebView(
                     jsDialogTracker.cancelActive()
                     fullscreenController.hide()
                     newWindowTransport.cancelAll()
+                    audioPermissionController.cancelAll()
                     RaftWebViewRendererGone.record(
                         context,
                         if (parkedForKeepAlive) "${diagnosticsSurface}_parked" else diagnosticsSurface,
@@ -981,6 +1031,7 @@ internal class RaftAndroidSandboxWebView(
                     speculativeLinkLoading = false
                     jsDialogTracker.cancelActive()
                     fullscreenController.hide()
+                    audioPermissionController.cancelAll()
                     super.onPageStarted(view, url, favicon)
                     val target = url.orEmpty()
                     loadStartedAtMs = System.currentTimeMillis()
