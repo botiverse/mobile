@@ -6890,6 +6890,8 @@
     <string name="agent_voice_call_mic_unavailable">マイクを使用できません</string>
     <string name="agent_voice_call_playback_blocked">ブラウザーが音声を止めています。%1$s の声を聞くには「音声」を選んでください。</string>
     <string name="agent_voice_call_hang_up">通話を終了</string>
+    <string name="agent_voice_call_collapse_to_pill">フローティングピルに折りたたむ</string>
+    <string name="agent_voice_call_pill_expand_a11y">%1$s との通話を展開（%2$s）</string>
     <string name="agent_voice_call_mic_permission">Raft がマイクを使えません。ブラウザーのサイト設定で許可してから、もう一度かけてください。</string>
     <string name="agent_voice_call_mic_busy">別のアプリがマイクを使用しています。そのアプリを閉じてから、もう一度かけてください。</string>
     <string name="agent_voice_call_mic_none">マイクが見つかりません。マイクを接続してから、もう一度かけてください。</string>

@@ -6889,6 +6889,8 @@
     <string name="agent_voice_call_mic_unavailable">Микрофон недоступен</string>
     <string name="agent_voice_call_playback_blocked">Браузер задерживает звук. Выберите «Звук», чтобы услышать %1$s.</string>
     <string name="agent_voice_call_hang_up">Завершить звонок</string>
+    <string name="agent_voice_call_collapse_to_pill">Свернуть в плавающую кнопку</string>
+    <string name="agent_voice_call_pill_expand_a11y">Развернуть звонок с %1$s (%2$s)</string>
     <string name="agent_voice_call_mic_permission">Raft не может использовать микрофон. Разрешите его в настройках сайта в браузере и позвоните снова.</string>
     <string name="agent_voice_call_mic_busy">Микрофон занят другим приложением. Закройте его и позвоните снова.</string>
     <string name="agent_voice_call_mic_none">Микрофон не найден. Подключите его и позвоните снова.</string>

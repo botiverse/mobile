@@ -6889,6 +6889,8 @@
     <string name="agent_voice_call_mic_unavailable">Micrófono no disponible</string>
     <string name="agent_voice_call_playback_blocked">Tu navegador está reteniendo el sonido. Selecciona Sonido para oír a %1$s.</string>
     <string name="agent_voice_call_hang_up">Colgar</string>
+    <string name="agent_voice_call_collapse_to_pill">Contraer a píldora flotante</string>
+    <string name="agent_voice_call_pill_expand_a11y">Expandir llamada con %1$s (%2$s)</string>
     <string name="agent_voice_call_mic_permission">Raft no puede usar tu micrófono. Permítelo en la configuración del sitio de tu navegador y vuelve a llamar.</string>
     <string name="agent_voice_call_mic_busy">Otra aplicación está usando tu micrófono. Ciérrala y vuelve a llamar.</string>
     <string name="agent_voice_call_mic_none">No se encontró ningún micrófono. Conecta uno y vuelve a llamar.</string>

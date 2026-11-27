@@ -6890,6 +6890,8 @@
     <string name="agent_voice_call_mic_unavailable">麦克风不可用</string>
     <string name="agent_voice_call_playback_blocked">浏览器暂停了声音。选择“声音”就能听到 %1$s。</string>
     <string name="agent_voice_call_hang_up">挂断</string>
+    <string name="agent_voice_call_collapse_to_pill">收起为悬浮胶囊</string>
+    <string name="agent_voice_call_pill_expand_a11y">展开与 %1$s 的通话（%2$s）</string>
     <string name="agent_voice_call_mic_permission">Raft 无法使用你的麦克风。请在浏览器的网站设置里允许，然后重新拨打。</string>
     <string name="agent_voice_call_mic_busy">另一个应用正在使用你的麦克风。关闭它，然后重新拨打。</string>
     <string name="agent_voice_call_mic_none">没有找到麦克风。连接一个，然后重新拨打。</string>
