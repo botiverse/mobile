@@ -120,6 +120,7 @@ internal fun canEditChannelAnnouncement(
     serverId: String,
     channelId: String,
     channelArchivedFallback: Boolean = false,
+    viewerAuthority: build.raft.app.model.ChannelViewerAuthorityView? = null,
 ): Boolean {
     if (!channelTypeSupportsAnnouncement(channelType)) return false
     val matchingSnapshot = snapshot?.takeIf { it.server.id.value == serverId }
@@ -129,8 +130,13 @@ internal fun canEditChannelAnnouncement(
                 ?: channelArchivedFallback
         return !dmArchived
     }
-    val channel = matchingSnapshot?.channels?.firstOrNull { it.channelId.value == channelId } ?: return false
-    return channel.channelCapabilities?.editChannelMetadata == true && !channel.archived
+    val channel = matchingSnapshot?.channels?.firstOrNull { it.channelId.value == channelId }
+    val archived = channel?.archived ?: channelArchivedFallback
+    if (archived) return false
+    if (viewerAuthority != null) {
+        return build.raft.app.data.authorityAllows(viewerAuthority) { it.editChannelMetadata }
+    }
+    return channel?.channelCapabilities?.editChannelMetadata == true
 }
 
 /**
@@ -405,6 +411,28 @@ internal fun rememberThreadChannelAnnouncementStripSlot(
     val homeStore = remember(sharedStores, storeScope) { sharedStores.sharedHomeStore(storeScope) }
     val homeState by remember(homeStore) { homeStore?.state ?: kotlinx.coroutines.flow.MutableStateFlow(null) }.collectAsState()
     val snapshot = (homeState?.content as? SharedHomeContentState.Content)?.snapshot
+    val observeChannelAuthority = channelType != "dm"
+    val viewerAuthority by
+        remember(sharedStores, key, observeChannelAuthority) {
+            if (observeChannelAuthority) {
+                sharedStores.channelAuthorityStore.observe(key.serverId, key.channelId)
+            } else {
+                kotlinx.coroutines.flow.MutableStateFlow<build.raft.app.model.ChannelViewerAuthorityView>(
+                    build.raft.app.model.ChannelViewerAuthorityView.Loading
+                )
+            }
+        }.collectAsState(
+            if (observeChannelAuthority) {
+                sharedStores.channelAuthorityStore.viewOf(key.serverId, key.channelId)
+            } else {
+                build.raft.app.model.ChannelViewerAuthorityView.Loading
+            }
+        )
+    LaunchedEffect(sharedStores, key, observeChannelAuthority, viewerAuthority) {
+        if (observeChannelAuthority && viewerAuthority is build.raft.app.model.ChannelViewerAuthorityView.Loading) {
+            sharedStores.channelAuthorityStore.requestChannelAuthority(key.serverId, key.channelId)
+        }
+    }
     val canEdit =
         canEditChannelAnnouncement(
             channelType = channelType,
@@ -412,6 +440,7 @@ internal fun rememberThreadChannelAnnouncementStripSlot(
             serverId = key.serverId,
             channelId = key.channelId,
             channelArchivedFallback = channelArchived,
+            viewerAuthority = viewerAuthority.takeIf { observeChannelAuthority },
         )
     val conversation = if (channelType == "dm") RaftConversationHeaderKind.Dm else RaftConversationHeaderKind.Channel
     val directoryFlow =

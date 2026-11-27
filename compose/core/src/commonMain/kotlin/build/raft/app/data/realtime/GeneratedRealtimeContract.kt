@@ -75,6 +75,7 @@ object GeneratedRealtimeContract {
         const val ThreadUpdated = "thread:updated"
         const val ChannelUpdated = "channel:updated"
         const val ChannelMembersUpdated = "channel:members-updated"
+        const val ChannelAuthorityUpdated = "channel:authority-updated"
         const val ScopeReadUpdated = "scope_read:updated"
         const val TaskCreated = "task:created"
         const val TaskUpdated = "task:updated"
@@ -146,6 +147,7 @@ object GeneratedRealtimeContract {
             ThreadUpdated,
             ChannelUpdated,
             ChannelMembersUpdated,
+            ChannelAuthorityUpdated,
             ScopeReadUpdated,
             TaskCreated,
             TaskUpdated,

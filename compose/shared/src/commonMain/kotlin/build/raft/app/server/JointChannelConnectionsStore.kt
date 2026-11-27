@@ -361,7 +361,11 @@ internal class RealJointChannelConnectionsDataSource(
         runner.run { _, networkClient -> repository(networkClient).connectOwnServers(route.channelId, serverIds, makePrivate) }
 
     private fun repository(networkClient: build.raft.app.data.RaftNetworkClient) =
-        RealJointChannelRepository(networkClient) { logger("joint_connections $it") }
+        RealJointChannelRepository(
+            networkClient = networkClient,
+            warningLogger = { logger("joint_connections $it") },
+            serverIdProvider = { route.serverId.value },
+        )
 }
 
 /** The process joint-connections cache (data-layer plan step 5). */

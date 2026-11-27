@@ -29,6 +29,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.SettingsServerSidebarOrderSnapshot
 import build.raft.app.data.SettingsServerSidebarOrderUpdateRequest
 import build.raft.app.data.SettingsServerSidebarPinnedItem
+import build.raft.app.data.SharedChannelAuthorityStore
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerChannelMembersHandoff
 import build.raft.app.data.SharedServerMembersLoadStatus
@@ -49,6 +50,8 @@ import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelViewerAuthority
+import build.raft.app.model.ChannelViewerAuthorityView
 import build.raft.app.thread.ChannelProfileUpdateStatus
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.key
@@ -597,6 +600,7 @@ internal class ChannelSettingsStore(
     initialSharedHandoff: ChannelSettingsSharedHandoff = ChannelSettingsSharedHandoff.Unavailable,
     initialAuthorityAccepted: Boolean,
     private val scope: CoroutineScope,
+    private val channelAuthorityStore: SharedChannelAuthorityStore? = null,
 ) {
     private val initialSnapshot =
         if (initialAuthorityAccepted) {
@@ -627,6 +631,47 @@ internal class ChannelSettingsStore(
     private var actionGeneration = 0L
     private var loadJob: Job? = null
     private var actionJob: Job? = null
+    private var authorityObserveJob: Job? = null
+
+    init {
+        if (initialAuthorityAccepted && channelAuthorityStore != null) {
+            authorityObserveJob =
+                scope.launch {
+                    channelAuthorityStore
+                        .observe(route.serverId.value, route.channelId.value)
+                        .collect { view ->
+                            if (view is ChannelViewerAuthorityView.Known) {
+                                applyObservedChannelAuthority(view.authority)
+                            }
+                        }
+                }
+        }
+    }
+
+    private fun applyObservedChannelAuthority(authority: ChannelViewerAuthority) {
+        val current = mutableState.value
+        if (current.status == ChannelSettingsLoadStatus.AuthorityRejected) return
+        val channel = current.channel ?: return
+        val nextChannel =
+            if (channel.channelCapabilities == authority.capabilities) {
+                channel
+            } else {
+                channel.copy(channelCapabilities = authority.capabilities)
+            }
+        val canAdd =
+            !channel.archived &&
+                !channelSettingsIsAllChannel(channel) &&
+                authority.capabilities.addChannelMembers == true
+        val nextMemberSlice =
+            if (current.memberSlice.canAddMembersKnown && current.memberSlice.canAddMembers == canAdd) {
+                current.memberSlice
+            } else {
+                current.memberSlice.copy(canAddMembersKnown = true, canAddMembers = canAdd)
+            }
+        if (nextChannel != channel || nextMemberSlice != current.memberSlice) {
+            mutableState.value = current.copy(channel = nextChannel, memberSlice = nextMemberSlice)
+        }
+    }
 
     // The full snapshot of the last network answer (the stored record omits members and the Slack pick).
     @Volatile
@@ -740,9 +785,9 @@ internal class ChannelSettingsStore(
                 }
             }
             ChannelSettingsIntent.Disconnect -> {
-                if (!mutableState.value.writeActionsEnabled || !mutableState.value.canManage) return
+                if (!mutableState.value.writeActionsEnabled) return
                 val channel = mutableState.value.channel ?: return
-                if (channelSettingsCanDisconnect(channel)) {
+                if (channelSettingsCanDisconnect(channel) && channelSettingsShowsDeleteAction(channel, mutableState.value.permissions())) {
                     launchAction(ChannelSettingsAction.Disconnect, call = dataSource::disconnect)
                 }
             }
@@ -821,8 +866,10 @@ internal class ChannelSettingsStore(
         actionGeneration += 1L
         loadJob?.cancel()
         actionJob?.cancel()
+        authorityObserveJob?.cancel()
         loadJob = null
         actionJob = null
+        authorityObserveJob = null
         snapshotCache.remove(owner, route)
         mutableState.value =
             ChannelSettingsState(
@@ -897,12 +944,25 @@ internal class ChannelSettingsStore(
         val previous = mutableState.value
                 mutableState.value =
                     when (result) {
-                        is DataResult.Content ->
-                            if (snapshotCache.put(owner, route, result.data)) {
-                                result.data.toResolvedState()
+                        is DataResult.Content -> {
+                            val storedCapabilities =
+                                channelAuthorityStore
+                                    ?.authorityOf(route.serverId.value, route.channelId.value)
+                                    ?.capabilities
+                            val resolvedSnapshot =
+                                if (storedCapabilities != null && result.data.channel.channelCapabilities != storedCapabilities) {
+                                    result.data.copy(
+                                        channel = result.data.channel.copy(channelCapabilities = storedCapabilities),
+                                    )
+                                } else {
+                                    result.data
+                                }
+                            if (snapshotCache.put(owner, route, resolvedSnapshot)) {
+                                resolvedSnapshot.toResolvedState()
                             } else {
                                 terminalReadFailureState(CHANNEL_SETTINGS_IDENTITY_MISMATCH)
                             }
+                        }
                         is DataResult.Error ->
                             if (result.error.code == AUTHENTICATED_ROUTE_AUTHORITY_CHANGED) {
                                 snapshotCache.remove(owner, route)
@@ -1381,8 +1441,10 @@ internal class ChannelSettingsStore(
         actionGeneration += 1L
         loadJob?.cancel()
         actionJob?.cancel()
+        authorityObserveJob?.cancel()
         loadJob = null
         actionJob = null
+        authorityObserveJob = null
     }
 }
 

@@ -322,12 +322,37 @@ private fun WireJointServer.toDomain(): JointChannelServer? {
  */
 @RaftCoreInternalApi class RealJointChannelRepository(
     private val networkClient: RaftNetworkClient,
+    private val channelAuthorityStore: SharedChannelAuthorityStore? = null,
+    private val serverIdProvider: (() -> String?)? = null,
     private val warningLogger: (String) -> Unit = {},
 ) {
-    suspend fun loadConnections(channelId: ChannelId, priority: DataRequestPriority): DataResult<JointChannelConnections> =
-        execute("joint_connections", { networkClient.request(priority = priority, path = "channels/${channelId.value}") }) { body ->
-            parseSharedJointChannelConnections(body)
+    private fun resolveChannelAuthorityStore(): SharedChannelAuthorityStore? =
+        channelAuthorityStore ?: RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore
+
+    suspend fun loadConnections(channelId: ChannelId, priority: DataRequestPriority): DataResult<JointChannelConnections> {
+        val authorityStore = resolveChannelAuthorityStore()
+        val knownServerId = serverIdProvider?.invoke()?.trim()?.takeIf { it.isNotEmpty() }
+        val authorityToken = knownServerId?.let { authorityStore?.captureRequestToken(it) }
+        val fallbackObservedSeq = if (authorityToken == null) authorityStore?.nextObservedSeq() else null
+        return execute("joint_connections", { networkClient.request(priority = priority, path = "channels/${channelId.value}") }) { body ->
+            val parsed = parseSharedJointChannelConnections(body)
+            if (parsed != null && authorityStore != null) {
+                parseChannelViewerAuthorityWithServer(body)?.let { (wireServerId, parsedChannelId, authority) ->
+                    when {
+                        authorityToken != null ->
+                            authorityStore.writeSingleAnswer(authorityToken, parsedChannelId, authority)
+                        !wireServerId.isNullOrBlank() && fallbackObservedSeq != null ->
+                            authorityStore.writeAnswers(
+                                serverId = wireServerId,
+                                rows = listOf(ChannelAuthorityAnswerRow(parsedChannelId.value, authority)),
+                                observedSeq = fallbackObservedSeq,
+                            )
+                    }
+                }
+            }
+            parsed
         }
+    }
 
     suspend fun disconnect(channelId: ChannelId): DataResult<Unit> =
         execute(

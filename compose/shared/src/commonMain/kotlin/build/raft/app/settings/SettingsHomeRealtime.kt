@@ -61,6 +61,7 @@ internal fun RealtimeEvent.performanceMarkerName(): String =
         is MemberPresenceUpdated -> "presence_updated"
         is AgentActivitySubscribed -> "agent_activity_subscribed"
         is RealtimeRefreshRequired -> "refresh_${scope.name}"
+        is build.raft.app.model.ChannelAuthorityUpdated -> "channel_authority_updated"
         is ServerMembershipRemoved -> "server_membership_removed"
         is ServerDeleted -> "server_deleted"
         is ServerPlanUpdated -> "server_plan_updated"
@@ -116,6 +117,7 @@ internal fun RealtimeEvent.performanceMarkerPhase(): String =
         is DirectMessageCreated,
         is SyncResumeResponse -> "realtime_content_apply"
         is RealtimeRefreshRequired,
+        is build.raft.app.model.ChannelAuthorityUpdated,
         is ServerFeaturesChanged,
         is ActivityChanged,
         is build.raft.app.model.JointInvitesChanged,

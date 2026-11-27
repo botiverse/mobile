@@ -16,6 +16,7 @@ import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ChannelActivityNotificationPreference
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -81,6 +82,14 @@ private val triage =
         memberCount = 22,
         activityNotificationPreference = ChannelActivityNotificationPreference(activityMuteSupported = true),
         guestVisible = true,
+        channelCapabilities =
+            ChannelCapabilities(
+                editChannelMetadata = true,
+                changeChannelVisibility = true,
+                archiveChannels = true,
+                deleteChannels = true,
+                federateChannels = true,
+            ),
     )
 
 private val memberNames =

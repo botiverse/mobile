@@ -47,6 +47,7 @@ import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelActivityNotificationPreference
+import build.raft.app.model.ChannelAuthorityUpdated
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -161,6 +162,7 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
 import kotlin.time.TimeSource
 
 /**
@@ -349,6 +351,7 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.ChannelUpdated -> decodeChannelUpdated(element)
             RealtimeSocketEvents.ChannelMembersUpdated ->
                 decodeChannelRefresh(element, RealtimeRefreshScope.ChannelMembers, RealtimeSocketEvents.ChannelMembersUpdated)
+            RealtimeSocketEvents.ChannelAuthorityUpdated -> decodeChannelAuthorityUpdated(element)
             // Mobile-local: the native host could not replay a reconnect gap (see RealtimeLocalEvents).
             RealtimeLocalEvents.CatchUpRequired ->
                 RealtimeRefreshRequired(
@@ -573,6 +576,37 @@ class RealtimeEventMapper(
                 },
             channelConversion = parseRaftChannelConversionRow(row),
             channelAnnouncement = parseRaftChannelRowAnnouncement(row),
+        )
+    }
+
+    /**
+     * `channel:authority-updated` (`{ channelId, channelRole, authorityRevision }`, slock
+     * `services/channelMembershipRoleOutbox.ts` / `channelRealtimeSync.ts` #17055): requires a
+     * non-blank string `channelId` and a numeric `authorityRevision`; `channelRole` is optional.
+     */
+    private fun decodeChannelAuthorityUpdated(element: JsonObject): ChannelAuthorityUpdated? {
+        val channelId =
+            (element["channelId"] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+        val authorityRevision =
+            (element["authorityRevision"] as? JsonPrimitive)
+                ?.takeIf { !it.isString }
+                ?.longOrNull
+                ?: return null
+        val channelRole =
+            (element["channelRole"] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        return ChannelAuthorityUpdated(
+            channelId = ChannelId(channelId),
+            channelRole = channelRole,
+            authorityRevision = authorityRevision,
         )
     }
 

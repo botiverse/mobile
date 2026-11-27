@@ -242,6 +242,14 @@ private class RealtimeGuardedSinkRegistration(
         agentWorkersChangedSink = sink
     }
 
+    // `channel:authority-updated` (slock #17055): the viewer's channel role changed on one channel.
+    // Process entry only: re-reads GET /api/channels/:id for held channels when revision is newer.
+    private var channelAuthorityUpdatedSink: ((serverId: String, event: build.raft.app.model.ChannelAuthorityUpdated) -> Unit)? = null
+
+    fun installChannelAuthorityUpdatedSink(sink: (serverId: String, event: build.raft.app.model.ChannelAuthorityUpdated) -> Unit) {
+        channelAuthorityUpdatedSink = sink
+    }
+
     // `agent:activity:subscribed` answers this process's own subscribe on the grant's server socket.
     private var agentActivitySubscribedSink: ((serverId: String, event: AgentActivitySubscribed) -> Unit)? = null
 
@@ -458,6 +466,9 @@ private class RealtimeGuardedSinkRegistration(
             }
             if (acceptedEvent is build.raft.app.model.AgentWorkersChanged) {
                 agentWorkersChangedSink?.invoke(serverId, acceptedEvent)
+            }
+            if (acceptedEvent is build.raft.app.model.ChannelAuthorityUpdated) {
+                channelAuthorityUpdatedSink?.invoke(serverId, acceptedEvent)
             }
             // Sent to the user room: applied only for the connection's server (the next open of another
             // server's conversation reads its preferences anyway).

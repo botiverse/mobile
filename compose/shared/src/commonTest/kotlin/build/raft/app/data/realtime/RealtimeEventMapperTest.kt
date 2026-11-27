@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.TaskWireDto
 import build.raft.app.data.toTaskSummary
 import build.raft.app.model.AgentActivitySubscribed
+import build.raft.app.model.ChannelAuthorityUpdated
 import build.raft.app.model.ProductFeedbackUnreadUpdated
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.AgentStatus
@@ -1482,6 +1483,51 @@ class RealtimeEventMapperTest {
             RealtimeEventMapper().map(
                 RealtimeSocketEvents.AgentSeen,
                 """{ "agentId": "", "lastSeenAt": "2026-09-28T01:02:03.456Z" }"""
+            )
+        )
+    }
+
+    @Test
+    fun channelAuthorityUpdatedMapsWirePayloadAndDropsMalformed() {
+        assertTrue(RealtimeSocketEvents.ChannelAuthorityUpdated in RealtimeSocketEvents.ServerWireEvents)
+
+        val promoted =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ChannelAuthorityUpdated,
+                """{ "channelId": "ch-joint", "channelRole": "admin", "authorityRevision": 3 }"""
+            )
+        val mappedPromoted = assertIs<ChannelAuthorityUpdated>(promoted)
+        assertEquals("ch-joint", mappedPromoted.channelId.value)
+        assertEquals("admin", mappedPromoted.channelRole)
+        assertEquals(3L, mappedPromoted.authorityRevision)
+
+        val roleless =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ChannelAuthorityUpdated,
+                """{ "channelId": "ch-joint", "authorityRevision": 4 }"""
+            )
+        val mappedRoleless = assertIs<ChannelAuthorityUpdated>(roleless)
+        assertEquals("ch-joint", mappedRoleless.channelId.value)
+        assertNull(mappedRoleless.channelRole)
+        assertEquals(4L, mappedRoleless.authorityRevision)
+
+        // Malformed payloads are dropped cleanly.
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ChannelAuthorityUpdated,
+                """{ "channelId": "", "channelRole": "admin", "authorityRevision": 1 }"""
+            )
+        )
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ChannelAuthorityUpdated,
+                """{ "channelId": "ch-joint", "channelRole": "admin" }"""
+            )
+        )
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ChannelAuthorityUpdated,
+                """{ "channelId": "ch-joint", "channelRole": "admin", "authorityRevision": "3" }"""
             )
         )
     }

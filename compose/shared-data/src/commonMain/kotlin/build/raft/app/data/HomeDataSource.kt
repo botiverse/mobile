@@ -58,8 +58,11 @@ class SharedHomeDataSource(
      * shared JSON lane; tests pass an inline dispatcher so a launched Home load does not resume
      * on a parse worker thread and race the test's own store writes.
      */
-    parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher
+    parseDispatcher: CoroutineDispatcher = RaftJsonParseDispatcher,
+    private val channelAuthorityStore: SharedChannelAuthorityStore? = null,
 ) {
+    private fun resolveChannelAuthorityStore(): SharedChannelAuthorityStore? =
+        channelAuthorityStore ?: RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore
     private val typedApi = RaftHomeApiClient(api, diagnosticsLogger, parseDispatcher)
     private val typedAnnouncementsApi = announcementsApi?.let(::RaftAnnouncementsRemindersApiClient)
     private val typedComputersApi = computersApi?.let(::RaftComputersApiClient)
@@ -113,6 +116,8 @@ class SharedHomeDataSource(
             }
 
         diagnosticsLogger("home_bootstrap_start priority=$priority serverSelected=true")
+        val authorityStore = resolveChannelAuthorityStore()
+        val authorityRequestToken = authorityStore?.captureRequestToken(resolvedServerId.value)
 
         val payload =
             try {
@@ -139,6 +144,9 @@ class SharedHomeDataSource(
                 )
                 return DataResult.Error(ScreenError(code = "home_network", retryable = true))
             }
+        if (authorityStore != null && authorityRequestToken != null) {
+            authorityStore.writeWireChannelAnswers(authorityRequestToken, payload.channels)
+        }
         val result = parseHome(payload, session)
         if (result is DataResult.Content) {
             val directMessagePeerProfiles =
@@ -384,6 +392,8 @@ class SharedHomeDataSource(
         is build.raft.app.model.ActorUpdated -> false
         // Worker v1 nudge: only an open Agent Detail › Workers panel refreshes on it; no Home row.
         is build.raft.app.model.AgentWorkersChanged -> false
+        // Viewer channel authority change: handled by single-channel GET /channels/:id refresh in SharedChannelAuthorityStore.
+        is build.raft.app.model.ChannelAuthorityUpdated -> false
         // "Collapse long messages" of one conversation (RaftMessageDisplayPrefsStore); no Home row.
         is build.raft.app.model.MessageDisplayPrefsChanged -> false
         // Thread notification level changes are thread follow/unfollow frames (`slock #16474`):

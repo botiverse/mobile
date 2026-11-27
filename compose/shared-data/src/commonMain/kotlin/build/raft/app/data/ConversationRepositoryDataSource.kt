@@ -290,7 +290,10 @@ class RealConversationRepository private constructor(
     /** Non-null only for the repository produced by [boundTo].  Direct upload sessions are
      * reservation-bearing mutations and must not be reachable through a selector-backed facade. */
     private val directSessionAuthority: RaftExpectedAuthBinding? = null,
+    private val channelAuthorityStore: SharedChannelAuthorityStore? = null,
 ) : ConversationRepository, ProgressiveConversationAttachmentUploader {
+    private fun resolvedChannelAuthorityStore(): SharedChannelAuthorityStore? =
+        channelAuthorityStore ?: RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore
     /**
      * Upper bound the targeted reply-summary join waits for the account-wide followed-thread
      * list (task #1142). Channel summaries are the authority for reply rows; the followed list
@@ -324,6 +327,7 @@ class RealConversationRepository private constructor(
     @RaftCoreInternalApi var taskConversationTimeSource: TimeSource = TimeSource.Monotonic
 
     /** Public compatibility constructor for ordinary selector-backed repositories. */
+    @OptIn(RaftCoreInternalApi::class)
     constructor(
         sessionStore: RaftAuthSessionStore,
         networkClient: RaftNetworkClient,
@@ -337,6 +341,25 @@ class RealConversationRepository private constructor(
         warningLogger = warningLogger,
         routeEnvironmentIdProvider = routeEnvironmentIdProvider,
         directSessionAuthority = null,
+        channelAuthorityStore = null,
+    )
+
+    @RaftCoreInternalApi
+    constructor(
+        sessionStore: RaftAuthSessionStore,
+        networkClient: RaftNetworkClient,
+        routeServerIdProvider: (() -> String?)? = null,
+        warningLogger: (String) -> Unit = projectionRejectingDiagnosticsLogger,
+        routeEnvironmentIdProvider: (() -> String?)? = null,
+        channelAuthorityStore: SharedChannelAuthorityStore?,
+    ) : this(
+        sessionStore = sessionStore,
+        networkClient = networkClient,
+        routeServerIdProvider = routeServerIdProvider,
+        warningLogger = warningLogger,
+        routeEnvironmentIdProvider = routeEnvironmentIdProvider,
+        directSessionAuthority = null,
+        channelAuthorityStore = channelAuthorityStore,
     )
 
     /**
@@ -368,6 +391,7 @@ class RealConversationRepository private constructor(
             routeEnvironmentIdProvider = { expectedAuthority.environmentId },
             warningLogger = warningLogger,
             directSessionAuthority = expectedAuthority,
+            channelAuthorityStore = channelAuthorityStore,
         )
     }
 
@@ -395,6 +419,8 @@ class RealConversationRepository private constructor(
         priority: DataRequestPriority,
     ): DataResult<ConversationSummary> {
         val context = currentContext() ?: return authRequired()
+        val authorityStore = resolvedChannelAuthorityStore()
+        val authorityToken = authorityStore?.captureRequestToken(context.server.id.value)
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
             block = {
@@ -406,6 +432,11 @@ class RealConversationRepository private constructor(
             },
             source = "conversation_detail",
             mapper = { bodyText ->
+                if (authorityStore != null && authorityToken != null) {
+                    parseChannelViewerAuthority(bodyText)?.let { (parsedChannelId, authority) ->
+                        authorityStore.writeSingleAnswer(authorityToken, parsedChannelId, authority)
+                    }
+                }
                 parseRaftChannelDetail(bodyText, warningLogger)
                     ?.toConversationSummary()
                     ?.normalizeSyntheticChannelMembership()
@@ -926,6 +957,8 @@ class RealConversationRepository private constructor(
         priority: DataRequestPriority,
         serverId: ServerId,
     ): ConversationSummary? {
+        val authorityStore = resolvedChannelAuthorityStore()
+        val authorityToken = authorityStore?.captureRequestToken(serverId.value)
         val response =
             try {
                 networkClient.request(
@@ -946,7 +979,13 @@ class RealConversationRepository private constructor(
             warningLogger("conversation_detail_unavailable channelId=${channelId.value} status=${response.code}")
             return null
         }
-        val parsedDetail = parseRaftChannelDetail(response.bodyText.orEmpty(), warningLogger)?.toConversationSummary()
+        val bodyText = response.bodyText.orEmpty()
+        if (authorityStore != null && authorityToken != null) {
+            parseChannelViewerAuthority(bodyText)?.let { (parsedChannelId, authority) ->
+                authorityStore.writeSingleAnswer(authorityToken, parsedChannelId, authority)
+            }
+        }
+        val parsedDetail = parseRaftChannelDetail(bodyText, warningLogger)?.toConversationSummary()
         if (parsedDetail == null) {
             warningLogger("conversation_detail_parse_failed channelId=${channelId.value}")
             return null
@@ -956,7 +995,7 @@ class RealConversationRepository private constructor(
         // `channel_humans` rows; write authority belongs to the parent channel). Mark membership
         // unknown so synthetic channel details never stamp `joined = false` onto snapshots or caches.
         val detail = parsedDetail.normalizeSyntheticChannelMembership()
-        val taskConversation = parseTaskConversationChannelDetail(response.bodyText.orEmpty())
+        val taskConversation = parseTaskConversationChannelDetail(bodyText)
             ?: return detail
         return loadTaskConversationDetail(detail, taskConversation, priority, serverId)
     }

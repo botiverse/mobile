@@ -596,14 +596,32 @@ private suspend fun RaftNetworkClient.changeChannelMemberRole(
         bodyText = buildSharedChangeChannelMemberRoleBody(request)
     )
 
-class RealMemberRepository(
+class RealMemberRepository @RaftCoreInternalApi constructor(
     private val sessionStore: RaftAuthSessionStore,
     private val networkClient: RaftNetworkClient,
     private val warningLogger: (String) -> Unit = {},
     private val logger: (String) -> Unit = {},
     /** In-memory roster lookup (e.g. the shared server-members store); must never fetch. */
-    private val cachedMembersProvider: (ServerId) -> List<MemberProfile> = { emptyList() }
+    private val cachedMembersProvider: (ServerId) -> List<MemberProfile> = { emptyList() },
+    private val channelAuthorityStore: SharedChannelAuthorityStore?,
 ) : MemberRepository {
+    @OptIn(RaftCoreInternalApi::class)
+    constructor(
+        sessionStore: RaftAuthSessionStore,
+        networkClient: RaftNetworkClient,
+        warningLogger: (String) -> Unit = {},
+        logger: (String) -> Unit = {},
+        cachedMembersProvider: (ServerId) -> List<MemberProfile> = { emptyList() },
+    ) : this(
+        sessionStore = sessionStore,
+        networkClient = networkClient,
+        warningLogger = warningLogger,
+        logger = logger,
+        cachedMembersProvider = cachedMembersProvider,
+        channelAuthorityStore = null,
+    )
+    private fun resolvedChannelAuthorityStore(): SharedChannelAuthorityStore? =
+        channelAuthorityStore ?: RaftDataStoreRegistry.currentOrNull()?.channelAuthorityStore
     private val agentsApiClient = RaftAgentsApiClient(
         transport = RaftAgentsNetworkApi(networkClient),
         diagnosticsLogger = { message -> logger("agents_api $message") }
@@ -1203,7 +1221,7 @@ class RealMemberRepository(
     }
 
     override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> {
-        currentContext() ?: return authRequired()
+        val context = currentContext() ?: return authRequired()
         val result =
             executeMember(
                 emptyReason = EmptyReason.NoMembers,
@@ -1218,12 +1236,21 @@ class RealMemberRepository(
         if (result !is DataResult.Content) return result
         // Member capabilities belong to the channel response, never the roster.
         // Missing/failed detail keeps the readable roster and denies mutations.
+        val authorityStore = resolvedChannelAuthorityStore()
+        val authorityToken = authorityStore?.captureRequestToken(context.server.id.value)
         val detail = executeMember(
             emptyReason = EmptyReason.NoMembers,
             block = { networkClient.request(priority, "channels/${channelId.value}") },
             source = "channel_member_capabilities",
-            mapper = { body -> parseRaftChannelDetail(body)
-                ?: throw IllegalStateException("Channel detail missing") },
+            mapper = { body ->
+                if (authorityStore != null && authorityToken != null) {
+                    parseChannelViewerAuthority(body)?.let { (parsedChannelId, authority) ->
+                        authorityStore.writeSingleAnswer(authorityToken, parsedChannelId, authority)
+                    }
+                }
+                parseRaftChannelDetail(body)
+                    ?: throw IllegalStateException("Channel detail missing")
+            },
         )
         val channel = (detail as? DataResult.Content)?.data
             ?.takeIf { it.channelId == channelId }

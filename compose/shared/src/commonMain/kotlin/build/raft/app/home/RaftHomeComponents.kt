@@ -1875,6 +1875,8 @@ internal class RaftStructuralHomeShellCallbacks(
     val agentStatusResolver: RaftAgentStatusResolver = EmptyRaftAgentStatusResolver,
     val memberAvatarResolver: RaftMemberAvatarResolver = EmptyRaftMemberAvatarResolver,
     val pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? = { null },
+    val channelAuthorityResolver: ((String) -> build.raft.app.model.ChannelViewerAuthorityView)? = null,
+    val onRequestChannelAuthority: ((String) -> Unit)? = null,
     val diagnosticsLogger: (String) -> Unit = {},
     val onPinMenuDismiss: () -> Unit = {},
     val onListPositionSnapshot: (String?, AppShellLazyListPosition) -> Unit = { _, _ -> },
@@ -2001,6 +2003,8 @@ internal fun RaftStructuralHomeShell(
     // botiverse/slock #11273: which DM peers are App Bots (the Bot badge, no presence or runtime).
     memberAppBotResolver: RaftMemberAppBotResolver = EmptyRaftMemberAppBotResolver,
     pinnedMemberProfileResolver: (String) -> RaftHomePinnedMemberItem? = { null },
+    channelAuthorityResolver: ((String) -> build.raft.app.model.ChannelViewerAuthorityView)? = null,
+    onRequestChannelAuthority: ((String) -> Unit)? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {},
     scrollToTopRequest: Int = 0,
@@ -2126,6 +2130,8 @@ internal fun RaftStructuralHomeShell(
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
                 pinnedMemberProfileResolver = pinnedMemberProfileResolver,
+                channelAuthorityResolver = channelAuthorityResolver,
+                onRequestChannelAuthority = onRequestChannelAuthority,
                 diagnosticsLogger = diagnosticsLogger,
                 onPinMenuDismiss = onPinMenuDismiss,
                 onListPositionSnapshot = onListPositionSnapshot,
@@ -3861,13 +3867,33 @@ private fun RaftStructuralHomeShellContent(
                 }
             val activeIsDirectMessage = activeConversation?.isDirectMessageConversation() == true
             val activeIsJoint = activeConversation?.homeChannelKind() == JointChannelKindWireValue
+            val activeArchiveAuthorityChannelId =
+                activeConversation
+                    ?.takeIf {
+                        !activeIsDirectMessage &&
+                            !activeIsJoint &&
+                            it.agentLounge == null &&
+                            it.name != "all" &&
+                            !it.archived
+                    }
+                    ?.id
+            val activeChannelAuthority =
+                activeArchiveAuthorityChannelId?.let { id -> callbacks.channelAuthorityResolver?.invoke(id) }
+            LaunchedEffect(activeArchiveAuthorityChannelId, activeChannelAuthority) {
+                if (
+                    activeArchiveAuthorityChannelId != null &&
+                    activeChannelAuthority is build.raft.app.model.ChannelViewerAuthorityView.Loading
+                ) {
+                    callbacks.onRequestChannelAuthority?.invoke(activeArchiveAuthorityChannelId)
+                }
+            }
             val activeCanArchive =
-                activeConversation != null &&
-                    !activeIsDirectMessage &&
-                    !activeIsJoint &&
-                    activeConversation.name != "all" &&
-                    !activeConversation.archived &&
-                    canArchiveChannels
+                activeArchiveAuthorityChannelId != null &&
+                    if (activeChannelAuthority != null) {
+                        build.raft.app.data.authorityAllows(activeChannelAuthority) { it.archiveChannels }
+                    } else {
+                        canArchiveChannels
+                    }
             val activeCanLeave =
                 activeConversation != null &&
                     homeConversationCanLeave(

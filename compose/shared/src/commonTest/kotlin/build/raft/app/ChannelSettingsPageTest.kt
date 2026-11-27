@@ -215,6 +215,15 @@ class ChannelSettingsPageTest {
         assertFalse(channelSettingsOffersGuestMemberConnect(private, canAddMembers = false, account = memberTestAccount()))
     }
 
+    private val ownerCapabilities =
+        ChannelCapabilities(
+            editChannelMetadata = true,
+            changeChannelVisibility = true,
+            archiveChannels = true,
+            deleteChannels = true,
+            federateChannels = true,
+        )
+
     @Test
     fun actionsFollowTheWebOrderAndDropWhatTheChannelCannotDo() {
         assertEquals(
@@ -225,24 +234,33 @@ class ChannelSettingsPageTest {
                 ChannelSettingsActionRow.StopAllAgents,
                 ChannelSettingsActionRow.Delete,
             ),
-            actions(row(), stopAgents = true),
+            actions(row(capabilities = ownerCapabilities), stopAgents = true),
         )
         assertEquals(
             listOf(ChannelSettingsActionRow.MakePublic, ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave, ChannelSettingsActionRow.Delete),
-            actions(row(type = "private")),
+            actions(row(type = "private", capabilities = ownerCapabilities)),
         )
         // Archived: only Unarchive (web shows no Leave, Stop or Delete on an archived channel).
-        assertEquals(listOf(ChannelSettingsActionRow.Unarchive), actions(row(archived = true)))
+        assertEquals(listOf(ChannelSettingsActionRow.Unarchive), actions(row(archived = true, capabilities = ownerCapabilities)))
         // Joint: no visibility; Disconnect takes Delete's place.
         assertEquals(
             listOf(ChannelSettingsActionRow.Archive, ChannelSettingsActionRow.Leave, ChannelSettingsActionRow.Disconnect),
-            actions(row(type = "joint")),
+            actions(row(type = "joint", capabilities = ownerCapabilities)),
         )
         // #all: nothing but Stop All Agents.
-        assertEquals(listOf(ChannelSettingsActionRow.StopAllAgents), actions(row(name = "all"), stopAgents = true))
+        assertEquals(listOf(ChannelSettingsActionRow.StopAllAgents), actions(row(name = "all", capabilities = ownerCapabilities), stopAgents = true))
         // A plain member: Leave only.
         assertEquals(listOf(ChannelSettingsActionRow.Leave), actions(row(), canManage = false))
         assertEquals(emptyList(), actions(row(joined = false), canManage = false))
+    }
+
+    @Test
+    fun missingCapabilitiesFailClosedEvenWhenCanManageIsTrue() {
+        val fromMissing = channelSettingsPermissions(row(capabilities = null), canManage = true)
+        assertEquals(ChannelSettingsPermissions(), fromMissing)
+        assertFalse(fromMissing.canEditChannel)
+        assertEquals(ChannelSettingsPermissions(), channelSettingsPermissions(build.raft.app.model.ChannelViewerAuthorityView.Loading))
+        assertEquals(listOf(ChannelSettingsActionRow.Leave), actions(row(capabilities = null), canManage = true))
     }
 
     @Test

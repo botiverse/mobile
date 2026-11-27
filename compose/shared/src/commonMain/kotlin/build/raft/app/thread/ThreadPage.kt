@@ -3301,6 +3301,7 @@ private fun SharedThreadRouteContentContent(
             threadChannelMembersSlice = threadChannelMembersSlice,
             baseMemberScopedMentions = memberSuggestionScopedMentions,
             channelArchived = renderedPayload.channelArchived,
+            channelAuthorityStore = sharedStores.channelAuthorityStore,
         )
     val renderedTimelineSlice =
         timelineSlice
@@ -5331,14 +5332,44 @@ private fun rememberThreadComposerMentionScope(
     threadChannelMembersSlice: SharedServerChannelMembersSlice,
     baseMemberScopedMentions: Boolean,
     channelArchived: Boolean,
+    channelAuthorityStore: build.raft.app.data.SharedChannelAuthorityStore? = null,
 ): ThreadComposerMentionScope {
     val flagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
     val privateMentionAddEnabled =
         remember(serverFeatureFlags, serverId, flagRevision) {
             serverFeatureFlags.isPrivateMentionAddEnabled(serverId)
         }
-    val needsSeparateScopeSlice =
+    val usesAuthorityStore =
         baseMemberScopedMentions &&
+            privateMentionAddEnabled &&
+            !channelArchived &&
+            serverId != null &&
+            scopeChannelId != null &&
+            channelAuthorityStore != null
+    val viewerAuthority by
+        remember(channelAuthorityStore, serverId, scopeChannelId, usesAuthorityStore) {
+            if (usesAuthorityStore) {
+                channelAuthorityStore!!.observe(serverId!!.value, scopeChannelId!!)
+            } else {
+                MutableStateFlow<build.raft.app.model.ChannelViewerAuthorityView>(
+                    build.raft.app.model.ChannelViewerAuthorityView.Loading
+                )
+            }
+        }.collectAsState(
+            if (usesAuthorityStore) {
+                channelAuthorityStore!!.viewOf(serverId!!.value, scopeChannelId!!)
+            } else {
+                build.raft.app.model.ChannelViewerAuthorityView.Loading
+            }
+        )
+    LaunchedEffect(usesAuthorityStore, channelAuthorityStore, serverId, scopeChannelId, viewerAuthority) {
+        if (usesAuthorityStore && viewerAuthority is build.raft.app.model.ChannelViewerAuthorityView.Loading) {
+            channelAuthorityStore!!.requestChannelAuthority(serverId!!.value, scopeChannelId!!)
+        }
+    }
+    val needsSeparateScopeSlice =
+        !usesAuthorityStore &&
+            baseMemberScopedMentions &&
             privateMentionAddEnabled &&
             !channelArchived &&
             scopeChannelId != null &&
@@ -5373,13 +5404,25 @@ private fun rememberThreadComposerMentionScope(
         } else {
             separateScopeSlice
         }
+    val canAddMembersKnown =
+        if (usesAuthorityStore) {
+            viewerAuthority is build.raft.app.model.ChannelViewerAuthorityView.Known
+        } else {
+            effectiveSlice.canAddMembersKnown
+        }
+    val canAddMembers =
+        if (usesAuthorityStore) {
+            build.raft.app.data.authorityAllows(viewerAuthority) { it.addChannelMembers }
+        } else {
+            effectiveSlice.canAddMembers
+        }
     val addFromPrivateMention =
         threadCanAddFromPrivateMention(
             privateMentionAddEnabled = privateMentionAddEnabled,
             baseMemberScopedMentions = baseMemberScopedMentions,
             channelArchived = channelArchived,
-            canAddMembersKnown = effectiveSlice.canAddMembersKnown,
-            canAddMembers = effectiveSlice.canAddMembers,
+            canAddMembersKnown = canAddMembersKnown,
+            canAddMembers = canAddMembers,
         )
     return threadComposerEffectiveMentionScope(
         baseMemberScopedMentions = baseMemberScopedMentions,

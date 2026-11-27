@@ -45,6 +45,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.memberDetailIdentity
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ChannelViewerAuthorityView
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.shell.openRaftPage
@@ -194,6 +195,44 @@ internal fun rememberThreadSettingsLinks(
                 },
         )
     }
+    val isChannelSettingsSurface =
+        renderedThread.surfaceKind != RaftThreadSurfaceKind.DirectMessage &&
+            threadMembersServerId != null &&
+            threadMembersChannelId != null
+    val channelViewerAuthority by
+        remember(sharedStores, isChannelSettingsSurface, threadMembersServerId, threadMembersChannelId) {
+            if (isChannelSettingsSurface) {
+                sharedStores.channelAuthorityStore.observe(
+                    threadMembersServerId!!.value,
+                    threadMembersChannelId!!.value,
+                )
+            } else {
+                MutableStateFlow<ChannelViewerAuthorityView>(ChannelViewerAuthorityView.Loading)
+            }
+        }.collectAsState(
+            if (isChannelSettingsSurface) {
+                sharedStores.channelAuthorityStore.viewOf(
+                    threadMembersServerId!!.value,
+                    threadMembersChannelId!!.value,
+                )
+            } else {
+                ChannelViewerAuthorityView.Loading
+            }
+        )
+    LaunchedEffect(
+        sharedStores,
+        isChannelSettingsSurface,
+        threadMembersServerId,
+        threadMembersChannelId,
+        channelViewerAuthority,
+    ) {
+        if (isChannelSettingsSurface && channelViewerAuthority is ChannelViewerAuthorityView.Loading) {
+            sharedStores.channelAuthorityStore.requestChannelAuthority(
+                threadMembersServerId!!.value,
+                threadMembersChannelId!!.value,
+            )
+        }
+    }
     // The settings drawer beyond the name form and actions (web ChannelOverflowMenu): the
     // members strip, Move to section, Notifications and Collapse long messages.
     val channelSettingsPanel =
@@ -209,6 +248,7 @@ internal fun rememberThreadSettingsLinks(
             writeActionsEnabled = renderSlice.writeActionsEnabled,
             onHomeIntent = { intent -> sharedHomeStore?.dispatch(intent) },
             directMessage = renderedThread.surfaceKind == RaftThreadSurfaceKind.DirectMessage,
+            viewerAuthority = channelViewerAuthority.takeIf { isChannelSettingsSurface },
         )?.let { panel -> completeChannelSettingsPanel(panel, sharedHomeState.content, onLeave = onBack) }
     // A phone's settings page (ThreadSettingsPage.kt) reads this conversation through its link:
     // the same stores and callbacks as the drawer above, as live sources.

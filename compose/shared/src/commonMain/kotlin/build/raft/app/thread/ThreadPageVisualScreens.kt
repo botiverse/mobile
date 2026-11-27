@@ -14,6 +14,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
+import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
 import build.raft.app.optBoolean
@@ -572,6 +573,14 @@ internal fun channelSettingsPanelVisualPanel(pinned: Boolean = false, serverId: 
             name = "design",
             subtitle = "Product and UI decisions",
             memberCount = 2,
+            channelCapabilities =
+                ChannelCapabilities(
+                    editChannelMetadata = true,
+                    changeChannelVisibility = true,
+                    archiveChannels = true,
+                    deleteChannels = true,
+                    federateChannels = true,
+                ),
         )
     return ThreadChannelSettingsPanel(
         channel = channel,

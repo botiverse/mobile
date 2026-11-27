@@ -82,6 +82,8 @@ import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.data.authorityAllows
+import build.raft.app.model.ChannelViewerAuthorityView
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -618,9 +620,30 @@ private fun ThreadMembersPageScreen() {
     // while channelMemberSliceFlow is actively observed (#wg-mobile-feedback:#274 Phase 1).
     // The signed-in person's id: the role menu never explains a demote of oneself (web `currentUserId`).
     var viewerUserId by remember(routeOwner) { mutableStateOf<String?>(null) }
-    val canChangeMemberRoles =
-        liveOwner == routeOwner && channelMembersSlice.canChangeMemberRoles && !channelMembersSlice.storedStandIn
     val addChannelProjection = channelProjections[route.channelId.value]
+    val isAllChannel =
+        addChannelProjection?.channelKind == "channel" &&
+            addChannelProjection.title.trim().removePrefix("#").equals("all", ignoreCase = true)
+    val channelMutable = addChannelProjection?.archived != true && !isAllChannel
+    val viewerAuthority by
+        remember(sharedStores, route.serverId, route.channelId) {
+            sharedStores.channelAuthorityStore.observe(route.serverId.value, route.channelId.value)
+        }.collectAsState(sharedStores.channelAuthorityStore.viewOf(route.serverId.value, route.channelId.value))
+    LaunchedEffect(sharedStores, route.serverId, route.channelId, liveOwner, routeOwner, viewerAuthority) {
+        if (liveOwner == routeOwner && viewerAuthority is ChannelViewerAuthorityView.Loading) {
+            sharedStores.channelAuthorityStore.requestChannelAuthority(route.serverId.value, route.channelId.value)
+        }
+    }
+    val canChangeMemberRoles =
+        liveOwner == routeOwner &&
+            !channelMembersSlice.storedStandIn &&
+            channelMutable &&
+            authorityAllows(viewerAuthority) { it.changeChannelMemberRoles }
+    val canRemoveMembers =
+        liveOwner == routeOwner &&
+            !channelMembersSlice.storedStandIn &&
+            channelMutable &&
+            authorityAllows(viewerAuthority) { it.removeChannelMembers }
     val channelJointServers =
         addChannelProjection?.jointServers?.takeIf { it.isNotEmpty() }
             ?: addChannelProjection?.parentChannelId?.let { parentId ->
@@ -628,7 +651,7 @@ private fun ThreadMembersPageScreen() {
                     ?: conversationIdentityProvider?.resolveProjection(route.serverId, parentId)?.jointServers
             }.orEmpty()
     val members = remember(
-        channelMembersSlice.members, channelMembersSlice.canRemoveMembers, canChangeMemberRoles, viewerUserId, route.serverId, channelJointServers
+        channelMembersSlice.members, canRemoveMembers, canChangeMemberRoles, viewerUserId, route.serverId, channelJointServers
     ) {
         channelMembersSlice.members
             .distinctBy { it.threadMemberKey }
@@ -639,7 +662,7 @@ private fun ThreadMembersPageScreen() {
                             memberRemovableFromChannel(
                                 member = profile,
                                 viewerServerId = route.serverId.value,
-                                canRemoveChannelMembers = channelMembersSlice.canRemoveMembers,
+                                canRemoveChannelMembers = canRemoveMembers,
                             ),
                     roleAction = channelMemberRoleAction(profile, canChangeMemberRoles, viewerUserId),
                 )
@@ -762,9 +785,14 @@ private fun ThreadMembersPageScreen() {
             ?.ifBlank { null }
             ?: route.channelId.value.trim().removePrefix("#")
     val authorityRejected = liveOwner != routeOwner
-    // Web useExternalInviteAccess / useExternalInviteManagement (#wg-rbac:#133): gate on the
-    // channel's `channelCapabilities.federateChannels` (fresh GET /channels/:id first, then the
-    // directory projection), falling back to own-server role only on legacy servers without it.
+    // Web useExternalInviteAccess / useExternalInviteManagement (#wg-rbac:#133, slock #17055):
+    // gate strictly on the dedicated channel authority store's `federateChannels`, failing closed
+    // while loading (never falling back to own-server role while authority is unknown).
+    val effectiveFederateChannels =
+        !authorityRejected &&
+            !channelMembersSlice.storedStandIn &&
+            channelMutable &&
+            authorityAllows(viewerAuthority) { it.federateChannels }
     val externalInviteChannel =
         channelProjections[route.channelId.value]?.let { projection ->
             ExternalInviteChannel(
@@ -773,9 +801,7 @@ private fun ThreadMembersPageScreen() {
                 archived = projection.archived,
                 jointRole = projection.jointRole,
                 hasExternalRelation = projection.hasExternalRelation,
-                federateChannels =
-                    channelMembersSlice.takeUnless { it.storedStandIn }?.federateChannels
-                        ?: projection.channelCapabilities?.federateChannels,
+                federateChannels = effectiveFederateChannels,
             )
         }
     val externalInviteAccessOn = !authorityRejected && externalInviteAccess(viewerServerRole, externalInviteChannel)
@@ -858,8 +884,9 @@ private fun ThreadMembersPageScreen() {
             (members.isEmpty() && channelMembersSlice.status == SharedServerMembersLoadStatus.Error)
     val canAddMembers =
         !authorityRejected &&
-            channelMembersSlice.canAddMembersKnown &&
-            channelMembersSlice.canAddMembers
+            !channelMembersSlice.storedStandIn &&
+            channelMutable &&
+            authorityAllows(viewerAuthority) { it.addChannelMembers }
     val guestConnect =
         rememberThreadMembersGuestConnect(
             route = route,
@@ -871,6 +898,7 @@ private fun ThreadMembersPageScreen() {
             projection = addChannelProjection,
             channelName = channelName,
             canAddMembers = canAddMembers,
+            federateChannels = effectiveFederateChannels,
             authorityRejected = authorityRejected,
             memberConnectAccount = memberConnectAccount,
             onConnectionsChanged = {
@@ -890,7 +918,8 @@ private fun ThreadMembersPageScreen() {
             projection = addChannelProjection,
             channelName = channelName,
             dialogOpen = externalInvitesState.dialog != null,
-            canMakePrivate = externalInviteChannel?.federateChannels ?: (viewerServerRole == "owner" || viewerServerRole == "admin"),
+            canMakePrivate = effectiveFederateChannels,
+            federateChannels = effectiveFederateChannels,
             memberConnectAccount = memberConnectAccount,
             onConnectionsChanged = {
                 latestHomeStore?.dispatch(SharedHomeIntent.Refresh)
@@ -1472,6 +1501,7 @@ private fun rememberThreadMembersInviteConnect(
     channelName: String,
     dialogOpen: Boolean,
     canMakePrivate: Boolean,
+    federateChannels: Boolean? = null,
     memberConnectAccount: MemberConnectAccount?,
     onConnectionsChanged: () -> Unit,
     onMemberConnectFinished: () -> Unit,
@@ -1480,7 +1510,7 @@ private fun rememberThreadMembersInviteConnect(
     val isPrivate = !isJoint && projection?.channelKind.equals("private", ignoreCase = true)
     val isPublic = !isJoint && !isPrivate && projection?.channelKind.equals("channel", ignoreCase = true)
     val seedConnections =
-        remember(projection, route.channelId, route.serverId, channelName, memberConnectAccount, isJoint, isPrivate, isPublic) {
+        remember(projection, route.channelId, route.serverId, channelName, memberConnectAccount, isJoint, isPrivate, isPublic, federateChannels) {
             projection?.takeIf { isJoint || isPrivate || isPublic }?.let { proj ->
                 val jointRole = JointChannelRole.fromWire(proj.jointRole)
                 val servers =
@@ -1522,7 +1552,7 @@ private fun rememberThreadMembersInviteConnect(
                     servers = servers,
                     hasCurrentServerPendingInvites = false,
                     jointRole = jointRole,
-                    federateChannels = proj.channelCapabilities?.federateChannels,
+                    federateChannels = federateChannels ?: proj.channelCapabilities?.federateChannels,
                     isPrivate = isPrivate,
                     joined = proj.joined,
                 )
@@ -1578,6 +1608,7 @@ private fun rememberThreadMembersGuestConnect(
     projection: SharedConversationDirectoryProjection?,
     channelName: String,
     canAddMembers: Boolean,
+    federateChannels: Boolean? = null,
     authorityRejected: Boolean,
     memberConnectAccount: MemberConnectAccount?,
     onConnectionsChanged: () -> Unit,
@@ -1593,7 +1624,7 @@ private fun rememberThreadMembersGuestConnect(
             active = active,
         )
     val seedConnections =
-        remember(projection, route.channelId, route.serverId, channelName, memberConnectAccount, conversionFromStore) {
+        remember(projection, route.channelId, route.serverId, channelName, memberConnectAccount, conversionFromStore, federateChannels) {
             projection?.let { proj ->
                 val isJoint = proj.conversationKind == ConversationKind.Joint || proj.channelKind.equals("joint", ignoreCase = true)
                 val isPrivate = !isJoint && proj.channelKind.equals("private", ignoreCase = true)
@@ -1637,7 +1668,7 @@ private fun rememberThreadMembersGuestConnect(
                     servers = servers,
                     hasCurrentServerPendingInvites = false,
                     jointRole = jointRole,
-                    federateChannels = proj.channelCapabilities?.federateChannels,
+                    federateChannels = federateChannels ?: proj.channelCapabilities?.federateChannels,
                     isPrivate = isPrivate,
                     joined = proj.joined,
                     conversionInProgress = conversionFromStore,

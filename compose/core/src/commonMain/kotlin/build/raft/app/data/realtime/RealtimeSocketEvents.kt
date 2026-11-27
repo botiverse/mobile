@@ -42,6 +42,13 @@ object RealtimeSocketEvents {
     const val ThreadUpdated = GeneratedRealtimeContract.SocketEvent.ThreadUpdated
     const val ChannelUpdated = GeneratedRealtimeContract.SocketEvent.ChannelUpdated
     const val ChannelMembersUpdated = GeneratedRealtimeContract.SocketEvent.ChannelMembersUpdated
+    /**
+     * `channel:authority-updated` (`{ channelId, channelRole, authorityRevision }`, slock
+     * `services/channelMembershipRoleOutbox.ts` / `#17055`): emitted to the viewer's own room when
+     * their channel role changes. Carries no capabilities; clients re-read `GET /api/channels/:id`
+     * for held channels when `authorityRevision` is newer than stored.
+     */
+    const val ChannelAuthorityUpdated = GeneratedRealtimeContract.SocketEvent.ChannelAuthorityUpdated
     /** read_receipts_v0: an agent peer's read watermark advanced, or a large scope's summary changed. */
     const val ScopeReadUpdated = GeneratedRealtimeContract.SocketEvent.ScopeReadUpdated
     const val TaskCreated = GeneratedRealtimeContract.SocketEvent.TaskCreated
