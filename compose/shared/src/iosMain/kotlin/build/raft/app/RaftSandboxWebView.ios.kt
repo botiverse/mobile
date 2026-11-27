@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import build.raft.webcontainer.WEB_MEDIA_CAPTURE_DENIED_REASON
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
@@ -189,7 +190,9 @@ internal class RaftIosSandboxWebView(
     private var usingSpare = false
     /** [RaftWebViewConfig.backgroundArgb]: the colour before the first paint (0: white). */
     private var placeholderBackground = 0
-    /** The current WKWebView finished a page; from then on it is opaque white, as Safari. */
+    /** [RaftWebViewConfig.persistBackgroundAfterPaint]: keeps [placeholderBackground] applied after paint. */
+    private var persistBackgroundAfterPaint = false
+    /** The current WKWebView finished a page; from then on it is opaque white unless persisted. */
     private var pagePainted = false
     /** The current WKWebView is shown ([reveal]): its page finished and painted its scheme, or [RevealCapSeconds] after the commit. */
     private var pageRevealed = false
@@ -266,7 +269,7 @@ internal class RaftIosSandboxWebView(
     private fun applyBackground() {
         val view = webView
         val painted = pagePainted && view != null
-        val color = raftIosColor(raftWebViewBackgroundArgb(placeholderBackground, painted))
+        val color = raftIosColor(raftWebViewBackgroundArgb(placeholderBackground, painted, persistBackgroundAfterPaint))
         container.backgroundColor = color
         if (view == null) return
         // Before the page's document commits the WKWebView shows whatever it had (a spare's blank
@@ -275,6 +278,7 @@ internal class RaftIosSandboxWebView(
         view.opaque = painted || placeholderBackground == 0
         view.backgroundColor = if (view.opaque) color else UIColor.clearColor
         view.scrollView.backgroundColor = view.backgroundColor
+        view.underPageBackgroundColor = color
     }
 
     /**
@@ -317,8 +321,9 @@ internal class RaftIosSandboxWebView(
         (webView as? RaftIosWebView)?.showsFormAccessoryBar = showsFormAccessoryBar
         webView?.allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures
         configured = true
-        if (placeholderBackground != config.backgroundArgb) {
+        if (placeholderBackground != config.backgroundArgb || persistBackgroundAfterPaint != config.persistBackgroundAfterPaint) {
             placeholderBackground = config.backgroundArgb
+            persistBackgroundAfterPaint = config.persistBackgroundAfterPaint
             applyBackground()
         }
         val previousWebView = webView
@@ -1128,7 +1133,7 @@ internal class RaftIosSandboxWebView(
                     "viewStyle=${view.traitCollection.userInterfaceStyle} hostStyle=${container.traitCollection.userInterfaceStyle}"
             )
             if (phase != "finished") return@evaluateJavaScript
-            if (theme == null || !raftWebViewPageHasOwnBackground(theme, placeholderBackground)) {
+            if (persistBackgroundAfterPaint || theme == null || !raftWebViewPageHasOwnBackground(theme, placeholderBackground)) {
                 pagePainted = true
                 applyBackground()
             }
@@ -1881,6 +1886,10 @@ internal fun raftIosWebViewConfiguration(
 
 /** WKWebView applies the safe area and the keyboard itself. */
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false
+
+@Composable
+internal actual fun rememberRaftArtifactWebViewInsetMode(): WebContainerAndroidInsetMode =
+    WebContainerAndroidInsetMode.HostHandled
 
 /**
  * WKWebView lays a `width=1280` viewport meta out at 1280 CSS px and fits it to the view, pinch-zoomable,

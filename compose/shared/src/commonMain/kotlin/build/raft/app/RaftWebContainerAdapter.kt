@@ -340,6 +340,8 @@ internal fun RaftWebViewConfig.toWebContainerConfig(
         allowPinchZoom = allowPinchZoom,
         desktopViewportMode = useWideViewPort,
         backgroundArgb = backgroundArgb,
+        persistBackgroundAfterPaint = persistBackgroundAfterPaint,
+        androidInsetMode = androidInsetMode,
         isDarkTheme = isDarkTheme,
         coverActive = coverActive,
         allowsBackForwardNavigationGestures = allowsBackForwardNavigationGestures,

@@ -25,6 +25,7 @@ import java.net.URI
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
+import build.raft.webcontainer.WebContainerAndroidInsetMode
 import java.util.UUID
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
@@ -124,5 +125,9 @@ internal actual fun rememberRaftPngFileWriter(): RaftPngFileWriter =
     }
 
 internal actual val raftWebViewNeedsHostBottomInsets: Boolean = false
+
+@Composable
+internal actual fun rememberRaftArtifactWebViewInsetMode(): WebContainerAndroidInsetMode =
+    WebContainerAndroidInsetMode.HostHandled
 
 internal actual val raftWebViewDesktopModeViaViewportMeta: Boolean = false

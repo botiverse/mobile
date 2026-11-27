@@ -30,6 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.ScriptHandler
 import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
@@ -657,6 +660,11 @@ internal class WebContainerAndroidView(
                 previous.desktopViewportMode != next.desktopViewportMode ||
                 previous.navigationPolicy.allowNewWindows != next.navigationPolicy.allowNewWindows
         val desktopModeChanged = wasConfigured && previous.desktopViewportMode != next.desktopViewportMode
+        val backgroundChanged =
+            !wasConfigured ||
+                previous.backgroundArgb != next.backgroundArgb ||
+                previous.persistBackgroundAfterPaint != next.persistBackgroundAfterPaint
+        val insetModeChanged = wasConfigured && previous.androidInsetMode != next.androidInsetMode
         val urlChanged = !wasConfigured || previous.url.trim() != next.url.trim()
         val desiredDownloadOrigin = resolveDesiredDownloadOrigin(next)
         val downloadBridgeChanged = !wasConfigured || desiredDownloadOrigin != downloadBridgeOrigin
@@ -699,8 +707,17 @@ internal class WebContainerAndroidView(
         if (desktopModeChanged || (!wasConfigured && next.desktopViewportMode)) {
             applyDesktopModeScale()
         }
-        if (!pagePainted) {
-            webView.setBackgroundColor(effectivePlaceholderColor(next.backgroundArgb, painted = false))
+        if (!pagePainted || backgroundChanged) {
+            webView.setBackgroundColor(
+                resolveWebContainerBackgroundArgb(
+                    backgroundArgb = next.backgroundArgb,
+                    painted = pagePainted,
+                    persistAfterPaint = next.persistBackgroundAfterPaint,
+                ),
+            )
+        }
+        if (insetModeChanged) {
+            ViewCompat.requestApplyInsets(webView)
         }
         if (urlChanged) {
             loadConfiguredUrl(overrideUrl = null)
@@ -784,6 +801,7 @@ internal class WebContainerAndroidView(
         clearDocumentStartScripts()
         hostScope.cancel()
         runCatching {
+            ViewCompat.setOnApplyWindowInsetsListener(webView, null)
             webView.stopLoading()
             webView.loadUrl(ABOUT_BLANK_URL)
             webView.webChromeClient = null
@@ -842,6 +860,7 @@ internal class WebContainerAndroidView(
         removeDownloadBridge()
         clearDocumentStartScripts()
         runCatching {
+            ViewCompat.setOnApplyWindowInsetsListener(webView, null)
             webView.stopLoading()
             webView.webChromeClient = null
             webView.webViewClient = WebViewClient()
@@ -872,6 +891,7 @@ internal class WebContainerAndroidView(
         bindInitialProfileToWebView(webView, isolationScope)
         addView(webView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         configureWebView()
+        ViewCompat.requestApplyInsets(webView)
         applyWebSettings()
         applyDesktopModeScale()
         rebindDocumentStartScripts()
@@ -912,7 +932,17 @@ internal class WebContainerAndroidView(
     private fun configureWebView() {
         val configuredWebView = webView
         applyWebSettings()
-        configuredWebView.setBackgroundColor(effectivePlaceholderColor(config.backgroundArgb, painted = false))
+        configuredWebView.setBackgroundColor(
+            resolveWebContainerBackgroundArgb(
+                backgroundArgb = config.backgroundArgb,
+                painted = pagePainted,
+                persistAfterPaint = config.persistBackgroundAfterPaint,
+            ),
+        )
+        ViewCompat.setOnApplyWindowInsetsListener(configuredWebView) { view, insets ->
+            val filtered = filterWebContainerAndroidInsets(insets, config.androidInsetMode)
+            ViewCompat.onApplyWindowInsets(view, filtered)
+        }
         configuredWebView.webChromeClient =
             object : WebChromeClient() {
                 override fun onProgressChanged(view: WebView?, newProgress: Int) {
@@ -2141,7 +2171,13 @@ internal class WebContainerAndroidView(
     private fun markPagePainted() {
         if (pagePainted) return
         pagePainted = true
-        webView.setBackgroundColor(effectivePlaceholderColor(config.backgroundArgb, painted = true))
+        webView.setBackgroundColor(
+            resolveWebContainerBackgroundArgb(
+                backgroundArgb = config.backgroundArgb,
+                painted = true,
+                persistAfterPaint = config.persistBackgroundAfterPaint,
+            ),
+        )
     }
 
     private fun notifyNavigationBlocked(
@@ -2178,9 +2214,75 @@ internal class WebContainerAndroidView(
             deliver = { state -> events.onNavigationStateChange(state) },
         )
     }
+}
 
-    private fun effectivePlaceholderColor(
-        placeholderArgb: Int,
-        painted: Boolean,
-    ): Int = if (!painted && placeholderArgb != 0) placeholderArgb else 0xFFFFFFFF.toInt()
+/**
+ * Filters Android `WindowInsetsCompat` handed to Chromium `WebView.onApplyWindowInsets` according
+ * to [mode] (`android_webview/docs/insets.md`).
+ *
+ * Host-handled inset types are explicitly zeroed via `Insets.NONE` instead of returning `CONSUMED`
+ * so dynamic transitions clear any cached insets inside Chromium WebView.
+ */
+fun filterWebContainerAndroidInsets(
+    insets: WindowInsetsCompat,
+    mode: WebContainerAndroidInsetMode,
+): WindowInsetsCompat {
+    val builder = WindowInsetsCompat.Builder(insets)
+    when (mode) {
+        WebContainerAndroidInsetMode.HostHandled -> {
+            val clearedMask =
+                WindowInsetsCompat.Type.ime() or
+                    WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout()
+            val clearedIgnoringVisibilityMask =
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout()
+            builder.setInsets(clearedMask, Insets.NONE)
+            builder.setInsetsIgnoringVisibility(clearedIgnoringVisibilityMask, Insets.NONE)
+            builder.setDisplayCutout(null)
+        }
+        WebContainerAndroidInsetMode.NativeImeHostNavBar -> {
+            // Preserve ime() unconsumed for Chromium visualViewport resizing; host owns systemBars/cutout.
+            val clearedMask =
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout()
+            builder.setInsets(clearedMask, Insets.NONE)
+            builder.setInsetsIgnoringVisibility(clearedMask, Insets.NONE)
+            builder.setDisplayCutout(null)
+        }
+        WebContainerAndroidInsetMode.NativeImeAndBottomSystemBars -> {
+            // Host owns top status bar / header; preserve ime() and bottom/horizontal navigation & cutout.
+            val topBarsMask =
+                WindowInsetsCompat.Type.statusBars() or
+                    WindowInsetsCompat.Type.captionBar()
+            builder.setInsets(topBarsMask, Insets.NONE)
+            builder.setInsetsIgnoringVisibility(topBarsMask, Insets.NONE)
+
+            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            builder.setInsets(
+                WindowInsetsCompat.Type.navigationBars(),
+                Insets.of(nav.left, 0, nav.right, nav.bottom),
+            )
+            val navIgnoring = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars())
+            builder.setInsetsIgnoringVisibility(
+                WindowInsetsCompat.Type.navigationBars(),
+                Insets.of(navIgnoring.left, 0, navIgnoring.right, navIgnoring.bottom),
+            )
+
+            val cutout = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+            builder.setInsets(
+                WindowInsetsCompat.Type.displayCutout(),
+                Insets.of(cutout.left, 0, cutout.right, cutout.bottom),
+            )
+            val cutoutIgnoring = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout())
+            builder.setInsetsIgnoringVisibility(
+                WindowInsetsCompat.Type.displayCutout(),
+                Insets.of(cutoutIgnoring.left, 0, cutoutIgnoring.right, cutoutIgnoring.bottom),
+            )
+            if (cutout.left == 0 && cutout.right == 0 && cutout.bottom == 0) {
+                builder.setDisplayCutout(null)
+            }
+        }
+    }
+    return builder.build()
 }
