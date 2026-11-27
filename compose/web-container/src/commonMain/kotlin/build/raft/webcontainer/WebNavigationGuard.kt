@@ -109,8 +109,10 @@ fun evaluateMainFrameNavigation(
     chainState: WebNavigationChainState? = null,
     isUserGesture: Boolean = false,
     isRedirect: Boolean = false,
+    committedDocumentUrl: String = "",
     catchesMainFrameNavigation: ((WebMainFrameInterceptContext) -> Boolean)? = null,
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    routesMainFrameNavigationWithContext: ((WebMainFrameRouteContext) -> Boolean)? = null,
     mutateChainState: Boolean = true,
 ): WebNavigationDecision {
     val trimmed = targetUrl.trim()
@@ -158,7 +160,20 @@ fun evaluateMainFrameNavigation(
     }
 
     // 6. Host external router (e.g., open external link in system browser).
-    if (routesMainFrameNavigation != null && routesMainFrameNavigation(trimmed)) {
+    val routedExternally =
+        if (routesMainFrameNavigationWithContext != null) {
+            routesMainFrameNavigationWithContext(
+                WebMainFrameRouteContext(
+                    url = trimmed,
+                    isRedirect = isRedirect,
+                    isUserGesture = isUserGesture,
+                    committedDocumentUrl = committedDocumentUrl,
+                ),
+            )
+        } else {
+            routesMainFrameNavigation != null && routesMainFrameNavigation(trimmed)
+        }
+    if (routedExternally) {
         return WebNavigationDecision.Block(url = trimmed, reason = "routed_externally")
     }
 

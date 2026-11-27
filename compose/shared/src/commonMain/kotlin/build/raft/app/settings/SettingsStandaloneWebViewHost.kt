@@ -23,6 +23,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftPageLoadState
 import build.raft.designsystem.components.RaftPageLoadingBar
+import build.raft.designsystem.components.RaftPageLoadingBarAppearDelayMillis
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftStickerTile
 import build.raft.app.components.RaftSlotIcon
@@ -1151,11 +1152,16 @@ internal fun RaftWebPageLoadLine(state: RaftPageLoadState) {
  * placeholder and content swap uses [RaftWebPageLoadLineHost] and [RaftWebPageLoadLine] instead.
  */
 @Composable
-internal fun RaftWebPageLoadingBar(state: RaftPageLoadState, modifier: Modifier = Modifier) {
+internal fun RaftWebPageLoadingBar(
+    state: RaftPageLoadState,
+    modifier: Modifier = Modifier,
+    appearDelayMillis: Int = RaftPageLoadingBarAppearDelayMillis,
+) {
     RaftPageLoadingBar(
         state = state,
         modifier = modifier.testTag(RAFT_WEB_PAGE_LOADING_BAR_TAG),
         contentDescription = stringResource(Res.string.common_loading),
+        appearDelayMillis = appearDelayMillis,
     )
 }
 

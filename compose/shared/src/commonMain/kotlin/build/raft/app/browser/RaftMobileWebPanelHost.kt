@@ -18,7 +18,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.base.BridgeModule
@@ -29,9 +31,15 @@ import build.raft.app.compat.pager.raftPlatformName
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.launch
+
+internal const val RAFT_MOBILE_WEB_PANEL_LOADING_PLACEHOLDER_TAG = "raft_mobile_web_panel_loading_placeholder"
+
+private class RaftBooleanLatch(var value: Boolean = false)
 
 /*
  * Shared in-app browser body used by ComposeRaftInAppBrowserPage (both full-screen right-to-left
@@ -72,6 +80,7 @@ internal fun RaftMobileWebPanelBrowserBody(
     onContentProcessGone: (() -> Unit)?,
     bottomInsetDp: Dp,
     modifier: Modifier = Modifier,
+    closing: Boolean = false,
 ) {
     val appStoreBillingRules = raftPlatformFollowsAppStoreBillingRules()
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
@@ -107,6 +116,11 @@ internal fun RaftMobileWebPanelBrowserBody(
                 null
             }
         }
+    val authorizedAppEntryLatch = remember(sessionKey) { RaftBooleanLatch() }
+    if (!isOutboundChild && entryContext != null) {
+        authorizedAppEntryLatch.value = true
+    }
+    val wasAuthorizedAppEntry = authorizedAppEntryLatch.value
     val useEphemeralStore =
         remember(effectiveLaunchUrl, activeWebBaseUrl, appStoreBillingRules) {
             raftInAppBrowserUsesEphemeralStore(effectiveLaunchUrl, activeWebBaseUrl, appStoreBillingRules)
@@ -136,14 +150,27 @@ internal fun RaftMobileWebPanelBrowserBody(
 
     // Defensive fail-closed guard: if an isolated outbound/third-party page reaches the WebView
     // without MULTI_PROFILE (pre-Chromium 119 Android), hand off to the system browser immediately.
-    LaunchedEffect(storageResolution, effectiveLaunchUrl) {
-        if (storageResolution == RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser && effectiveLaunchUrl != null) {
-            bridge.logWarn("mobile_web_panel_isolated_profile_unavailable_handoff")
-            externalNavigator.open(effectiveLaunchUrl, RaftLinkOpenIntent.ForceExternal)
-            onClose()
+    // Never hand off an already-closing panel or a session previously authorized as a Raft App.
+    val failClosedAction =
+        resolveRaftMobileWebPanelFailClosedAction(
+            storageResolution = storageResolution,
+            effectiveLaunchUrl = effectiveLaunchUrl,
+            closing = closing,
+            wasAuthorizedAppEntry = wasAuthorizedAppEntry,
+        )
+    LaunchedEffect(failClosedAction, effectiveLaunchUrl) {
+        when (failClosedAction) {
+            RaftMobileWebPanelFailClosedAction.None -> Unit
+            RaftMobileWebPanelFailClosedAction.CloseSilently -> onClose()
+            RaftMobileWebPanelFailClosedAction.HandoffToSystemBrowser -> {
+                val url = effectiveLaunchUrl ?: return@LaunchedEffect
+                bridge.logWarn("mobile_web_panel_isolated_profile_unavailable_handoff")
+                externalNavigator.open(url, RaftLinkOpenIntent.ForceExternal)
+                onClose()
+            }
         }
     }
-    if (storageResolution !is RaftMobileWebPanelLaunchResolution.OpenInPanel) {
+    if (closing || storageResolution !is RaftMobileWebPanelLaunchResolution.OpenInPanel) {
         return
     }
 
@@ -160,7 +187,17 @@ internal fun RaftMobileWebPanelBrowserBody(
         remember(authStore, sharedStores.authStore) {
             settingsWebViewAuthEventSource(authStore, sharedStores.authStore)
         }
-    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, authEvents)
+    val initialSession =
+        remember(sharedStores.authStore, storeScope) {
+            val committed = runCatching { sharedStores.authStore.readCommittedSessionSnapshot() }.getOrNull()
+            val expectedServerId = storeScope?.initialServerId?.trim()?.takeIf { it.isNotEmpty() }
+            if (committed != null && (expectedServerId == null || committed.currentServerId == expectedServerId)) {
+                committed
+            } else {
+                null
+            }
+        }
+    val authSnapshot = rememberSettingsWebViewAuthSnapshot(authStore, authEvents, initialSession = initialSession)
     val signInHost =
         rememberInAppBrowserSignInHost(
             pager = pager,
@@ -212,6 +249,10 @@ internal fun RaftMobileWebPanelBrowserBody(
         }
     var loadError by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf<String?>(null) }
     var webViewAttachReady by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf(false) }
+    var hasVisualCommit by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf(false) }
+    var hasCommittedDocument by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf(false) }
+    var committedDocumentUrl by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf("") }
+    var lastObservedUrl by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf(effectiveLaunchUrl.orEmpty()) }
     var deflectedPurchase by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf(false) }
     var lastDeflectedNavigationKey by remember(sessionKey, effectiveLaunchUrl) { mutableStateOf<String?>(null) }
     var lastCommittedGeneration by remember(sessionKey, effectiveLaunchUrl) { mutableIntStateOf(-1) }
@@ -222,7 +263,9 @@ internal fun RaftMobileWebPanelBrowserBody(
         webViewAttachReady = true
     }
 
-    val currentUrl = navigationState.url.takeIf { it.isNotBlank() } ?: effectiveLaunchUrl.orEmpty()
+    val currentUrl =
+        navigationState.url.takeIf { it.isNotBlank() && !it.equals("about:blank", ignoreCase = true) }
+            ?: effectiveLaunchUrl.orEmpty()
     val latestPageVisible by rememberUpdatedState(pageVisible)
     val latestOnPushOutboundChild by rememberUpdatedState(onPushOutboundChild)
     val latestOnOpenInstalledApp by rememberUpdatedState(onOpenInstalledApp)
@@ -309,6 +352,8 @@ internal fun RaftMobileWebPanelBrowserBody(
                 activeWebBaseUrl = activeWebBaseUrl,
                 activeApiBaseUrl = activeApiBaseUrl,
                 appStoreBillingRules = appStoreBillingRules,
+                isRedirect = false,
+                committedDocumentUrl = committedDocumentUrl,
             )
         ) {
             return false
@@ -349,11 +394,7 @@ internal fun RaftMobileWebPanelBrowserBody(
     }
 
     fun handleExitToHost() {
-        if (isOutboundChild) {
-            onClose()
-        } else {
-            onSuspend?.invoke() ?: onClose()
-        }
+        onClose()
     }
 
     fun handleNavigateBack() {
@@ -362,18 +403,40 @@ internal fun RaftMobileWebPanelBrowserBody(
                 loadError = null
                 controller.goBack()
             }
-            RaftAppBrowserBackAction.PopOutboundChild -> onClose()
-            RaftAppBrowserBackAction.SuspendAppToPill -> onSuspend?.invoke() ?: onClose()
+            RaftAppBrowserBackAction.PopOutboundChild,
+            RaftAppBrowserBackAction.CloseAppPage -> onClose()
         }
     }
 
-    // Android Back / gesture & top-bar ←: WebView back if history exists, else pop child or suspend App to pill.
+    // Android Back / gesture & top-bar ←: WebView back if history exists, else close cleanly.
     RaftBackHandler(
         enabled = !inColumn && pageVisible,
         label = if (isOutboundChild) "in_app_browser_outbound" else "in_app_browser_app",
         blocksBackSwipe = false,
         onBack = ::handleNavigateBack,
     )
+
+    fun reloadCurrentPage() {
+        loadError = null
+        if (!isOutboundChild && signInUiState.declinedAuthorizeUrl != null) {
+            signInHost.session.dismissDeclinedNotice()
+        }
+        val freshTarget =
+            resolveRaftMobileWebPanelReloadTargetUrl(
+                currentUrl = navigationState.url,
+                effectiveLaunchUrl = effectiveLaunchUrl,
+                hasCommittedDocument = hasCommittedDocument,
+            )
+        if (freshTarget != null && controller.loadUrl(freshTarget)) {
+            return
+        }
+        controller.reload()
+    }
+
+    val isOnAppOrigin =
+        !isOutboundChild &&
+            entryContext != null &&
+            raftAppIsOnScopeOrigin(currentUrl, entryContext.scopeOrigin)
 
     Column(modifier = modifier.background(RaftTheme.colors.layerCanvas)) {
         RaftAppBrowserTopBar(
@@ -385,16 +448,14 @@ internal fun RaftMobileWebPanelBrowserBody(
             signedInAsName = if (isOutboundChild) null else signInHost.signedInAsName,
             onBack = ::handleNavigateBack,
             onClosePage = onClose,
-            onReload = {
-                loadError = null
-                controller.reload()
-            },
+            onReload = ::reloadCurrentPage,
             onShare = ::shareCurrentUrl,
             onCopyLink = ::copyCurrentUrl,
             onOpenInBrowser = ::openCurrentInSystemBrowser,
             inColumn = inColumn,
             canGoBack = navigationState.canGoBack,
             onExitToHost = ::handleExitToHost,
+            onMinimizeToFloat = if (!isOutboundChild && !inColumn) onSuspend else null,
             openTabCount = openTabCount,
             onOpenSwitcher = onOpenSwitcher,
             onForwardToRaft =
@@ -406,6 +467,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                 } else {
                     null
                 },
+            isOnAppOrigin = isOnAppOrigin,
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(RaftColor.SurfaceWhite)) {
             when {
@@ -445,9 +507,9 @@ internal fun RaftMobileWebPanelBrowserBody(
                         catchesMainFrameNavigation = { ask ->
                             if (!isOutboundChild) signInHost.session.onMainFrameNavigation(ask) else false
                         },
-                        routesMainFrameNavigation = { candidateUrl ->
+                        routesMainFrameNavigationWithContext = { ask ->
                             raftInAppBrowserShouldRouteNavigation(
-                                candidateUrl = candidateUrl,
+                                candidateUrl = ask.url,
                                 activeWebBaseUrl = activeWebBaseUrl,
                                 appStoreBillingRules = appStoreBillingRules,
                                 useEphemeralStore = useEphemeralStore,
@@ -458,21 +520,43 @@ internal fun RaftMobileWebPanelBrowserBody(
                                         !useEphemeralStore &&
                                         entryContext != null &&
                                         raftAppShouldRouteCrossOriginOutbound(
-                                            candidateUrl = candidateUrl,
+                                            candidateUrl = ask.url,
                                             scopeOrigin = entryContext.scopeOrigin,
                                             activeWebBaseUrl = activeWebBaseUrl,
                                             activeApiBaseUrl = activeApiBaseUrl,
                                             appStoreBillingRules = appStoreBillingRules,
+                                            isRedirect = ask.isRedirect,
+                                            committedDocumentUrl = ask.committedUrl,
                                         )
                                     )
                         },
+                        onUrlChange = { observedUrl ->
+                            val cleanObserved = observedUrl.trim()
+                            if (cleanObserved.isNotEmpty()) {
+                                lastObservedUrl = cleanObserved
+                            }
+                        },
                         onContentProcessGone = { onContentProcessGone?.invoke() },
                         onLoadCommit = {
+                            hasVisualCommit = true
+                            hasCommittedDocument = true
+                            val observed =
+                                lastObservedUrl.takeIf { it.isNotBlank() && !it.equals("about:blank", ignoreCase = true) }
+                            if (observed != null) {
+                                committedDocumentUrl = observed
+                            }
                             lastCommittedGeneration = navigationState.loadGeneration
                             pendingExternalAppLaunch = null
                             if (!isOutboundChild) signInHost.session.onPageCommitted()
                         },
                         onLoadSuccess = {
+                            hasVisualCommit = true
+                            hasCommittedDocument = true
+                            val observed =
+                                lastObservedUrl.takeIf { it.isNotBlank() && !it.equals("about:blank", ignoreCase = true) }
+                            if (observed != null) {
+                                committedDocumentUrl = observed
+                            }
                             loadError = null
                             if (navigationState.loadGeneration != lastCommittedGeneration) {
                                 lastCommittedGeneration = navigationState.loadGeneration
@@ -481,6 +565,10 @@ internal fun RaftMobileWebPanelBrowserBody(
                         },
                         onLoadFailure = { reason ->
                             if (reason == RAFT_WEBVIEW_ISOLATED_PROFILE_UNAVAILABLE_REASON) {
+                                if (closing || wasAuthorizedAppEntry) {
+                                    if (!closing) onClose()
+                                    return@RaftWebView
+                                }
                                 bridge.logWarn("mobile_web_panel_isolated_profile_runtime_fail_closed")
                                 externalNavigator.open(effectiveLaunchUrl, RaftLinkOpenIntent.ForceExternal)
                                 onClose()
@@ -558,6 +646,12 @@ internal fun RaftMobileWebPanelBrowserBody(
                             }
                             navigationState = nextState
                             if (nextUrl.isNotEmpty()) {
+                                lastObservedUrl = nextUrl
+                            }
+                            if (nextState.progress >= 25) {
+                                hasVisualCommit = true
+                            }
+                            if (nextUrl.isNotEmpty()) {
                                 latestOnNavigationMetadataChanged(nextUrl, nextState.title.takeIf { it.isNotBlank() })
                             }
                             if (nextState.isLoading) loadError = null
@@ -572,15 +666,18 @@ internal fun RaftMobileWebPanelBrowserBody(
                                 signInHost.session.dismissDeclinedNotice()
                                 externalNavigator.open(declinedAuthorizeUrl, RaftLinkOpenIntent.RaftWebPageInBrowser)
                             },
-                            onClose = signInHost.session::dismissDeclinedNotice,
+                            onClose = {
+                                when (resolveRaftMobileWebPanelDeclinedCloseAction(hasCommittedDocument = hasCommittedDocument)) {
+                                    RaftMobileWebPanelDeclinedCloseAction.DismissNotice ->
+                                        signInHost.session.dismissDeclinedNotice()
+                                    RaftMobileWebPanelDeclinedCloseAction.ClosePage -> onClose()
+                                }
+                            },
                         )
                     } else if (loadError != null) {
                         RaftInAppBrowserError(
                             message = stringResource(Res.string.in_app_browser_load_error),
-                            onRetry = {
-                                loadError = null
-                                controller.reload()
-                            },
+                            onRetry = ::reloadCurrentPage,
                             onOpenSystem = ::openCurrentInSystemBrowser,
                             onClose = if (storageResolution.isRaftApp) onClose else null,
                         )
@@ -590,6 +687,19 @@ internal fun RaftMobileWebPanelBrowserBody(
                 }
                 else -> Unit
             }
+            val showInitialLoadingPlaceholder =
+                shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                    hasLaunchUrl = effectiveLaunchUrl != null,
+                    hasVisualCommit = hasVisualCommit,
+                    hasLoadError = loadError != null,
+                    isSignInResolving = !isOutboundChild && signInUiState.resolving,
+                    hasDeclinedSignIn = !isOutboundChild && signInUiState.declinedAuthorizeUrl != null,
+                    isLoading = navigationState.isLoading,
+                    progress = navigationState.progress,
+                )
+            if (showInitialLoadingPlaceholder) {
+                RaftMobileWebPanelLoadingPlaceholder()
+            }
             if (effectiveLaunchUrl != null) {
                 RaftWebPageLoadingBar(
                     raftWebPageLoadState(
@@ -598,6 +708,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                         failed = loadError != null,
                         loadGeneration = navigationState.loadGeneration,
                     ),
+                    appearDelayMillis = 0,
                 )
             }
         }
@@ -660,6 +771,29 @@ internal fun RaftMobileWebPanelBrowserBody(
             onApprove = signInHost.session::approveCurrent,
             onCancel = signInHost.session::cancelSheet,
             onOpenInBrowser = signInHost.session::openOriginalAuthorizeInBrowser,
+        )
+    }
+}
+
+/**
+ * Lightweight centered spinner shown over the blank canvas on frame 0 until the initial document
+ * visually commits (never covers warm keep-alive tabs, error screens, or sign-in overlays).
+ */
+@Composable
+internal fun RaftMobileWebPanelLoadingPlaceholder(
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .background(RaftTheme.colors.layerCanvas)
+                .testTag(RAFT_MOBILE_WEB_PANEL_LOADING_PLACEHOLDER_TAG),
+        contentAlignment = Alignment.Center,
+    ) {
+        RaftSpinner(
+            size = RaftSpinnerSize.Md,
+            color = RaftTheme.colors.foregroundMuted,
         )
     }
 }

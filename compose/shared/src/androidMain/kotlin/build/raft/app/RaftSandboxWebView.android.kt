@@ -231,6 +231,7 @@ internal class RaftAndroidSandboxWebView(
     private var currentTitle: String = ""
     private var currentProgress: Int = 0
     private var currentIsLoading: Boolean = false
+    private var speculativeLinkLoading: Boolean = false
 
     /** Main-frame loads started ([RaftWebViewNavigationState.loadGeneration]); kept across a rebuilt WebView. */
     private var loadGeneration: Int = 0
@@ -740,6 +741,10 @@ internal class RaftAndroidSandboxWebView(
                     if (destroyed || configuredWebView !== webView) return
                     super.onProgressChanged(view, newProgress)
                     currentProgress = newProgress.coerceIn(0, 100)
+                    if (speculativeLinkLoading && currentProgress >= 100) {
+                        speculativeLinkLoading = false
+                        currentIsLoading = false
+                    }
                     logProgressMilestone(currentProgress)
                     currentUrl = view?.url.orEmpty().ifBlank { currentUrl }
                     notifyNavigationState()
@@ -970,6 +975,7 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed || configuredWebView !== webView) return
+                    speculativeLinkLoading = false
                     jsDialogTracker.cancelActive()
                     fullscreenController.hide()
                     super.onPageStarted(view, url, favicon)
@@ -997,7 +1003,7 @@ internal class RaftAndroidSandboxWebView(
                         handleBlockedMainFrameNavigation(url)
                         return
                     }
-                    if (target.isNotEmpty() && events.routesMainFrameNavigation?.invoke(target) == true) {
+                    if (target.isNotEmpty() && invokeRoutesMainFrameNavigation(target, isRedirect = true, isUserGesture = false)) {
                         view?.stopLoading()
                         val now = System.currentTimeMillis()
                         val recentlyRouted =
@@ -1035,6 +1041,7 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (destroyed || configuredWebView !== webView) return
+                    speculativeLinkLoading = false
                     super.onPageFinished(view, url)
                     val target = url.orEmpty()
                     diagnosticsInfo("page_finished url=${target.formatUrlForLog()} ${loadElapsedField()}")
@@ -1066,6 +1073,7 @@ internal class RaftAndroidSandboxWebView(
 
                 override fun onPageCommitVisible(view: WebView?, url: String?) {
                     if (destroyed || configuredWebView !== webView) return
+                    speculativeLinkLoading = false
                     super.onPageCommitVisible(view, url)
                     val target = url.orEmpty()
                     diagnosticsInfo("page_commit_visible url=${target.formatUrlForLog()} ${loadElapsedField()}")
@@ -1137,6 +1145,7 @@ internal class RaftAndroidSandboxWebView(
                 ) {
                     if (destroyed || configuredWebView !== webView) return
                     if (request?.isForMainFrame == true) {
+                        speculativeLinkLoading = false
                         val failedUrl = request.url?.toString().orEmpty()
                         if (isCurrentLoadHostCancelled(failedUrl) || isRecentlyRoutedBlocked(failedUrl)) {
                             currentIsLoading = false
@@ -1167,6 +1176,7 @@ internal class RaftAndroidSandboxWebView(
                 override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
                     handler?.cancel()
                     if (destroyed || configuredWebView !== webView) return
+                    speculativeLinkLoading = false
                     mainFrameLoadFailed = true
                     lastSuccessfulUrl = ""
                     currentUrl = error?.url.orEmpty().ifBlank { currentUrl }
@@ -1208,6 +1218,11 @@ internal class RaftAndroidSandboxWebView(
         configuredWebView.setDownloadListener(
             DownloadListener { url, _, contentDisposition, mimeType, _ ->
                 if (destroyed || configuredWebView !== webView) return@DownloadListener
+                if (speculativeLinkLoading) {
+                    speculativeLinkLoading = false
+                    currentIsLoading = false
+                    notifyNavigationState()
+                }
                 if (events.onDownloadRequested == null) {
                     notifyNavigationBlocked(url.orEmpty())
                     return@DownloadListener
@@ -1252,7 +1267,9 @@ internal class RaftAndroidSandboxWebView(
         if (tryCatchMainFrameNavigation(configuredWebView, target, stopLoading = false)) {
             return
         }
-        if (shouldRouteMainFrameNavigation(target, isUserGesture = true) || shouldBlockMainFrameNavigation(target, isUserGesture = true)) {
+        if (shouldRouteMainFrameNavigation(target, isRedirect = false, isUserGesture = true) ||
+            shouldBlockMainFrameNavigation(target, isUserGesture = true)
+        ) {
             return
         }
         val decision =
@@ -1450,6 +1467,7 @@ internal class RaftAndroidSandboxWebView(
             }
             RaftWebViewController.COMMAND_STOP -> {
                 webView?.stopLoading()
+                speculativeLinkLoading = false
                 currentIsLoading = false
                 forceNotify = false
             }
@@ -1739,10 +1757,12 @@ internal class RaftAndroidSandboxWebView(
                 hops = navChainHops.toList(),
             )
         if (events.catchesMainFrameNavigation?.invoke(catchAsk) != true) return false
+        val wasSpeculative = speculativeLinkLoading
+        speculativeLinkLoading = false
         if (stopLoading) view?.stopLoading()
         lastHostCancelledUrl = target
         lastHostCancelledAtMs = System.currentTimeMillis()
-        if (currentIsLoading && loadGeneration > 0) {
+        if (currentIsLoading && !wasSpeculative && loadGeneration > 0) {
             hostCancelledLoadGeneration = loadGeneration
             if (committedDocumentUrl.isNotEmpty()) {
                 currentUrl = committedDocumentUrl
@@ -1777,7 +1797,7 @@ internal class RaftAndroidSandboxWebView(
             return true
         }
         val isUserGesture = request.hasGesture()
-        if (shouldRouteMainFrameNavigation(target, isUserGesture = isUserGesture) ||
+        if (shouldRouteMainFrameNavigation(target, isRedirect = isRedirect, isUserGesture = isUserGesture) ||
             shouldBlockMainFrameNavigation(target, isUserGesture = isUserGesture)
         ) {
             return true
@@ -1812,6 +1832,19 @@ internal class RaftAndroidSandboxWebView(
         return when (decision) {
             RaftHostNavigationDecision.Allow -> {
                 if (!isRedirect) navChainCarriesRaftHost = requestHasHeader
+                if (
+                    isUserGesture &&
+                    !isRedirect &&
+                    !currentIsLoading &&
+                    (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) &&
+                    !isSameDocumentIgnoringFragment(currentUrl, target) &&
+                    !isRecentlyHostCancelled(target)
+                ) {
+                    speculativeLinkLoading = true
+                    currentProgress = 0
+                    currentIsLoading = true
+                    notifyNavigationState()
+                }
                 false
             }
             RaftHostNavigationDecision.ReissueWithHeader -> {
@@ -1833,6 +1866,12 @@ internal class RaftAndroidSandboxWebView(
      * page asked for it (`window.open` loads in place here, multiple windows being off), so it is
      * handed over as a blocked navigation and the page stays as it is.
      */
+    private fun isSameDocumentIgnoringFragment(left: String, right: String): Boolean {
+        val normalizedLeft = left.trim().substringBefore('#')
+        val normalizedRight = right.trim().substringBefore('#')
+        return normalizedLeft.isNotEmpty() && normalizedLeft == normalizedRight
+    }
+
     private fun isRecentlyHostCancelled(url: String): Boolean =
         url.isNotEmpty() &&
             url == lastHostCancelledUrl &&
@@ -1847,10 +1886,33 @@ internal class RaftAndroidSandboxWebView(
             url == lastRoutedBlockedUrl &&
             (System.currentTimeMillis() - lastRoutedBlockedAtMs) in 0L..1_500L
 
-    private fun shouldRouteMainFrameNavigation(url: String?, isUserGesture: Boolean = false): Boolean {
+    private fun invokeRoutesMainFrameNavigation(
+        target: String,
+        isRedirect: Boolean,
+        isUserGesture: Boolean,
+    ): Boolean {
+        val withContext = events.routesMainFrameNavigationWithContext
+        if (withContext != null) {
+            return withContext(
+                RaftWebViewMainFrameRouteAsk(
+                    url = target,
+                    isRedirect = isRedirect,
+                    isUserGesture = isUserGesture,
+                    committedUrl = committedDocumentUrl,
+                ),
+            )
+        }
+        return events.routesMainFrameNavigation?.invoke(target) == true
+    }
+
+    private fun shouldRouteMainFrameNavigation(
+        url: String?,
+        isRedirect: Boolean = false,
+        isUserGesture: Boolean = false,
+    ): Boolean {
         val target = url ?: return false
         if (wouldBlockMainFrameNavigation(target)) return false
-        if (events.routesMainFrameNavigation?.invoke(target) != true) return false
+        if (!invokeRoutesMainFrameNavigation(target, isRedirect = isRedirect, isUserGesture = isUserGesture)) return false
         diagnosticsInfo("navigation_routed_as_link url=${target.formatUrlForLog()}")
         lastRoutedBlockedUrl = target
         lastRoutedBlockedAtMs = System.currentTimeMillis()

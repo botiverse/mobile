@@ -807,7 +807,7 @@ class RaftMobileRailPlacesTest {
     fun phonePrimaryTabDefaultAppliesOnlyOnInitialSessionAndNeverOverridesServerSwitch() {
         // Initial launch before any default has applied: once the snapshot loads, apply 1st tab.
         assertFalse(
-            build.raft.app.shell.appShellShouldApplyPhonePrimaryTabDefault(
+            build.raft.app.appShellShouldApplyPhonePrimaryTabDefault(
                 activeSnapshotLoaded = false,
                 appliedDefaultServerId = null,
                 serverId = "srv-a",
@@ -816,7 +816,7 @@ class RaftMobileRailPlacesTest {
             ),
         )
         assertTrue(
-            build.raft.app.shell.appShellShouldApplyPhonePrimaryTabDefault(
+            build.raft.app.appShellShouldApplyPhonePrimaryTabDefault(
                 activeSnapshotLoaded = true,
                 appliedDefaultServerId = null,
                 serverId = "srv-a",
@@ -828,7 +828,7 @@ class RaftMobileRailPlacesTest {
         // Switching servers in place after initial landing (e.g. while on Activity tab) must NOT
         // snap back to the new server's primary tab (Home).
         assertFalse(
-            build.raft.app.shell.appShellShouldApplyPhonePrimaryTabDefault(
+            build.raft.app.appShellShouldApplyPhonePrimaryTabDefault(
                 activeSnapshotLoaded = true,
                 appliedDefaultServerId = "srv-a",
                 serverId = "srv-b",
@@ -841,7 +841,7 @@ class RaftMobileRailPlacesTest {
         // a server where mobile places is ON via server menu marks userPickedTabServerId = srv-b,
         // so it still preserves Activity instead of jumping back to Home.
         assertFalse(
-            build.raft.app.shell.appShellShouldApplyPhonePrimaryTabDefault(
+            build.raft.app.appShellShouldApplyPhonePrimaryTabDefault(
                 activeSnapshotLoaded = true,
                 appliedDefaultServerId = null,
                 serverId = "srv-b",
@@ -852,7 +852,7 @@ class RaftMobileRailPlacesTest {
 
         // Explicit deep-link / launch tab is never overridden either.
         assertFalse(
-            build.raft.app.shell.appShellShouldApplyPhonePrimaryTabDefault(
+            build.raft.app.appShellShouldApplyPhonePrimaryTabDefault(
                 activeSnapshotLoaded = true,
                 appliedDefaultServerId = null,
                 serverId = "srv-a",

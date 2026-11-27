@@ -1,24 +1,37 @@
 package build.raft.app
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
+import build.raft.app.compat.ui.LocalRaftHostImeInsets
+import build.raft.app.compat.ui.RaftHostImeInsets
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
+import kotlin.math.roundToInt
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -70,9 +83,10 @@ class RaftMobileWebPanelUiTest {
         onNodeWithTag(RAFT_WEB_PANEL_HOST_LABEL_TAG).assertIsDisplayed()
         onNodeWithText(spoofHost).assertIsDisplayed()
 
-        // Overflow menu contains Reload, Share, Copy link, Open in browser (and no Close page).
+        // Overflow menu contains Reload, Share, Copy link, Open in browser (and no Float window or Close page).
         onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
         onNodeWithText("Reload").assertIsDisplayed()
+        onNodeWithText("Float window").assertDoesNotExist()
         onNodeWithText("Share").assertIsDisplayed()
         onNodeWithText("Copy link").assertIsDisplayed()
         onNodeWithText("Close page").assertDoesNotExist()
@@ -99,7 +113,8 @@ class RaftMobileWebPanelUiTest {
                     signedInAsName = "Mia",
                     openTabCount = 3,
                     onOpenSwitcher = { actions += "switcher" },
-                    onBack = { actions += "suspend" },
+                    onMinimizeToFloat = { actions += "float" },
+                    onBack = { actions += "close_at_root" },
                     onClosePage = { actions += "close_page" },
                     onReload = { actions += "reload" },
                     onForwardToRaft = { actions += "forward_to_raft" },
@@ -115,12 +130,16 @@ class RaftMobileWebPanelUiTest {
         onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
         onNodeWithText("Signed in as Mia").assertIsDisplayed()
 
-        // Multi-page [3] switcher button is shown when >= 2 pages are open.
+        // Multi-page [3] switcher button is shown when >= 2 pages are open; Float lives in ⋮ menu, not top bar.
+        onNodeWithText("Float window").assertDoesNotExist()
         onNodeWithTag(RAFT_APP_BROWSER_SWITCHER_BUTTON_TAG).assertIsDisplayed().performClick()
 
-        // Overflow menu includes Reload, Forward to Raft, Open in browser, and Close page.
+        // Overflow menu includes Reload, Float window, Forward to Raft, Open in browser, and Close page.
         onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
         onNodeWithText("Reload").assertIsDisplayed()
+        onNodeWithText("Float window").assertIsDisplayed().performClick()
+
+        onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
         onNodeWithText("Forward to Raft").assertIsDisplayed().performClick()
 
         onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
@@ -128,7 +147,7 @@ class RaftMobileWebPanelUiTest {
 
         onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).performClick()
 
-        assertEquals(listOf("switcher", "forward_to_raft", "close_page", "suspend"), actions)
+        assertEquals(listOf("switcher", "float", "forward_to_raft", "close_page", "close_at_root"), actions)
     }
 
     @Test
@@ -355,5 +374,198 @@ class RaftMobileWebPanelUiTest {
             ),
             outcomes,
         )
+    }
+
+    @Test
+    fun zeroDelayLoadingBarAndPlaceholderRenderImmediatelyOnInitialOpen() = runRobolectricComposeUiTest {
+        var loading by mutableStateOf(true)
+        var progress by mutableStateOf(0)
+        var committed by mutableStateOf(false)
+        mainClock.autoAdvance = false
+
+        setContent {
+            RaftDesignSystemTheme {
+                CompositionLocalProvider(LocalRaftSpinnerStillStep provides 0) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (
+                            shouldShowRaftMobileWebPanelLoadingPlaceholder(
+                                hasLaunchUrl = true,
+                                hasVisualCommit = committed,
+                                hasLoadError = false,
+                                isSignInResolving = false,
+                                hasDeclinedSignIn = false,
+                                isLoading = loading,
+                                progress = progress,
+                            )
+                        ) {
+                            RaftMobileWebPanelLoadingPlaceholder()
+                        }
+                        RaftWebPageLoadingBar(
+                            state =
+                                raftWebPageLoadState(
+                                    isLoading = loading,
+                                    progress = progress,
+                                    failed = false,
+                                    loadGeneration = 0,
+                                ),
+                            appearDelayMillis = 0,
+                        )
+                    }
+                }
+            }
+        }
+
+        // Visible immediately on frame 0 without advancing 200ms.
+        mainClock.advanceTimeByFrame()
+        onNodeWithTag(RAFT_MOBILE_WEB_PANEL_LOADING_PLACEHOLDER_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
+
+        // Once the initial document commits, placeholder disappears while top bar continues loading.
+        committed = true
+        progress = 40
+        mainClock.advanceTimeByFrame()
+        onNodeWithTag(RAFT_MOBILE_WEB_PANEL_LOADING_PLACEHOLDER_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
+    }
+
+    @Test
+    fun floatingPillOverlayStartsSubsequentDragFromLivePositionAndClampsAcrossLiveImeFrames() = runRobolectricComposeUiTest {
+        val tab =
+            RaftAppBrowserTab(
+                tabId = 1L,
+                launchUrl = "https://stamp.build/pulls/1",
+                currentUrl = "https://stamp.build/pulls/1",
+                pageTitle = "PR #1",
+                appEntryToken = "tok-1",
+                scopeOrigin = "https://stamp.build",
+                appName = "Stamp",
+                isLive = true,
+                lastUsedSeq = 1L,
+            )
+        var pillFraction by mutableFloatStateOf(RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION)
+        var clicks = 0
+        val hostIme = RaftHostImeInsets()
+
+        setContent {
+            RaftDesignSystemTheme {
+                CompositionLocalProvider(LocalRaftHostImeInsets provides hostIme) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        RaftFloatingBrowserTabPillOverlay(
+                            tabs = listOf(tab),
+                            pillYFraction = pillFraction,
+                            onPillYFractionChange = { pillFraction = it },
+                            onClick = { clicks += 1 },
+                            topSafeArea = 44.dp,
+                            bottomSafeArea = 34.dp,
+                        )
+                    }
+                }
+            }
+        }
+
+        val initialBounds = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        val stepPx = 10f * density.density
+
+        // 1st drag: move pill up by ~160dp.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performTouchInput {
+            down(center)
+            repeat(16) { moveBy(Offset(0f, -stepPx)) }
+            up()
+        }
+        waitForIdle()
+        val afterFirstDrag = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        assertTrue(
+            afterFirstDrag.top < initialBounds.top - 100.dp,
+            "Expected 1st drag to move pill upward: before=${initialBounds.top}, after=${afterFirstDrag.top}",
+        )
+
+        // 2nd drag: must start from the new docked position (not jump back to the stale initial Y).
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performTouchInput {
+            down(center)
+            repeat(6) { moveBy(Offset(0f, -stepPx)) }
+            up()
+        }
+        waitForIdle()
+        val afterSecondDrag = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        assertTrue(
+            afterSecondDrag.top < afterFirstDrag.top - 30.dp,
+            "Expected 2nd drag to continue upward from ${afterFirstDrag.top}, got ${afterSecondDrag.top}",
+        )
+
+        // Drag to bottom, then open live IME: placement-only layout must lift pill above keyboard.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performTouchInput {
+            down(center)
+            repeat(60) { moveBy(Offset(0f, stepPx)) }
+            up()
+        }
+        waitForIdle()
+        val atBottomNoIme = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+
+        runOnIdle { hostIme.imeBottomPx = (300f * density.density).roundToInt() }
+        waitForIdle()
+        val liftedAboveIme = onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).getBoundsInRoot()
+        assertTrue(
+            liftedAboveIme.bottom < atBottomNoIme.bottom - 200.dp,
+            "Expected live IME inset to lift floating pill: noIme=${atBottomNoIme.bottom}, ime=${liftedAboveIme.bottom}",
+        )
+
+        // Clicking the pill after dragging + IME transitions still resumes cleanly.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
+        assertEquals(1, clicks)
+    }
+
+    @Test
+    fun raftAppTopBarHidesAppBrandingAndShowsDomainWhileOffOriginDuringOAuthRoundTrip() = runRobolectricComposeUiTest {
+        var currentUrl by mutableStateOf("https://stamp.build/settings")
+        var isOnAppOrigin by mutableStateOf(true)
+
+        setContent {
+            RaftDesignSystemTheme {
+                RaftAppBrowserTopBar(
+                    isRaftApp = true,
+                    isOutboundChild = false,
+                    currentUrl = currentUrl,
+                    appName = "Stamp",
+                    appLogoUrl = null,
+                    signedInAsName = "artin",
+                    isOnAppOrigin = isOnAppOrigin,
+                    onBack = {},
+                    onClosePage = {},
+                    onReload = {},
+                    onShare = {},
+                    onCopyLink = {},
+                    onOpenInBrowser = {},
+                )
+            }
+        }
+
+        // On Stamp's own origin: displays App identity and Raft sign-in badge.
+        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertIsDisplayed()
+        onNodeWithText("Stamp").assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
+        onNodeWithText("Signed in as artin").assertIsDisplayed()
+
+        // Temporarily on github.com during OAuth round trip: hide Stamp branding, show actual domain only.
+        runOnIdle {
+            currentUrl = "https://github.com/login/oauth/authorize?client_id=stamp"
+            isOnAppOrigin = false
+        }
+        onNodeWithTag(RAFT_WEB_PANEL_HOST_LABEL_TAG).assertIsDisplayed()
+        onNodeWithText("github.com").assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertDoesNotExist()
+        onNodeWithText("Stamp").assertDoesNotExist()
+        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertDoesNotExist()
+        onNodeWithText("Signed in as artin").assertDoesNotExist()
+
+        // Returning to stamp.build callback restores Stamp branding & Signed in as badge.
+        runOnIdle {
+            currentUrl = "https://stamp.build/auth/github/callback?code=ok"
+            isOnAppOrigin = true
+        }
+        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertIsDisplayed()
+        onNodeWithText("Stamp").assertIsDisplayed()
+        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
+        onNodeWithText("Signed in as artin").assertIsDisplayed()
+        onNodeWithText("github.com").assertDoesNotExist()
     }
 }

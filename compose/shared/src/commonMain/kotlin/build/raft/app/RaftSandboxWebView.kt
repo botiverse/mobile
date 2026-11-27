@@ -41,6 +41,19 @@ internal data class RaftWebViewMainFrameCatchAsk(
 )
 
 /**
+ * Main-frame navigation context handed synchronously to [RaftWebViewEvents.routesMainFrameNavigationWithContext]
+ * so hosts can distinguish server redirects and off-origin OAuth round trips from direct link
+ * navigations leaving a committed App document.
+ */
+internal data class RaftWebViewMainFrameRouteAsk(
+    val url: String,
+    val isRedirect: Boolean = false,
+    val isUserGesture: Boolean = false,
+    /** Committed top-level document URL currently shown, or `""` before any document commits. */
+    val committedUrl: String = "",
+)
+
+/**
  * Attributes of the sandbox WebView (formerly the Kuikly `RaftSandboxWebView` view attrs).
  * [allowedNavigationSchemes] is already normalized (lower case, no trailing ':').
  */
@@ -198,6 +211,8 @@ internal class RaftWebViewEvents {
      * own `loadCurrentSrc` loads). Null: every allowed navigation loads, as before.
      */
     var routesMainFrameNavigation: ((String) -> Boolean)? = null
+    /** Optional richer variant of [routesMainFrameNavigation] carrying redirect and committed-document context. */
+    var routesMainFrameNavigationWithContext: ((RaftWebViewMainFrameRouteAsk) -> Boolean)? = null
     /**
      * A file the page saves (`<a download>`, a `blob:` save, an attachment response), kept in the
      * app as a browser keeps it ([RaftWebViewDownload]): Android reads a `blob:` in the page and
