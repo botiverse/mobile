@@ -463,9 +463,28 @@ async function main() {
       return { offered_text: offered.text };
     });
 
-    const installer = { permission_toggle: false, installer_confirm: false, installer_open: false };
+    const installer = { initial_action: null, permission_toggle: false, installer_confirm: false, installer_open: false };
     await step("download-and-install-B", async () => {
-      await tap('the "Download" button', (n) => n.pkg === PKG && n.text === "Download" && n.enabled, { timeoutMs: 60_000 });
+      // On Wi-Fi (including the emulator), Hands may already have preloaded B (wifi_preload_ready)
+      // or still be downloading/preparing it before the update page opens, so the primary button
+      // can already read "Install", "Downloading", or "Preparing" instead of "Download".
+      const initialAction = await waitFor(
+        'the "Download", "Downloading", "Preparing", or "Install" update button',
+        (n) =>
+          n.pkg === PKG &&
+          (((n.text === "Download" || n.text === "Install") && n.enabled) ||
+            n.text === "Downloading" ||
+            n.text === "Preparing"),
+        { timeoutMs: 60_000 },
+      );
+      installer.initial_action = initialAction.text;
+      if ((initialAction.text === "Download" || initialAction.text === "Install") && initialAction.enabled) {
+        log(`update page initial action: tapping "${initialAction.text}"`);
+        tapNode(initialAction);
+        await sleep(2500);
+      } else {
+        log(`update page initial state: "${initialAction.text}" (Wi-Fi preload in progress)`);
+      }
       const deadline = Date.now() + 15 * 60_000;
       let lastState = "";
       while (Date.now() < deadline) {
