@@ -10,6 +10,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
@@ -27,6 +29,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLinkResult
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardV2Element
+import build.raft.app.markdown.RaftAppLinkHoverCardHost
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardDetail
@@ -62,33 +65,54 @@ internal class ThreadAppLinkCards(
         private set
 
     /**
-     * The links whose card was opened in this message, in that order: each keeps the pressing of
-     * its buttons ([ThreadAppLinkCardPress]) while the message is on screen, so closing the card
-     * (or opening another) never drops an action on its way or an Undo window.
+     * The links whose card was opened or hovered in this message, in that order: each keeps the
+     * pressing of its buttons ([ThreadAppLinkCardPress]) while the message is on screen, so
+     * closing the card (or moving the pointer off a hover card) never drops an action on its way,
+     * a confirmation dialog, or an Undo window.
      */
     private val openedUrls = mutableStateListOf<String>()
     val pressed: List<String> get() = openedUrls
+
+    /** Active mouse/trackpad hover card popup tokens (snapshot-backed for engagement tracking). */
+    private val hoveredTokens = mutableStateListOf<Any>()
+    val hasOpenHoverCard: Boolean get() = hoveredTokens.isNotEmpty()
 
     fun anchor(url: String): Modifier = Modifier.raftCaptureLiveRootAnchor(ref(url))
 
     fun resolve(url: String): RaftPopoverAnchor? = ref(url).resolve(RaftPopoverLocalPoint.BottomStart)
 
+    fun ensurePressed(url: String) {
+        if (url !in openedUrls) openedUrls += url
+    }
+
+    fun setHovered(token: Any, hovered: Boolean) {
+        if (hovered) {
+            if (token !in hoveredTokens) hoveredTokens += token
+        } else {
+            hoveredTokens -= token
+        }
+    }
+
+    fun openAddress(card: AppLinkResult.Card, address: String) {
+        openThreadAppLinkAddress(
+            address = address,
+            card = card,
+            preferredServerId = preferredServerId,
+            openLink = openLink,
+            openAppEntry = openAppEntry,
+            openInSystemBrowser = openInSystemBrowser,
+            lookupInstalledApp = lookupInstalledApp,
+            resolveInstalledAppAsync = resolveInstalledAppAsync,
+        )
+    }
+
     fun open(card: AppLinkResult.Card) {
         val anchor = resolve(card.url)
         if (anchor == null) {
-            openThreadAppLinkAddress(
-                address = card.connectUrl ?: card.url,
-                card = card,
-                preferredServerId = preferredServerId,
-                openLink = openLink,
-                openAppEntry = openAppEntry,
-                openInSystemBrowser = openInSystemBrowser,
-                lookupInstalledApp = lookupInstalledApp,
-                resolveInstalledAppAsync = resolveInstalledAppAsync,
-            )
+            openAddress(card, card.connectUrl ?: card.url)
             return
         }
-        if (card.url !in openedUrls) openedUrls += card.url
+        ensurePressed(card.url)
         opened = ThreadAppLinkOpenCard(card.url, anchor)
     }
 
@@ -162,10 +186,9 @@ internal fun ThreadAppLinkCardPopoverHost(
     results: Map<String, AppLinkResult>,
     cards: ThreadAppLinkCards,
     actions: ThreadAppLinkCardActionHost? = null,
+    presses: Map<String, ThreadAppLinkCardPress> = rememberThreadAppLinkChipCardPresses(results, cards, actions),
 ) {
     val fixture = LocalThreadAppLinkCardFixture.current
-    // Before every return below: the presses live with the message row, not with the open card.
-    val presses = rememberThreadAppLinkChipCardPresses(results, cards, actions)
     if (fixture != null) {
         val card = (results[fixture.openUrl] as? AppLinkResult.Card)?.takeIf { it.hasCardBody }
         LaunchedEffect(card) {
@@ -179,7 +202,8 @@ internal fun ThreadAppLinkCardPopoverHost(
     }
     val opened = cards.opened
     val card = opened?.let { (results[it.url] as? AppLinkResult.Card)?.takeIf { shown -> shown.hasCardBody } }
-    // A confirmation asked from a card that was closed meanwhile is still asked, over the thread.
+    // A confirmation asked from a card that was closed meanwhile (or from a mouse hover card)
+    // is still asked, over the thread.
     for ((url, press) in presses) {
         if (url != card?.url && press.confirmation != null) {
             key(url) { RaftDesignSystemTheme { press.Confirmation() } }
@@ -190,21 +214,11 @@ internal fun ThreadAppLinkCardPopoverHost(
         if (card == null) cards.close()
     }
     if (card == null) return
-    val openInSystemBrowser = rememberRaftSystemBrowserOpener()
     val press = presses[card.url]
     // A link of the card (the App's, or Raft's Open Link) closes the card and opens its address.
     val openAddress: (String) -> Unit = { address ->
         cards.close()
-        openThreadAppLinkAddress(
-            address = address,
-            card = card,
-            preferredServerId = cards.preferredServerId,
-            openLink = cards.openLink,
-            openAppEntry = cards.openAppEntry,
-            openInSystemBrowser = openInSystemBrowser,
-            lookupInstalledApp = cards.lookupInstalledApp,
-            resolveInstalledAppAsync = cards.resolveInstalledAppAsync,
-        )
+        cards.openAddress(card, address)
     }
     val linkNavigator = LocalRaftLinkNavigator.current
     val revisionFlow = linkNavigator?.installedAppRevisionFlow()
@@ -234,12 +248,12 @@ internal fun ThreadAppLinkCardPopoverHost(
 }
 
 /**
- * The pressing of the buttons of each chip card opened in this message ([ThreadAppLinkCards.pressed]),
- * by link: only a card with the App's v2 tree has buttons to press (a block card keeps its own
- * press, [ThreadAppLinkBlockCard]).
+ * The pressing of the buttons of each chip card opened or hovered in this message
+ * ([ThreadAppLinkCards.pressed]), by link: only a card with the App's v2 tree has buttons to press
+ * (a block card keeps its own press, [ThreadAppLinkBlockCard]).
  */
 @Composable
-private fun rememberThreadAppLinkChipCardPresses(
+internal fun rememberThreadAppLinkChipCardPresses(
     results: Map<String, AppLinkResult>,
     cards: ThreadAppLinkCards,
     actions: ThreadAppLinkCardActionHost?,
@@ -250,6 +264,53 @@ private fun rememberThreadAppLinkChipCardPresses(
         presses[url] = key(url) { rememberThreadAppLinkCardPress(card, actions) }
     }
     return presses
+}
+
+/**
+ * Row-backed [RaftAppLinkHoverCardHost] for mouse/trackpad hover cards on iPad & desktop
+ * (#proj-mobile:#415). Holds [pressesState] behind a stable Compose [State] so adding hovered URLs
+ * never changes [build.raft.app.markdown.LocalRaftAppLinkChips]'s value or recomposes the message.
+ */
+@Stable
+internal class ThreadAppLinkHoverCardHost(
+    private val cards: ThreadAppLinkCards,
+    private val pressesState: State<Map<String, ThreadAppLinkCardPress>>,
+) : RaftAppLinkHoverCardHost {
+    override fun openAddress(card: AppLinkResult.Card, address: String) {
+        cards.openAddress(card, address)
+    }
+
+    override fun ensurePressed(url: String) {
+        cards.ensurePressed(url)
+    }
+
+    override fun setHovered(token: Any, hovered: Boolean) {
+        cards.setHovered(token, hovered)
+    }
+
+    override fun hasConfirmation(url: String): Boolean =
+        pressesState.value[url]?.confirmation != null
+
+    @Composable
+    override fun buttons(
+        card: AppLinkResult.Card,
+        openUri: (String) -> Unit,
+        openLink: RaftPreviewCardButton,
+    ): List<RaftPreviewCardButton> {
+        val linkNavigator = LocalRaftLinkNavigator.current
+        // Read .value so this RecomposeScope subscribes to installed-app & rail-place updates
+        // even for cross-origin App navigate buttons whose targetUrl != card.url.
+        linkNavigator?.installedAppRevisionFlow()?.collectAsState()?.value
+        linkNavigator?.railPlacesStateFlow()?.collectAsState()?.value
+        val press = pressesState.value[card.url]
+        return card.chipCardButtons(
+            openUri = openUri,
+            openLink = openLink,
+            leavesRaftForUrl = { targetUrl -> linkNavigator?.canOpenAppLinkCardInRaft(card.url, targetUrl) != true },
+            read = { button -> press?.readButton(button) },
+            execute = { button, action -> press?.button(button, action) },
+        )
+    }
 }
 
 /**

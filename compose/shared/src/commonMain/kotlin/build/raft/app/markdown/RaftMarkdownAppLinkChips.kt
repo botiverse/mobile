@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.InlineTextContent
 import androidx.compose.foundation.text.appendInlineContent
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +51,41 @@ import build.raft.app.data.appLinkShortAddress
 import build.raft.app.raftArgbHex
 import build.raft.app.raftMonoFamilyForWeight
 import build.raft.app.raftSpanStyleForWeight
+import build.raft.designsystem.components.RaftPreviewCardButton
 import coil3.compose.AsyncImagePainter
+
+/**
+ * What [RaftMarkdownAppLinkHoverCards] needs from the message row so a mouse/trackpad hover card
+ * on iPad or desktop runs App v2 buttons (`execute`, `read`/Refresh, `navigate`) and routes links
+ * in Raft (#proj-mobile:#415):
+ * - [openAddress] routes through `openThreadAppLinkAddress` (installed Raft Apps open signed in,
+ *   `connect_account` opens in the system browser),
+ * - [ensurePressed] registers the card's row-scoped press before the popup's first frame so
+ *   confirmations and Undo windows survive hover card dismissal,
+ * - [setHovered] marks the message row engaged while a hover card is open so live
+ *   `link_card.changed` nudges do not swap content under the pointer,
+ * - [hasConfirmation] reports when Raft's confirmation dialog is open for this URL so the hover
+ *   card dismisses out of its way,
+ * - [buttons] builds the card's buttons with live action / Refresh state and per-URL `leavesRaft`
+ *   checks.
+ */
+@Stable
+internal interface RaftAppLinkHoverCardHost {
+    fun openAddress(card: AppLinkResult.Card, address: String)
+
+    fun ensurePressed(url: String)
+
+    fun setHovered(token: Any, hovered: Boolean)
+
+    fun hasConfirmation(url: String): Boolean
+
+    @Composable
+    fun buttons(
+        card: AppLinkResult.Card,
+        openUri: (String) -> Unit,
+        openLink: RaftPreviewCardButton,
+    ): List<RaftPreviewCardButton>
+}
 
 /**
  * The App link results of the message being rendered (web `AppLinkResultsProvider`), what a
@@ -86,6 +122,11 @@ internal data class RaftAppLinkChipHost(
      * so App entries open signed in (#proj-workspace:#356). Null falls back to `openUri`.
      */
     val onOpenAppLink: ((AppLinkResult.Card) -> Unit)? = null,
+    /**
+     * Row-scoped actions, in-app link routing and hover-engagement tracking for mouse/trackpad
+     * hover cards ([RaftMarkdownAppLinkHoverCards], #proj-mobile:#415). Null in standalone fixtures.
+     */
+    val hoverCardHost: RaftAppLinkHoverCardHost? = null,
 )
 
 /**

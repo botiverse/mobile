@@ -323,8 +323,34 @@ internal fun ThreadAppLinkPreviewScope(
             lookupInstalledApp = lookupInstalledApp,
             resolveInstalledAppAsync = resolveInstalledAppAsync,
         )
-    // No card changes under the person: a card of this message open, or Raft's question open on it.
-    ThreadAppLinkRowEngagementEffect(presence, cardActivity) { cards.opened != null || asking != null }
+    // No card changes under the person: a card of this message open/hovered, or Raft's question open on it.
+    ThreadAppLinkRowEngagementEffect(presence, cardActivity) { cards.opened != null || cards.hasOpenHoverCard || asking != null }
+    // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the
+    // message itself: quotes, forwards, search and Activity have no scope, so they show chips.
+    val read = batch.read
+    val actionHost =
+        remember(host, messageId, body, read, cardActivity) {
+            read?.let { batchRead ->
+                ThreadAppLinkCardActionHost(
+                    activity = cardActivity,
+                    prepare = { handle, revision -> host.store.prepareAction(host.serverId, handle, revision) },
+                    execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
+                    reread = { url -> host.store.rereadLink(host.viewerKey, host.serverId, messageId, body, batchRead, url) },
+                    held = { url -> host.store.heldLinkCard(host.viewerKey, messageId, body, batchRead, url) },
+                    nowMillis = host.store.nowMillis,
+                    toast = host.toast,
+                    toastWithIntent = host.toastWithIntent,
+                    errorToast = host.errorToast,
+                    status = { operationId -> host.store.operationStatus(host.serverId, operationId) },
+                    operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
+                )
+            }
+        }
+    // Row-scoped presses shared between tap popovers and mouse/trackpad hover cards, held behind
+    // rememberUpdatedState so hoverCardHost keeps a stable reference in LocalRaftAppLinkChips.
+    val chipCardPresses = rememberThreadAppLinkChipCardPresses(view.results, cards, actionHost)
+    val currentChipCardPresses = rememberUpdatedState(chipCardPresses)
+    val hoverCardHost = remember(cards) { ThreadAppLinkHoverCardHost(cards = cards, pressesState = currentChipCardPresses) }
     val artifactWebBaseUrl = host.artifacts?.webBaseUrl.orEmpty()
     // An Artifact link (its chip, or words the author gave it) opens in place, as its card under the
     // message does (#proj-workspace:#289); the browser only when no page can open.
@@ -334,6 +360,7 @@ internal fun ThreadAppLinkPreviewScope(
         remember(
             view.results,
             cards,
+            hoverCardHost,
             artifacts,
             artifactWebBaseUrl,
             artifactOpener,
@@ -376,28 +403,8 @@ internal fun ThreadAppLinkPreviewScope(
                         resolveInstalledAppAsync = resolveInstalledAppAsync,
                     )
                 },
+                hoverCardHost = hoverCardHost,
             )
-        }
-    // raft-design #1010: the block cards of this message, drawn after their paragraphs. Only the
-    // message itself: quotes, forwards, search and Activity have no scope, so they show chips.
-    val read = batch.read
-    val actionHost =
-        remember(host, messageId, body, read, cardActivity) {
-            read?.let { batchRead ->
-                ThreadAppLinkCardActionHost(
-                    activity = cardActivity,
-                    prepare = { handle, revision -> host.store.prepareAction(host.serverId, handle, revision) },
-                    execute = { handle, requestId, prepared -> host.store.executeAction(host.serverId, handle, requestId, prepared) },
-                    reread = { url -> host.store.rereadLink(host.viewerKey, host.serverId, messageId, body, batchRead, url) },
-                    held = { url -> host.store.heldLinkCard(host.viewerKey, messageId, body, batchRead, url) },
-                    nowMillis = host.store.nowMillis,
-                    toast = host.toast,
-                    toastWithIntent = host.toastWithIntent,
-                    errorToast = host.errorToast,
-                    status = { operationId -> host.store.operationStatus(host.serverId, operationId) },
-                    operationHints = RaftLinkCardOperationHints.forServer(host.serverId),
-                )
-            }
         }
     val blockHost =
         remember(
@@ -442,6 +449,7 @@ internal fun ThreadAppLinkPreviewScope(
         results = view.results,
         cards = cards,
         actions = actionHost,
+        presses = chipCardPresses,
     )
     // An Artifact chip on screen: boot the in-app viewer's web page ahead of a tap.
     RaftArtifactViewerPrewarm(enabled = artifacts.summaries.isNotEmpty())

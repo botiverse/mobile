@@ -2,7 +2,10 @@ package build.raft.app.markdown
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -14,8 +17,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
+import build.raft.app.LocalRaftLinkNavigator
 import build.raft.app.RaftAppLinkCardView
+import build.raft.app.chipCardButtons
 import build.raft.app.raftAppLinkCardOpenButton
+import build.raft.app.raftAppLinkOpenLinkButton
+import build.raft.app.raftLogInfo
 import build.raft.app.rememberRaftAppLinkCardLeavesRaft
 import build.raft.app.data.AppLinkResult
 import build.raft.designsystem.components.RaftPreviewCardDefaults
@@ -82,32 +89,73 @@ internal class RaftMarkdownAppLinkHoverCards(
     @Composable
     fun Popups(host: RaftAppLinkChipHost) {
         val uriHandler = LocalUriHandler.current
+        val hoverHost = host.hoverCardHost
         spans.forEachIndexed { index, span ->
             val state = states[index]
             if (!state.isTriggerHovered && !state.isOpen) return@forEachIndexed
             val card = (host.results[span.url] as? AppLinkResult.Card)?.takeIf { it.hasCardBody } ?: return@forEachIndexed
             key(span) {
+                // Register the row-scoped press as soon as hover begins (during the open delay),
+                // so App v2 action & Refresh buttons are live on the popup's first frame and
+                // confirmations / Undo windows survive if the pointer leaves the hover card.
+                LaunchedEffect(hoverHost, card.url) {
+                    hoverHost?.ensurePressed(card.url)
+                }
                 // The item card is a popover card of its own (RaftAppLinkCardView draws its surface).
                 // An item card: 400 wide (raft-ui `PreviewCardContent size="item"`, raft-design #939).
                 RaftPreviewCardPopup(state = state, anchor = anchors[index], width = RaftPreviewCardDefaults.ItemWidth, surface = false) {
-                    val leavesRaft = rememberRaftAppLinkCardLeavesRaft(cardUrl = card.url)
+                    val hoverToken = remember { Any() }
+                    DisposableEffect(hoverHost, hoverToken) {
+                        hoverHost?.setHovered(hoverToken, true)
+                        onDispose { hoverHost?.setHovered(hoverToken, false) }
+                    }
+                    val confirming = hoverHost?.hasConfirmation(card.url) == true
+                    LaunchedEffect(confirming) {
+                        if (confirming) state.dismiss()
+                    }
+                    val openAddress: (String) -> Unit = { address ->
+                        state.dismiss()
+                        if (hoverHost != null) {
+                            hoverHost.openAddress(card, address)
+                        } else {
+                            uriHandler.openUri(address)
+                        }
+                    }
+                    // Also observes installedAppRevisionFlow() and railPlacesStateFlow() while the
+                    // hover popup is open, so leavesRaft marks stay current for every button URL.
+                    val openLinkLeavesRaft = rememberRaftAppLinkCardLeavesRaft(cardUrl = card.url)
+                    val openLink =
+                        if (card.connectUrl != null) {
+                            raftAppLinkCardOpenButton(card, leavesRaft = openLinkLeavesRaft) { openAddress(it) }
+                        } else {
+                            raftAppLinkOpenLinkButton(leavesRaft = openLinkLeavesRaft) { openAddress(card.url) }
+                        }
+                    val linkNavigator = LocalRaftLinkNavigator.current
+                    val buttons =
+                        if (hoverHost != null) {
+                            hoverHost.buttons(card = card, openUri = openAddress, openLink = openLink)
+                        } else {
+                            linkNavigator?.installedAppRevisionFlow()?.collectAsState()?.value
+                            linkNavigator?.railPlacesStateFlow()?.collectAsState()?.value
+                            card.chipCardButtons(
+                                openUri = openAddress,
+                                openLink = openLink,
+                                leavesRaftForUrl = { targetUrl -> linkNavigator?.canOpenAppLinkCardInRaft(card.url, targetUrl) != true },
+                            )
+                        }
                     RaftAppLinkCardView(
                         card = card,
-                        onAction = {},
+                        onAction = { elementId -> raftLogInfo(RaftMarkdownAppLinkHoverLogTag, "app_link_card_action_ignored element=$elementId") },
                         showFooterIcon = false,
-                        buttons =
-                            listOf(
-                                raftAppLinkCardOpenButton(card, leavesRaft = leavesRaft) { address ->
-                                    state.dismiss()
-                                    uriHandler.openUri(address)
-                                },
-                            ),
+                        buttons = buttons,
                     )
                 }
             }
         }
     }
 }
+
+private const val RaftMarkdownAppLinkHoverLogTag = "RaftAppLinkCard"
 
 /** The hover cards of the App link card chips in [text]; null without a chip host or a card chip. */
 @Composable
