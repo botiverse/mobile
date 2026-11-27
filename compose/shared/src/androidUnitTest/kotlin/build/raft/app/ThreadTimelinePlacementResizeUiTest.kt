@@ -41,6 +41,7 @@ import build.raft.app.thread.ThreadTimelineSlice
 import build.raft.app.thread.ThreadUserScrollGeneration
 import build.raft.app.thread.ThreadViewportOwnerTag
 import build.raft.app.thread.canScrollToThreadItem
+import build.raft.app.thread.firstMessageListItemIndex
 import build.raft.app.thread.reduceLazyViewport
 import build.raft.app.thread.scrollThreadItemToFocusedViewport
 import build.raft.app.thread.threadFocusedItemScrollOffset
@@ -70,7 +71,7 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w400dp-h800dp-mdpi")
 class ThreadTimelinePlacementResizeUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
@@ -129,6 +130,8 @@ class ThreadTimelinePlacementResizeUiTest {
         val tracker = ThreadTimelinePlacementTracker()
         val userScrollGeneration = ThreadUserScrollGeneration()
         var viewport: ThreadListViewport? = null
+        var slice: ThreadTimelineSlice? = null
+        var hasPendingCommand: () -> Boolean = { false }
         var dispatchEvent: ((LazyViewportEvent) -> Unit)? = null
         val logs = mutableListOf<String>()
         val dispatchedOwners = mutableListOf<String>()
@@ -139,10 +142,12 @@ class ThreadTimelinePlacementResizeUiTest {
         val slice = remember(harness.rowCount, harness.focusedMessageId) {
             testSlice(testMessages(harness.rowCount), harness.focusedMessageId)
         }
+        harness.slice = slice
         val raw = rememberLazyListState()
         val viewport = remember(raw, harness.reverseLayout) { ThreadListViewport(raw, reverse = harness.reverseLayout) }
         harness.viewport = viewport
         val controllerState = remember { mutableStateOf(LazyViewportControllerState()) }
+        harness.hasPendingCommand = { controllerState.value.pendingCommand != null }
         val layoutGenState = remember { mutableStateOf(0L) }
         val payloadState = rememberUpdatedState(slice)
         val imeState = rememberUpdatedState(harness.imeInsetDp)
@@ -196,10 +201,13 @@ class ThreadTimelinePlacementResizeUiTest {
                     reverseLayout = harness.reverseLayout,
                     modifier = Modifier.fillMaxSize().testTag("timeline-list"),
                 ) {
-                    val count = harness.rowCount
-                    items(count, key = { idx ->
-                        val forwardIdx = if (harness.reverseLayout) count - 1 - idx else idx
-                        "m$forwardIdx"
+                    // Match production ThreadTimelineSlice layout: forward index 0..firstMessageListItemIndex-1
+                    // holds the history boundary item, followed by messages at firstMessageListItemIndex + i.
+                    val leadingCount = slice.firstMessageListItemIndex()
+                    val totalCount = leadingCount + harness.rowCount
+                    items(totalCount, key = { idx ->
+                        val forwardIdx = if (harness.reverseLayout) totalCount - 1 - idx else idx
+                        if (forwardIdx < leadingCount) "header-$forwardIdx" else "m${forwardIdx - leadingCount}"
                     }) {
                         Box(Modifier.fillMaxWidth().height(harness.rowHeightDp.dp))
                     }
@@ -245,6 +253,7 @@ class ThreadTimelinePlacementResizeUiTest {
                 )
             )
         }
+        waitUntil(timeoutMillis = 5_000L) { !harness.hasPendingCommand() }
         waitForIdle()
         runOnIdle {
             val rawInfo = vp.raw.layoutInfo
@@ -260,30 +269,41 @@ class ThreadTimelinePlacementResizeUiTest {
         harness.dispatchedOwners.clear()
     }
 
+    private fun androidx.compose.ui.test.ComposeUiTest.awaitResizeSettlement(
+        harness: Harness,
+        expectedGeneration: Int,
+    ) {
+        waitUntil(timeoutMillis = 5_000L) {
+            !harness.hasPendingCommand() && harness.tracker.rePlacementSettledGeneration >= expectedGeneration
+        }
+        waitForIdle()
+    }
+
     @Test
     fun reversedListShrinkAndGrowKeepFocusedMidHistoryRowPinnedAtTop() = runRobolectricComposeUiTest {
         val harness = Harness(initialHeightDp = 600, reverseLayout = true, focusedMessageId = "m6", rowCount = 20, rowHeightDp = 80)
         setContent { ResizeHost(harness) }
         waitForIdle()
         val vp = requireNotNull(harness.viewport)
+        val m6Index = requireNotNull(harness.slice).threadMessageListItemIndex("m6")
 
         placeFocusedInitially(harness)
-        val initialOffset = vp.visibleItemOffset(6)
+        val initialOffset = vp.visibleItemOffset(m6Index)
         assertTrue(initialOffset != null && abs(initialOffset) <= 2, "expected m6 initially at top, got $initialOffset")
 
         // Shrink viewport by 150dp (would clip/push m6 above top without re-placement on reverseLayout=true).
         harness.viewportHeightDp = 450
-        waitForIdle()
+        awaitResizeSettlement(harness, expectedGeneration = 1)
 
-        val offsetAfterShrink = vp.visibleItemOffset(6)
+        val offsetAfterShrink = vp.visibleItemOffset(m6Index)
         assertTrue(offsetAfterShrink != null && abs(offsetAfterShrink) <= 2, "expected m6 at top after shrink, got $offsetAfterShrink")
         assertTrue(ThreadViewportOwnerTag.FocusedResize in harness.dispatchedOwners)
         assertTrue(harness.tracker.rePlacementSettledGeneration >= 1)
 
         // Grow viewport back by +100dp -> m6 stays pinned at top == 0.
         harness.viewportHeightDp = 550
-        waitForIdle()
-        val offsetAfterGrow = vp.visibleItemOffset(6)
+        awaitResizeSettlement(harness, expectedGeneration = 2)
+        val offsetAfterGrow = vp.visibleItemOffset(m6Index)
         assertTrue(offsetAfterGrow != null && abs(offsetAfterGrow) <= 2, "expected m6 at top after grow, got $offsetAfterGrow")
     }
 
@@ -293,16 +313,17 @@ class ThreadTimelinePlacementResizeUiTest {
         setContent { ResizeHost(harness) }
         waitForIdle()
         val vp = requireNotNull(harness.viewport)
+        val m11Index = requireNotNull(harness.slice).threadMessageListItemIndex("m11")
 
         placeFocusedInitially(harness)
-        val initialBottom = vp.visibleItemBottom(11)
-        assertTrue(initialBottom != null && initialBottom <= vp.layoutInfo.viewportEndOffset + 2, "expected m11 initially in view")
+        val initialBottom = vp.visibleItemBottom(m11Index)
+        assertTrue(initialBottom != null && initialBottom <= vp.layoutInfo.viewportEndOffset + 2, "expected m11 initially in view (bottom=$initialBottom)")
 
         // Shrink by 69dp (exact slock #17076 rowLiveResize.test.ts scenario).
         harness.viewportHeightDp = 531
-        waitForIdle()
+        awaitResizeSettlement(harness, expectedGeneration = 1)
 
-        val bottom = vp.visibleItemBottom(11)
+        val bottom = vp.visibleItemBottom(m11Index)
         val viewportEnd = vp.layoutInfo.viewportEndOffset
         assertTrue(bottom != null && bottom <= viewportEnd + 2, "expected m11 wholly in view (bottom=$bottom <= end=$viewportEnd)")
         assertTrue(ThreadViewportOwnerTag.FocusedResize in harness.dispatchedOwners)
