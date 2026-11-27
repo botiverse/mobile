@@ -1288,7 +1288,7 @@ internal fun AppShellMobileRailPlacesEffects(
             return@LaunchedEffect
         }
         if (
-            build.raft.app.shell.appShellShouldApplyPhonePrimaryTabDefault(
+            appShellShouldApplyPhonePrimaryTabDefault(
                 activeSnapshotLoaded = activeSnapshotLoaded,
                 appliedDefaultServerId = appliedDefaultServerId,
                 serverId = serverId,
