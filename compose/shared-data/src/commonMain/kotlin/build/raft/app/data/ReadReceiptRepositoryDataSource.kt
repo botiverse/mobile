@@ -77,9 +77,22 @@ private suspend fun RaftNetworkClient.markChannelUnread(
 
 private suspend fun RaftNetworkClient.markInboxReadAll(
     priority: DataRequestPriority,
-    serverId: ServerId
-): HomeNetworkResponse =
-    request(priority, "channels/inbox/read-all", method = "POST", serverIdOverride = serverId)
+    serverId: ServerId,
+    clientRequestId: String? = null,
+): HomeNetworkResponse {
+    val cleanRequestId = clientRequestId?.takeIf(::isValidActivityClientRequestId)
+    return if (cleanRequestId != null) {
+        requestWithHeaders(
+            priority = priority,
+            path = "channels/inbox/read-all",
+            method = "POST",
+            serverIdOverride = serverId,
+            headers = mapOf(ActivityClientRequestIdHeader to cleanRequestId),
+        )
+    } else {
+        request(priority, "channels/inbox/read-all", method = "POST", serverIdOverride = serverId)
+    }
+}
 
 class RealReadReceiptRepository(
     private val sessionStore: RaftAuthSessionStore,
@@ -205,11 +218,17 @@ class RealReadReceiptRepository(
         )
     }
 
-    override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> {
+    override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> =
+        markInboxReadAll(serverId, clientRequestId = null)
+
+    override suspend fun markInboxReadAll(
+        serverId: ServerId,
+        clientRequestId: String?,
+    ): DataResult<ReadReceiptResult> {
         serverContext(serverId) ?: return authRequired()
         return executeReadReceipt(
             emptyReason = EmptyReason.NoInboxItems,
-            block = { networkClient.markInboxReadAll(DataRequestPriority.Visible, serverId) },
+            block = { networkClient.markInboxReadAll(DataRequestPriority.Visible, serverId, clientRequestId) },
             source = "read_inbox_all",
             mapper = { bodyText ->
                 parseReadReceiptResult(bodyText)

@@ -702,6 +702,8 @@ interface ReadReceiptRepository {
     suspend fun markChannelReadAll(channelId: ChannelId): DataResult<ReadReceiptResult>
     suspend fun markChannelUnread(channelId: ChannelId): DataResult<ReadReceiptResult>
     suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult>
+    suspend fun markInboxReadAll(serverId: ServerId, clientRequestId: String?): DataResult<ReadReceiptResult> =
+        markInboxReadAll(serverId)
 }
 
 interface InboxRepository {

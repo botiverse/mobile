@@ -287,15 +287,15 @@ import kotlin.time.TimeSource
             generation
         }
 
-    /** Server confirmed the write: start this row's hold now. */
-    fun confirm(owner: ActivityOverlayOwner, key: String, generation: Long) {
+    /** Server confirmed the write: start this row's hold now. Returns true iff the hold was still armed for [generation]. */
+    fun confirm(owner: ActivityOverlayOwner, key: String, generation: Long): Boolean =
         synchronized(lock) {
-            val scoped = entries[owner] ?: return
-            val entry = scoped[key] ?: return
-            if (entry.generation != generation) return
+            val scoped = entries[owner] ?: return@synchronized false
+            val entry = scoped[key] ?: return@synchronized false
+            if (entry.generation != generation) return@synchronized false
             scoped[key] = entry.copy(expiresAtMillis = nowMillis() + holdMillis)
+            true
         }
-    }
 
     /** Undo or failed write: drop the row immediately ([generation] null = any). */
     fun forget(owner: ActivityOverlayOwner, key: String, generation: Long? = null) {
