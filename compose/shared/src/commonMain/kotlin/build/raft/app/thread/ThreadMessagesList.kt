@@ -1779,7 +1779,11 @@ private fun ThreadMessagesListContent(
                         requests =
                             visiblePreparsePlan.candidates.mapNotNull { candidate ->
                                 candidate.inlineContentScope?.let { scope ->
-                                    RaftMarkdownDocumentWarmRequest(body = candidate.body, inlineContentScope = scope)
+                                    RaftMarkdownDocumentWarmRequest(
+                                        body = candidate.body,
+                                        inlineContentScope = scope,
+                                        externalMentionSpans = candidate.externalMentionSpans,
+                                    )
                                 }
                             },
                         context = currentMarkdownDocumentWarmContext

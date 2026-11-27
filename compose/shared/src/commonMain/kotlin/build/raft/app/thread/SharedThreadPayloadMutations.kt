@@ -742,6 +742,14 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
         // A read's quote replies win; a live copy carries none (room broadcasts never do), so the
         // loaded ones stay while the words they were resolved for stay.
         resolvedQuotes = update.resolvedQuotes ?: resolvedQuotes.takeIf { update.body.isBlank() || update.body == body },
+        // slock #17299: a body edit replaces or clears spans; a sparse patch keeping the same body preserves them.
+        externalMentionSpans =
+            build.raft.app.mergeExternalMentionSpans(
+                incomingBody = update.body,
+                incomingSpans = update.externalMentionSpans,
+                knownBody = body,
+                knownSpans = externalMentionSpans,
+            ),
     ).let { merged ->
         // RFC 077 PR 2b: a retraction is authoritative. The sparse-patch fallbacks above
         // (`ifBlank`/`ifEmpty` keep the loaded body, attachments, reactions) must not keep

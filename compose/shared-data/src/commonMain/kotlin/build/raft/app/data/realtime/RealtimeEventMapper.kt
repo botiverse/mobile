@@ -55,6 +55,7 @@ import build.raft.app.data.WireDelegatedBy
 import build.raft.app.data.WireExternalAuthor
 import build.raft.app.data.toMessageDelegatedBy
 import build.raft.app.data.LenientWireExternalAuthorSerializer
+import build.raft.app.data.decodeExternalMentionSpans
 import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.externalSenderIdOrSyntheticKey
 import build.raft.app.model.MemberId
@@ -681,6 +682,8 @@ private data class MessageWireDto(
     val externalAuthor: WireExternalAuthor? = null,
     /** `MessageMention[]` (web `messageStore.ts`); null/absent on producers that omit it. */
     val mentions: List<MessageMentionWireDto>? = null,
+    /** Slack-bridge external mention spans (`ExternalMentionSpan[]`, slock #17299), read leniently. */
+    val externalMentionSpans: JsonElement? = null,
     /** RFC 077 `DelegatedByLabel | null` (`messageRealtimeProducerRegistry.ts` lists `delegatedBy`). */
     val delegatedBy: WireDelegatedBy? = null,
     /** RFC 077 PR 2b: set when the owner retracted the message; `content` is then the placeholder. */
@@ -1591,6 +1594,7 @@ private fun MessageWireDto.toDomain(diagnostics: (String) -> Unit): Message? {
         delegatedBy = delegatedBy.toMessageDelegatedBy(authorKind),
         deletedAt = deletedAt?.takeIf { it.isNotBlank() },
         mentions = mentions.toDomainMentions(),
+        externalMentionSpans = decodeExternalMentionSpans(externalMentionSpans, authorKind),
         countsUnread = countsUnread != false,
         quietForPeople = quietForPeople == true,
         systemSubtype = systemSubtype?.trim()?.takeIf { it.isNotEmpty() },

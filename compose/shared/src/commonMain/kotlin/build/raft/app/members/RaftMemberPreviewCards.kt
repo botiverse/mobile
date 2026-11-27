@@ -19,8 +19,11 @@ import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.markdown.LocalRaftMarkdownMentionReadStates
+import build.raft.app.model.ChannelExternalMemberProfile
+import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberServerRef
+import build.raft.app.thread.RaftExternalIdentityPreviewCardContent
 import build.raft.app.thread.resolveMention
 import build.raft.designsystem.components.RaftPreviewCardPopup
 import build.raft.designsystem.components.RaftPreviewCardState
@@ -63,6 +66,8 @@ internal class RaftMemberPreviewCardSource(
             knownServers = knownServers,
         )
     },
+    /** Looks up a Slack-bridge external member by projection id for `externalMentionSpans` cards. */
+    val resolveExternalMember: (projectionId: String) -> ChannelExternalMemberProfile? = { null },
 )
 
 internal val LocalRaftMemberPreviewCardSource = compositionLocalOf<RaftMemberPreviewCardSource?> { null }
@@ -86,13 +91,96 @@ internal fun RaftMemberPreviewCardContent(
 /** String annotation over an @mention's words in rendered message text; the item is the mention's label as written. */
 internal const val RaftMarkdownMentionAnnotationTag = "raft.build.markdown.mention"
 
-/** One @mention in rendered text: its characters [start] until [end] and its label as written (`@ada`). */
-internal data class RaftMarkdownMentionSpan(val start: Int, val end: Int, val label: String)
+/** String annotation over a Slack-bridge external mention span chip in rendered message text. */
+internal const val RaftMarkdownExternalMentionAnnotationTag = "raft.build.markdown.externalMention"
+
+internal fun encodeRaftExternalMentionAnnotation(
+    actionId: String,
+    projectionId: String,
+    label: String,
+): String = "$actionId\u0000$projectionId\u0000$label"
+
+internal data class DecodedRaftExternalMentionAnnotation(
+    val actionId: String,
+    val projectionId: String,
+    val label: String,
+)
+
+internal fun decodeRaftExternalMentionAnnotation(payload: String): DecodedRaftExternalMentionAnnotation? {
+    val firstSep = payload.indexOf('\u0000')
+    if (firstSep < 0) return null
+    val secondSep = payload.indexOf('\u0000', firstSep + 1)
+    if (secondSep < 0) return null
+    val actionId = payload.substring(0, firstSep)
+    val projectionId = payload.substring(firstSep + 1, secondSep)
+    val label = payload.substring(secondSep + 1)
+    if (projectionId.isEmpty() || label.isEmpty()) return null
+    return DecodedRaftExternalMentionAnnotation(
+        actionId = actionId,
+        projectionId = projectionId,
+        label = label,
+    )
+}
+
+/**
+ * Builds the [ExternalMessageAuthor] rendered by [RaftExternalIdentityPreviewCardContent] for an
+ * external mention span chip (web `MentionLink` `ExternalIdentityPreviewBody`: uses the channel
+ * external member profile when present, otherwise falls back to [fallbackLabel]).
+ */
+internal fun ChannelExternalMemberProfile?.toExternalPreviewAuthor(
+    fallbackLabel: String,
+    projectionId: String,
+): ExternalMessageAuthor =
+    if (this != null) {
+        ExternalMessageAuthor(
+            displayName = displayName.ifBlank { fallbackLabel },
+            provider = provider?.trim().orEmpty(),
+            actorKind = actorKind?.trim()?.takeIf { it.isNotEmpty() } ?: "unknown",
+            avatarUrl = avatarUrl?.takeIf { it.isNotBlank() },
+            projectionId = id,
+            workspaceName = workspaceName?.trim()?.takeIf { it.isNotEmpty() },
+            displayNameIsFallback = false,
+        )
+    } else {
+        ExternalMessageAuthor(
+            displayName = fallbackLabel,
+            provider = "",
+            actorKind = "unknown",
+            projectionId = projectionId,
+            displayNameIsFallback = false,
+        )
+    }
+
+/** One @mention or external mention span in rendered text: its characters [start] until [end] and its visible label. */
+internal data class RaftMarkdownMentionSpan(
+    val start: Int,
+    val end: Int,
+    val label: String,
+    val externalProjectionId: String? = null,
+    val actionId: String? = null,
+)
 
 internal fun AnnotatedString.raftMarkdownMentionSpans(): List<RaftMarkdownMentionSpan> =
-    getStringAnnotations(RaftMarkdownMentionAnnotationTag, 0, length)
-        .filter { it.end > it.start }
-        .map { RaftMarkdownMentionSpan(it.start, it.end, it.item) }
+    buildList {
+        getStringAnnotations(RaftMarkdownMentionAnnotationTag, 0, length)
+            .filter { it.end > it.start }
+            .forEach { add(RaftMarkdownMentionSpan(it.start, it.end, it.item)) }
+        getStringAnnotations(RaftMarkdownExternalMentionAnnotationTag, 0, length)
+            .filter { it.end > it.start }
+            .forEach { range ->
+                decodeRaftExternalMentionAnnotation(range.item)?.let { decoded ->
+                    add(
+                        RaftMarkdownMentionSpan(
+                            start = range.start,
+                            end = range.end,
+                            label = decoded.label,
+                            externalProjectionId = decoded.projectionId,
+                            actionId = decoded.actionId,
+                        )
+                    )
+                }
+            }
+    }
         .distinct()
         .sortedBy { it.start }
 
@@ -131,6 +219,8 @@ internal class RaftMarkdownMentionPreviewCards(
     /** The text's last layout; set from its onTextLayout. */
     var layout: TextLayoutResult? = null
 
+    val hasExternalSpans: Boolean = spans.any { it.externalProjectionId != null }
+
     private val anchors = arrayOfNulls<Rect>(spans.size)
 
     // Who each mention is, looked up the first time the pointer rests on it (most never are). A miss
@@ -148,7 +238,7 @@ internal class RaftMarkdownMentionPreviewCards(
             } else {
                 val caret = layout.getOffsetForPosition(position)
                 raftMarkdownMentionIndexAt(spans, layout.layoutInput.text.length, caret) { layout.getBoundingBox(it).contains(position) }
-                    ?.takeIf { identity(it) != null }
+                    ?.takeIf { index -> spans[index].externalProjectionId != null || identity(index) != null }
             }
         states.forEachIndexed { index, state ->
             val over = index == hit
@@ -157,6 +247,18 @@ internal class RaftMarkdownMentionPreviewCards(
             }
             if (state.isTriggerHovered != over) state.setTriggerHovered(over)
         }
+    }
+
+    /** Pins the external identity preview card for [actionId] on tap/click (never opens a Raft profile). */
+    fun pinExternalAction(actionId: String): Boolean {
+        val index = spans.indexOfFirst { it.externalProjectionId != null && it.actionId == actionId }
+        if (index < 0) return false
+        val currentLayout = layout
+        if (currentLayout != null) {
+            anchors[index] = currentLayout.mentionAnchor(spans[index], spans[index].start)
+        }
+        states[index].pin()
+        return true
     }
 
     /** A click or a wheel scroll on the text: the card of the mention under the pointer closes (the click still runs). */
@@ -169,9 +271,23 @@ internal class RaftMarkdownMentionPreviewCards(
         val readStates = LocalRaftMarkdownMentionReadStates.current
         spans.forEachIndexed { index, span ->
             val state = states[index]
-            // Only a mention the pointer is on, or whose card is open, composes a popup (which runs
-            // the open and close delays).
-            if (!state.isTriggerHovered && !state.isOpen) return@forEachIndexed
+            // Only a mention the pointer is on, or whose card is open/pinned, composes a popup
+            // (which runs the open and close delays).
+            if (!state.isTriggerHovered && !state.isOpen && !state.isPinned) return@forEachIndexed
+            val projectionId = span.externalProjectionId
+            if (projectionId != null) {
+                val externalMember = source.resolveExternalMember(projectionId)
+                val author = externalMember.toExternalPreviewAuthor(fallbackLabel = span.label, projectionId = projectionId)
+                key(span) {
+                    RaftPreviewCardPopup(state = state, anchor = anchors[index]) {
+                        RaftExternalIdentityPreviewCardContent(
+                            author = author,
+                            shownName = author.displayName,
+                        )
+                    }
+                }
+                return@forEachIndexed
+            }
             val identity = identity(index) ?: return@forEachIndexed
             key(span) {
                 RaftPreviewCardPopup(state = state, anchor = anchors[index]) {
@@ -193,6 +309,26 @@ internal class RaftMarkdownMentionPreviewCards(
         }
     }
 }
+
+/**
+ * Per-markdown-body bridge letting a tap on an external mention chip pin the chip's
+ * [RaftExternalIdentityPreviewCardContent] popup in whichever paragraph owns that span.
+ */
+internal class RaftExternalMentionPinRegistry {
+    private val hosts = LinkedHashSet<RaftMarkdownMentionPreviewCards>()
+
+    fun register(cards: RaftMarkdownMentionPreviewCards) {
+        hosts += cards
+    }
+
+    fun unregister(cards: RaftMarkdownMentionPreviewCards) {
+        hosts -= cards
+    }
+
+    fun pin(actionId: String): Boolean = hosts.any { it.pinExternalAction(actionId) }
+}
+
+internal val LocalRaftExternalMentionPinRegistry = compositionLocalOf<RaftExternalMentionPinRegistry?> { null }
 
 /** The mention's words on the line of [offset] (a mention can wrap), in text px. */
 private fun TextLayoutResult.mentionAnchor(span: RaftMarkdownMentionSpan, offset: Int): Rect {

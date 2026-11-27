@@ -83,6 +83,8 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
             }
             // RFC 077: a refreshed / catch-up copy without `delegatedBy` keeps the known label.
             .withKnownDelegatedLabelsFrom(previous.messages + listOfNotNull(previous.originMessage))
+            // slock #17299: a refreshed / cached copy without `externalMentionSpans` keeps known spans for the same body.
+            .withKnownExternalMentionSpansFrom(previous.messages + listOfNotNull(previous.originMessage))
             // RFC 077 PR 2b: a refreshed / restored copy never un-retracts a message.
             .withKnownRetractionsFrom(previous.messages + listOfNotNull(previous.originMessage))
             .preserveStableItemsFrom(previous.messages) { item -> item.id }
@@ -114,7 +116,11 @@ internal fun RaftThreadScreenPayload.preserveStableTimelineFrom(
                 val known = (previous.messages + listOfNotNull(previous.originMessage)).firstOrNull { it.id == origin.id }
                 // RFC 077 PR 2b: whichever copy is known retracted (the kept one, the previous
                 // one, or this refresh's) wins; a retraction is never undone.
-                origin.withKnownDelegatedByFrom(known).withKnownRetractionFrom(known).withKnownRetractionFrom(originMessage)
+                origin
+                    .withKnownDelegatedByFrom(known)
+                    .withKnownExternalMentionSpansFrom(known)
+                    .withKnownRetractionFrom(known)
+                    .withKnownRetractionFrom(originMessage)
             }
     val stableTasks =
         tasks
@@ -434,7 +440,13 @@ private fun List<RaftThreadMessageItem>.mergeIntoExpandedTimelineWindow(
     val incomingById = associateBy { it.id }
     val previousIds = previous.mapTo(mutableSetOf()) { it.id }
     return (
-        previous.map { message -> incomingById[message.id]?.withKnownDelegatedByFrom(message)?.withKnownRetractionFrom(message) ?: message } +
+        previous.map { message ->
+            incomingById[message.id]
+                ?.withKnownDelegatedByFrom(message)
+                ?.withKnownExternalMentionSpansFrom(message)
+                ?.withKnownRetractionFrom(message)
+                ?: message
+        } +
             filterNot { message -> message.id in previousIds }
         ).sortedByThreadTimeline()
 }

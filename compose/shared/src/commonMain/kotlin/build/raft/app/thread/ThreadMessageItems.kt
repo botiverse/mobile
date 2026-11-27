@@ -6,6 +6,7 @@ import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.model.ConversationKind
+import build.raft.app.model.ExternalMentionSpan
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.model.ForwardMessageBundle
@@ -138,6 +139,8 @@ internal data class RaftThreadMessageItem(
     val forwardBundle: ForwardMessageBundle? = null,
     /** Resolved `mentions[]` of the message (name -> type/id); web `buildStructuredMentionMap`. */
     val mentions: List<build.raft.app.model.MessageMention> = emptyList(),
+    /** Slack-bridge external mention spans (`externalMentionSpans`, slock #17299); UTF-16 offsets into [body]. */
+    val externalMentionSpans: List<ExternalMentionSpan> = emptyList(),
     /**
      * Quote replies the server verified for this viewer, by quote block index
      * ([build.raft.app.model.Message.resolvedQuotes]): a card for each ([ThreadQuoteReplyBody]). Null

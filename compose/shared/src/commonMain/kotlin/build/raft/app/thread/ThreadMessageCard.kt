@@ -1728,11 +1728,14 @@ private fun ThreadMessageCardContent(
                                                 // link chips or mentions made from the cut text.
                                                 if (threadMessageRendersRichBody(message, richContentEnabled)) {
                                                     val markdownRenderSignature =
-                                                        remember(message.id, bodyForRender) {
+                                                        remember(message.id, bodyForRender, message.externalMentionSpans) {
                                                             if (bodyForRender == message.body) {
                                                                 message.threadMarkdownRenderSignature()
                                                             } else {
-                                                                message.copy(body = bodyForRender).threadMarkdownRenderSignature()
+                                                                message.copy(
+                                                                    body = bodyForRender,
+                                                                    externalMentionSpans = emptyList(),
+                                                                ).threadMarkdownRenderSignature()
                                                             }
                                                         }
                                                     LaunchedEffect(markdownRenderSignature) {
@@ -1809,7 +1812,17 @@ private fun ThreadMessageCardContent(
                                                                     onOpenMarkdownUrl(url)
                                                                 },
                                                                 performanceKey = messagePerformanceKey,
-                                                                performanceLogger = diagnosticsLogger
+                                                                performanceLogger = diagnosticsLogger,
+                                                                externalMentionSpans =
+                                                                    if (
+                                                                        message.externalAuthor != null &&
+                                                                        bodyForRender == message.body &&
+                                                                        markdownBody == message.body
+                                                                    ) {
+                                                                        message.externalMentionSpans
+                                                                    } else {
+                                                                        emptyList()
+                                                                    }
                                                             )
                                                             }
                                                           }

@@ -4,6 +4,7 @@ import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.RaftLoungeRefPrefix
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.members.LocalRaftMemberPreviewCardSource
 import build.raft.app.messages
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -38,13 +39,31 @@ internal fun threadMarkdownTagResolution(
     loungeRefsEnabled: Boolean = false,
 ): ThreadMarkdownTagResolution {
     val activeMarkdownTagKey = markdownReferencePendingActionId
+    val hasPreviewCardSource = LocalRaftMemberPreviewCardSource.current != null
     val openMarkdownTag: (ThreadMarkdownTag, String) -> Unit = openMarkdownTag@{ tag, actionId ->
-        if (tag.kind != ThreadMarkdownTagKind.UserMention && markdownReferencePendingActionId != null) {
+        if (
+            tag.kind != ThreadMarkdownTagKind.UserMention &&
+            tag.kind != ThreadMarkdownTagKind.ExternalMention &&
+            markdownReferencePendingActionId != null
+        ) {
             return@openMarkdownTag
         }
         when (tag.kind) {
             ThreadMarkdownTagKind.UserMention -> {
                 onThreadEvent("openMarkdownTag", tag.label, null, tag.kind.name)
+            }
+            ThreadMarkdownTagKind.ExternalMention -> {
+                // When a preview card source is present, tapping the chip pins its
+                // RaftExternalIdentityPreviewCardContent popup directly; otherwise fall back
+                // to the external identity hint (never open a Raft member profile).
+                if (!hasPreviewCardSource) {
+                    onThreadEvent(
+                        "openExternalMention",
+                        tag.externalProjectionId ?: tag.label,
+                        null,
+                        tag.label,
+                    )
+                }
             }
             ThreadMarkdownTagKind.Task -> {
                 // `#proj:#7` / `dm:@peer:#7` / `lounge:@agent:#7` name the task's conversation; the

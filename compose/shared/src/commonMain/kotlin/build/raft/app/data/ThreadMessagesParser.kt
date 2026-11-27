@@ -167,6 +167,7 @@ private fun WireMessage.toMessageItem(
         commentRef = commentRef?.toMessageCommentRef(),
         forwardBundle = forwardBundle.toForwardMessageBundle() ?: actionMetadata.toForwardMessageBundle(),
         mentions = mentions.toMessageMentions(),
+        externalMentionSpans = decodeExternalMentionSpans(externalMentionSpans, authorKind),
         resolvedQuotes =
             decodeResolvedInlineQuotes(
                 element = resolvedQuotes,
