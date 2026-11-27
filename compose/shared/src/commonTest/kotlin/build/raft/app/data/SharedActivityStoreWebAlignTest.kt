@@ -546,7 +546,8 @@ class SharedActivityStoreWebAlignTest {
                 override fun applyInboxRows(serverId: String, changes: List<RaftSyncInboxRowChange>): RaftSyncInboxRowsOutcome =
                     RaftSyncInboxRowsOutcome.Applied(changes.mapTo(linkedSetOf()) { it.id })
                 override fun applyRemoteDone(serverId: String, channelId: String, doneFrontierSeq: String?) = ActivityRemoteDoneOutcome.Removed
-                override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) = true
+                override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) =
+                    RaftSyncChannelMembersRefreshResult.AllSucceeded
                 override suspend fun reloadRoster(serverId: String, reason: String) = RaftSyncSnapshotRead.Taken
                 override suspend fun reloadMachines(serverId: String, reason: String) = RaftSyncSnapshotRead.Taken
                 override suspend fun applyMessageRows(serverId: String, messages: List<build.raft.app.model.Message>) = Unit

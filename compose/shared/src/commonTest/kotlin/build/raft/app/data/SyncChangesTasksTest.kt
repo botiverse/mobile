@@ -89,9 +89,13 @@ class SyncChangesTasksTest {
         override fun applyRemoteDone(serverId: String, channelId: String, doneFrontierSeq: String?): ActivityRemoteDoneOutcome =
             ActivityRemoteDoneOutcome.CannotTell
 
-        override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String): Boolean {
+        override suspend fun refreshChannelMembers(
+            serverId: String,
+            channelIds: Set<String>?,
+            reason: String,
+        ): RaftSyncChannelMembersRefreshResult {
             calls += "channel_members:$serverId"
-            return true
+            return RaftSyncChannelMembersRefreshResult.AllSucceeded
         }
 
         override suspend fun reloadRoster(serverId: String, reason: String): RaftSyncSnapshotRead {

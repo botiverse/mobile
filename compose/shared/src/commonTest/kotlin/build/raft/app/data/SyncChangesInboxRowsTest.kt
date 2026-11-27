@@ -232,7 +232,8 @@ class SyncChangesInboxRowsTest {
             return ActivityRemoteDoneOutcome.Removed
         }
 
-        override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) = true
+        override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String) =
+            RaftSyncChannelMembersRefreshResult.AllSucceeded
 
         override suspend fun reloadRoster(serverId: String, reason: String) = RaftSyncSnapshotRead.Taken
 

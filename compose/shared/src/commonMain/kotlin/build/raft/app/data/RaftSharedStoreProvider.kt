@@ -1657,10 +1657,21 @@ internal class RaftSharedStoreProvider private constructor(
                 }
             }
 
-            override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String): Boolean =
-                syncServerMembersStores(serverId)
-                    .map { store -> store.refreshLoadedChannelMembers(ServerId(serverId), channelIds, reason) }
-                    .all { it }
+            override suspend fun refreshChannelMembers(
+                serverId: String,
+                channelIds: Set<String>?,
+                reason: String,
+            ): RaftSyncChannelMembersRefreshResult {
+                val failedChannelIds = LinkedHashSet<String>()
+                for (store in syncServerMembersStores(serverId)) {
+                    failedChannelIds += store.refreshLoadedChannelMembers(ServerId(serverId), channelIds, reason)
+                }
+                return if (failedChannelIds.isEmpty()) {
+                    RaftSyncChannelMembersRefreshResult.AllSucceeded
+                } else {
+                    RaftSyncChannelMembersRefreshResult.FailedChannels(failedChannelIds)
+                }
+            }
 
             override suspend fun reloadRoster(serverId: String, reason: String): RaftSyncSnapshotRead {
                 // A forced load joins a roster flight already running, read before this change: retire

@@ -22,7 +22,7 @@ class SyncChangesStoreRouterTest {
         /** What the roster's list reads answer (one per shell store), as the provider classifies them. */
         var rosterResults: List<DataResult<*>?> = listOf(DataResult.Content(Unit))
         var machineResults: List<DataResult<*>?> = listOf(DataResult.Content(Unit))
-        var channelMembersOk = true
+        var channelMembersResult: RaftSyncChannelMembersRefreshResult = RaftSyncChannelMembersRefreshResult.AllSucceeded
         val calls = mutableListOf<String>()
         val rosterUpserts = mutableListOf<MemberProfile>()
         val rosterDeletes = mutableListOf<Pair<MemberId, MemberKind>>()
@@ -66,10 +66,14 @@ class SyncChangesStoreRouterTest {
             return remoteDoneOutcomes[channelId] ?: ActivityRemoteDoneOutcome.CannotTell
         }
 
-        override suspend fun refreshChannelMembers(serverId: String, channelIds: Set<String>?, reason: String): Boolean {
+        override suspend fun refreshChannelMembers(
+            serverId: String,
+            channelIds: Set<String>?,
+            reason: String,
+        ): RaftSyncChannelMembersRefreshResult {
             calls += "channel_members"
             channelMemberRefreshes += channelIds
-            return channelMembersOk
+            return channelMembersResult
         }
 
         override suspend fun reloadRoster(serverId: String, reason: String): RaftSyncSnapshotRead {
@@ -385,5 +389,90 @@ class SyncChangesStoreRouterTest {
         ledger.endListRead("server-1", RaftSyncListRead.Activity, ledger.beginListRead("server-1", RaftSyncListRead.Activity), RaftSyncSnapshotRead.Failed)
         assertEquals(setOf(RaftSyncListRead.Activity), ledger.takeRetakes("server-1").lists)
         assertTrue(ledger.takeRetakes("server-1").isEmpty)
+    }
+
+    @Test
+    fun `a failed channel member refresh retakes only the failed channel ids instead of rescanning the whole server`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        targets.channelMembersResult = RaftSyncChannelMembersRefreshResult.FailedChannels(setOf("ch-2"))
+
+        engine(
+            syncPage(
+                syncChangesBody(
+                    "c1.2.1",
+                    changes =
+                        listOf(
+                            syncUpsert(2, "channel_member", "ch-1:user:u-1", """{"id":"u-1"}"""),
+                            syncUpsert(3, "channel_member", "ch-2:user:u-2", """{"id":"u-2"}"""),
+                        ),
+                )
+            )
+        ).pull(syncTestScope, trigger = "foreground")
+
+        assertEquals(listOf<Set<String>?>(setOf("ch-1", "ch-2")), targets.channelMemberRefreshes)
+        assertEquals("c1.2.1", cursors.read(syncTestScope))
+
+        // Next pull retakes ONLY ch-2 (never channelIds = null).
+        targets.calls.clear()
+        targets.channelMemberRefreshes.clear()
+        targets.channelMembersResult = RaftSyncChannelMembersRefreshResult.AllSucceeded
+        engine(syncPage(syncChangesBody("c1.3.1"))).pull(syncTestScope, trigger = "foreground")
+
+        assertEquals(listOf("channel_members"), targets.calls)
+        assertEquals(listOf<Set<String>?>(setOf("ch-2")), targets.channelMemberRefreshes)
+
+        // Once ch-2 succeeds, the following pull does not retake again.
+        targets.calls.clear()
+        targets.channelMemberRefreshes.clear()
+        engine(syncPage(syncChangesBody("c1.4.1"))).pull(syncTestScope, trigger = "foreground")
+        assertEquals(emptyList(), targets.calls)
+    }
+
+    @Test
+    fun `a whole-server channel members snapshot failure with specific failed ids retakes only those channels`() = runTest {
+        targets.channelMembersResult = RaftSyncChannelMembersRefreshResult.FailedChannels(setOf("ch-active"))
+        assertTrue(router.reloadSnapshots(syncTestScope, setOf(RaftSyncSnapshot.ChannelMembers), reason = "reset"))
+        assertEquals(listOf<Set<String>?>(null), targets.channelMemberRefreshes)
+
+        targets.calls.clear()
+        targets.channelMemberRefreshes.clear()
+        targets.channelMembersResult = RaftSyncChannelMembersRefreshResult.AllSucceeded
+        router.retakeFailedReloads(syncTestScope)
+
+        assertEquals(listOf("channel_members"), targets.calls)
+        assertEquals(listOf<Set<String>?>(setOf("ch-active")), targets.channelMemberRefreshes)
+        assertTrue(ledger.takeRetakes(syncTestScope.serverId).isEmpty)
+    }
+
+    @Test
+    fun `whole-server channel members failure fallback still retakes whole server and subsumes per-channel ids`() = runTest {
+        ledger.markFailedChannelMembers("server-1", setOf("ch-1"))
+        ledger.markFailed("server-1", setOf(RaftSyncSnapshot.ChannelMembers))
+
+        val retakes = ledger.takeRetakes("server-1")
+        assertEquals(setOf(RaftSyncSnapshot.ChannelMembers), retakes.snapshots)
+        assertEquals(emptySet(), retakes.channelMemberIds)
+    }
+
+    @Test
+    fun `empty failed channel ids falls back fail-closed to whole-server channel members snapshot`() = runTest {
+        targets.channelMembersResult = RaftSyncChannelMembersRefreshResult.FailedChannels(emptySet())
+        apply(syncUpsert(1, "channel_member", "ch-1:user:u-1", """{"id":"u-1"}"""))
+
+        val retakes = ledger.takeRetakes(syncTestScope.serverId)
+        assertEquals(setOf(RaftSyncSnapshot.ChannelMembers), retakes.snapshots)
+        assertEquals(emptySet(), retakes.channelMemberIds)
+    }
+
+    @Test
+    fun `retake handles both snapshot failure and specific failed channel member ids in one pass`() = runTest {
+        ledger.markFailed(syncTestScope.serverId, setOf(RaftSyncSnapshot.Machines))
+        ledger.markFailedChannelMembers(syncTestScope.serverId, setOf("ch-9"))
+
+        router.retakeFailedReloads(syncTestScope)
+
+        assertEquals(listOf("machines_reload", "channel_members"), targets.calls)
+        assertEquals(listOf<Set<String>?>(setOf("ch-9")), targets.channelMemberRefreshes)
+        assertTrue(ledger.takeRetakes(syncTestScope.serverId).isEmpty)
     }
 }

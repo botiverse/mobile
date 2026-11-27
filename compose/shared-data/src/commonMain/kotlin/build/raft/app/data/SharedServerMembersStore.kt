@@ -169,7 +169,13 @@ data class SharedServerChannelMembersSlice(
      */
     val offlineAnswerStamp: Long = 0L,
     /** [ChannelMemberSnapshot.federateChannels]; null on a stored stand-in or when the server omitted it. */
-    val federateChannels: Boolean? = null
+    val federateChannels: Boolean? = null,
+    /**
+     * True when the server permanently refused/removed this channel (non-auth 403/404 via
+     * [SharedServerMembersStore.dropLostChannel]): prevents whole-server sync from repeatedly
+     * refetching a channel the viewer no longer has access to.
+     */
+    val accessLost: Boolean = false
 ) {
     fun snapshotOrNull(): ChannelMemberSnapshot? =
         channelId.takeIf { it.isNotBlank() }?.let {
@@ -4518,27 +4524,75 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
     }
 
     /**
-     * Incremental sync (`channel_member` rows / the `channel_members` snapshot): refetch the current
-     * owner's LOADED channel rosters of [serverId], only [channelIds] when given. A channel nobody
-     * opened has no roster here and is not fetched. False when one of them failed (a roster the
-     * viewer can no longer read is not a failure): sync reads them again on its next pull
-     * (#proj-mobile:#112).
+     * Incremental sync (`channel_member` rows / the `channel_members` snapshot):
+     * - Actively observed slices ([hasActiveChannelMemberObservers]) that are held or recovering
+     *   from a transient error refetch immediately (`force = true`). Any observed channel whose
+     *   refetch fails is returned so sync retakes only those specific channels instead of
+     *   rescanning the whole server.
+     * - Held channel slices with no active observers are evicted from memory instead of refetched
+     *   in the background, preserving freshness-by-default (#wg-mobile-feedback:#274) so the next
+     *   open fetches fresh data without triggering a serial storm over dozens of historically
+     *   opened channels (Hands 5f4a14be).
+     * - Channels not held in memory are untouched and not fetched.
      */
     @RaftCoreInternalApi suspend fun refreshLoadedChannelMembers(
         serverId: ServerId,
         channelIds: Set<String>?,
         reason: String
-    ): Boolean {
-        val serverKey = serverId.value.normalizedServerMembersId() ?: return true
-        val loaded =
-            currentOwnerChannelMemberSlices(ServerId(serverKey))
-                .filter { it.status == SharedServerMembersLoadStatus.Loaded }
-                .map { it.channelId }
-                .filter { channelIds == null || it in channelIds }
-                .distinct()
-        return loaded
-            .map { channelId -> refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason) }
-            .all { it }
+    ): Set<String> {
+        val serverKey = serverId.value.normalizedServerMembersId() ?: return emptySet()
+        val normalizedFilter =
+            channelIds?.mapNotNullTo(LinkedHashSet()) { it.normalizedServerMembersId() }
+        if (normalizedFilter != null && normalizedFilter.isEmpty()) return emptySet()
+        val binding = currentChannelMembersOwner(ServerId(serverKey)) ?: return emptySet()
+        val observedToRefresh = LinkedHashSet<String>()
+        val unobservedToInvalidate = mutableListOf<SharedServerChannelMembersScope>()
+        _state.value.channelMemberSlices.forEach { (scope, slice) ->
+            if (!scope.matches(binding) || slice.ownerWriteGeneration != binding.writeGeneration) return@forEach
+            if (normalizedFilter != null && scope.channelId !in normalizedFilter) return@forEach
+            if (!slice.isEligibleForSyncRefresh()) return@forEach
+            if (hasActiveChannelMemberObservers(scope)) {
+                observedToRefresh += scope.channelId
+            } else {
+                unobservedToInvalidate += scope
+            }
+        }
+        if (observedToRefresh.isEmpty() && unobservedToInvalidate.isEmpty()) return emptySet()
+
+        var invalidatedCount = 0
+        if (unobservedToInvalidate.isNotEmpty()) {
+            mutex.withLock {
+                if (currentChannelMembersOwner(ServerId(serverKey)) == binding) {
+                    for (scope in unobservedToInvalidate) {
+                        val currentSlice = _state.value.channelMemberSlices[scope] ?: continue
+                        if (currentSlice.ownerWriteGeneration != binding.writeGeneration) continue
+                        if (!currentSlice.isEligibleForSyncRefresh()) continue
+                        if (hasActiveChannelMemberObservers(scope)) {
+                            // Became observed while waiting for the lock: refetch instead of dropping.
+                            observedToRefresh += scope.channelId
+                        } else {
+                            removeChannelSlice(scope)
+                            invalidatedCount += 1
+                        }
+                    }
+                }
+            }
+        }
+
+        val failedChannelIds = LinkedHashSet<String>()
+        for (channelId in observedToRefresh) {
+            if (currentChannelMembersOwner(ServerId(serverKey)) != binding) break
+            if (!refreshChannelMembersBestEffort(ServerId(serverKey), ChannelId(channelId), reason)) {
+                failedChannelIds += channelId
+            }
+        }
+        if (invalidatedCount > 0 || failedChannelIds.isNotEmpty()) {
+            logger(
+                "shared_server_channel_members_sync_refresh reason=$reason serverId=$serverKey " +
+                    "observed=${observedToRefresh.size} invalidated=$invalidatedCount failed=${failedChannelIds.size}"
+            )
+        }
+        return failedChannelIds
     }
 
     /** False when the refetch failed ([RaftSyncSnapshotRead.Failed]). */
@@ -4574,7 +4628,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         "channelId=$channelKey result=no_permission code=${result.blocker.code}"
                 )
         }
-        return result.syncSnapshotRead() != RaftSyncSnapshotRead.Failed
+        return result.syncSnapshotRead() != RaftSyncSnapshotRead.Failed || result.isConversationAccessLost()
     }
 
     private fun loadedMemberSuggestionSlice(
@@ -4740,6 +4794,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                 ownerWriteGeneration = current?.ownerWriteGeneration ?: 0L,
                 status = SharedServerMembersLoadStatus.Error,
                 errorCode = code,
+                accessLost = true,
             )
         )
         channelMembersOffline?.forget(scope)
@@ -5674,6 +5729,9 @@ private suspend fun applyChannelMembersUpdatedTo(
 private fun SharedServerChannelMembersSlice.isHeldForMembersUpdated(): Boolean =
     status == SharedServerMembersLoadStatus.InFlight ||
         (status == SharedServerMembersLoadStatus.Loaded && !storedStandIn)
+
+private fun SharedServerChannelMembersSlice.isEligibleForSyncRefresh(): Boolean =
+    isHeldForMembersUpdated() || (status == SharedServerMembersLoadStatus.Error && !accessLost)
 
 /**
  * Slack-bridge participants of the mention channel as @ suggestions (web `MessageInput.tsx`
