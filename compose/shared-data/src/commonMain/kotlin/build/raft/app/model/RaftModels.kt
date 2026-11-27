@@ -1915,16 +1915,26 @@ data class ServerFeaturesChanged(
     val keys: List<String>,
 ) : RealtimeEvent
 
+/** Object row reference carried by `activity:changed` (`botiverse/slock` `#17040`). */
+@Serializable
+data class ActivityChangedObjectRef(
+    val objectKind: String,
+    val objectId: String,
+)
+
 /**
  * `activity:changed` (botiverse/slock `packages/shared/src/activityObjectsContract.ts`
- * `ActivityChangedEvent`), to the person's own room: their Activity in [serverId] changed (an
- * object event, or their own Done / undo / read of an object row elsewhere). Carries no content:
- * refetch that server's Activity and unread summary. [source] is `object` today.
+ * `ActivityChangedEvent`, `#17040`), to the person's own room: their Activity in [serverId]
+ * changed (an object event, or their own Done / undo / read of an object row or mark-all-read).
+ * [cause], [objectRef] and [requestId] are optional additive fields from `#17040`.
  */
 @Serializable
 data class ActivityChanged(
     val serverId: ServerId,
     val source: String,
+    val cause: String? = null,
+    val objectRef: ActivityChangedObjectRef? = null,
+    val requestId: String? = null,
 ) : RealtimeEvent
 
 /** The Activity row kinds named by `activity_done:updated` (botiverse/slock #16816 `ActivityDoneRowKind`). */

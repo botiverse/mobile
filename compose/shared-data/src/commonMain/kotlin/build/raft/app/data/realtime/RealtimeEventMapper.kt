@@ -460,9 +460,7 @@ class RealtimeEventMapper(
                     ?.takeIf { it.serverId.isNotBlank() }
                     ?.let { ServerFeaturesChanged(ServerId(it.serverId), it.keys) }
             RealtimeSocketEvents.ActivityChanged ->
-                decodeOrNull(ActivityChangedDto.serializer(), element)
-                    ?.takeIf { it.serverId.isNotBlank() }
-                    ?.let { ActivityChanged(ServerId(it.serverId), it.source) }
+                element.parseActivityChangedOrNull()
             RealtimeSocketEvents.ActivityDoneUpdated ->
                 element.parseActivityDoneUpdatedOrNull()
             RealtimeSocketEvents.RailPlacesUpdated ->
@@ -1129,12 +1127,40 @@ private fun JsonObject.runtimeAuthLoginHeader(): RuntimeAuthLoginHeader? {
     return RuntimeAuthLoginHeader(serverId, machineId, runtime, loginId)
 }
 
-/** slock `packages/shared/src/activityObjectsContract.ts` `ActivityChangedEvent`: `{ serverId, source }`. */
-@Serializable
-private data class ActivityChangedDto(
-    val serverId: String,
-    val source: String = "object",
-)
+/**
+ * Fail-open parser for `activity:changed` (botiverse/slock `#17040`
+ * `packages/shared/src/activityObjectsContract.ts` `ActivityChangedEvent`):
+ * `{ serverId, source, cause?, object?: { objectKind, objectId }, requestId? }`.
+ * Malformed optional fields degrade to `null` without dropping the frame.
+ */
+private fun JsonObject.parseActivityChangedOrNull(): ActivityChanged? {
+    fun strictString(key: String): String? =
+        (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+
+    val serverId = strictString("serverId") ?: return null
+    val source = strictString("source") ?: "object"
+    val cause = strictString("cause")
+    val objectRef =
+        (this["object"] as? JsonObject)?.let { obj ->
+            val objectKind =
+                (obj["objectKind"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+            val objectId =
+                (obj["objectId"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf { it.isNotBlank() }
+            if (objectKind != null && objectId != null) {
+                build.raft.app.model.ActivityChangedObjectRef(objectKind = objectKind, objectId = objectId)
+            } else {
+                null
+            }
+        }
+    val requestId = strictString("requestId")
+    return ActivityChanged(
+        serverId = ServerId(serverId),
+        source = source,
+        cause = cause,
+        objectRef = objectRef,
+        requestId = requestId,
+    )
+}
 
 /**
  * Strict parser for `activity_done:updated` (botiverse/slock #16816

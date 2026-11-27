@@ -321,20 +321,48 @@ enum class ActivityObjectAction(val path: String) {
 interface ActivityObjectsRepository {
     suspend fun act(serverId: String, action: ActivityObjectAction, row: ActivityObjectRow): DataResult<Unit>
 
+    suspend fun act(
+        serverId: String,
+        action: ActivityObjectAction,
+        row: ActivityObjectRow,
+        clientRequestId: String?,
+    ): DataResult<Unit> = act(serverId, action, row)
+
     /** Artifacts `DELETE /api/artifacts/:id/subscription` (other kinds: no route yet). */
     suspend fun unfollow(serverId: String, row: ActivityObjectRow): DataResult<Unit>
 }
 
 @RaftCoreInternalApi class NetworkActivityObjectsRepository(private val networkClient: RaftNetworkClient) : ActivityObjectsRepository {
     override suspend fun act(serverId: String, action: ActivityObjectAction, row: ActivityObjectRow): DataResult<Unit> =
+        act(serverId, action, row, clientRequestId = null)
+
+    override suspend fun act(
+        serverId: String,
+        action: ActivityObjectAction,
+        row: ActivityObjectRow,
+        clientRequestId: String?,
+    ): DataResult<Unit> =
         result {
-            networkClient.request(
-                priority = DataRequestPriority.Foreground,
-                path = action.path,
-                method = "POST",
-                serverIdOverride = ServerId(serverId),
-                bodyText = encodeObjectActivityInput(row, withThroughSeq = action == ActivityObjectAction.Done),
-            )
+            val body = encodeObjectActivityInput(row, withThroughSeq = action == ActivityObjectAction.Done)
+            val cleanRequestId = clientRequestId?.takeIf(::isValidActivityClientRequestId)
+            if (cleanRequestId != null) {
+                networkClient.requestWithHeaders(
+                    priority = DataRequestPriority.Foreground,
+                    path = action.path,
+                    method = "POST",
+                    serverIdOverride = ServerId(serverId),
+                    bodyText = body,
+                    headers = mapOf(ActivityClientRequestIdHeader to cleanRequestId),
+                )
+            } else {
+                networkClient.request(
+                    priority = DataRequestPriority.Foreground,
+                    path = action.path,
+                    method = "POST",
+                    serverIdOverride = ServerId(serverId),
+                    bodyText = body,
+                )
+            }
         }
 
     override suspend fun unfollow(serverId: String, row: ActivityObjectRow): DataResult<Unit> {

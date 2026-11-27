@@ -540,6 +540,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
      * a listed task row when `task:updated` puts a new waiting hold on the signed-in user.
      */
     private val taskWaitingOnYouEnabled: (serverId: String) -> Boolean = { false },
+    /** Mints `X-Raft-Client-Request-Id` for own Activity writes (slock `#17040`/`#17064`); injectable for tests. */
+    private val activityClientRequestIdGenerator: () -> String = ::randomActivityClientRequestId,
 ) {
     private val _state = raftStoreState(SharedActivityState(), "SharedActivityStore")
     val state: StateFlow<SharedActivityState> = _state.asStateFlow()
@@ -586,6 +588,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
     /** `inbox_row_position_v1`: one report per lowering per 90 s (web #15560); under the realtime lock. */
     private val listRowLoweredDedupe = ActivityListRowLoweredDedupe()
     private val unreadFlipTrace = ActivityUnreadFlipTrace(nowMillis)
+    private val doneReappearTrace = ActivityDoneReappearTrace(nowMillis)
+    private val ownActivityRequests = OwnActivityRequestTracker(nowMillis, mintId = activityClientRequestIdGenerator)
     private var scopedMarkReadPredictionSource: Pair<ChannelId, ActivityUnreadFlipSource>? = null
     private val doneOverlay = ActivityLocalMutationOverlay(nowMillis, localMutationHoldMillis)
     private var lastResetLoadStartedAtMillis: Long? = null
@@ -1215,6 +1219,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             readOverlay.clear()
             doneOverlay.clear()
             unreadFlipTrace.reset()
+            doneReappearTrace.reset()
+            ownActivityRequests.clear()
             scopedMarkReadPredictionSource = null
             lastResetLoadStartedAtMillis = null
             lastRowsReadAtEpochMillis = null
@@ -1868,7 +1874,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         // (botiverse/slock bab9dd8c0 socketBridge.ts), through the same throttled single-flight.
         if (event is ActivityChanged) {
             val owner = _state.value.ownerServerId
-            return if (owner != null && owner == event.serverId.value) scheduleRealtimeBackgroundReconcileLocked(trigger) else null
+            if (owner == null || owner != event.serverId.value) return null
+            if (ownActivityRequests.take(event.requestId)) {
+                diagnosticsLogger("activity_changed_echo_skipped surface=visible cause=${event.cause ?: "none"}")
+                return null
+            }
+            return scheduleRealtimeBackgroundReconcileLocked(trigger)
         }
         // dm:new refreshes like web (channelRealtimeSync.ts dmNew -> scheduleInboxRefresh):
         // with `sync_inbox_rows_v0` on, ask for the coalesced realtime sync pull instead of a full
@@ -4108,6 +4119,10 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             return
         }
         if (ownsBadge && event.rereadsHiddenOwnedList(_state.value.ownerServerId)) {
+            if (event is ActivityChanged && ownActivityRequests.take(event.requestId)) {
+                diagnosticsLogger("activity_changed_echo_skipped surface=hidden cause=${event.cause ?: "none"}")
+                return
+            }
             // An event the +1 path cannot count (the summary read it used to make is suppressed):
             // the list re-reads itself, throttled (hidden: the hidden window).
             synchronized(realtimeOwnerLock) { scheduleRealtimeBackgroundReconcileLocked(event.inboxRefreshTrigger()) }.start()
@@ -5892,7 +5907,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         scope.launch {
             withOverlaySettlement(readOverlay, overlayOwner, readGenerations) {
                 val serverId = currentServerId()
-                val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
+                val clientRequestId = serverId?.let { ownActivityRequests.mint() }
+                val result = serverId?.let { readReceiptRepository.markInboxReadAll(it, clientRequestId) }
                     ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
                 val owner =
                     readReceiptOwnerFactory
@@ -5919,6 +5935,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     // lagging copy from undoing the local clear.
                     load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
                 } else {
+                    ownActivityRequests.forget(clientRequestId)
                     readOverlay.forgetAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
                     refreshAfterFailure(previous, "activity_mark_all_read_failed")
@@ -6023,6 +6040,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 if (result !is DataResult.Content && result !is DataResult.Empty) {
                     // 409/412 (frontier moved / space required) land here too: like
                     // web, drop the hold and take the refreshed row; never replay.
+                    doneReappearTrace.forget(item.key)
                     doneOverlay.forgetAll(overlayOwner, doneGenerations)
                     if (rowKind != null && traceServerId != null) {
                         activityDoneTraceSink(
@@ -6044,7 +6062,15 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         )
                     }
                 } else {
-                    doneOverlay.confirmAll(overlayOwner, doneGenerations)
+                    doneReappearTrace.forget(item.key)
+                    val generation = doneGenerations[item.key]
+                    val confirmed =
+                        overlayOwner != null &&
+                            generation != null &&
+                            doneOverlay.confirm(overlayOwner, item.key, generation)
+                    if (confirmed && localDoneMeta != null) {
+                        doneReappearTrace.noteCommitted(item.key, item, localDoneMeta)
+                    }
                     onUnreadCountsChanged()
                     if (sameListServer && previous.snapshot != null) {
                         // Web refreshes after a confirmed Done with the hold still armed.
@@ -6092,6 +6118,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         inboxRepository.markDone(targetChannelId, frontier)
                     }
                 if (result !is DataResult.Content && result !is DataResult.Empty) {
+                    doneReappearTrace.forget(item.key)
                     doneOverlay.forgetAll(owner, doneGenerations)
                     activityDoneTraceSink(
                         owner.serverId,
@@ -6108,7 +6135,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         refreshAfterFailure(latest, "activity_mark_done_frontier_catch_up_failed")
                     }
                 } else {
-                    doneOverlay.confirmAll(owner, doneGenerations)
+                    doneReappearTrace.forget(item.key)
+                    val generation = doneGenerations[item.key]
+                    val confirmed = generation != null && doneOverlay.confirm(owner, item.key, generation)
+                    if (confirmed) {
+                        doneReappearTrace.noteCommitted(item.key, item, meta)
+                    }
                     onUnreadCountsChanged()
                     val latest = _state.value
                     if (overlayOwner(latest) == owner && latest.snapshot != null) {
@@ -6155,8 +6187,11 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         if (sameServer) removeObjectRowOptimistically(item)
         scope.launch {
             withOverlaySettlement(doneOverlay, overlayOwner, doneGenerations) {
-                val result = activityObjectsRepository?.act(targetServerId, ActivityObjectAction.Done, row)
+                val repo = activityObjectsRepository
+                val clientRequestId = repo?.let { ownActivityRequests.mint() }
+                val result = repo?.act(targetServerId, ActivityObjectAction.Done, row, clientRequestId)
                 if (result !is DataResult.Content) {
+                    ownActivityRequests.forget(clientRequestId)
                     doneOverlay.forgetAll(overlayOwner, doneGenerations)
                     if (sameServer) {
                         refreshAfterFailure(previous, "activity_object_done_failed")
@@ -6180,8 +6215,13 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val serverId = current.ownerServerId ?: current.snapshot?.server?.id?.value ?: return
         overlayOwner(current)?.let { owner -> doneOverlay.forget(owner, item.key) }
         scope.launch {
-            val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Undone, row)
-            if (result !is DataResult.Content) diagnosticsLogger("activity_object_undone result=failed key=${item.key}")
+            val repo = activityObjectsRepository
+            val clientRequestId = repo?.let { ownActivityRequests.mint() }
+            val result = repo?.act(serverId, ActivityObjectAction.Undone, row, clientRequestId)
+            if (result !is DataResult.Content) {
+                ownActivityRequests.forget(clientRequestId)
+                diagnosticsLogger("activity_object_undone result=failed key=${item.key}")
+            }
             onUnreadCountsChanged()
             load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
         }
@@ -6220,8 +6260,11 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         )
         scope.launch {
             withOverlaySettlement(readOverlay, overlayOwner, readGenerations) {
-                val result = activityObjectsRepository?.act(serverId, ActivityObjectAction.Read, row)
+                val repo = activityObjectsRepository
+                val clientRequestId = repo?.let { ownActivityRequests.mint() }
+                val result = repo?.act(serverId, ActivityObjectAction.Read, row, clientRequestId)
                 if (result !is DataResult.Content) {
+                    ownActivityRequests.forget(clientRequestId)
                     readOverlay.forgetAll(overlayOwner, readGenerations)
                     onUnreadCountsChanged()
                     refreshAfterFailure(previous, "activity_object_read_failed")
@@ -7211,6 +7254,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         if (serverId == null || serverId != event.serverId.value) return null
         val keys = event.activityDoneRowKeys()
         if (keys.isEmpty()) return null
+        doneReappearTrace.noteDoneEventElsewhere(keys, done = event.done)
         if (event.done) {
             val snapshot = current.snapshot ?: return null
             val listed = snapshot.items.filter { it.key in keys }
@@ -7398,6 +7442,12 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             next = finalState,
             source = unreadFlipSource,
             sink = unreadFlipSink,
+        )
+        doneReappearTrace.observeTransition(
+            previous = previousState,
+            next = finalState,
+            source = unreadFlipSource,
+            sink = activityDoneTraceSink,
         )
         persistSlices.forEach { slice ->
             slice.onTransition(previous = previousState, intent = intent, next = finalState)
@@ -7771,6 +7821,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     scheduleFrontierCatchUpDone(owner, item, outcome.meta)
                 }
                 is ActivityDoneHoldOutcome.LiftedMarkerNewer -> {
+                    doneReappearTrace.forget(item.key)
                     outcome.meta?.let { meta ->
                         activityDoneTraceSink(
                             owner.serverId,

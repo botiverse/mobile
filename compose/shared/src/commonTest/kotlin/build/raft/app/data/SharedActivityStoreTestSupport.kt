@@ -136,6 +136,7 @@ internal fun activityStore(
     awaitBackgroundProjectionWindow: suspend (kotlinx.coroutines.flow.StateFlow<Boolean>) -> Unit = {},
     unreadFlipSink: (serverId: String, event: ActivityUnreadStateFlipped) -> Unit = { _, _ -> },
     taskWaitingOnYouEnabled: (serverId: String) -> Boolean = { false },
+    activityClientRequestIdGenerator: () -> String = ::randomActivityClientRequestId,
 ): SharedActivityStore =
     SharedActivityStore(
         authStore = authStore,
@@ -191,6 +192,7 @@ internal fun activityStore(
         awaitBackgroundProjectionWindow = awaitBackgroundProjectionWindow,
         unreadFlipSink = unreadFlipSink,
         taskWaitingOnYouEnabled = taskWaitingOnYouEnabled,
+        activityClientRequestIdGenerator = activityClientRequestIdGenerator,
     )
 
 internal class FakeInboxRepository(
@@ -249,11 +251,13 @@ internal class FakeReadReceiptRepository(
     /** `POST /channels/:id/unread`'s answer (default: a rewind that left one unread). */
     private val unreadResult: (ChannelId) -> ReadReceiptResult = { channelId ->
         ReadReceiptResult(channelId = channelId, unreadCount = 1)
-    }
+    },
+    private val onInboxReadAll: suspend (serverId: ServerId, clientRequestId: String?) -> Unit = { _, _ -> },
 ) : ReadReceiptRepository {
     val readAllChannelIds = mutableListOf<ChannelId>()
     val unreadChannelIds = mutableListOf<ChannelId>()
     val inboxReadAllServerIds = mutableListOf<ServerId>()
+    val inboxReadAllRequestIds = mutableListOf<Pair<ServerId, String?>>()
 
     override suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot> =
         error("unused")
@@ -271,8 +275,16 @@ internal class FakeReadReceiptRepository(
         return DataResult.Content(unreadResult(channelId))
     }
 
-    override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> {
+    override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> =
+        markInboxReadAll(serverId, clientRequestId = null)
+
+    override suspend fun markInboxReadAll(
+        serverId: ServerId,
+        clientRequestId: String?,
+    ): DataResult<ReadReceiptResult> {
         inboxReadAllServerIds += serverId
+        inboxReadAllRequestIds += serverId to clientRequestId
+        onInboxReadAll(serverId, clientRequestId)
         pendingInboxReadAllResult?.let { return it.await() }
         return DataResult.Content(ReadReceiptResult())
     }
