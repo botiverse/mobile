@@ -250,11 +250,66 @@ class RuntimeServerVerdictTest {
                     admissionReason = if (deprecated) "deprecated" else null,
                     current = isCurrent,
                     availableForNew = !deprecated,
-                    manageableForCurrentAgent = isCurrent && available,
-                    canSelectInThisContext = available,
+                    manageableForCurrentAgent = isCurrent,
+                    canSelectInThisContext = isCurrent || available,
                     runtimeFormV2 = true
                 )
             }
         return ExistingAgentRuntimeOptions(agentId = "agent-1", machineId = "m-1", options = options)
+    }
+
+    @Test
+    fun offlineComputerKeepsCurrentRuntimeEditableWithoutNotInstalledSuffix() {
+        val existing = existingRows(current = "cursor", installed = emptySet())
+        val offline =
+            runtimePickerRows(
+                catalog = BundledRuntimeCatalog,
+                machineRuntimeIds = emptyList(),
+                selectedRuntimeId = "cursor",
+                showAll = true,
+                currentRuntimeId = "cursor",
+                options = existing.options,
+                isMachineOffline = true
+            )
+        val offlineCursor = offline.rows.single { it.id == "cursor" }
+        assertEquals(RuntimePickerGroup.Current, offlineCursor.group)
+        assertTrue(offlineCursor.enabled)
+        assertEquals("Cursor", offlineCursor.name)
+        assertEquals(RuntimePickerSuffix.None, offlineCursor.suffix)
+        val offlinePi = offline.rows.single { it.id == "pi" }
+        assertEquals(RuntimePickerGroup.NotInstalled, offlinePi.group)
+        assertFalse(offlinePi.enabled)
+        assertEquals(RuntimePickerSuffix.NotInstalled, offlinePi.suffix)
+
+        val onlineMissing =
+            runtimePickerRows(
+                catalog = BundledRuntimeCatalog,
+                machineRuntimeIds = emptyList(),
+                selectedRuntimeId = "cursor",
+                showAll = true,
+                currentRuntimeId = "cursor",
+                options = existing.options,
+                isMachineOffline = false
+            )
+        val onlineCursor = onlineMissing.rows.single { it.id == "cursor" }
+        assertEquals(RuntimePickerGroup.Current, onlineCursor.group)
+        assertTrue(onlineCursor.enabled)
+        assertEquals(RuntimePickerSuffix.NotInstalled, onlineCursor.suffix)
+
+        val offlineDeprecated =
+            runtimePickerRows(
+                catalog = BundledRuntimeCatalog,
+                machineRuntimeIds = emptyList(),
+                selectedRuntimeId = "copilot",
+                showAll = false,
+                currentRuntimeId = "copilot",
+                options = existingRows(current = "copilot", installed = emptySet()).options,
+                isMachineOffline = true
+            )
+        val copilot = offlineDeprecated.rows.single { it.id == "copilot" }
+        assertEquals(RuntimePickerGroup.Current, copilot.group)
+        assertTrue(copilot.enabled)
+        assertTrue(copilot.deprecated)
+        assertEquals(RuntimePickerSuffix.None, copilot.suffix)
     }
 }

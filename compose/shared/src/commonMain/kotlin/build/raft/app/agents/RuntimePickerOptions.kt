@@ -99,14 +99,15 @@ internal fun runtimePickerRows(
     currentRuntimeId: String? = null,
     serverSelectable: (String) -> Boolean? = { null },
     isFormSupported: (RuntimeCatalogForm) -> Boolean = MobileRuntimeForms::supports,
-    options: List<SharedCreateAgentRuntimeOption>? = null
+    options: List<SharedCreateAgentRuntimeOption>? = null,
+    isMachineOffline: Boolean = false
 ): RuntimePickerRows {
     val current = currentRuntimeId?.trim()?.takeIf { it.isNotBlank() }
     val classified =
         if (options != null) {
-            serverRowPickerRows(catalog, options, current, isFormSupported)
+            serverRowPickerRows(catalog, options, current, isFormSupported, isMachineOffline)
         } else {
-            catalogPickerRows(catalog, machineRuntimeIds, current, serverSelectable, isFormSupported)
+            catalogPickerRows(catalog, machineRuntimeIds, current, serverSelectable, isFormSupported, isMachineOffline)
         }
     // Not offered here (rollout or admission): nothing to do about it, so not listed unless it is
     // the field's value, and it doesn't count toward "only not-installed rows" either.
@@ -141,19 +142,23 @@ private fun serverRowPickerRows(
     catalog: ServerRuntimeCatalog,
     options: List<SharedCreateAgentRuntimeOption>,
     current: String?,
-    isFormSupported: (RuntimeCatalogForm) -> Boolean
+    isFormSupported: (RuntimeCatalogForm) -> Boolean,
+    isMachineOffline: Boolean = false
 ): List<RuntimePickerRow> {
     val rows =
         options.map { row ->
             val entry = catalog.namingEntry(row.runtimeId)
-            val suffix =
-                when (row.capabilityStatus) {
-                    "available" -> RuntimePickerSuffix.None
-                    "update_required" -> RuntimePickerSuffix.UpdateComputer
-                    else -> RuntimePickerSuffix.NotInstalled
-                }
             // Current only for the agent's own runtime id: rows read before a switch mark the old one.
             val isCurrent = row.runtimeId == current
+            // slock #16973: when the Computer is offline we don't know what's installed, so don't
+            // label the agent's own runtime "(not installed)" or "Update required".
+            val suffix =
+                when {
+                    isCurrent && isMachineOffline -> RuntimePickerSuffix.None
+                    row.capabilityStatus == "available" -> RuntimePickerSuffix.None
+                    row.capabilityStatus == "update_required" -> RuntimePickerSuffix.UpdateComputer
+                    else -> RuntimePickerSuffix.NotInstalled
+                }
             val group =
                 when {
                     isCurrent -> RuntimePickerGroup.Current
@@ -177,7 +182,7 @@ private fun serverRowPickerRows(
     if (current == null || rows.any { it.id == current }) return rows
     // The server's rows always carry the agent's runtime; rows that lack it (read before a switch)
     // still pin it first, named as the catalog fallback does.
-    return catalogPickerRows(catalog, emptyList(), current, { null }, isFormSupported).filter { it.id == current } + rows
+    return catalogPickerRows(catalog, emptyList(), current, { null }, isFormSupported, isMachineOffline).filter { it.id == current } + rows
 }
 
 /** The fallback without the server's rows: [catalog]'s runtimes, a deprecated one only as [current]. */
@@ -186,7 +191,8 @@ private fun catalogPickerRows(
     machineRuntimeIds: List<String>,
     current: String?,
     serverSelectable: (String) -> Boolean?,
-    isFormSupported: (RuntimeCatalogForm) -> Boolean
+    isFormSupported: (RuntimeCatalogForm) -> Boolean,
+    isMachineOffline: Boolean = false
 ): List<RuntimePickerRow> {
     val available = machineRuntimeIds.map { it.trim() }.filter { it.isNotBlank() }.toSet()
     val entries =
@@ -200,8 +206,10 @@ private fun catalogPickerRows(
             }
         }
     return entries.map { entry ->
+        val isCurrent = entry.id == current
         val suffix =
             when {
+                isCurrent && isMachineOffline -> RuntimePickerSuffix.None
                 !entry.supported -> RuntimePickerSuffix.ComingSoon
                 entry.id in available -> RuntimePickerSuffix.None
                 entry.binary.isEmpty() -> RuntimePickerSuffix.UpdateComputer
@@ -209,7 +217,7 @@ private fun catalogPickerRows(
             }
         val group =
             when {
-                entry.id == current -> RuntimePickerGroup.Current
+                isCurrent -> RuntimePickerGroup.Current
                 !entry.hasMobileForm(isFormSupported) -> RuntimePickerGroup.NeedsAppUpdate
                 suffix == RuntimePickerSuffix.None ->
                     if (serverSelectable(entry.id) == false) RuntimePickerGroup.NotAvailable else RuntimePickerGroup.Ready

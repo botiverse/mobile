@@ -313,6 +313,7 @@ internal fun MembersAgentRuntimeConfigSection(
     edit: MembersAgentProfileEditInputs,
     runtimeModels: MembersAgentRuntimeModelInputs,
     createAgentFormStore: SharedCreateAgentFormStore?,
+    machineStatusRow: (machineId: String?) -> MembersMachineStatusRow = { MembersMachineStatusRow.Loading },
     onApplyAgentRuntimeConfigProjection: suspend (MembersAgentProfileEditAuthority, RuntimeConfig, Boolean?) -> Boolean
 ) {
     // Web AgentProfileInfo renders this section only `!isExternalAgent`: an external or cloud
@@ -622,6 +623,8 @@ internal fun MembersAgentRuntimeConfigSection(
         }
     }
     if (session != null && runtimeEditorDialog == MembersRuntimeEditorDialog.FormV2) {
+        val isMachineOffline =
+            (machineStatusRow(session.machineId) as? MembersMachineStatusRow.Machine)?.online != true
         MembersAgentRuntimeFormV2Dialog(
             access = checkNotNull(session.formV2Access),
             agentId = member.id,
@@ -650,6 +653,7 @@ internal fun MembersAgentRuntimeConfigSection(
             agentRuntimeOptions = agentRuntimeOptions,
             createAgentFormStore = createAgentFormStore,
             machineName = (summary?.machineName ?: member.membersComputerName)?.takeIf { it.isNotBlank() },
+            isMachineOffline = isMachineOffline,
             onSave = ::saveRuntimeConfigV2
         )
     }

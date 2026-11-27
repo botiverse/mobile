@@ -946,6 +946,7 @@ internal fun RuntimeFormV2RuntimeSection(
     currentRuntimeId: String? = null,
     serverSelectable: (String) -> Boolean? = { null },
     options: List<SharedCreateAgentRuntimeOption>? = null,
+    isMachineOffline: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
@@ -959,7 +960,8 @@ internal fun RuntimeFormV2RuntimeSection(
             showAll = showAll,
             currentRuntimeId = currentRuntimeId,
             serverSelectable = serverSelectable,
-            options = options
+            options = options,
+            isMachineOffline = isMachineOffline
         )
     val hint = rows.selectedCapabilityHint(runtime).takeIf { runtimeAvailabilityError == null }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

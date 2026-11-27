@@ -218,7 +218,7 @@ val RUNTIMES: List<RuntimeInfo> = listOf(
     RuntimeInfo(id = "kimi-sdk", displayName = "Kimi Code", abbreviation = "KC", binary = "", supported = true),
     RuntimeInfo(id = "kimi", displayName = "Kimi CLI", abbreviation = "KL", binary = "kimi", supported = true, deprecated = true),
     RuntimeInfo(id = "copilot", displayName = "Copilot CLI", abbreviation = "CP", binary = "copilot", supported = true, deprecated = true),
-    RuntimeInfo(id = "cursor", displayName = "Cursor CLI", abbreviation = "CU", binary = "cursor-agent", supported = true),
+    RuntimeInfo(id = "cursor", displayName = "Cursor", abbreviation = "CU", binary = "cursor-agent", supported = true),
     RuntimeInfo(id = "gemini", displayName = "Gemini CLI", abbreviation = "GM", binary = "gemini", supported = true, deprecated = true),
     RuntimeInfo(id = "opencode", displayName = "OpenCode", abbreviation = "OC", binary = "opencode", supported = true),
     RuntimeInfo(id = "pi", displayName = "Pi", abbreviation = "PI", binary = "pi", supported = true),

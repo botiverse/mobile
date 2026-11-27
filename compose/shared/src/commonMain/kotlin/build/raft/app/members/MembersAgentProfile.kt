@@ -2093,6 +2093,7 @@ internal fun MembersAgentProfileTab(
                 edit = edit,
                 runtimeModels = runtimeModels,
                 createAgentFormStore = createAgentFormStore,
+                machineStatusRow = machineStatusRow,
                 onApplyAgentRuntimeConfigProjection = onApplyAgentRuntimeConfigProjection
             )
 

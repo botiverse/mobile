@@ -548,6 +548,30 @@ class ComputersApiTest {
     }
 
     @Test
+    fun agentRuntimeOptionsAcceptSelectableCurrentRuntimeWhenComputerOfflineOrMissingCli() = runPortableCoroutineTest {
+        val body =
+            """{"context":"existing_agent","agentId":"agent-1","machineId":"machine-1","options":[""" +
+                """{"runtimeId":"cursor","capabilityStatus":"not_installed","admissionStatus":"available_for_new","admissionReason":null,"current":true,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}},""" +
+                """{"runtimeId":"builtin","capabilityStatus":"update_required","admissionStatus":"available_for_new","admissionReason":null,"current":true,"availableForNew":true,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}},""" +
+                """{"runtimeId":"copilot","capabilityStatus":"not_installed","admissionStatus":"grandfathered_current","admissionReason":"deprecated","current":true,"availableForNew":false,"manageableForCurrentAgent":true,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}},""" +
+                """{"runtimeId":"claude","capabilityStatus":"not_installed","admissionStatus":"available_for_new","admissionReason":null,"current":true,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":false,"runtimeFormV2":{"protocolVersion":2}},""" +
+                """{"runtimeId":"pi","capabilityStatus":"not_installed","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":true,"runtimeFormV2":{"protocolVersion":2}},""" +
+                """{"runtimeId":"grok","capabilityStatus":"not_installed","admissionStatus":"available_for_new","admissionReason":null,"current":false,"availableForNew":true,"manageableForCurrentAgent":false,"canSelectInThisContext":false,"runtimeFormV2":{"protocolVersion":2}}""" +
+                """]}"""
+        val options =
+            assertIs<DataResult.Content<ExistingAgentRuntimeOptions>>(
+                RaftComputersApiClient(RecordingComputersApi(agentRuntimeOptionsBody = body)).agentRuntimeOptions(ServerId("server-1"), "agent-1")
+            ).data
+        assertEquals(listOf("cursor", "builtin", "copilot", "claude", "grok"), options.options.map { it.runtimeId })
+        val cursor = options.currentRow("cursor")
+        assertTrue(cursor != null && cursor.canSelectInThisContext && cursor.capabilityStatus == "not_installed")
+        val copilot = options.currentRow("copilot")
+        assertTrue(copilot != null && copilot.canSelectInThisContext && copilot.deprecatedHere)
+        val claude = options.currentRow("claude")
+        assertTrue(claude != null && !claude.canSelectInThisContext)
+    }
+
+    @Test
     fun runtimeOptionsDecodePerComputerRaftCapabilitiesLeniently() = runPortableCoroutineTest {
         // slock #16178 (`docs/contracts/runtime-capabilities.md`): `option.raftCapabilities` carries
         // the 3 picker flags, `source` ("machine" | "default"), and optional `internal` diagnostics.
