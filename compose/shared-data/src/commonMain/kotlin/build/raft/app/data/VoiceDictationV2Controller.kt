@@ -1189,6 +1189,11 @@ class VoiceDictationV2Controller(
         }
     }
 
+    /** Alias for [clearRecentFeedbackTarget], matching web `dismissFeedbackTarget()`. */
+    fun dismissFeedbackTarget() {
+        clearRecentFeedbackTarget()
+    }
+
     /**
      * Immediately aborts any active and/or background dictation session and cleans up recorder & WS.
      * When [discardProvisional] is `true` (e.g. pressing Escape during dictation), reverts any

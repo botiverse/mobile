@@ -326,6 +326,8 @@ LUCIDE_ICONS = [
     "terminal",
     "text-align-start",
     "text-quote",
+    "thumbs-down",
+    "thumbs-up",
     "timer-reset",
     "thread",
     "message",

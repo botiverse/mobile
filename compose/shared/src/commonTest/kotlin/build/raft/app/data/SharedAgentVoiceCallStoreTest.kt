@@ -261,6 +261,72 @@ class SharedAgentVoiceCallStoreTest {
         assertEquals(12_000L, ended.durationMs)
     }
 
+    @Test
+    fun submitFeedbackRoutesActiveOrEndedCallToVoiceFeedbackApiAndRejectsWithoutCallIdOrApi() = runTest {
+        var now = 1_000_000L
+        val api = FakeCallApi(initialExpiresAtMs = now + 300_000L)
+        val engine = FakeVoiceEngine()
+        val storeWithoutFeedback = createStore(api, engine, nowProvider = { now })
+        assertFalse(storeWithoutFeedback.hasFeedbackApi)
+        assertEquals(
+            VoiceFeedbackSubmitOutcome.Refused(VoiceFeedbackSubmitFailure.InvalidRequest()),
+            storeWithoutFeedback.submitFeedback(AgentVoiceCallFeedbackRequest(rating = VoiceFeedbackRating.Good)),
+        )
+
+        val submitted = mutableListOf<Triple<String, Pair<String, String>, AgentVoiceCallFeedbackRequest>>()
+        val fakeFeedbackApi =
+            object : VoiceFeedbackApi {
+                override suspend fun submitDictationFeedback(
+                    serverId: String,
+                    request: VoiceDictationFeedbackRequest,
+                ): VoiceFeedbackSubmitOutcome = VoiceFeedbackSubmitOutcome.Submitted
+
+                override suspend fun submitAgentVoiceCallFeedback(
+                    serverId: String,
+                    agentId: String,
+                    callId: String,
+                    request: AgentVoiceCallFeedbackRequest,
+                ): VoiceFeedbackSubmitOutcome {
+                    submitted += Triple(serverId, agentId to callId, request)
+                    return VoiceFeedbackSubmitOutcome.Submitted
+                }
+            }
+        val store =
+            SharedAgentVoiceCallStore(
+                api = api,
+                scope = backgroundScope,
+                engineProvider = { engine },
+                nowEpochMillis = { now },
+                feedbackApi = fakeFeedbackApi,
+            )
+        assertTrue(store.hasFeedbackApi)
+
+        // Idle -> no callId -> rejected locally.
+        assertEquals(
+            VoiceFeedbackSubmitOutcome.Refused(VoiceFeedbackSubmitFailure.InvalidRequest()),
+            store.submitFeedback(AgentVoiceCallFeedbackRequest(rating = VoiceFeedbackRating.Good)),
+        )
+
+        store.startCall(callee, serverId = "srv-1")
+        runCurrent()
+        engine.listener!!.onConnectionState(RaftAgentVoiceEngineState.CONNECTED)
+        now += 15_000L
+        store.hangUp()
+        runCurrent()
+
+        val request =
+            AgentVoiceCallFeedbackRequest(
+                rating = VoiceFeedbackRating.Bad,
+                tags = listOf(VoiceFeedbackTag.WrongAnswer),
+                note = "Off topic",
+            )
+        assertEquals(VoiceFeedbackSubmitOutcome.Submitted, store.submitFeedback(request))
+        assertEquals(
+            listOf(Triple("srv-1", "agent-1" to testCallId, request)),
+            submitted,
+        )
+    }
+
     private fun TestScope.createStore(
         api: AgentVoiceCallApi,
         engine: RaftAgentVoiceCallEngine,

@@ -240,6 +240,7 @@ class SharedAgentVoiceCallStore(
     private val engineProvider: () -> RaftAgentVoiceCallEngine? = RaftAgentVoiceCallEngineRegistry::currentOrNull,
     private val nowEpochMillis: () -> Long = ::raftNowEpochMillis,
     private val tokenRefreshLeadMs: Long = DEFAULT_TOKEN_REFRESH_LEAD_MS,
+    private val feedbackApi: VoiceFeedbackApi? = null,
 ) {
     private class Session(
         val agent: AgentVoiceCallee,
@@ -374,6 +375,32 @@ class SharedAgentVoiceCallStore(
                 pair
             }
         startCall(target.first, target.second)
+    }
+
+    /** True when this store is wired to a [VoiceFeedbackApi] for post-call rating submissions. */
+    val hasFeedbackApi: Boolean
+        get() = feedbackApi != null
+
+    /**
+     * Submits (or idempotently overwrites) post-call rating feedback for the current call via
+     * Raft's proxy route (`POST /api/agents/:id/voice/calls/:callId/feedback`).
+     */
+    suspend fun submitFeedback(request: AgentVoiceCallFeedbackRequest): VoiceFeedbackSubmitOutcome {
+        val api = feedbackApi ?: return VoiceFeedbackSubmitOutcome.Refused(VoiceFeedbackSubmitFailure.InvalidRequest())
+        val snapshot = synchronized(stateLock) { callState.value }
+            ?: return VoiceFeedbackSubmitOutcome.Refused(VoiceFeedbackSubmitFailure.InvalidRequest())
+        val callId = snapshot.callId?.trim()?.takeIf { it.isNotEmpty() }
+            ?: return VoiceFeedbackSubmitOutcome.Refused(VoiceFeedbackSubmitFailure.InvalidRequest())
+        val serverId = snapshot.serverId.trim().takeIf { it.isNotEmpty() }
+            ?: return VoiceFeedbackSubmitOutcome.Refused(VoiceFeedbackSubmitFailure.InvalidRequest())
+        val agentId = snapshot.agent.id.trim().takeIf { it.isNotEmpty() }
+            ?: return VoiceFeedbackSubmitOutcome.Refused(VoiceFeedbackSubmitFailure.InvalidRequest())
+        return api.submitAgentVoiceCallFeedback(
+            serverId = serverId,
+            agentId = agentId,
+            callId = callId,
+            request = request,
+        )
     }
 
     /** Tears down any in-progress call on sign-out and dismisses the card. */

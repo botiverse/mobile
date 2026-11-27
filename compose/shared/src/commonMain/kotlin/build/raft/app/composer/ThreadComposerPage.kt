@@ -3657,9 +3657,13 @@ private fun ThreadComposerContentLeafBody(
         if (onSendRequest != null) {
             val admission = onSendRequest.invoke(request)
             if (admission != ThreadComposerSendAdmission.Rejected) {
+                currentVoiceDictationHost?.controller?.reportComposerSubmitted(sendFieldValue.text)
                 expandState?.collapse()
             }
         } else {
+            if (sendFieldValue.text.isNotBlank()) {
+                currentVoiceDictationHost?.controller?.reportComposerSubmitted(sendFieldValue.text)
+            }
             expandState?.collapse()
             currentOnEvent("send", sendFieldValue.text, effectiveAsTask, null)
         }
