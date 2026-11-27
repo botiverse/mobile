@@ -197,7 +197,7 @@ internal fun ThreadVoiceDictationFeedbackStrip(
                     .fillMaxWidth()
                     .testTag(ThreadVoiceDictationFeedbackStripTestTag)
                     .clip(shape)
-                    .background(colors.layerSurface, shape)
+                    .background(colors.layerCard, shape)
                     .border(RaftStroke.Hairline, colors.lineHairline, shape)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
