@@ -19,6 +19,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -329,7 +330,7 @@ internal fun rememberComposerVoiceDictationHost(
     audioRecorderProvider: () -> RaftVoiceDictationAudioRecorder? =
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
 ): ThreadVoiceDictationHost {
-    val flagRevision by serverFeatureFlags.snapshotRevision.collectAsState()
+    val flagRevision by key(serverFeatureFlags) { serverFeatureFlags.snapshotRevision.collectAsState() }
     val effectiveServerId = serverId?.trim()?.takeIf { it.isNotEmpty() }
     val serverIdObj = remember(effectiveServerId) { effectiveServerId?.let(::ServerId) }
     val signedInUserId = currentSession?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
