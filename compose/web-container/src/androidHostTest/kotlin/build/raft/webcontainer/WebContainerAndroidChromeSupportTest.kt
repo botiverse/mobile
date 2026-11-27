@@ -271,9 +271,14 @@ class WebContainerAndroidChromeSupportTest {
         assertFalse(popup1.settings.supportMultipleWindows())
 
         val client1 = shadowOf(popup1).webViewClient
-        // shouldInterceptRequest always blocks network loads on the ephemeral transport view.
-        val blockedResp = client1.shouldInterceptRequest(popup1, fakeWebResourceRequest("https://oauth.example.com/leak"))
+        // shouldInterceptRequest blocks subresource network loads without prematurely settling the transport.
+        val blockedResp =
+            client1.shouldInterceptRequest(
+                popup1,
+                fakeWebResourceRequest("https://oauth.example.com/leak.js", isForMainFrame = false),
+            )
         assertNotNull(blockedResp)
+        shadowOf(Looper.getMainLooper()).idle()
         // about:blank is ignored so JS opener can assign location.href next.
         assertFalse(client1.shouldOverrideUrlLoading(popup1, fakeWebResourceRequest("about:blank")))
         assertEquals(1, transportHelper.activeCount)
@@ -460,5 +465,184 @@ class WebContainerAndroidChromeSupportTest {
         assertEquals(0, transportHelper.activeCount)
 
         parentWebView.destroy()
+    }
+
+    @Test
+    fun newWindowTransportCapturesMainFrameUrlFromShouldInterceptRequestWhenOverrideIsSkipped() {
+        val activity = Robolectric.buildActivity(Activity::class.java).create().start().resume().visible().get()
+        val parentWebView = WebView(activity)
+        val captured = mutableListOf<String>()
+        var dispatchedTransport: WebView.WebViewTransport? = null
+        val handler =
+            Handler(Looper.getMainLooper()) { msg ->
+                dispatchedTransport = msg.obj as? WebView.WebViewTransport
+                true
+            }
+        val transportHelper = WebContainerAndroidNewWindowTransport(timeoutMs = 1_500L, mainHandler = handler)
+
+        val msg = Message.obtain(handler).apply { obj = parentWebView.WebViewTransport() }
+        assertTrue(transportHelper.open(activity, msg) { captured += it })
+        shadowOf(Looper.getMainLooper()).idle()
+        val popup = assertNotNull(dispatchedTransport?.webView)
+        val client = shadowOf(popup).webViewClient
+
+        // Main-frame about:blank and subresource requests are blocked without capturing.
+        assertNotNull(client.shouldInterceptRequest(popup, fakeWebResourceRequest("about:blank", isForMainFrame = true)))
+        assertNotNull(client.shouldInterceptRequest(popup, fakeWebResourceRequest("https://docs.stamp.build/app.js", isForMainFrame = false)))
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, transportHelper.activeCount)
+        assertTrue(captured.isEmpty())
+
+        // Main-frame target URL (e.g. `<a target="_blank" rel="noopener noreferrer">` on Chromium 114 /
+        // Huawei WebView where `shouldOverrideUrlLoading` is skipped) is captured while blocking network I/O.
+        val blockedResponse =
+            client.shouldInterceptRequest(
+                popup,
+                fakeWebResourceRequest("https://docs.stamp.build/zh-cn/privacy/", isForMainFrame = true),
+            )
+        assertNotNull(blockedResponse)
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(listOf("https://docs.stamp.build/zh-cn/privacy/"), captured)
+        assertEquals(0, transportHelper.activeCount)
+        assertEquals(activity.applicationContext, (popup.context as? MutableContextWrapper)?.baseContext)
+
+        parentWebView.destroy()
+    }
+
+    @Test
+    fun newWindowTransportUsesAnchorFallbackOnTimeoutButPrefersTransportUrlAndDropsOnCancel() {
+        val activity = Robolectric.buildActivity(Activity::class.java).create().start().resume().visible().get()
+        val parentWebView = WebView(activity)
+        val captured = mutableListOf<String>()
+        var dispatchedTransport: WebView.WebViewTransport? = null
+        val handler =
+            Handler(Looper.getMainLooper()) { msg ->
+                dispatchedTransport = msg.obj as? WebView.WebViewTransport
+                true
+            }
+        val transportHelper =
+            WebContainerAndroidNewWindowTransport(
+                timeoutMs = 2_000L,
+                fallbackTimeoutMs = 350L,
+                mainHandler = handler,
+            )
+
+        // 1) When OEM WebView drops all popup callbacks, anchor fallbackUrl resolves at fallbackTimeoutMs.
+        val msgTimeout = Message.obtain(handler).apply { obj = parentWebView.WebViewTransport() }
+        assertTrue(
+            transportHelper.open(
+                context = activity,
+                resultMsg = msgTimeout,
+                fallbackUrl = "https://docs.stamp.build/zh-cn/terms/",
+            ) { captured += it },
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(1, transportHelper.activeCount)
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        assertEquals(0, transportHelper.activeCount)
+        assertEquals(listOf("https://docs.stamp.build/zh-cn/terms/"), captured)
+
+        // 2) Authoritative transport URL wins over anchor fallbackUrl (e.g. onclick window.open).
+        val msgAuthoritative = Message.obtain(handler).apply { obj = parentWebView.WebViewTransport() }
+        assertTrue(
+            transportHelper.open(
+                context = activity,
+                resultMsg = msgAuthoritative,
+                fallbackUrl = "https://stamp.build/stale-href",
+            ) { captured += it },
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+        val popupAuth = assertNotNull(dispatchedTransport?.webView)
+        assertNotNull(
+            shadowOf(popupAuth).webViewClient.shouldInterceptRequest(
+                popupAuth,
+                fakeWebResourceRequest("https://status.stamp.build/", isForMainFrame = true),
+            ),
+        )
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertEquals(0, transportHelper.activeCount)
+        assertEquals(listOf("https://docs.stamp.build/zh-cn/terms/", "https://status.stamp.build/"), captured)
+
+        // 3) javascript: fallback is ignored and cancelAll() never fires fallbackUrl.
+        val msgJs = Message.obtain(handler).apply { obj = parentWebView.WebViewTransport() }
+        assertTrue(
+            transportHelper.open(
+                context = activity,
+                resultMsg = msgJs,
+                fallbackUrl = "javascript:void(0)",
+            ) { captured += it },
+        )
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(400))
+        assertEquals(1, transportHelper.activeCount)
+        transportHelper.cancelAll()
+        assertEquals(0, transportHelper.activeCount)
+
+        val msgCancelled = Message.obtain(handler).apply { obj = parentWebView.WebViewTransport() }
+        assertTrue(
+            transportHelper.open(
+                context = activity,
+                resultMsg = msgCancelled,
+                fallbackUrl = "https://docs.stamp.build/zh-cn/contact/",
+            ) { captured += it },
+        )
+        transportHelper.cancelAll()
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(500))
+        assertEquals(listOf("https://docs.stamp.build/zh-cn/terms/", "https://status.stamp.build/"), captured)
+
+        parentWebView.destroy()
+    }
+
+    @Test
+    fun webContainerOnCreateWindowRoutesCrossOriginTargetBlankCapturedViaShouldInterceptRequest() {
+        val routed = mutableListOf<Triple<String, String, Boolean>>()
+        val events =
+            WebContainerEvents(
+                routesMainFrameNavigation = { candidate ->
+                    candidate.startsWith("https://docs.stamp.build/")
+                },
+                onNavigationBlockedWithGesture = { url, reason, isUserGesture ->
+                    routed += Triple(url, reason, isUserGesture)
+                },
+            )
+        val (_, host) =
+            createAttachedHost(
+                events = events,
+                config =
+                    WebContainerConfig(
+                        url = "https://stamp.build/",
+                        allowScripts = true,
+                        navigationPolicy =
+                            WebNavigationPolicy(
+                                allowNavigation = true,
+                                allowedSchemes = setOf("http", "https"),
+                                allowNewWindows = true,
+                            ),
+                    ),
+            )
+        val webView = host.getChildAt(0) as WebView
+        val chromeClient = shadowOf(webView).webChromeClient
+        var dispatchedTransport: WebView.WebViewTransport? = null
+        val handler =
+            Handler(Looper.getMainLooper()) { msg ->
+                dispatchedTransport = msg.obj as? WebView.WebViewTransport
+                true
+            }
+
+        val msg = Message.obtain(handler).apply { obj = webView.WebViewTransport() }
+        assertTrue(chromeClient.onCreateWindow(webView, false, true, msg))
+        shadowOf(Looper.getMainLooper()).idle()
+        val popup = assertNotNull(dispatchedTransport?.webView)
+        assertNotNull(
+            shadowOf(popup).webViewClient.shouldInterceptRequest(
+                popup,
+                fakeWebResourceRequest("https://docs.stamp.build/zh-cn/welcome/", isForMainFrame = true),
+            ),
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(
+            listOf(Triple("https://docs.stamp.build/zh-cn/welcome/", "routed_externally", true)),
+            routed,
+        )
     }
 }

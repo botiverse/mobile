@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.Dialog
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.MutableContextWrapper
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.os.Build
@@ -246,6 +247,7 @@ class WebContainerAndroidFullscreenController(
  */
 class WebContainerAndroidNewWindowTransport(
     private val timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+    private val fallbackTimeoutMs: Long = DEFAULT_FALLBACK_TIMEOUT_MS,
     private val maxPending: Int = DEFAULT_MAX_PENDING,
     private val mainHandler: Handler = Handler(Looper.getMainLooper()),
     private val webViewFactory: (Context) -> WebView = { ctx -> WebView(ctx) },
@@ -280,6 +282,9 @@ class WebContainerAndroidNewWindowTransport(
                 popupWebView.stopLoading()
                 popupWebView.webChromeClient = null
                 popupWebView.webViewClient = DetachedTransportWebViewClient
+                (popupWebView.context as? MutableContextWrapper)?.let { wrapper ->
+                    wrapper.baseContext = wrapper.applicationContext ?: wrapper.baseContext
+                }
                 popupWebView.destroy()
             }
             val normalized = capturedUrl?.trim().orEmpty()
@@ -303,6 +308,7 @@ class WebContainerAndroidNewWindowTransport(
         context: Context,
         resultMsg: Message?,
         profileName: String? = null,
+        fallbackUrl: String? = null,
         onUrlCaptured: (String) -> Unit,
     ): Boolean {
         val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
@@ -311,8 +317,10 @@ class WebContainerAndroidNewWindowTransport(
                 ?: break
         }
         val appContext = context.applicationContext ?: context
+        val uiContext = findLiveAndroidActivity(context) ?: appContext
+        val wrappedContext = MutableContextWrapper(uiContext)
         val popupWebView =
-            runCatching { webViewFactory(appContext) }.getOrNull() ?: return false
+            runCatching { webViewFactory(wrappedContext) }.getOrNull() ?: return false
         // Bind the parent WebView's Chromium profile immediately after construction and BEFORE
         // touching WebSettings; fail closed if binding fails so we never attach a Default-profile
         // popup to an isolated parent WebView.
@@ -322,6 +330,7 @@ class WebContainerAndroidNewWindowTransport(
                 runCatching {
                     popupWebView.webChromeClient = null
                     popupWebView.webViewClient = DetachedTransportWebViewClient
+                    wrappedContext.baseContext = appContext
                     popupWebView.destroy()
                 }
                 return false
@@ -345,6 +354,7 @@ class WebContainerAndroidNewWindowTransport(
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             }
         }
+        val normalizedFallback = normalizeTransportFallbackUrl(fallbackUrl)
         val session =
             PendingTransport(
                 popupWebView = popupWebView,
@@ -357,7 +367,7 @@ class WebContainerAndroidNewWindowTransport(
                     view: WebView?,
                     detail: RenderProcessGoneDetail?,
                 ): Boolean {
-                    session.finish(capturedUrl = null, mainHandler = mainHandler)
+                    session.finish(capturedUrl = normalizedFallback, mainHandler = mainHandler)
                     return true
                 }
 
@@ -386,7 +396,22 @@ class WebContainerAndroidNewWindowTransport(
                 override fun shouldInterceptRequest(
                     view: WebView?,
                     request: WebResourceRequest?,
-                ): WebResourceResponse = emptyTransportBlockedResponse()
+                ): WebResourceResponse {
+                    // On Chromium / OEM WebViews (e.g. Huawei WebView 114), initial popup loads
+                    // for `<a target="_blank" rel="noopener noreferrer">` frequently bypass
+                    // `shouldOverrideUrlLoading` and hit `shouldInterceptRequest` directly on the
+                    // IO thread. Capture the main-frame URL onto mainHandler while still blocking
+                    // all network I/O on the ephemeral transport view.
+                    if (request?.isForMainFrame == true) {
+                        val trimmed = request.url?.toString()?.trim().orEmpty()
+                        if (trimmed.isNotEmpty() && !trimmed.equals(ABOUT_BLANK_URL, ignoreCase = true)) {
+                            mainHandler.post {
+                                session.finish(capturedUrl = trimmed, mainHandler = mainHandler)
+                            }
+                        }
+                    }
+                    return emptyTransportBlockedResponse()
+                }
 
                 private fun handleTransportUrl(rawUrl: String?): Boolean {
                     val trimmed = rawUrl?.trim().orEmpty()
@@ -397,10 +422,16 @@ class WebContainerAndroidNewWindowTransport(
                     return true
                 }
             }
-        val timeout = Runnable { session.finish(capturedUrl = null, mainHandler = mainHandler) }
+        val effectiveTimeoutMs =
+            if (normalizedFallback != null) {
+                minOf(timeoutMs, fallbackTimeoutMs)
+            } else {
+                timeoutMs
+            }
+        val timeout = Runnable { session.finish(capturedUrl = normalizedFallback, mainHandler = mainHandler) }
         session.timeoutRunnable = timeout
         pendingTransports.addLast(session)
-        mainHandler.postDelayed(timeout, timeoutMs)
+        mainHandler.postDelayed(timeout, effectiveTimeoutMs)
 
         transport.webView = popupWebView
         val dispatched =
@@ -425,8 +456,16 @@ class WebContainerAndroidNewWindowTransport(
 
     companion object {
         internal const val DEFAULT_TIMEOUT_MS: Long = 2_000L
+        internal const val DEFAULT_FALLBACK_TIMEOUT_MS: Long = 350L
         internal const val DEFAULT_MAX_PENDING: Int = 4
         private const val ABOUT_BLANK_URL: String = "about:blank"
+
+        private fun normalizeTransportFallbackUrl(rawUrl: String?): String? {
+            val trimmed = rawUrl?.trim().orEmpty()
+            if (trimmed.isEmpty() || trimmed.equals(ABOUT_BLANK_URL, ignoreCase = true)) return null
+            if (trimmed.startsWith("javascript:", ignoreCase = true)) return null
+            return trimmed
+        }
 
         private fun emptyTransportBlockedResponse(): WebResourceResponse =
             WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))

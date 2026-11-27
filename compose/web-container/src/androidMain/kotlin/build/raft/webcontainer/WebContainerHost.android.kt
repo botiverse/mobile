@@ -1147,17 +1147,18 @@ internal class WebContainerAndroidView(
                     if (!isUserGesture || !isForegroundVisibleAndActive(configuredWebView)) {
                         return false
                     }
+                    val fallbackLink = extractAndroidHitTestLinkUrl(view?.hitTestResult)
                     val opened =
                         newWindowTransport.open(
                             context = context,
                             resultMsg = resultMsg,
                             profileName = activeTransportProfileName(),
+                            fallbackUrl = fallbackLink,
                             onUrlCaptured = { capturedUrl ->
                                 handleAndroidNewWindowUrl(configuredWebView, capturedUrl)
                             },
                         )
                     if (opened) return true
-                    val fallbackLink = extractAndroidHitTestLinkUrl(view?.hitTestResult)
                     if (fallbackLink.isNotBlank()) {
                         handleAndroidNewWindowUrl(configuredWebView, fallbackLink)
                     }

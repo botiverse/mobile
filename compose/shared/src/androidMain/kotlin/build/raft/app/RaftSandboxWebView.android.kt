@@ -769,6 +769,7 @@ internal class RaftAndroidSandboxWebView(
                     if (!isUserGesture || !isForegroundWindow()) {
                         return false
                     }
+                    val fallbackLink = extractAndroidHitTestLinkUrl(view?.hitTestResult)
                     val opened =
                         newWindowTransport.open(
                             context = context,
@@ -779,12 +780,12 @@ internal class RaftAndroidSandboxWebView(
                                 } else {
                                     null
                                 },
+                            fallbackUrl = fallbackLink,
                             onUrlCaptured = { capturedUrl ->
                                 handleLegacyNewWindowUrl(configuredWebView, capturedUrl)
                             },
                         )
                     if (opened) return true
-                    val fallbackLink = extractAndroidHitTestLinkUrl(view?.hitTestResult)
                     if (fallbackLink.isNotBlank()) {
                         handleLegacyNewWindowUrl(configuredWebView, fallbackLink)
                     }
