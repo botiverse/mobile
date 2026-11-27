@@ -2,6 +2,7 @@
 type: improved
 area: thread
 platforms: [android, ios]
+pull_request: 5929
 rollout: full
 ---
 
