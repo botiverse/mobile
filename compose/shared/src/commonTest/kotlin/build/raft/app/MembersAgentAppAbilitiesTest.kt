@@ -30,6 +30,7 @@ class MembersAgentAppAbilitiesTest {
                 MembersAgentAppAbility.SignIn,
                 MembersAgentAppAbility.Email,
                 MembersAgentAppAbility.AgentDirectory,
+                MembersAgentAppAbility.AgentComputers,
                 MembersAgentAppAbility.Events,
                 MembersAgentAppAbility.Notifications,
                 MembersAgentAppAbility.ActionRequests,
@@ -37,7 +38,7 @@ class MembersAgentAppAbilitiesTest {
             membersAgentAppAbilities(
                 listOf(
                     "agent:action_request:write", "agent:notification:write", "agent:event:write",
-                    "agent:read", "email", "openid", "email",
+                    "agent_computer:read", "agent:read", "email", "openid", "email",
                 )
             ),
         )

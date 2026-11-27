@@ -3039,6 +3039,7 @@
     <string name="in_app_browser_scope_email">Читает подтверждённый адрес электронной почты вашего аккаунта Raft. Без доступа к сообщениям, файлам и агентам.</string>
     <string name="in_app_browser_scope_identity">Определяет, кто вы — человек или агент, ваш subject в Raft, а также от имени какого сервера или принципала вы действуете. Без доступа к содержимому.</string>
     <string name="in_app_browser_scope_agent_read">Читает ID, имена пользователей, отображаемые имена и аватары агентов на сервере, к которому вы предоставляете доступ. Это разрешение не позволяет отправлять сообщения и читать переписку, активность или счётчики непрочитанного.</string>
+    <string name="in_app_browser_scope_agent_computer_read">Показывает, на каком компьютере работает каждый агент на сервере, к которому вы предоставляете доступ, и людей, которые владеют этими компьютерами или подключили их: их ID и имена, а тех, кого скрытый список участников сервера вам не показывает, — только как закрытый ID. Это разрешение не показывает название или имя хоста компьютера и не позволяет им пользоваться.</string>
     <string name="in_app_browser_scope_app_read">Показывает, какие приложения установлены на сервере, который вы разрешите: их названия, значки и домашние страницы. Это разрешение не позволяет открывать или использовать их.</string>
     <string name="in_app_browser_scope_agent_event_write">Отправляет структурированные сообщения о событиях одному агенту, которого вы выберете.</string>
     <string name="in_app_browser_scope_agent_notification_write">Отправляет уведомления одному агенту, которого вы выберете.</string>
@@ -3756,6 +3757,8 @@
     <string name="settings_labs_failed_load">Не удалось загрузить настройки Labs.</string>
     <string name="settings_labs_failed_update">Не удалось обновить настройки Labs.</string>
     <string name="settings_labs_failed_server_mismatch">Ответ с настройками Labs не соответствует текущему серверу.</string>
+    <string name="settings_labs_desktop_server_views_name">Десктоп: отдельная страница для каждого сервера</string>
+    <string name="settings_labs_desktop_server_views_description">Raft Desktop держит отдельную страницу для каждого сервера. Это изменит всё окно десктопного приложения у каждого участника (включая другие серверы) при следующем запуске Raft Desktop. Веб-версию и мобильное приложение это не затрагивает.</string>
     <string name="settings_server_label_name">Название</string>
     <string name="settings_server_label_slug">Короткое имя</string>
     <string name="settings_server_placeholder_name">Название рабочего пространства</string>
@@ -5257,12 +5260,14 @@
     <string name="member_app_ability_sign_in">входить от имени этого агента</string>
     <string name="member_app_ability_email">видеть его адрес эл. почты</string>
     <string name="member_app_ability_agent_directory">видеть агентов сервера</string>
+    <string name="member_app_ability_agent_computers">видеть, на каком компьютере работает каждый агент, и людей, которые им владеют или подключили его</string>
     <string name="member_app_ability_events">отправлять события</string>
     <string name="member_app_ability_notifications">отправлять уведомления</string>
     <string name="member_app_ability_action_requests">просить его о действиях</string>
     <string name="member_app_ability_sign_in_long">Входить от имени этого агента</string>
     <string name="member_app_ability_email_long">Видеть адрес эл. почты этого агента</string>
     <string name="member_app_ability_agent_directory_long">Видеть агентов этого сервера</string>
+    <string name="member_app_ability_agent_computers_long">Видеть, на каком компьютере работает каждый агент, и людей, которые им владеют или подключили его</string>
     <string name="member_app_ability_events_long">Отправлять ему события</string>
     <string name="member_app_ability_notifications_long">Отправлять ему уведомления</string>
     <string name="member_app_ability_action_requests_long">Просить его выполнить действия</string>

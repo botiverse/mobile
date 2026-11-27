@@ -3042,6 +3042,7 @@
     <string name="in_app_browser_scope_email">認証済みの Raft アカウントのメールアドレスを読み取ります。メッセージ、ファイル、エージェントにはアクセスしません。</string>
     <string name="in_app_browser_scope_identity">ユーザーの種別（人間かエージェントか）、Raft の subject、操作主体となっているサーバー／プリンシパルを読み取ります。コンテンツにはアクセスしません。</string>
     <string name="in_app_browser_scope_agent_read">許可したサーバー内のエージェントの ID、ハンドル、表示名、アバターを読み取ります。この権限では、メッセージの送信や、会話・アクティビティ・未読数の読み取りはできません。</string>
+    <string name="in_app_browser_scope_agent_computer_read">許可したサーバー内の各エージェントがどのコンピューターで動いているかと、そのコンピューターのオーナーや接続者が誰かを読み取ります。人は ID と名前で示されますが、サーバーの非公開のメンバー一覧であなたに見えない人は、非公開の ID だけになります。この権限では、コンピューターの名前やホスト名は表示されず、コンピューターを使うこともできません。</string>
     <string name="in_app_browser_scope_app_read">許可したサーバーにインストールされているアプリの名前、アイコン、ホームページを確認します。この権限でそれらのアプリを開いたり使用したりすることはできません。</string>
     <string name="in_app_browser_scope_agent_event_write">許可した単一のエージェントに、構造化されたイベントメッセージを送信します。</string>
     <string name="in_app_browser_scope_agent_notification_write">許可した単一のエージェントに、通知メッセージを送信します。</string>
@@ -3935,6 +3936,8 @@
     <string name="settings_labs_failed_load">Labs 設定を読み込めませんでした。</string>
     <string name="settings_labs_failed_update">Labs 設定を更新できませんでした。</string>
     <string name="settings_labs_failed_server_mismatch">Labs 設定のレスポンスが現在のサーバーと一致しませんでした。</string>
+    <string name="settings_labs_desktop_server_views_name">デスクトップ：サーバーごとに 1 ページ</string>
+    <string name="settings_labs_desktop_server_views_description">Raft Desktop はサーバーごとに独立したページを保持します。これにより、次回 Raft Desktop を開いたときから、各メンバーのデスクトップウィンドウ全体（他のサーバーを含む）が変わります。Web 版とモバイル版には影響しません。</string>
     <string name="settings_server_label_name">名前</string>
     <string name="settings_server_label_slug">スラッグ</string>
     <string name="settings_server_placeholder_name">ワークスペース名</string>
@@ -5466,12 +5469,14 @@
     <string name="member_app_ability_sign_in">このエージェントとしてログイン</string>
     <string name="member_app_ability_email">メールアドレスの確認</string>
     <string name="member_app_ability_agent_directory">サーバーのエージェント一覧の確認</string>
+    <string name="member_app_ability_agent_computers">各エージェントが動くコンピューターと、そのオーナーや接続者の確認</string>
     <string name="member_app_ability_events">イベントの送信</string>
     <string name="member_app_ability_notifications">通知の送信</string>
     <string name="member_app_ability_action_requests">操作の依頼</string>
     <string name="member_app_ability_sign_in_long">このエージェントとしてログイン</string>
     <string name="member_app_ability_email_long">このエージェントのメールアドレスを確認</string>
     <string name="member_app_ability_agent_directory_long">このサーバーのエージェント一覧を確認</string>
+    <string name="member_app_ability_agent_computers_long">各エージェントが動くコンピューターと、そのオーナーや接続者を確認</string>
     <string name="member_app_ability_events_long">このエージェントにイベントを送信</string>
     <string name="member_app_ability_notifications_long">このエージェントに通知を送信</string>
     <string name="member_app_ability_action_requests_long">このエージェントに操作を依頼</string>

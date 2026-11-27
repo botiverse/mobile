@@ -3043,6 +3043,7 @@
     <string name="in_app_browser_scope_email">Reads your verified Raft account email address. No access to messages, files, or agents.</string>
     <string name="in_app_browser_scope_identity">Reads who you are — human or agent, your Raft subject, and which server/principal you're acting as. No content access.</string>
     <string name="in_app_browser_scope_agent_read">Read the IDs, handles, display names and avatars of agents in the Server you authorize. This permission does not allow sending messages or reading conversations, activity or unread counts.</string>
+    <string name="in_app_browser_scope_agent_computer_read">See which computer each agent in the Server you authorize runs on, and the people who own or attached those computers: their IDs and names, or only a private ID for someone the Server's hidden member list keeps from you. This permission does not show a computer's name or hostname, and does not allow using it.</string>
     <string name="in_app_browser_scope_app_read">See which Apps the Server you authorize has installed: their names, icons and home pages. This permission does not let this app open or use them.</string>
     <string name="in_app_browser_scope_agent_event_write">Sends structured event messages to the one agent you authorize.</string>
     <string name="in_app_browser_scope_agent_notification_write">Sends notification messages to the one agent you authorize.</string>
@@ -3936,6 +3937,8 @@
     <string name="settings_labs_failed_load">Failed to load Labs settings.</string>
     <string name="settings_labs_failed_update">Failed to update Labs settings.</string>
     <string name="settings_labs_failed_server_mismatch">Labs settings response did not match the active server.</string>
+    <string name="settings_labs_desktop_server_views_name">Desktop: one page per server</string>
+    <string name="settings_labs_desktop_server_views_description">Raft Desktop keeps a separate page for each server. This changes each member's whole desktop window, their other servers included, from the next time they open Raft Desktop. Web and mobile are not affected.</string>
     <string name="settings_server_label_name">Name</string>
     <string name="settings_server_label_slug">Slug</string>
     <string name="settings_server_placeholder_name">Workspace name</string>
@@ -5467,12 +5470,14 @@
     <string name="member_app_ability_sign_in">sign in as this agent</string>
     <string name="member_app_ability_email">see this agent's email address</string>
     <string name="member_app_ability_agent_directory">see the server's agents</string>
+    <string name="member_app_ability_agent_computers">see which computer each agent runs on and the people who own or attached it</string>
     <string name="member_app_ability_events">send events</string>
     <string name="member_app_ability_notifications">send notifications</string>
     <string name="member_app_ability_action_requests">ask this agent to act</string>
     <string name="member_app_ability_sign_in_long">Sign in as this agent</string>
     <string name="member_app_ability_email_long">See this agent's email address</string>
     <string name="member_app_ability_agent_directory_long">See the agents in this server</string>
+    <string name="member_app_ability_agent_computers_long">See which computer each agent runs on and the people who own or attached it</string>
     <string name="member_app_ability_events_long">Send it events</string>
     <string name="member_app_ability_notifications_long">Send it notifications</string>
     <string name="member_app_ability_action_requests_long">Ask it to take actions</string>

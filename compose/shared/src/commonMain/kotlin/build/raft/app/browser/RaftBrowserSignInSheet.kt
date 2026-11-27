@@ -678,6 +678,7 @@ private fun raftBrowserSignInScopeCopy(scope: String): String? =
         "email" -> stringResource(Res.string.in_app_browser_scope_email)
         "identity" -> stringResource(Res.string.in_app_browser_scope_identity)
         "agent:read" -> stringResource(Res.string.in_app_browser_scope_agent_read)
+        "agent_computer:read" -> stringResource(Res.string.in_app_browser_scope_agent_computer_read)
         "app:read" -> stringResource(Res.string.in_app_browser_scope_app_read)
         "agent:event:write" -> stringResource(Res.string.in_app_browser_scope_agent_event_write)
         "agent:notification:write" -> stringResource(Res.string.in_app_browser_scope_agent_notification_write)

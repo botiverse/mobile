@@ -3042,6 +3042,7 @@
     <string name="in_app_browser_scope_email">读取你已验证的 Raft 账号邮箱。不能访问消息、文件或 Agent。</string>
     <string name="in_app_browser_scope_identity">读取你是谁 —— 人类还是 Agent、你的 Raft subject，以及你正以哪个服务器/主体的身份操作。不访问任何内容。</string>
     <string name="in_app_browser_scope_agent_read">读取你授权的服务器内 Agent 的 ID、名称、显示名和头像。此权限不允许发送消息，也不允许读取对话、活动或未读数。</string>
+    <string name="in_app_browser_scope_agent_computer_read">读取你授权的服务器内每个 Agent 在哪台电脑上运行，以及这些电脑的所有者和授权人是谁：显示他们的 ID 和名字；服务器隐藏了成员列表、你看不到的人只显示为一个私有 ID。此权限不显示电脑的名称或主机名，也不能使用这些电脑。</string>
     <string name="in_app_browser_scope_app_read">查看你授权的服务器安装了哪些 App，包括名称、图标和主页。此权限不能打开或使用这些 App。</string>
     <string name="in_app_browser_scope_agent_event_write">向你授权的那一个 Agent 发送结构化事件消息。</string>
     <string name="in_app_browser_scope_agent_notification_write">向你授权的那一个 Agent 发送通知消息。</string>
@@ -3935,6 +3936,8 @@
     <string name="settings_labs_failed_load">加载 Labs 设置失败。</string>
     <string name="settings_labs_failed_update">更新 Labs 设置失败。</string>
     <string name="settings_labs_failed_server_mismatch">Labs 设置响应与当前服务器不匹配。</string>
+    <string name="settings_labs_desktop_server_views_name">桌面端：每个服务器一个页面</string>
+    <string name="settings_labs_desktop_server_views_description">Raft Desktop 为每个服务器保留单独的页面。这会改变每位成员的整个桌面端窗口（包括他们的其他服务器），在他们下次打开 Raft Desktop 时生效。网页版和手机端不受影响。</string>
     <string name="settings_server_label_name">名称</string>
     <string name="settings_server_label_slug">Slug</string>
     <string name="settings_server_placeholder_name">工作空间名称</string>
@@ -5466,12 +5469,14 @@
     <string name="member_app_ability_sign_in">用这个 Agent 的身份登录</string>
     <string name="member_app_ability_email">查看这个 Agent 的邮箱地址</string>
     <string name="member_app_ability_agent_directory">查看服务器里的 Agent</string>
+    <string name="member_app_ability_agent_computers">查看每个 Agent 在哪台电脑上，以及电脑的所有者和授权人</string>
     <string name="member_app_ability_events">发送事件</string>
     <string name="member_app_ability_notifications">发送通知</string>
     <string name="member_app_ability_action_requests">请这个 Agent 执行操作</string>
     <string name="member_app_ability_sign_in_long">以这个 Agent 的身份登录</string>
     <string name="member_app_ability_email_long">查看这个 Agent 的邮箱地址</string>
     <string name="member_app_ability_agent_directory_long">查看这个服务器里的 Agent</string>
+    <string name="member_app_ability_agent_computers_long">查看每个 Agent 所在的电脑，以及电脑的所有者和授权人</string>
     <string name="member_app_ability_events_long">向它发送事件</string>
     <string name="member_app_ability_notifications_long">向它发送通知</string>
     <string name="member_app_ability_action_requests_long">请它执行操作</string>

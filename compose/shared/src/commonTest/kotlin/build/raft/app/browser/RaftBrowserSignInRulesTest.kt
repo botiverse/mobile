@@ -448,8 +448,10 @@ class RaftBrowserSignInRulesTest {
         assertEquals("openid profile", raftSignInSetupRequest(bare)?.scope, "the default scopes")
         assertEquals("openid profile", raftSignInSetupRequest("$bare&scope=")?.scope)
         assertEquals(
-            "openid email agent:read",
-            raftSignInSetupRequest("client_id=a&scope=openid%20%20email+agent%3Aread&return_to=https%3A%2F%2Fa.example%2Fcb")?.scope,
+            "openid email agent:read agent_computer:read",
+            raftSignInSetupRequest(
+                "client_id=a&scope=openid%20%20email+agent%3Aread+agent_computer%3Aread&return_to=https%3A%2F%2Fa.example%2Fcb"
+            )?.scope,
         )
         assertEquals(
             "orbital-notes",

@@ -69,4 +69,16 @@ class MembersAgentAppSummaryLocaleTest {
             summary("en", "Stamp", listOf("linear:read", "agent:action_request:write", "email", "openid")),
         )
     }
+
+    @Test
+    fun agentComputerReadScopeSummarizesInEnglishAndZhCn() {
+        assertEquals(
+            "Stamp can see which computer each agent runs on and the people who own or attached it",
+            summary("en", "Stamp", listOf("agent_computer:read")),
+        )
+        assertEquals(
+            "Stamp 可以查看每个 Agent 在哪台电脑上，以及电脑的所有者和授权人",
+            summary("zh-CN", "Stamp", listOf("agent_computer:read")),
+        )
+    }
 }
