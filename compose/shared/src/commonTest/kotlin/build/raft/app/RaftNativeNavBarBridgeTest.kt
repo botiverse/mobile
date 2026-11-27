@@ -47,6 +47,7 @@ import kotlinx.serialization.json.jsonObject
 class RaftNativeNavBarBridgeTest {
     private class Recorder : RaftNativeNavBarListener {
         val titles = mutableListOf<String>()
+        val hasBacks = mutableListOf<Boolean>()
         val nested = mutableListOf<Boolean>()
         val actions = mutableListOf<String>()
         val extras = mutableListOf<String>()
@@ -64,6 +65,7 @@ class RaftNativeNavBarBridgeTest {
             titleImage: RaftNativeTabBarAvatar?,
         ) {
             titles += title
+            hasBacks += hasBack
             this.nested += nested
             actions += actionsJson
             extras += extrasJson
@@ -859,5 +861,51 @@ class RaftNativeNavBarBridgeTest {
         assertTrue(bridge.actionTapped("thread-search"))
         assertEquals(1, tasksTaps)
         assertEquals(1, searchTaps)
+    }
+
+    @Test
+    fun primaryHeadWithInterceptsBackRoutesNativeBackAndRestoresStackPopWhenCleared() {
+        val bridge = RaftNativeNavBarBridge()
+        val recorder = Recorder()
+        bridge.attachListener(recorder)
+        val channelEntry = RaftNativeNavBarBridge.Entry()
+        bridge.activate(channelEntry)
+
+        var closedCover = 0
+        var poppedPage = 0
+        bridge.publish(
+            channelEntry,
+            RaftNativeNavBarHead(
+                title = "engineering",
+                subtitle = null,
+                actions = listOf(RaftNativeNavBarAction("thread-side-card-tasks", "Close Tasks", "checklist", {}, checked = true)),
+                extras = RaftNativeNavBarTitleExtras(),
+                onBack = { closedCover += 1 },
+                interceptsBack = true,
+            ),
+        )
+        assertEquals(listOf("engineering"), recorder.titles)
+        assertEquals(listOf(true), recorder.hasBacks)
+        assertEquals(listOf(true), recorder.nested)
+        assertTrue(bridge.actionTapped(RaftNativeNavBarBackId))
+        assertEquals(1, closedCover)
+        assertEquals(0, poppedPage)
+
+        // Once the cover closes, the primary head stops intercepting so UIKit's native pop resumes.
+        bridge.publish(
+            channelEntry,
+            RaftNativeNavBarHead(
+                title = "engineering",
+                subtitle = null,
+                actions = listOf(RaftNativeNavBarAction("thread-side-card-tasks", "Open Tasks", "checklist", {}, checked = false)),
+                extras = RaftNativeNavBarTitleExtras(),
+                onBack = { poppedPage += 1 },
+                interceptsBack = false,
+            ),
+        )
+        assertEquals(listOf(true, true), recorder.hasBacks)
+        assertEquals(listOf(true, false), recorder.nested)
+        assertTrue(bridge.actionTapped(RaftNativeNavBarBackId))
+        assertEquals(1, poppedPage)
     }
 }

@@ -224,6 +224,8 @@ internal fun RaftTopPageHeader(
     nativePreservePrefilledActions: Boolean = false,
     // PROTOTYPE: the head's Back when it draws it itself (in [titleLeadingContent]).
     nativeOnBack: (() -> Unit)? = null,
+    // PROTOTYPE: true when the head must intercept the pushed page's native Back before popping.
+    nativeInterceptsBack: Boolean = false,
 ) {
     val topSafeArea =
         (topSafeAreaOverride ?: if (applyTopSafeArea) raftTopSafeAreaPadding() else 0.dp)
@@ -253,6 +255,7 @@ internal fun RaftTopPageHeader(
             extras = nativeTitleExtras.copy(refreshing = nativeTitleExtras.refreshing || refreshing),
             titleMenu = nativeTitleMenu,
             onBack = onBack ?: nativeOnBack,
+            interceptsBack = nativeInterceptsBack,
             onTitleClick = onTitleClick ?: nativeOnTitleClick,
             onSubtitleClick = nativeOnSubtitleClick,
             titleImage = nativeTitleImage,

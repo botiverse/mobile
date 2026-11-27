@@ -395,7 +395,11 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
     }
 
     private func setHeadHidden(_ hidden: Bool) {
-        guard let page = controller as? RaftPageViewController, page.raftNativeNavBarHeadHidden != hidden else { return }
+        guard let page = controller as? RaftPageViewController else { return }
+        if hidden {
+            page.raftNativeNavBarInterceptsBack = false
+        }
+        guard page.raftNativeNavBarHeadHidden != hidden else { return }
         page.raftNativeNavBarHeadHidden = hidden
         if let owner, let nav = owner.navigationController, nav.topViewController === owner {
             nav.setNavigationBarHidden(hidden, animated: false)
@@ -511,11 +515,28 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             leadingItems.append(switcher)
         }
 
-        // Back: a pushed page pops with the stack's Back; a head over its page (an in-page
-        // sub-view) with a Back of its own runs it instead; at the stack's root the head's Back is
-        // a leading button.
+        // Back: a pushed page pops with the stack's Back; a head that intercepts Back (an in-page
+        // sub-view or an open phone side-card cover) runs its own Back and yields system swipe-back
+        // so an edge swipe dismisses the cover instead of popping the page; at the stack's root the
+        // head's Back is a leading button.
+        let interceptsBack = lastHasBack && lastNested && !isStackRoot
         var ownBackButton = false
+        var useCustomBack = false
         if lastHasBack && isStackRoot {
+            useCustomBack = true
+        } else if #available(iOS 16.0, *) {
+            item.hidesBackButton = false
+            if interceptsBack {
+                item.backAction = UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: "back") }
+            } else {
+                item.backAction = nil
+            }
+        } else if interceptsBack {
+            useCustomBack = true
+        } else {
+            item.hidesBackButton = false
+        }
+        if useCustomBack {
             let back = UIBarButtonItem(
                 title: nil,
                 // The Compose head's Back glyph (RaftBackButton: arrow-left).
@@ -525,14 +546,13 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             )
             back.accessibilityLabel = "Back"
             leadingItems.insert(back, at: 0)
+            if !isStackRoot {
+                item.hidesBackButton = true
+            }
             ownBackButton = true
         }
-        if #available(iOS 16.0, *) {
-            if lastHasBack && lastNested && !isStackRoot {
-                item.backAction = UIAction { [weak self] _ in _ = self?.bridge.actionTapped(id: "back") }
-            } else {
-                item.backAction = nil
-            }
+        if let page = owner as? RaftPageViewController {
+            page.raftNativeNavBarInterceptsBack = interceptsBack
         }
 
         let actions = RaftNativeNavBarHost.parseActions(lastActionsJson)
@@ -560,7 +580,7 @@ final class RaftNativeNavBarHost: NSObject, RaftNativeNavBarListener {
             // iOS 26 glass: each button is ~52pt in its group, a group adds ~16pt of padding, and
             // the system drops a trailing button that does not fit (run 41186095424 lost Search).
             var room = barWidth - 40 - CGFloat(trailingCount) * 52 - (trailingCount > 0 ? 16 : 0)
-            if !isStackRoot { room -= 64 }
+            if !isStackRoot && !item.hidesBackButton { room -= 64 }
             // Landscape: the bar's content stays inside the side safe areas (the sensor housing).
             room -= sideInsets
             if ownBackButton { room -= 60 }

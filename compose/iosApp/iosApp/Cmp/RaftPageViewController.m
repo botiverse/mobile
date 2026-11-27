@@ -395,6 +395,23 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     self.fd_prefersNavigationBarHidden = ![self raftShowsNativeNavBar];
 }
 
+- (BOOL)raftShouldEnableSystemInteractivePopGesture {
+    return self.raftUsesNativeNavBar && !self.raftNativeNavBarInterceptsBack;
+}
+
+- (void)setRaftNativeNavBarInterceptsBack:(BOOL)raftNativeNavBarInterceptsBack {
+    if (_raftNativeNavBarInterceptsBack == raftNativeNavBarInterceptsBack) {
+        return;
+    }
+    _raftNativeNavBarInterceptsBack = raftNativeNavBarInterceptsBack;
+    if (RaftNativeNavProto.enabled) {
+        UINavigationController *nav = self.navigationController;
+        if (nav != nil && nav.topViewController == self && nav.transitionCoordinator == nil) {
+            nav.interactivePopGestureRecognizer.enabled = [self raftShouldEnableSystemInteractivePopGesture];
+        }
+    }
+}
+
 - (void)setRaftUsesNativeNavBar:(BOOL)raftUsesNativeNavBar {
     _raftUsesNativeNavBar = raftUsesNativeNavBar;
     self.fd_prefersNavigationBarHidden = !raftUsesNativeNavBar;
@@ -424,7 +441,8 @@ static NSString *RaftPageWindowId(NSString *controllerToken) {
     // them through fd_interactivePopDisabled); FD keeps the swipe for every other page. Switched
     // only once the page is shown: disabling a recogniser mid-swipe would cancel it.
     if (RaftNativeNavProto.enabled) {
-        self.navigationController.interactivePopGestureRecognizer.enabled = self.raftUsesNativeNavBar;
+        self.navigationController.interactivePopGestureRecognizer.enabled =
+            [self raftShouldEnableSystemInteractivePopGesture];
     }
     if (self.raftNativeNavBarLayoutHook != nil) {
         self.raftNativeNavBarLayoutHook(@"appear");

@@ -276,6 +276,12 @@ internal data class RaftNativeNavBarHead(
     val titleMenu: List<RaftNativeNavBarAction> = emptyList(),
     /** The head's own Back (an in-page sub-view's); null: the stack's Back (or none at its root). */
     val onBack: (() -> Unit)? = null,
+    /**
+     * True when the page's primary head must intercept the pushed page's Back (e.g. closing an
+     * open Tasks / Files cover on a phone before leaving the conversation). Causes the host to
+     * bind the native back action to [onBack] and yield system swipe-back to the in-page cover.
+     */
+    val interceptsBack: Boolean = false,
     /** A tap on the title (scroll to top, the Settings developer unlock). */
     val onTitleClick: (() -> Unit)? = null,
     /** The title view's leading image as drawn by the app ([RaftNativeNavBarTitleImageCapture]); null until drawn. */
@@ -431,7 +437,7 @@ class RaftNativeNavBarBridge {
             }
         val actions = raftNativeNavBarSplit(effectiveActions)
         val hasBack = head.onBack != null
-        val nested = entry != null && entries.firstOrNull { it.head != null } !== entry
+        val nested = head.interceptsBack || (entry != null && entries.firstOrNull { it.head != null } !== entry)
         handlers =
             buildMap {
                 fun addAll(list: List<RaftNativeNavBarAction>) {
@@ -678,6 +684,7 @@ internal fun raftNativeNavBarPublish(
     extras: RaftNativeNavBarTitleExtras = RaftNativeNavBarTitleExtras(),
     titleMenu: List<RaftNativeNavBarAction> = emptyList(),
     onBack: (() -> Unit)? = null,
+    interceptsBack: Boolean = false,
     onTitleClick: (() -> Unit)? = null,
     titleImage: RaftNativeTabBarAvatar? = null,
     onSubtitleClick: (() -> Unit)? = null,
@@ -701,6 +708,7 @@ internal fun raftNativeNavBarPublish(
             extras = extras,
             titleMenu = titleMenu,
             onBack = onBack,
+            interceptsBack = interceptsBack,
             onTitleClick = onTitleClick,
             titleImage = titleImage,
             onSubtitleClick = onSubtitleClick,

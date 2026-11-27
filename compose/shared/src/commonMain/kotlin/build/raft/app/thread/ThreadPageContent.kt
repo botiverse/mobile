@@ -1171,6 +1171,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
                     // Task v2 on a phone: the header's Back closes the cards covering the conversation
                     // first (web `headerMobileBack`), then leaves the page.
                     onBack = if (sideCards.anyOpen && !sideCardsBeside) sideCardsStore::closeAll else onBack,
+                    nativeBackIntercepts = sideCards.anyOpen && !sideCardsBeside,
                     onOpenInChannel = {
                         onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                     },

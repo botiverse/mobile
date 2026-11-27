@@ -447,4 +447,22 @@
                    @"A non-Safari modal presentation must still fire raftPageWillBeCoveredHook");
 }
 
+- (void)testNativeNavBarInterceptsBackDisablesSystemInteractivePopGestureUntilCleared {
+    RaftPageViewController *page = [self renderPage:@"compose_thread"];
+    XCTAssertFalse([page raftShouldEnableSystemInteractivePopGesture],
+                   @"Pages without native nav bar rely on FDFullscreenPopGesture, not system edge pop");
+
+    page.raftUsesNativeNavBar = YES;
+    XCTAssertTrue([page raftShouldEnableSystemInteractivePopGesture],
+                  @"Normal pushed native-nav pages allow UIKit interactive pop");
+
+    page.raftNativeNavBarInterceptsBack = YES;
+    XCTAssertFalse([page raftShouldEnableSystemInteractivePopGesture],
+                   @"Intercepting Back (e.g. open phone Tasks/Files cover) must yield system edge pop to the cover");
+
+    page.raftNativeNavBarInterceptsBack = NO;
+    XCTAssertTrue([page raftShouldEnableSystemInteractivePopGesture],
+                  @"Clearing Back interception must restore UIKit interactive pop");
+}
+
 @end

@@ -362,6 +362,11 @@ internal fun ThreadPageHeader(
     onStartCall: (() -> Unit)? = null,
     /** Keep prefilled iOS native nav bar buttons while LoadingShell renders before FeatureSurfaces. */
     preserveNativePrefilledActions: Boolean = false,
+    /**
+     * True while an in-page cover (Tasks / Files on a phone) sits under this header and Back must
+     * close the cover instead of popping the page from the iOS native navigation stack.
+     */
+    nativeBackIntercepts: Boolean = false,
     /** Server-driven primary action selection on phone headers (`mobile_phone_header_action_v0`). */
     phoneHeaderPrimaryConfig: PhoneConversationHeaderPrimaryConfig = LocalPhoneConversationHeaderPrimaryConfig.current,
 ) {
@@ -697,6 +702,8 @@ internal fun ThreadPageHeader(
                 }
             },
         nativePreservePrefilledActions = preserveNativePrefilledActions,
+        nativeOnBack = trackedBack.takeIf { showsBack && !controlsInColumn },
+        nativeInterceptsBack = nativeBackIntercepts && showsBack && !controlsInColumn,
         nativeActions = nativeNavBarActions,
         nativeTitleMenu = nativeAgentConversationMenu,
         // PROTOTYPE: the channel glyph / DM avatar / B1 conversation switcher and the refresh spinner in the host's title view.
