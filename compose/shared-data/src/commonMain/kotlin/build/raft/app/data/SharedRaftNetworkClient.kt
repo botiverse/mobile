@@ -175,12 +175,22 @@ import kotlin.time.TimeSource
         /** The call's own whole budget (scheduler and transport); null: the ordinary 30 s. */
         totalTimeoutMillis: Long? = null,
     ): HomeNetworkResponse {
+        val session = sessionStore.readSession()
+        val capturedServerScope = if (serverIdOverride == null) session.captureServerScope() else null
         val send: suspend () -> HomeNetworkResponse = {
             sendRequest(
-                priority, path, method, query, serverIdOverride, bodyText, expectedAuthority, extraHeaders, totalTimeoutMillis
+                priority = priority,
+                path = path,
+                method = method,
+                query = query,
+                serverIdOverride = serverIdOverride,
+                capturedServerScope = capturedServerScope,
+                bodyText = bodyText,
+                expectedAuthority = expectedAuthority,
+                extraHeaders = extraHeaders,
+                totalTimeoutMillis = totalTimeoutMillis,
             )
         }
-        val session = sessionStore.readSession()
         val baseUrl = expectedAuthority?.environmentId?.normalizedEnvironmentId() ?: currentBaseUrl()
         val normalizedBaseUrl = baseUrl.normalizedEnvironmentId()
         if (!method.equals("GET", ignoreCase = true) || bodyText != null) {
@@ -267,6 +277,7 @@ import kotlin.time.TimeSource
         method: String,
         query: List<Pair<String, String>>,
         serverIdOverride: ServerId?,
+        capturedServerScope: RaftCapturedServerScope?,
         bodyText: String?,
         expectedAuthority: RaftExpectedAuthBinding?,
         extraHeaders: Map<String, String>,
@@ -307,7 +318,8 @@ import kotlin.time.TimeSource
                     authMiddleware(requestBaseUrl).request(
                         serverIdOverride = serverIdOverride,
                         expectedAuthority = expectedAuthority,
-                        caller = "shared_network:$normalizedPath"
+                        caller = "shared_network:$normalizedPath",
+                        capturedServerScope = capturedServerScope,
                     ) authenticated@{ auth ->
                         if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
                             return@authenticated routeEnvironmentChangedResponse()
@@ -471,6 +483,7 @@ import kotlin.time.TimeSource
         val startedAt = TimeSource.Monotonic.markNow()
         val normalizedPath = path.networkDiagnosticsPath()
         val requestBaseUrl = currentBaseUrl()
+        val capturedServerScope = if (serverIdOverride == null) captureCurrentServerScope() else null
         var body: ByteArray? = null
         var contentType: String? = null
         var failure: String? = null
@@ -483,7 +496,8 @@ import kotlin.time.TimeSource
                 ) {
                     authMiddleware(requestBaseUrl).request(
                         serverIdOverride = serverIdOverride,
-                        caller = "shared_network_bytes:$normalizedPath"
+                        caller = "shared_network_bytes:$normalizedPath",
+                        capturedServerScope = capturedServerScope,
                     ) { auth ->
                         // A retry after a refresh starts over.
                         body = null
@@ -867,6 +881,7 @@ import kotlin.time.TimeSource
         expectedAuthority: RaftExpectedAuthBinding?,
         onProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?
     ): HomeNetworkResponse {
+        val capturedServerScope = if (expectedAuthority == null) captureCurrentServerScope() else null
         val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
         // A composer upload (RaftAttachmentUploadTelemetry.kt): the POST joins its trace and reports
         // what the transport measured. Any other caller has no recorder.
@@ -885,6 +900,7 @@ import kotlin.time.TimeSource
             expectedAuthority = expectedAuthority,
             onUploadProgress = onProgress,
             extraHeaders = uploadTiming?.traceHeaders().orEmpty(),
+            capturedServerScope = capturedServerScope,
             uploadTiming = uploadTiming,
         )
     }
@@ -1051,6 +1067,7 @@ import kotlin.time.TimeSource
         files: List<MultipartFile>,
         serverIdOverride: ServerId?,
     ): HomeNetworkResponse {
+        val capturedServerScope = if (serverIdOverride == null) captureCurrentServerScope() else null
         val resolvedFiles = files.preparePlatformFileStreams().getOrElse { return it }
         return uploadMultipart(
             priority = priority,
@@ -1063,6 +1080,7 @@ import kotlin.time.TimeSource
             key = path,
             extraHeaders = headers,
             serverIdOverride = serverIdOverride,
+            capturedServerScope = capturedServerScope,
         )
     }
 
@@ -1070,6 +1088,7 @@ import kotlin.time.TimeSource
         priority: DataRequestPriority,
         file: MultipartFile
     ): HomeNetworkResponse {
+        val capturedServerScope = captureCurrentServerScope()
         val resolvedFile = listOf(file).resolvePlatformFileRefs().getOrElse { return it }.single()
         return uploadMultipart(
             priority = priority,
@@ -1079,7 +1098,8 @@ import kotlin.time.TimeSource
             fields = emptyMap(),
             files = listOf(resolvedFile),
             requestBytes = resolvedFile.bytes.size.toLong(),
-            key = "auth/me/avatar"
+            key = "auth/me/avatar",
+            capturedServerScope = capturedServerScope,
         )
     }
 
@@ -1088,6 +1108,7 @@ import kotlin.time.TimeSource
         agentId: MemberId,
         file: MultipartFile
     ): HomeNetworkResponse {
+        val capturedServerScope = captureCurrentServerScope()
         val resolvedFile = listOf(file).resolvePlatformFileRefs().getOrElse { return it }.single()
         val path = "agents/${agentId.value}/avatar"
         return uploadMultipart(
@@ -1098,7 +1119,8 @@ import kotlin.time.TimeSource
             fields = emptyMap(),
             files = listOf(resolvedFile),
             requestBytes = resolvedFile.bytes.size.toLong(),
-            key = path
+            key = path,
+            capturedServerScope = capturedServerScope,
         )
     }
 
@@ -1107,6 +1129,7 @@ import kotlin.time.TimeSource
         clientRecordId: String,
         file: MultipartFile
     ): HomeNetworkResponse {
+        val capturedServerScope = captureCurrentServerScope()
         val resolvedFile = listOf(file).resolvePlatformFileRefs().getOrElse { return it }.single()
         val path = "integrations/clients/$clientRecordId/logo"
         return uploadMultipart(
@@ -1117,7 +1140,8 @@ import kotlin.time.TimeSource
             fields = emptyMap(),
             files = listOf(resolvedFile),
             requestBytes = resolvedFile.bytes.size.toLong(),
-            key = path
+            key = path,
+            capturedServerScope = capturedServerScope,
         )
     }
 
@@ -1234,6 +1258,7 @@ import kotlin.time.TimeSource
         onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)? = null,
         extraHeaders: Map<String, String> = emptyMap(),
         serverIdOverride: ServerId? = null,
+        capturedServerScope: RaftCapturedServerScope? = null,
         uploadTiming: RaftAttachmentUploadTimingRecorder? = null,
     ): HomeNetworkResponse {
         val startedAt = TimeSource.Monotonic.markNow()
@@ -1241,6 +1266,9 @@ import kotlin.time.TimeSource
         if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
             return routeEnvironmentChangedResponse()
         }
+        val effectiveServerIdOverride = serverIdOverride ?: expectedAuthority?.serverId?.let(::ServerId)
+        val effectiveCapturedScope =
+            if (effectiveServerIdOverride == null) capturedServerScope ?: captureCurrentServerScope() else null
         // task #788: same files instance and same predicate the executor uses.
         // The transport's per-attempt 180s budget is the single authoritative
         // deadline; the scheduler carries only the strictly-higher derived
@@ -1259,9 +1287,10 @@ import kotlin.time.TimeSource
                 }
                 val transportResponse =
                     authMiddleware(requestBaseUrl).request(
-                        serverIdOverride = serverIdOverride ?: expectedAuthority?.serverId?.let(::ServerId),
+                        serverIdOverride = effectiveServerIdOverride,
                         expectedAuthority = expectedAuthority,
-                        caller = "shared_network:$diagnosticPath"
+                        caller = "shared_network:$diagnosticPath",
+                        capturedServerScope = effectiveCapturedScope,
                     ) authenticated@{ auth ->
                         if (!expectedAuthority.matchesCurrentEnvironment(currentBaseUrl())) {
                             return@authenticated routeEnvironmentChangedResponse()
@@ -1332,6 +1361,9 @@ import kotlin.time.TimeSource
         }
     }
 
+    private suspend fun captureCurrentServerScope(): RaftCapturedServerScope? =
+        sessionStore.readSession().captureServerScope()
+
     private fun currentBaseUrl(): String =
         baseUrlProvider().ifBlank { baseUrl }
 
@@ -1347,6 +1379,12 @@ import kotlin.time.TimeSource
         if (query.isEmpty()) return url
         return "$url?${query.joinToString("&") { (key, value) -> "${key.percentEncode()}=${value.percentEncode()}" }}"
     }
+}
+
+private fun StoredAuthSession?.captureServerScope(): RaftCapturedServerScope? {
+    val session = this ?: return null
+    val serverId = session.currentServerId?.takeIf { it.isNotBlank() } ?: return null
+    return RaftCapturedServerScope(accountId = session.user.id, serverId = ServerId(serverId))
 }
 
 private fun RaftExpectedAuthBinding?.matchesCurrentEnvironment(currentBaseUrl: String): Boolean {
