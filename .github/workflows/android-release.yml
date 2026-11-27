@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: "release"
+      android_abi_filters:
+        description: "Optional comma-separated Android ABIs (arm64-v8a | x86_64 | arm64-v8a,x86_64); empty uses channel/variant default"
+        required: false
+        type: string
+        default: ""
       dex_packaging:
         description: "DEX packaging: current | compressed | mmap"
         required: false
@@ -168,6 +173,11 @@ on:
           - release
           - play
           - debug
+      android_abi_filters:
+        description: "Optional comma-separated Android ABIs (arm64-v8a | x86_64 | arm64-v8a,x86_64); empty defaults to arm64-v8a for release main/preview, else arm64-v8a,x86_64"
+        required: false
+        type: string
+        default: ""
       dex_packaging:
         description: "DEX packaging: current control | compressed | mmap"
         required: true
@@ -231,6 +241,8 @@ jobs:
       version_name: ${{ steps.p.outputs.version_name }}
       hands_channel: ${{ steps.p.outputs.hands_channel }}
       android_variant: ${{ steps.p.outputs.android_variant }}
+      android_abi_filters: ${{ steps.p.outputs.android_abi_filters }}
+      hands_arch: ${{ steps.p.outputs.hands_arch }}
       dex_packaging: ${{ steps.p.outputs.dex_packaging }}
       jni_packaging: ${{ steps.p.outputs.jni_packaging }}
       release_mode: ${{ steps.p.outputs.release_mode }}
@@ -249,6 +261,8 @@ jobs:
           INPUT_DEX_PACKAGING: ${{ inputs.dex_packaging }}
           INPUT_JNI_PACKAGING: ${{ inputs.jni_packaging }}
           INPUT_ANDROID_VARIANT: ${{ inputs.android_variant }}
+          INPUT_HANDS_CHANNEL: ${{ inputs.hands_channel }}
+          INPUT_ANDROID_ABI_FILTERS: ${{ inputs.android_abi_filters }}
           INPUT_UPLOAD_ANDROID_ARTIFACTS: ${{ inputs.upload_android_artifacts }}
         run: |
           set -euo pipefail
@@ -286,6 +300,35 @@ jobs:
               exit 1
               ;;
           esac
+          RAW_ABI_FILTERS="$(printf '%s' "${INPUT_ANDROID_ABI_FILTERS}" | tr -d '[:space:]')"
+          if [ -z "${RAW_ABI_FILTERS}" ]; then
+            if [ "${INPUT_ANDROID_VARIANT}" = "release" ] && { [ "${INPUT_HANDS_CHANNEL}" = "main" ] || [ "${INPUT_HANDS_CHANNEL}" = "preview" ]; }; then
+              ANDROID_ABI_FILTERS="arm64-v8a"
+              HANDS_ARCH="arm64-v8a"
+            else
+              ANDROID_ABI_FILTERS="arm64-v8a,x86_64"
+              HANDS_ARCH="universal"
+            fi
+          else
+            case "${RAW_ABI_FILTERS}" in
+              arm64-v8a)
+                ANDROID_ABI_FILTERS="arm64-v8a"
+                HANDS_ARCH="arm64-v8a"
+                ;;
+              x86_64)
+                ANDROID_ABI_FILTERS="x86_64"
+                HANDS_ARCH="x86_64"
+                ;;
+              arm64-v8a,x86_64|x86_64,arm64-v8a)
+                ANDROID_ABI_FILTERS="arm64-v8a,x86_64"
+                HANDS_ARCH="universal"
+                ;;
+              *)
+                echo "Unsupported android_abi_filters: ${INPUT_ANDROID_ABI_FILTERS} (expected arm64-v8a, x86_64, or arm64-v8a,x86_64)" >&2
+                exit 1
+                ;;
+            esac
+          fi
           UPLOAD_ANDROID_ARTIFACTS="${INPUT_UPLOAD_ANDROID_ARTIFACTS}"
           if [ "${INPUT_ANDROID_VARIANT}" = "play" ] && [ "${UPLOAD_ANDROID_ARTIFACTS}" != "true" ]; then
             echo "Play builds require upload_android_artifacts=true so the signed AAB is retained for Play Console." >&2
@@ -298,8 +341,10 @@ jobs:
             echo "version_build=${{ inputs.version_build }}"
             echo "version_suffix=${{ inputs.version_suffix }}"
             echo "version_name=${VERSION_NAME}"
-            echo "hands_channel=${{ inputs.hands_channel }}"
-            echo "android_variant=${{ inputs.android_variant }}"
+            echo "hands_channel=${INPUT_HANDS_CHANNEL}"
+            echo "android_variant=${INPUT_ANDROID_VARIANT}"
+            echo "android_abi_filters=${ANDROID_ABI_FILTERS}"
+            echo "hands_arch=${HANDS_ARCH}"
             echo "dex_packaging=${DEX_PACKAGING}"
             echo "jni_packaging=${JNI_PACKAGING}"
             echo "release_mode=draft"
@@ -452,6 +497,7 @@ jobs:
             "-PversionZ=${{ needs.resolve.outputs.version_patch }}"
             "-PversionBuild=${{ needs.resolve.outputs.version_build }}"
             "-PversionCode=${{ steps.resolve.outputs.version_code }}"
+            "-PSLOCK_ANDROID_ABI_FILTERS=${{ needs.resolve.outputs.android_abi_filters }}"
           )
           case "${{ needs.resolve.outputs.dex_packaging }}" in
             current) ;;
@@ -590,11 +636,34 @@ jobs:
           if [ "${{ needs.resolve.outputs.jni_packaging }}" = "modern" ]; then
             NATIVE_METHOD=stored
           fi
-          python3 scripts/verify_android_elf_alignment.py \
-            --archive "${APK}" \
-            --expect-native-method "${NATIVE_METHOD}" \
-            --require-abi arm64-v8a \
-            --require-abi x86_64
+          ELF_ARGS=(
+            --archive "${APK}"
+            --expect-native-method "${NATIVE_METHOD}"
+          )
+          IFS=',' read -r -a RESOLVED_ABIS <<< "${{ needs.resolve.outputs.android_abi_filters }}"
+          for abi in "${RESOLVED_ABIS[@]}"; do
+            ELF_ARGS+=(--require-abi "${abi}")
+          done
+          if [ "${{ needs.resolve.outputs.android_abi_filters }}" = "arm64-v8a" ]; then
+            ELF_ARGS+=(--forbid-abi x86_64)
+          elif [ "${{ needs.resolve.outputs.android_abi_filters }}" = "x86_64" ]; then
+            ELF_ARGS+=(--forbid-abi arm64-v8a)
+          fi
+          python3 scripts/verify_android_elf_alignment.py "${ELF_ARGS[@]}"
+          "${BT}/aapt" dump permissions "${APK}" 2>&1 | tee aapt-permissions.log
+          if grep -Fq "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" aapt-permissions.log; then
+            echo "APK must not declare unused LiveKit FOREGROUND_SERVICE_MEDIA_PROJECTION permission" >&2
+            exit 1
+          fi
+          "${BT}/aapt" dump xmltree "${APK}" AndroidManifest.xml > aapt-manifest.log
+          if grep -Fq "io.livekit.android.room.track.screencapture.ScreenCaptureService" aapt-manifest.log; then
+            echo "APK must not declare unused LiveKit ScreenCaptureService" >&2
+            exit 1
+          fi
+          if [ "${{ needs.resolve.outputs.android_variant }}" = "play" ] && grep -Eq "android\.permission\.FOREGROUND_SERVICE([_']|$)" aapt-permissions.log; then
+            echo "Play APK must not declare any FOREGROUND_SERVICE* permission" >&2
+            exit 1
+          fi
           "${BT}/aapt" dump badging "${APK}" 2>&1 | tee aapt-badging.log
           PACKAGE_ID="$(sed -n "s/^package: name='\([^']*\)'.*/\1/p" aapt-badging.log | head -n 1)"
           [ -n "${PACKAGE_ID}" ] || { echo "Unable to read package id" >&2; exit 1; }
@@ -830,6 +899,8 @@ jobs:
             echo "| **sha256** | \`${{ steps.verify.outputs.sha256 }}\` |"
             echo "| **DEX packaging** | \`${{ needs.resolve.outputs.dex_packaging }}\` |"
             echo "| **JNI packaging** | \`${{ needs.resolve.outputs.jni_packaging }}\` |"
+            echo "| **ABI filters** | \`${{ needs.resolve.outputs.android_abi_filters }}\` |"
+            echo "| **Hands arch** | \`${{ needs.resolve.outputs.hands_arch }}\` |"
             echo "| **Hands channel target** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
             echo "| **Create Hands draft** | \`${{ needs.resolve.outputs.create_hands_draft }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -860,6 +931,7 @@ jobs:
       SLOCK_HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
       HANDS_CHANNEL: ${{ needs.resolve.outputs.hands_channel }}
       SLOCK_ANDROID_VARIANT: ${{ needs.resolve.outputs.android_variant }}
+      SLOCK_ANDROID_ARCH: ${{ needs.resolve.outputs.hands_arch }}
       SLOCK_ANDROID_VERSION_MAJOR: ${{ needs.resolve.outputs.version_major }}
       SLOCK_ANDROID_VERSION_MINOR: ${{ needs.resolve.outputs.version_minor }}
       SLOCK_ANDROID_VERSION_PATCH: ${{ needs.resolve.outputs.version_patch }}
@@ -1035,6 +1107,7 @@ jobs:
             echo "| **APK** | \`${{ needs.build_android_release.outputs.apk_path }}\` |"
             echo "| **APK sha256** | \`${{ needs.build_android_release.outputs.apk_sha256 }}\` |"
             echo "| **Hands channel** | \`${{ needs.resolve.outputs.hands_channel }}\` |"
+            echo "| **Hands arch** | \`${{ needs.resolve.outputs.hands_arch }}\` |"
             echo "| **Release mode** | \`${{ needs.resolve.outputs.release_mode }}\` |"
             echo "| **Release id** | \`${{ steps.publish-hands-release.outputs.release_id || '(none)' }}\` |"
             echo "| **Share URL** | ${{ steps.create-share-page.outputs.share_url || '(skipped)' }} |"

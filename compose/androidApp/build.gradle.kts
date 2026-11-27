@@ -353,6 +353,23 @@ val raftAndroidVersionName =
             if (raftAndroidVersionSuffix != null) append("+").append(raftGitCommit())
             if (raftWorkingTreeDirty()) append("-dirty")
         }
+val raftSupportedAndroidAbis = setOf("arm64-v8a", "x86_64")
+val raftAndroidAbiFilters: List<String> =
+    raftBuildConfigRawString("SLOCK_ANDROID_ABI_FILTERS")
+        ?.split(",")
+        ?.map { it.trim() }
+        ?.also { requested ->
+            val invalid = requested.filter { it !in raftSupportedAndroidAbis }
+            if (requested.isEmpty() || invalid.isNotEmpty()) {
+                throw GradleException(
+                    "SLOCK_ANDROID_ABI_FILTERS must be a comma-separated subset of " +
+                        "${raftSupportedAndroidAbis.sorted().joinToString(",")}: " +
+                        requested.joinToString(",")
+                )
+            }
+        }
+        ?.distinct()
+        ?: listOf("arm64-v8a", "x86_64")
 
 fun raftBuildTime(): String {
     val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
@@ -672,9 +689,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 64-bit only (artin 2026-11-07): MMKV 2.x, which holds the sign-in, refuses a 32-bit process
         // (UnsupportedArchitectureException at launch, Hands 317d4e9a). Without armeabi-v7a a 32-bit-only
-        // phone can't install the app instead of crashing on open. x86_64 keeps the emulators.
+        // phone can't install the app instead of crashing on open. Direct Hands preview/main APKs pass
+        // -PSLOCK_ANDROID_ABI_FILTERS=arm64-v8a to drop unused x86_64 native libs; Play AABs, debug/alpha,
+        // and emulator QA lanes keep the default arm64-v8a,x86_64.
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += raftAndroidAbiFilters
         }
         buildConfigField(
             "Boolean",

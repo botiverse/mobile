@@ -178,6 +178,45 @@ class RaftAndroidBackgroundConnectionControlsTest {
     }
 
     @Test
+    fun mainManifestStripsUnusedLiveKitScreenCaptureFgsAndPlayManifestKeepsAllFgsRemovals() {
+        val main = File("src/main/AndroidManifest.xml").readText()
+        val play = File("src/play/AndroidManifest.xml").readText()
+        assertTrue(
+            Regex(
+                """android:name="android\.permission\.FOREGROUND_SERVICE_MEDIA_PROJECTION"\s+tools:node="remove""""
+            ).containsMatchIn(main)
+        )
+        assertTrue(
+            Regex(
+                """android:name="io\.livekit\.android\.room\.track\.screencapture\.ScreenCaptureService"\s+tools:node="remove""""
+            ).containsMatchIn(main)
+        )
+        val declaredMainFgsPermissions =
+            Regex("""<uses-permission\b[^>]*android:name="(android\.permission\.FOREGROUND_SERVICE[^"]*)"[^>]*/>""")
+                .findAll(main)
+                .filterNot { it.value.contains("""tools:node="remove"""") }
+                .map { it.groupValues[1] }
+                .toSet()
+        assertEquals(
+            setOf(
+                "android.permission.FOREGROUND_SERVICE",
+                "android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING",
+                "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+            ),
+            declaredMainFgsPermissions,
+        )
+        for (permission in declaredMainFgsPermissions) {
+            assertTrue(
+                "Play manifest must remove $permission",
+                Regex("""android:name="${Regex.escape(permission)}"\s+tools:node="remove"""").containsMatchIn(play),
+            )
+        }
+        assertTrue(
+            Regex("""android:name="build\.raft\.app\.shared\.RaftDownloadForegroundService"\s+tools:node="remove"""").containsMatchIn(play)
+        )
+    }
+
+    @Test
     fun directGmsOverrideExposedAndToggleableOnlyOnDirectInstallWithGms() {
         val persistedWrites = mutableListOf<Boolean>()
         var stored = false

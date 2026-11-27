@@ -277,6 +277,59 @@ class VerifyAndroidElfAlignmentTest(unittest.TestCase):
                     required_abis=("arm64-v8a", "x86_64"),
                 )
 
+    def test_accepts_arm64_only_when_x86_64_forbidden(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            report = verify_archive(
+                self.create_archive(
+                    Path(directory),
+                    alignment=16 * 1024,
+                    include_x86_64=False,
+                ),
+                required_abis=("arm64-v8a",),
+                forbidden_abis=("x86_64",),
+            )
+            self.assertEqual(["arm64-v8a"], report["required_abis"])
+            self.assertEqual(["x86_64"], report["forbidden_abis"])
+            self.assertEqual(2, len(report["libraries"]))
+
+    def test_rejects_forbidden_abi(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "forbidden ABIs: x86_64"):
+                verify_archive(
+                    self.create_archive(
+                        Path(directory),
+                        alignment=16 * 1024,
+                        include_x86_64=True,
+                    ),
+                    required_abis=("arm64-v8a",),
+                    forbidden_abis=("x86_64",),
+                )
+
+    def test_rejects_non_so_entry_in_forbidden_abi_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            archive_path = self.create_archive(
+                Path(directory),
+                alignment=16 * 1024,
+                include_x86_64=False,
+            )
+            with zipfile.ZipFile(archive_path, "a") as archive:
+                archive.writestr("lib/x86_64/unexpected.txt", b"bloat")
+            with self.assertRaisesRegex(ValueError, "forbidden ABIs: x86_64"):
+                verify_archive(
+                    archive_path,
+                    required_abis=("arm64-v8a",),
+                    forbidden_abis=("x86_64",),
+                )
+
+    def test_rejects_conflicting_required_and_forbidden_abi(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "both required and forbidden: x86_64"):
+                verify_archive(
+                    self.create_archive(Path(directory), alignment=16 * 1024),
+                    required_abis=("arm64-v8a", "x86_64"),
+                    forbidden_abis=("x86_64",),
+                )
+
     def test_rejects_wrong_native_compression_method(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaisesRegex(ValueError, "must be stored, got deflated"):

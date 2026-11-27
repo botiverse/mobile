@@ -7,9 +7,9 @@ HANDS_CLI_PACKAGE="${HANDS_CLI_PACKAGE:-@botiverse/hands-cli@0.5.83}"
 APP_SLUG="${HANDS_APP_SLUG:-raft-android}"
 CHANNEL="${HANDS_CHANNEL:-${SLOCK_HANDS_CHANNEL:-main}}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
-# Universal APK carries both arm64-v8a and x86_64 native libs; Hands CLI >= 0.5.64
-# stores `--arch universal` with no arch so Hands serves it (and its delta patches)
-# to every Android ABI, including x86_64 update-E2E emulators (#proj-mobile-release:#29).
+# Default stays universal for standalone/emulator callers (Hands CLI >= 0.5.64
+# stores `--arch universal` with no arch); android-release.yml passes
+# SLOCK_ANDROID_ARCH=arm64-v8a for direct preview/main phone APKs (#proj-mobile:386a49fa).
 ARCH="${SLOCK_ANDROID_ARCH:-universal}"
 VERSION_X="${SLOCK_ANDROID_VERSION_MAJOR:-1}"
 VERSION_Y="${SLOCK_ANDROID_VERSION_MINOR:-0}"

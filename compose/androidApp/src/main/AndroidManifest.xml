@@ -9,6 +9,11 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- LiveKit AAR declares screen-capture FGS even though Agent Voice is audio-only;
+         strip both the permission and service across all variants (Hands APK and Play AAB). -->
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"
+        tools:node="remove" />
     <!-- No-Play-services background connection (RaftBackgroundConnectionService). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_REMOTE_MESSAGING" />
@@ -63,6 +68,9 @@
             android:name=".shared.RaftDownloadForegroundService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <service
+            android:name="io.livekit.android.room.track.screencapture.ScreenCaptureService"
+            tools:node="remove" />
 
         <!-- Page host: every page renders on Compose Multiplatform (RaftCmpRouter /
              RaftPageRegistry). stateHidden|adjustResize so Compose receives IME insets on every
