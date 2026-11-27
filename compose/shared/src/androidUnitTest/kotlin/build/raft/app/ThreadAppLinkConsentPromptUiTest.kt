@@ -3,7 +3,9 @@ package build.raft.app
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLinkConsentStatus
@@ -73,6 +75,29 @@ class ThreadAppLinkConsentPromptUiTest {
         }
 
     @Test
+    fun linkPreviewConsentPromptUsesTurningOnProgressDescription(): Unit =
+        runRobolectricComposeUiTest {
+            val app = AppLinkPromptApp(id = "client-linear", name = "Linear", icon = null)
+            setContent {
+                RaftDesignSystemTheme {
+                    ThreadAppLinkConsentPrompt(
+                        app = app,
+                        url = "https://linear.app/raft/issue/RAFT-812",
+                        status = AppLinkConsentStatus.Allowing,
+                        onDismiss = {},
+                        onAllow = {},
+                        onDecline = {},
+                        onOpenLink = {},
+                        inWindow = false,
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithContentDescription("Turning on previews…", useUnmergedTree = true).assertIsDisplayed()
+            onAllNodesWithContentDescription("Allowing…", useUnmergedTree = true).assertCountEquals(0)
+        }
+
+    @Test
     fun messageCardConsentPromptKeepsAllowingProgressLabel(): Unit =
         runRobolectricComposeUiTest {
             setContent {
@@ -87,7 +112,7 @@ class ThreadAppLinkConsentPromptUiTest {
                 }
             }
             waitForIdle()
-            onNodeWithText("Allowing…", useUnmergedTree = true).assertIsDisplayed()
-            onAllNodesWithText("Turning on previews…", useUnmergedTree = true).assertCountEquals(0)
+            onNodeWithContentDescription("Allowing…", useUnmergedTree = true).assertIsDisplayed()
+            onAllNodesWithContentDescription("Turning on previews…", useUnmergedTree = true).assertCountEquals(0)
         }
 }
