@@ -1,5 +1,9 @@
 package build.raft.app.data
 
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ServerId
+import build.raft.app.network.HEADER_AUTHORIZATION
+import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftHttpExecutorResponse
@@ -180,6 +184,275 @@ class SharedApiEnvironmentNetworkClientTest {
             executor.urls
         )
     }
+
+    @Test
+    fun unboundRequestCapturesServerIdAtInitiationAndKeepsAcross401RefreshRetry() = runBlocking {
+        val initial = multiServerSession(selectedServerId = "server-1")
+        val backing = InMemoryRaftAuthSessionStore(initial)
+        var readCount = 0
+        // Simulate a server switch right after request initiation (before auth middleware executes).
+        val switchingStore =
+            object : RaftAuthSessionStore by backing {
+                override suspend fun readSession(): StoredAuthSession? {
+                    val current = backing.readSession()
+                    readCount += 1
+                    if (readCount == 1 && current != null) {
+                        backing.saveSession(current.copy(selectedServerId = "server-2"))
+                    }
+                    return current
+                }
+            }
+        val executor =
+            ScriptedHttpExecutor { url, headers ->
+                when {
+                    url.endsWith("/auth/refresh") ->
+                        RaftHttpExecutorResponse(
+                            code = 200,
+                            bodyText = """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                            errorBodyText = null,
+                        )
+                    headers[HEADER_AUTHORIZATION] == "Bearer access-token" ->
+                        RaftHttpExecutorResponse(
+                            code = 401,
+                            bodyText = null,
+                            errorBodyText = """{"error":"expiredToken"}""",
+                        )
+                    else ->
+                        RaftHttpExecutorResponse(code = 200, bodyText = """{"ok":true}""", errorBodyText = null)
+                }
+            }
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = switchingStore,
+                baseUrl = "https://api.raft.build/api/",
+                executor = executor,
+            )
+
+        val response = client.request(DataRequestPriority.Foreground, "channels/channel-1/messages")
+
+        assertEquals(200, response.code)
+        val resourceCalls = executor.requests.filter { it.first.endsWith("/channels/channel-1/messages") }
+        assertEquals(2, resourceCalls.size)
+        assertEquals("server-1", resourceCalls[0].second[HEADER_SERVER_ID])
+        assertEquals("Bearer access-token", resourceCalls[0].second[HEADER_AUTHORIZATION])
+        assertEquals("server-1", resourceCalls[1].second[HEADER_SERVER_ID])
+        assertEquals("Bearer fresh-access", resourceCalls[1].second[HEADER_AUTHORIZATION])
+        assertEquals("server-2", backing.readSession()?.currentServerId)
+    }
+
+    @Test
+    fun explicitServerIdOverridePreservedAcross401RefreshWhenCurrentServerSwitches() = runBlocking {
+        val initial = multiServerSession(selectedServerId = "server-1")
+        val store = InMemoryRaftAuthSessionStore(initial)
+        val executor =
+            ScriptedHttpExecutor { url, headers ->
+                when {
+                    url.endsWith("/auth/refresh") -> {
+                        store.updateSelectedServer(serverId = "server-2", serverSlug = null)
+                        RaftHttpExecutorResponse(
+                            code = 200,
+                            bodyText = """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                            errorBodyText = null,
+                        )
+                    }
+                    headers[HEADER_AUTHORIZATION] == "Bearer access-token" ->
+                        RaftHttpExecutorResponse(
+                            code = 401,
+                            bodyText = null,
+                            errorBodyText = """{"error":"expiredToken"}""",
+                        )
+                    else ->
+                        RaftHttpExecutorResponse(code = 200, bodyText = """{"ok":true}""", errorBodyText = null)
+                }
+            }
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = store,
+                baseUrl = "https://api.raft.build/api/",
+                executor = executor,
+            )
+
+        val response =
+            client.request(
+                priority = DataRequestPriority.Foreground,
+                path = "channels",
+                serverIdOverride = ServerId("server-explicit"),
+            )
+
+        assertEquals(200, response.code)
+        val resourceCalls = executor.requests.filter { it.first.endsWith("/channels") }
+        assertEquals(2, resourceCalls.size)
+        assertEquals(listOf("server-explicit", "server-explicit"), resourceCalls.map { it.second[HEADER_SERVER_ID] })
+        assertEquals("Bearer fresh-access", resourceCalls[1].second[HEADER_AUTHORIZATION])
+        assertEquals("server-2", store.readSession()?.currentServerId)
+    }
+
+    @Test
+    fun unboundMultipartUploadCapturesServerIdBeforeFileResolutionAndKeepsAcross401Refresh() = runBlocking {
+        val initial = multiServerSession(selectedServerId = "server-1")
+        val store = InMemoryRaftAuthSessionStore(initial)
+        val resolver =
+            object : RaftPlatformFileResolver {
+                override suspend fun readFile(fileRef: String): RaftPlatformFileReadResult =
+                    error("whole-file read must not run")
+
+                override suspend fun statFile(fileRef: String): RaftPlatformFileStatResult {
+                    // User switches servers while the file is being prepared before upload dispatch.
+                    store.saveSession(initial.copy(selectedServerId = "server-2"))
+                    return RaftPlatformFileStatResult(code = 200, sizeBytes = 4L)
+                }
+
+                override suspend fun openFileStream(
+                    fileRef: String,
+                    expectedSizeBytes: Long,
+                ): RaftPlatformFileChunkSource =
+                    object : RaftPlatformFileChunkSource {
+                        private var sent = false
+                        override suspend fun read(maxBytes: Int): ByteArray =
+                            if (sent) {
+                                ByteArray(0)
+                            } else {
+                                sent = true
+                                byteArrayOf(1, 2, 3, 4)
+                            }
+
+                        override fun close() = Unit
+                    }
+            }
+        val executor =
+            ScriptedHttpExecutor(
+                onExecute = { url, _ ->
+                    if (url.endsWith("/auth/refresh")) {
+                        RaftHttpExecutorResponse(
+                            code = 200,
+                            bodyText = """{"accessToken":"fresh-access","refreshToken":"fresh-refresh"}""",
+                            errorBodyText = null,
+                        )
+                    } else {
+                        RaftHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
+                    }
+                },
+                onMultipart = { _, headers ->
+                    if (headers[HEADER_AUTHORIZATION] == "Bearer access-token") {
+                        RaftHttpExecutorResponse(
+                            code = 401,
+                            bodyText = null,
+                            errorBodyText = """{"error":"expiredToken"}""",
+                        )
+                    } else {
+                        RaftHttpExecutorResponse(code = 200, bodyText = """{"ok":true}""", errorBodyText = null)
+                    }
+                },
+            )
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = store,
+                baseUrl = "https://api.raft.build/api/",
+                platformFileResolver = resolver,
+                executor = executor,
+            )
+
+        val response =
+            client.uploadAttachments(
+                priority = DataRequestPriority.Foreground,
+                channelId = ChannelId("channel-a"),
+                files =
+                    listOf(
+                        MultipartFile(
+                            name = "files",
+                            fileName = "note.txt",
+                            mimeType = "text/plain",
+                            fileRef = "local/note.txt",
+                            sizeBytes = 4L,
+                        )
+                    ),
+            )
+
+        assertEquals(200, response.code)
+        assertEquals(2, executor.multipartHeaders.size)
+        assertEquals(listOf("server-1", "server-1"), executor.multipartHeaders.map { it[HEADER_SERVER_ID] })
+        assertEquals("Bearer fresh-access", executor.multipartHeaders[1][HEADER_AUTHORIZATION])
+        assertEquals("server-2", store.readSession()?.currentServerId)
+    }
+
+    @Test
+    fun boundRequestStillRejectsWhenServerSwitchesBetweenInitiationAndDispatch() = runBlocking {
+        val initial = multiServerSession(selectedServerId = "server-1")
+        val backing = InMemoryRaftAuthSessionStore(initial)
+        var readCount = 0
+        val switchingStore =
+            object : RaftAuthSessionStore by backing {
+                override suspend fun readSession(): StoredAuthSession? {
+                    val current = backing.readSession()
+                    readCount += 1
+                    if (readCount == 1 && current != null) {
+                        backing.saveSession(current.copy(selectedServerId = "server-2"))
+                    }
+                    return current
+                }
+            }
+        val executor = RecordingHttpExecutor()
+        val baseUrl = "https://api.raft.build/api/"
+        val client =
+            SharedRaftNetworkClient(
+                sessionStore = switchingStore,
+                baseUrl = baseUrl,
+                executor = executor,
+            ).boundTo(expectedBinding(environmentId = baseUrl))
+
+        val response = client.request(DataRequestPriority.Foreground, "channels/channel-1")
+
+        assertEquals(409, response.code)
+        assertEquals(emptyList(), executor.urls)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    private class ScriptedHttpExecutor(
+        private val onExecute: suspend (String, Map<String, String>) -> RaftHttpExecutorResponse,
+        private val onMultipart: suspend (String, Map<String, String>) -> RaftHttpExecutorResponse = { _, _ ->
+            RaftHttpExecutorResponse(code = 200, bodyText = "{}", errorBodyText = null)
+        },
+    ) : RaftHttpExecutor {
+        val requests = mutableListOf<Pair<String, Map<String, String>>>()
+        val multipartHeaders = mutableListOf<Map<String, String>>()
+
+        override suspend fun execute(
+            priority: RaftRequestPriority,
+            url: String,
+            method: String,
+            headers: Map<String, String>,
+            bodyText: String?,
+            jsonBody: Boolean,
+        ): RaftHttpExecutorResponse {
+            requests += url to headers
+            return onExecute(url, headers)
+        }
+
+        override suspend fun executeMultipart(
+            priority: RaftRequestPriority,
+            url: String,
+            fields: Map<String, String>,
+            files: List<MultipartFile>,
+            headers: Map<String, String>,
+            onUploadProgress: ((build.raft.app.network.RaftWireTransferProgress) -> Unit)?,
+        ): RaftHttpExecutorResponse {
+            multipartHeaders += headers
+            return onMultipart(url, headers)
+        }
+    }
+
+    private fun multiServerSession(selectedServerId: String): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "user@raft.build"),
+            accessToken = "access-token",
+            refreshToken = "refresh-token",
+            selectedServerId = selectedServerId,
+            servers =
+                listOf(
+                    StoredAuthServer(id = "server-1", name = "Raft One"),
+                    StoredAuthServer(id = "server-2", name = "Raft Two"),
+                ),
+        )
 
     private class RecordingHttpExecutor(
         private val responseCode: Int = 200,

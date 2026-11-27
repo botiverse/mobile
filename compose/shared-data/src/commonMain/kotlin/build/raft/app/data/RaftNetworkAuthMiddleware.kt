@@ -35,11 +35,19 @@ import build.raft.app.model.ServerId
         serverIdOverride: ServerId? = null,
         expectedAuthority: RaftExpectedAuthBinding? = null,
         caller: String = "shared_network",
+        capturedServerScope: RaftCapturedServerScope? = null,
         block: suspend (RaftAuthenticatedRequestContext) -> HomeNetworkResponse
     ): HomeNetworkResponse {
         val session = sessionStore.readSession()
             ?: return sessionExpiredResponse()
-        val serverId = (serverIdOverride?.value ?: session.currentServerId).orEmpty()
+        if (
+            serverIdOverride == null &&
+                capturedServerScope != null &&
+                session.user.id.trim() != capturedServerScope.accountId.trim()
+        ) {
+            return authorityChangedResponse()
+        }
+        val serverId = (serverIdOverride?.value ?: capturedServerScope?.serverId?.value ?: session.currentServerId).orEmpty()
         if (
             expectedAuthority != null &&
                 !session.matchesExpectedAuthority(
@@ -89,7 +97,9 @@ import build.raft.app.model.ServerId
         if (refreshed == null) {
             return first.asSessionExpired()
         }
-        val retryServerId = (serverIdOverride?.value ?: refreshed.currentServerId).orEmpty()
+        // Keep the server id captured for this request across 401 refresh retries (#proj-mobile:#418),
+        // rather than re-reading refreshed.currentServerId after a concurrent server switch.
+        val retryServerId = serverId
         if (
             expectedAuthority != null &&
                 !refreshed.matchesExpectedAuthority(
@@ -98,6 +108,9 @@ import build.raft.app.model.ServerId
                     environmentIdProvider(),
                 )
         ) {
+            return authorityChangedResponse()
+        }
+        if (refreshed.user.id.trim() != session.user.id.trim()) {
             return authorityChangedResponse()
         }
         if (refreshed.accessToken.isBlank() || retryServerId.isBlank()) {
@@ -151,6 +164,15 @@ import build.raft.app.model.ServerId
     val accessToken: String,
     val authorization: String,
     val serverId: String
+)
+
+/**
+ * Active account and server captured when a network call is initiated, so queued dispatches
+ * and 401 refresh retries stay bound to the originating server without leaking across accounts.
+ */
+@RaftCoreInternalApi data class RaftCapturedServerScope(
+    val accountId: String,
+    val serverId: ServerId,
 )
 
 /** Transient request witness. Never persist or log its token fields. */
