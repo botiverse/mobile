@@ -131,6 +131,7 @@ class ThreadTimelinePlacementResizeUiTest {
         val userScrollGeneration = ThreadUserScrollGeneration()
         var viewport: ThreadListViewport? = null
         var slice: ThreadTimelineSlice? = null
+        var hasPendingCommand: () -> Boolean = { false }
         var dispatchEvent: ((LazyViewportEvent) -> Unit)? = null
         val logs = mutableListOf<String>()
         val dispatchedOwners = mutableListOf<String>()
@@ -146,6 +147,7 @@ class ThreadTimelinePlacementResizeUiTest {
         val viewport = remember(raw, harness.reverseLayout) { ThreadListViewport(raw, reverse = harness.reverseLayout) }
         harness.viewport = viewport
         val controllerState = remember { mutableStateOf(LazyViewportControllerState()) }
+        harness.hasPendingCommand = { controllerState.value.pendingCommand != null }
         val layoutGenState = remember { mutableStateOf(0L) }
         val payloadState = rememberUpdatedState(slice)
         val imeState = rememberUpdatedState(harness.imeInsetDp)
@@ -251,6 +253,7 @@ class ThreadTimelinePlacementResizeUiTest {
                 )
             )
         }
+        waitUntil(timeoutMillis = 5_000L) { !harness.hasPendingCommand() }
         waitForIdle()
         runOnIdle {
             val rawInfo = vp.raw.layoutInfo
@@ -264,6 +267,16 @@ class ThreadTimelinePlacementResizeUiTest {
         }
         waitForIdle()
         harness.dispatchedOwners.clear()
+    }
+
+    private fun androidx.compose.ui.test.ComposeUiTest.awaitResizeSettlement(
+        harness: Harness,
+        expectedGeneration: Int,
+    ) {
+        waitUntil(timeoutMillis = 5_000L) {
+            !harness.hasPendingCommand() && harness.tracker.rePlacementSettledGeneration >= expectedGeneration
+        }
+        waitForIdle()
     }
 
     @Test
@@ -280,7 +293,7 @@ class ThreadTimelinePlacementResizeUiTest {
 
         // Shrink viewport by 150dp (would clip/push m6 above top without re-placement on reverseLayout=true).
         harness.viewportHeightDp = 450
-        waitForIdle()
+        awaitResizeSettlement(harness, expectedGeneration = 1)
 
         val offsetAfterShrink = vp.visibleItemOffset(m6Index)
         assertTrue(offsetAfterShrink != null && abs(offsetAfterShrink) <= 2, "expected m6 at top after shrink, got $offsetAfterShrink")
@@ -289,7 +302,7 @@ class ThreadTimelinePlacementResizeUiTest {
 
         // Grow viewport back by +100dp -> m6 stays pinned at top == 0.
         harness.viewportHeightDp = 550
-        waitForIdle()
+        awaitResizeSettlement(harness, expectedGeneration = 2)
         val offsetAfterGrow = vp.visibleItemOffset(m6Index)
         assertTrue(offsetAfterGrow != null && abs(offsetAfterGrow) <= 2, "expected m6 at top after grow, got $offsetAfterGrow")
     }
@@ -308,7 +321,7 @@ class ThreadTimelinePlacementResizeUiTest {
 
         // Shrink by 69dp (exact slock #17076 rowLiveResize.test.ts scenario).
         harness.viewportHeightDp = 531
-        waitForIdle()
+        awaitResizeSettlement(harness, expectedGeneration = 1)
 
         val bottom = vp.visibleItemBottom(m11Index)
         val viewportEnd = vp.layoutInfo.viewportEndOffset
