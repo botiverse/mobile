@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.raftMineFirst
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.app.format.RaftFormat
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.requiredSize

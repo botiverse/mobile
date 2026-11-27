@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import build.raft.app.data.RaftRailPlace
 import build.raft.app.data.mergeRaftMobilePlacesOrder
+import build.raft.app.thread.key
 import kotlin.math.sqrt
 
 /** Which section of the in-popover Edit navigation bar surface a place belongs to. */

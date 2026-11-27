@@ -5,6 +5,10 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskId
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.ThreadJoinChannelOutcome
+import build.raft.app.thread.joinThreadChannel
+import build.raft.app.thread.withChannelJoined
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

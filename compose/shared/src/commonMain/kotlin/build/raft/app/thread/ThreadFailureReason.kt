@@ -1,7 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
+import build.raft.app.get
+import build.raft.app.localized
+import build.raft.app.redactThreadFailureReason
 
 private const val ThreadFailureReasonMaxLength = 120
 

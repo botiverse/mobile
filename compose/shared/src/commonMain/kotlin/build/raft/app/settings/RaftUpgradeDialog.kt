@@ -45,6 +45,8 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
+import build.raft.app.thread.key
+import build.raft.app.thread.threadHistoryPaywallCount
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

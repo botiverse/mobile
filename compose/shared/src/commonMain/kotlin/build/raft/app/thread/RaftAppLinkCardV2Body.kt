@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +16,9 @@ import build.raft.app.data.RaftAppLinkCardV2
 import build.raft.app.data.RaftLinkCardTextTone
 import build.raft.app.data.RaftLinkCardV2Element
 import build.raft.app.data.RaftMessageCardElement
+import build.raft.app.fill
+import build.raft.app.raftCardDurationText
+import build.raft.app.raftRelativeTimestampLabel
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftAppLinkCardBadge
 import build.raft.designsystem.components.RaftAppLinkCardBadgeSurface

@@ -3,6 +3,9 @@ package build.raft.app
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.compat.pager.Page
+import build.raft.app.thread.ThreadForwardBundleCard
+import build.raft.app.thread.raftMessageBodyTextStyle
+import build.raft.app.thread.threadForwardBundleVisualFixtureBundle
 
 @Page("compose_thread_forward_bundle_visual", supportInLocal = true)
 internal class ComposeThreadForwardBundleVisualPage : build.raft.app.base.BasePager() {

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -8,6 +8,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.Density
+import build.raft.app.accepts
+import build.raft.app.messages
+import build.raft.app.raftExpressiveTopSettleAnchor
+import build.raft.app.thread.accepts
 
 /**
  * The thread list's viewport message-diff effect, the viewport command executor (the only

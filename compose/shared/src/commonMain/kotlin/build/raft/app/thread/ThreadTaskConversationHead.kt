@@ -1,11 +1,22 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import build.raft.app.HomeMessageOpenRequest
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftTimeContextProvider
+import build.raft.app.TaskConversationHeadRow
+import build.raft.app.TaskConversationHeaderChrome
+import build.raft.app.TaskHeadPlacement
+import build.raft.app.TaskHeadScrollState
 import build.raft.app.base.BridgeModule
+import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.canBeDeletedBy
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
@@ -24,6 +35,12 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
+import build.raft.app.rememberTaskConversationHeadRow
+import build.raft.app.taskChannelOpenRequest
+import build.raft.app.taskConversationHeaderChrome
+import build.raft.app.taskViewInChannelAnchor
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeCapabilities
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map

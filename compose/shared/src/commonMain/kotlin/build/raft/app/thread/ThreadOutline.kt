@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -70,9 +70,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftBackHandler
 import build.raft.app.data.RaftThreadOutlineApi
 import build.raft.app.data.ThreadOutlineItem
+import build.raft.app.fill
 import build.raft.app.markdown.markdownToPreviewText
+import build.raft.app.messages
+import build.raft.app.origin
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftPopoverSurface
 import build.raft.designsystem.components.RaftTooltip

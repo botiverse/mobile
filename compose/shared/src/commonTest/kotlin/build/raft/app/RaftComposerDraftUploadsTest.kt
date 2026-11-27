@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftAttachmentUploadCancelReason
+import build.raft.app.thread.dispatch
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
 import kotlinx.coroutines.CompletableDeferred

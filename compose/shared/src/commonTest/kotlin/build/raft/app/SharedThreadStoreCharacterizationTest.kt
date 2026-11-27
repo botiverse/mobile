@@ -16,6 +16,12 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadState
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.dispatch
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

@@ -61,6 +61,10 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.LocalThreadVoiceDictationHost
+import build.raft.app.thread.ThreadVoiceDictationButtonTestTag
+import build.raft.app.thread.ThreadVoiceDictationErrorTestTag
+import build.raft.app.thread.rememberComposerVoiceDictationHost
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

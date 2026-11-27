@@ -8,6 +8,8 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.thread.ThreadDateDividerDay
+import build.raft.app.thread.threadLocalEpochDay
 
 /**
  * How [defaultSendPromptAgent] chose the suggested agent (matches web

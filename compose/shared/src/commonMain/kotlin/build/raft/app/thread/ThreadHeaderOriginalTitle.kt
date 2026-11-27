@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
@@ -30,6 +30,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.AdaptiveParentFocusRequest
 import build.raft.app.data.MessageContextHiddenTarget
@@ -38,8 +39,16 @@ import build.raft.app.data.RAFT_ADAPTIVE_DETAIL_FOCUS_MESSAGE_EVENT
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.ScreenError
 import build.raft.app.data.extractQuoteReplyPreviewText
+import build.raft.app.externalAuthorShownName
+import build.raft.app.get
 import build.raft.app.markdown.markdownToPreviewText
+import build.raft.app.origin
+import build.raft.app.post
+import build.raft.app.rememberExternalAuthorFallbackName
+import build.raft.app.reportUnknownTypeDropped
 import build.raft.app.resources.*
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.toJson
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 /*

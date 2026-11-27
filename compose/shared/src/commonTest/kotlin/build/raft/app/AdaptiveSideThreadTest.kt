@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.*
+import build.raft.app.thread.key
 import kotlin.test.*
 
 /** task #36: channel body and reply thread side by side when the detail pane has room. */

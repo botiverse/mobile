@@ -14,6 +14,13 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.TaskUpdated
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageSourceTaskItem
+import build.raft.app.thread.emptyThreadLinkedTasksProjection
+import build.raft.app.thread.sourceTaskById
+import build.raft.app.thread.sourceTasksFor
+import build.raft.app.thread.threadSourceTaskLists
+import build.raft.app.thread.toThreadMessageSourceTaskItem
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

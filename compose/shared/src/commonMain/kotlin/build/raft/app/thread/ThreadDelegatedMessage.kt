@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.withRaftUserContentLocale
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -9,6 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import build.raft.app.RaftColor
+import build.raft.app.RaftType
+import build.raft.app.fill
 import build.raft.app.model.MessageDelegatedBy
 import org.jetbrains.compose.resources.StringResource
 

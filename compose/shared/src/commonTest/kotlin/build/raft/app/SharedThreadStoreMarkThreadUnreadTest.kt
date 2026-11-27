@@ -20,6 +20,9 @@ import build.raft.app.data.ReadReceiptResult
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

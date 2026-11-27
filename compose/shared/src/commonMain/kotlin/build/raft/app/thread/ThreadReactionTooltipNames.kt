@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 /** Who the reaction tooltip names, and how many more reacted ("+3 more"). */
 internal data class ThreadReactionTooltipNames(

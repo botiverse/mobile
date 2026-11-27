@@ -26,6 +26,15 @@ import build.raft.app.downloads.RaftDownloadOutcome
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.downloads.raftDownloadBarState
 import build.raft.app.downloads.raftDownloadCenterEntryId
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.ThreadAttachmentOpenResult
+import build.raft.app.thread.ThreadAttachmentOpenUiState
+import build.raft.app.thread.effectiveThreadAttachmentOpenState
+import build.raft.app.thread.requestedPreviewKind
+import build.raft.app.thread.saveSharedThreadAttachment
+import build.raft.app.thread.threadAttachmentDownloadDescriptor
+import build.raft.app.thread.threadAttachmentOpenRoute
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

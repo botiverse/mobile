@@ -4,6 +4,16 @@ import build.raft.app.data.isFor
 import build.raft.app.assistant.AssistantOwnerScope
 import build.raft.app.assistant.LocalAssistantOwnerScope
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadWebLinkTarget
+import build.raft.app.thread.THREAD_PAGE
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.icon
+import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.thread.resolveMarkdownOpenRequest
+import build.raft.app.thread.toRaftThreadWebLinkTarget
+import build.raft.app.thread.toRaftTimeContext
+import build.raft.app.thread.toThreadPageData
+import build.raft.app.toRaftTimeContext
 import androidx.compose.runtime.setValue
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftButton
@@ -52,6 +62,7 @@ import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.memberDetailIdentity
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.mergedSharedConversationDirectoryState
 import build.raft.app.data.RealChannelRepository

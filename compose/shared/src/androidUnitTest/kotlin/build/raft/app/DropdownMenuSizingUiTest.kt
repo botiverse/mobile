@@ -16,6 +16,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftMetrics
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem
+import build.raft.app.thread.icon
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

@@ -20,7 +20,7 @@ import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RaftType
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.ThreadComposerContent
-import build.raft.app.ThreadComposerDock
+import build.raft.app.thread.ThreadComposerDock
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData

@@ -4,6 +4,10 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.input.pointer.PointerEventType
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.ThreadUserScrollGeneration
+import build.raft.app.thread.shouldThreadAutoLoadOlderMessages
+import build.raft.app.thread.threadOlderMessagesStatusSpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

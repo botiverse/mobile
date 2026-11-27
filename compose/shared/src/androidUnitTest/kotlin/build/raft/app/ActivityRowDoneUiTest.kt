@@ -15,6 +15,7 @@ import build.raft.app.data.InboxItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
+import build.raft.app.thread.key
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftScale

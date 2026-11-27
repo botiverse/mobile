@@ -8,6 +8,11 @@ import build.raft.app.image.raftAttachmentOriginalImageCacheKey
 import build.raft.app.image.raftImageDiskEntryFresh
 import build.raft.app.image.raftImageDiskKeyIsImmutable
 import build.raft.app.image.raftImageDiskMetadataFromHttpHeaders
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadInlineAttachmentUrlBatcher
+import build.raft.app.thread.ThreadInlineImageFallbackState
+import build.raft.app.thread.key
+import build.raft.app.thread.threadInlineImageShowsFailure
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest

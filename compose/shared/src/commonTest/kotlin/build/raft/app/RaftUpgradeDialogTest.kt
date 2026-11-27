@@ -8,6 +8,9 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ThreadId
 import build.raft.app.resources.*
+import build.raft.app.thread.ThreadHistoryPaywallScope
+import build.raft.app.thread.threadAttachmentUploadFailureUpgradeGate
+import build.raft.app.thread.threadHistoryLimitContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.thread.label
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,14 +13,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.RaftLinkOpenIntent
+import build.raft.app.RaftLucideIconName
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.label
 import build.raft.app.links.toParsedRaftPermalink
 import build.raft.app.markdown.RaftMarkdownLinkLongPressHandler
+import build.raft.app.optString
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme

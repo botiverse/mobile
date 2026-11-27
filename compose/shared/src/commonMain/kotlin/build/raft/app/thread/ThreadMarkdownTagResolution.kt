@@ -1,9 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.markdown.LocalRaftMarkdownTaskStatuses
 import build.raft.app.markdown.RaftLoungeRefPrefix
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.messages
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.NonRestartableComposable

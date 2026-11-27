@@ -8,6 +8,7 @@ import build.raft.app.data.TaskAssignmentPartyType
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.RaftThreadMessageItem
 
 /**
  * The hand-offs of botiverse/slock #15631 `packages/web/tests/taskHandoffNotice.test.ts` and

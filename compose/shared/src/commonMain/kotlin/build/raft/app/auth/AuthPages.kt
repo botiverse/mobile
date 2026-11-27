@@ -2,7 +2,9 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.app.network.raftValidTraceIdOrNull
+import build.raft.app.reduce
 import build.raft.app.resources.*
+import build.raft.app.thread.reduce
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState

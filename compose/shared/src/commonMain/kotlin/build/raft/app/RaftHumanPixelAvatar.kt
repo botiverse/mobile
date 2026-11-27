@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.key
+
 /**
  * A person's built pixel avatar: port of raft-shared `humanAvatar.ts` (packages/shared/src, the
  * reader and the layer composition; the web's `PersonAvatar` → `HumanPixelAvatar` draws it).

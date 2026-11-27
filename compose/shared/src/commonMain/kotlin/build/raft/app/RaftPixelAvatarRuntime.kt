@@ -7,6 +7,7 @@ import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.thread.key
 import androidx.compose.ui.graphics.Color
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized

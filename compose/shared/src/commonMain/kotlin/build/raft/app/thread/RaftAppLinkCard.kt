@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,12 +14,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftCardTree
+import build.raft.app.RaftCardTreeContext
+import build.raft.app.artifactHomeConversationLabel
 import build.raft.app.data.AppLinkResult
 import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.resources.*
 import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.appLinkDomain
+import build.raft.app.fill
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.designsystem.components.RaftAppLinkCardBadgeSurface
 import build.raft.designsystem.components.RaftAppLinkCardIcon

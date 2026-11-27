@@ -28,12 +28,14 @@ import build.raft.app.data.SEAT_REQUEST_REASON_MAX_LENGTH
 import build.raft.app.data.SeatJoinSeatUsage
 import build.raft.app.data.SeatRequestPurpose
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.memberDetailIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.thread.memberDetailIdentity
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

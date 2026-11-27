@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +25,13 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.RaftAppEntryRequest
+import build.raft.app.RaftArtifactViewerHeader
+import build.raft.app.RaftArtifactViewerPrewarm
+import build.raft.app.RaftInstalledAppOriginMatch
+import build.raft.app.RaftInstalledAppSyncLookup
+import build.raft.app.RaftPendingInstalledAppLookupGate
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftToastIntent
 import build.raft.app.data.RaftLinkCardOperationHints
@@ -52,6 +59,11 @@ import build.raft.app.links.planRaftMessageLinks
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.model.ServerId
+import build.raft.app.origin
+import build.raft.app.raftAppEntryOriginOf
+import build.raft.app.rememberRaftArtifactOpener
+import build.raft.app.rememberRaftSystemBrowserOpener
+import build.raft.app.rememberRaftWebPageOpener
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import build.raft.app.data.SharedAppLinkPreviewStore

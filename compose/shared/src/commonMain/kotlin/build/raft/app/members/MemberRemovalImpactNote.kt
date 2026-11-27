@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.reduce
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +27,7 @@ import build.raft.app.data.handedOverComputers
 import build.raft.app.data.holdsConfirm
 import build.raft.app.data.toMemberRemovalImpactState
 import build.raft.app.model.ServerId
+import build.raft.app.reduce
 import build.raft.designsystem.components.LocalRaftListRowInks
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus

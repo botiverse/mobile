@@ -4,9 +4,9 @@ import build.raft.app.RAFT_IN_APP_BROWSER_OUTBOUND_KEY
 import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
 import build.raft.app.RAFT_IN_APP_BROWSER_TAB_ID_KEY
 import build.raft.app.RAFT_IN_APP_BROWSER_URL_KEY
-import build.raft.app.THREAD_PAGE
+import build.raft.app.thread.THREAD_PAGE
 import build.raft.app.cmp.host.RaftPageRouteIdentities
-import build.raft.app.threadLaunchPayloadOrNull
+import build.raft.app.thread.threadLaunchPayloadOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull

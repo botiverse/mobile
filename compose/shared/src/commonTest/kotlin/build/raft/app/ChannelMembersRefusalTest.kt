@@ -6,6 +6,14 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.ThreadMemberRemovalConfirmation
+import build.raft.app.thread.ThreadMemberRemovalFailure
+import build.raft.app.thread.ThreadMemberRemovalGateIntent
+import build.raft.app.thread.ThreadMemberRemovalGateState
+import build.raft.app.thread.ThreadUserFacingErrorLabels
+import build.raft.app.thread.ThreadUserFacingErrorReason
+import build.raft.app.thread.reduceThreadMemberRemovalGate
+import build.raft.app.thread.threadMemberRemovalFailureMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

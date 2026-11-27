@@ -7,6 +7,7 @@ import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.designtokens.RaftUiThemeColors
+import build.raft.app.thread.rememberRaftMessageBodyTextStyle
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.advanceUntilIdle

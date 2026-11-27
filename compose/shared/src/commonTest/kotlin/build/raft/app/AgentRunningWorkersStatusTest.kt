@@ -17,6 +17,7 @@ import build.raft.app.model.AgentReadinessFact
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import build.raft.app.resources.*
+import build.raft.app.thread.workingAmong
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals

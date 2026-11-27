@@ -1,12 +1,17 @@
-package build.raft.app
+package build.raft.app.thread
 
-import build.raft.app.SharedThreadStore.LoadNewerState
-import build.raft.app.SharedThreadStore.RealtimeGapRecoveryState
-import build.raft.app.SharedThreadStore.ReplyCountRealtimeGap
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.SharedThreadReplyCountFact
+import build.raft.app.thread.SharedThreadStore.LoadNewerState
+import build.raft.app.thread.SharedThreadStore.RealtimeGapRecoveryState
+import build.raft.app.thread.SharedThreadStore.ReplyCountRealtimeGap
+import build.raft.app.threadPayloadOwnerScopeId
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.MviStaleToken
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapRequest
 import build.raft.app.data.realtime.isSyncHorizonReset
+import build.raft.app.get
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
@@ -21,6 +26,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.ThreadRepliesSyncHost
+import build.raft.app.observe
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex

@@ -18,6 +18,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.sendSharedPasswordSetupEmail
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

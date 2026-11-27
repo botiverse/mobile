@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -10,6 +10,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
+import build.raft.app.fill
 import kotlin.math.roundToInt
 import build.raft.designsystem.text.raftCarryFirstBaseline
 import build.raft.designsystem.text.rememberRaftCarriedBaseline

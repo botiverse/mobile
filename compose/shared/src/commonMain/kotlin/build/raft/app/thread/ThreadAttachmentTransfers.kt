@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
@@ -21,6 +21,7 @@ import build.raft.app.data.map
 import build.raft.app.data.matchesExpectedAuthority
 import build.raft.app.data.normalizedEnvironmentId
 import build.raft.app.model.ChannelId
+import build.raft.app.traceId
 
 /**
  * The attachment paths of [SharedThreadDataSource] (upload, the upload authority and its limits,

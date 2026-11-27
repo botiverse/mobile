@@ -9,6 +9,12 @@ import build.raft.app.resources.thread_state_beginning_replies
 import build.raft.app.resources.thread_state_loading_new
 import build.raft.app.resources.thread_state_loading_older
 import build.raft.app.resources.thread_state_loading_older_replies
+import build.raft.app.thread.ThreadBoundaryLoadingSlot
+import build.raft.app.thread.resolveVisibleThreadBoundaryLoadingSlot
+import build.raft.app.thread.shouldSuppressThreadNewerBoundaryLoading
+import build.raft.app.thread.threadNewerMessagesActionSpec
+import build.raft.app.thread.threadOlderMessagesStatusSpec
+import build.raft.app.thread.visibleForBoundaryLoadingSlot
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

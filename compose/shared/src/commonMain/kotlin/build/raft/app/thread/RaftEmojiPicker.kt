@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +44,9 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.DualPaneMinimumWidthDp
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftUnifiedDialog
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.emoji.RaftEmoji
@@ -52,6 +55,7 @@ import build.raft.app.emoji.RaftEmojiCategory
 import build.raft.app.emoji.RaftEmojiPickerPreferences
 import build.raft.app.emoji.RaftEmojiSkinTone
 import build.raft.app.emoji.raftEmojiFrequentlyUsed
+import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftHoverTier

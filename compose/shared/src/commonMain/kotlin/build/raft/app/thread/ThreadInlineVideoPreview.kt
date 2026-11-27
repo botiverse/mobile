@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.threadInlineMediaShouldMountPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,11 +39,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.LocalRaftVideoPlaybackEngine
+import build.raft.app.LocalRaftVideoPlayerRole
+import build.raft.app.RaftFilePreviewKuiklyVideo
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMediaPlayerRole
+import build.raft.app.RaftVideoPlaybackEngine
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.get
+import build.raft.app.raftArgbHex
+import build.raft.app.raftFilePreviewVideoPlaybackEngine
+import build.raft.app.raftPlatformUsesNativeVideoController
 import build.raft.designsystem.components.RaftEmbeddedControls
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftSpinner

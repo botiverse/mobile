@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress
@@ -18,6 +18,15 @@ import build.raft.app.data.newAttachmentUploadClientRequestId
 import build.raft.app.format.RaftFormat
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.model.ChannelId
+import build.raft.app.normalizeThreadAttachmentUploadDraftKey
+import build.raft.app.openRaftUpgradeDialog
+import build.raft.app.raftUpgradeGateForErrorCode
+import build.raft.app.raftUploadSizeLimitIsFree
+import build.raft.app.settle
+import build.raft.app.threadAttachmentUploadAttemptIdentity
+import build.raft.app.threadAttachmentUploadFile
+import build.raft.app.threadComposerAttachmentAdmissionReceiptIsValid
+import build.raft.app.traceId
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +40,16 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import build.raft.app.RaftComposerServerUploads
+import build.raft.app.RaftUpgradeGate
+import build.raft.app.SharedThreadComposerAttachment
+import build.raft.app.SharedThreadComposerAttachmentAdmission
+import build.raft.app.SharedThreadComposerDraftIntent
+import build.raft.app.SharedThreadComposerDraftViewModel
+import build.raft.app.ThreadAttachmentUploadAttemptIdentity
+import build.raft.app.ThreadAttachmentUploadOrchestrator
+import build.raft.app.ThreadComposerSurface
+import build.raft.app.applyServerAttachmentUploadLimit
 import kotlinx.coroutines.sync.Semaphore
 
 /**

@@ -1,8 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.stillInChannelToastStrings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import build.raft.app.RaftAttachmentOpenResultTerms
+import build.raft.app.StillInChannelToastStrings
 
 /**
  * The localized labels, templates and term bundles `SharedThreadRouteContentContent` uses for its

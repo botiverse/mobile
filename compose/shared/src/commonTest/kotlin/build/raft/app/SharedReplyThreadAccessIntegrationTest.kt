@@ -8,6 +8,12 @@ import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.authSessionFixture
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.resolvedTaskLookupChannelId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

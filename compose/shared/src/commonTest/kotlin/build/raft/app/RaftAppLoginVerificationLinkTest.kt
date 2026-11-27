@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.raftAppLoginVerificationLinkRequest
+import build.raft.app.thread.raftAppLoginVerificationLinkResumes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

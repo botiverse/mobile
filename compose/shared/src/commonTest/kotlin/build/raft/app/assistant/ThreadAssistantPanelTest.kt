@@ -1,6 +1,6 @@
 package build.raft.app.assistant
 
-import build.raft.app.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

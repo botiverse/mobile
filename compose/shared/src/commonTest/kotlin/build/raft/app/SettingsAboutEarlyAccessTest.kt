@@ -12,6 +12,7 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.preservingChannelMetadataFrom
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

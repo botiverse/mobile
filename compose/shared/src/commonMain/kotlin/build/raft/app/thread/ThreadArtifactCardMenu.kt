@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIconName
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftDropdownMenu

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.thread.key
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme

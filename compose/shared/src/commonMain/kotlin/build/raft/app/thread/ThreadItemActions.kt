@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataResult
@@ -17,6 +17,7 @@ import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.authSessionRequiredResult
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
+import build.raft.app.traceId
 import kotlinx.coroutines.CancellationException
 
 /**

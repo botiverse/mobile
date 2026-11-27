@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import android.graphics.Bitmap
 import android.graphics.Picture
@@ -6,6 +6,8 @@ import android.os.Build
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import build.raft.app.raftLogInfo
+import build.raft.app.raftLogWarn
 
 internal actual val threadShareImageRendersOffscreen: Boolean = true
 

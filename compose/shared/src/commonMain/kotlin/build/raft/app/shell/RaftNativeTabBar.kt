@@ -12,6 +12,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

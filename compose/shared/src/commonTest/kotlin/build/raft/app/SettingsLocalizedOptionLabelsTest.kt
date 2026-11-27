@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.TranslationTargetLanguages
 import build.raft.app.resources.*
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

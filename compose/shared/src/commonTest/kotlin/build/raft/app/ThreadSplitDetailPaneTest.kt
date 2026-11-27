@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.threadHeaderShowsBack
+import build.raft.app.thread.threadSplitDetailPane
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

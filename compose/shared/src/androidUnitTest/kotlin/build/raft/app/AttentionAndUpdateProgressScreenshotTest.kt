@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedUpdateDownloadProgress
+import build.raft.app.thread.key
 import build.raft.app.transfer.RaftTransferMeter
 import kotlin.test.Test
 import kotlin.time.TestTimeSource

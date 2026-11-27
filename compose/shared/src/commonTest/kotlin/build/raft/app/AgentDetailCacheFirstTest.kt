@@ -17,6 +17,8 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

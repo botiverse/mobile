@@ -2,8 +2,8 @@ package build.raft.app.contract
 
 import build.raft.app.HomeConversationBadgeInput
 import build.raft.app.HomeSidebarBadgeTone
-import build.raft.app.SharedThreadIntent
-import build.raft.app.SharedThreadStore
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
 import build.raft.app.SharedThreadStoreTest.Companion.basePayload
 import build.raft.app.SharedThreadStoreTest.Companion.threadSnapshot
 import build.raft.app.SharedThreadStoreTest.FakeThreadApi
@@ -564,7 +564,7 @@ private class ThreadMenuSession(case: UnreadContractCase) : StoreCaseSession(cas
     private val threadId = case.given.conversation.id
     private val base = basePayload().copy(instanceId = "shared-shell-thread-$threadId", sourceThreadId = threadId)
     private lateinit var coordinatorScope: CoroutineScope
-    private lateinit var dataSource: build.raft.app.SharedThreadDataSource
+    private lateinit var dataSource: build.raft.app.thread.SharedThreadDataSource
     private var store: SharedThreadStore? = null
     private var storeScope: CoroutineScope? = null
     private lateinit var activity: SharedActivityStore

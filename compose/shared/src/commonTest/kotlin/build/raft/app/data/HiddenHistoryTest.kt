@@ -2,13 +2,13 @@ package build.raft.app.data
 
 import build.raft.app.model.ThreadId
 import build.raft.app.resources.*
-import build.raft.app.ThreadHiddenHistoryGlimpseAlpha
-import build.raft.app.ThreadHistoryPaywallScope
-import build.raft.app.ThreadHistoryPaywallTitle
+import build.raft.app.thread.ThreadHiddenHistoryGlimpseAlpha
+import build.raft.app.thread.ThreadHistoryPaywallScope
+import build.raft.app.thread.ThreadHistoryPaywallTitle
 import build.raft.app.RaftThreadSurfaceKind
-import build.raft.app.threadHistoryPaywallCount
-import build.raft.app.threadHistoryPaywallScope
-import build.raft.app.threadHistoryPaywallTitle
+import build.raft.app.thread.threadHistoryPaywallCount
+import build.raft.app.thread.threadHistoryPaywallScope
+import build.raft.app.thread.threadHistoryPaywallTitle
 import build.raft.designsystem.tokens.RaftOpacity
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest

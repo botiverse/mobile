@@ -33,6 +33,15 @@ import build.raft.app.data.SealedInputsPrivateJwkJvm
 import build.raft.app.data.openSealedInputsJvm
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.AppLinkCardFormFieldTestTagPrefix
+import build.raft.app.thread.AppLinkCardFormSecretNoticeTestTagPrefix
+import build.raft.app.thread.AppLinkCardFormTestTag
+import build.raft.app.thread.AppLinkConfirmDialogTestTag
+import build.raft.app.thread.AppLinkConfirmUnreviewedBannerTestTag
+import build.raft.app.thread.ThreadAppLinkCardActionHost
+import build.raft.app.thread.button
+import build.raft.app.thread.key
+import build.raft.app.thread.rememberThreadAppLinkCardPress
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.Rule

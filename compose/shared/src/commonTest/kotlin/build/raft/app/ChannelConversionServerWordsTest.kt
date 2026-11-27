@@ -15,6 +15,7 @@ import build.raft.app.resources.RawStringDesc
 import build.raft.app.resources.ResourceFormattedStringDesc
 import build.raft.app.resources.ResourceStringDesc
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

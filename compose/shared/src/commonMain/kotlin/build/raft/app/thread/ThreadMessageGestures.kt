@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -34,6 +34,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftColor
+import build.raft.app.RaftLiveRootAnchorRef
+import build.raft.app.RaftPopoverAnchor
+import build.raft.app.RaftPopoverLocalPoint
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.observe
+import build.raft.app.origin
+import build.raft.app.raftCaptureLiveRootAnchor
+import build.raft.app.resolve
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job

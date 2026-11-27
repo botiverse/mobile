@@ -107,6 +107,7 @@ import build.raft.app.data.earlierDiscussionVisible
 import build.raft.app.data.taskHeadSourceDisplay
 import build.raft.app.data.toTaskHistoryRows
 import build.raft.app.data.valueOrNull
+import build.raft.app.localizedLabel
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -124,6 +125,10 @@ import build.raft.app.model.formatRaftClock
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.*
+import build.raft.app.thread.ThreadHeaderViewInChannelLink
+import build.raft.app.thread.key
+import build.raft.app.thread.localizedLabel
+import build.raft.app.thread.threadMessageSourceTaskAssigneeName
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection

@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.webkit.ProfileStore
 import androidx.webkit.WebViewFeature
+import build.raft.app.thread.key
 import build.raft.webcontainer.AndroidWebContainerProfileStore
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebIsolationScope

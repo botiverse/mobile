@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.canOpenThreadAuthorProfile
+import build.raft.app.thread.resolveThreadRowAvatarWireValue
+import build.raft.app.thread.resolvedThreadAvatarWireValue
 import kotlinx.coroutines.flow.flowOf
 import kotlin.test.Test
 import kotlin.test.assertEquals

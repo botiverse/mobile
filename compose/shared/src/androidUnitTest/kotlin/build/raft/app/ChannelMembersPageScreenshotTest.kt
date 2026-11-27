@@ -18,6 +18,10 @@ import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import build.raft.app.resources.*
+import build.raft.app.thread.ChannelAddMemberPanelVisualScreen
+import build.raft.app.thread.RaftThreadMemberItem
+import build.raft.app.thread.ThreadMemberRemovalGateState
+import build.raft.app.thread.ThreadMembersPageContent
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Rule

@@ -1,5 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.MemberKindWireContract
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.commentHostRouteKindOrNull
+import build.raft.app.commentHostTypeOrNull
 import build.raft.app.data.externalMessageAuthorOrFallback
 import build.raft.app.data.DataResult
 import build.raft.app.data.channelTaskSurfacesShown
@@ -10,6 +15,9 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.RawMessagePage
 import build.raft.app.data.map
+import build.raft.app.get
+import build.raft.app.memberKindWireValue
+import build.raft.app.messages
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.AvatarReference
@@ -31,6 +39,18 @@ import build.raft.app.model.TaskId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.ThreadDurableEnteredPage
+import build.raft.app.normalizedThreadChannelKind
+import build.raft.app.parsedThreadParentSurfaceKindOrNull
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.strictMemberKindOrNull
+import build.raft.app.strictMessageTypeOrNull
+import build.raft.app.strictProjectionDiagnosticsLogger
+import build.raft.app.strictTaskStatusOrNull
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.threadParentChannelKind
+import build.raft.app.threadParentSurfaceKind
+import build.raft.app.toRaftAvatarLabel
+import build.raft.app.usesMemberScopedMentions
 import build.raft.app.model.providerLabel
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.model.safeDisplayNameOrNull

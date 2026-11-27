@@ -1,12 +1,23 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import build.raft.app.LocalRaftJointActorSurface
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftAvatarWithStatus
+import build.raft.app.RaftMemberAvatar
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftMemberAvatarResolver
 import build.raft.app.data.ResolvedActor
+import build.raft.app.localizedLabel
 import build.raft.app.model.MemberKind
+import build.raft.app.raftTaskStatus
+import build.raft.app.rememberRaftAgentStatusIndicatorState
+import build.raft.app.rememberRaftJointActor
 import build.raft.app.resources.*
+import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftTaskCompactAssignee
 import build.raft.designsystem.components.RaftTaskCompactList

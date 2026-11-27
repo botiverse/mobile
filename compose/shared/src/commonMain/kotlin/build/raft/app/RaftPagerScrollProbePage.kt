@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
+import build.raft.app.thread.key
 
 const val RAFT_PAGER_SCROLL_PROBE_PAGE = "compose_pager_scroll_probe"
 

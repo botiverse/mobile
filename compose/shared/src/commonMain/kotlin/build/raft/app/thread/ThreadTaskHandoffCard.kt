@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,6 +35,19 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.EmptyRaftMemberModelLabelResolver
+import build.raft.app.LocalRaftJointActorSurface
+import build.raft.app.LocalRaftMemberPreviewCardSource
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.RaftMemberPreviewCardContent
+import build.raft.app.RaftType
+import build.raft.app.RaftUserContentLocaleList
 import build.raft.app.data.ResolvedActor
 import build.raft.app.data.TaskAssignmentNotice
 import build.raft.app.data.TaskAssignmentNoticeParty
@@ -45,6 +58,7 @@ import build.raft.app.data.asTaskHandoff
 import build.raft.app.data.sameParty
 import build.raft.app.data.taskAssignmentNoticeOf
 import build.raft.app.data.taskHandoffTimeline
+import build.raft.app.explicitAvatarWireValue
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.RaftRichTextChromeKind
 import build.raft.app.markdown.ThreadMarkdownTag
@@ -58,9 +72,23 @@ import build.raft.app.markdown.raftMarkdownRichTextTagFontSizeStyle
 import build.raft.app.markdown.raftMarkdownTagSpanStyle
 import build.raft.app.markdown.withRaftInlineBox
 import build.raft.app.markdown.withRaftInlineChipGaps
+import build.raft.app.memberDetailIdentity
+import build.raft.app.messages
 import build.raft.app.model.MemberKind
 import build.raft.app.model.appAvatarWireValueOrNull
+import build.raft.app.raftAvatarKind
+import build.raft.app.raftMemberAvatarCacheSubject
+import build.raft.app.raftMemberAvatarWireValue
+import build.raft.app.rememberRaftJointActor
+import build.raft.app.rememberRaftMemberAuthorFacts
+import build.raft.app.rememberRaftMemberAvatarPending
+import build.raft.app.rememberRaftMemberAvatarResolver
+import build.raft.app.rememberRaftMemberAvatarWireValue
+import build.raft.app.renderedAvatarWireValue
 import build.raft.app.resources.*
+import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.withRaftFontWeight
+import build.raft.app.withRaftUserContentLocale
 import build.raft.designsystem.components.RaftMessageActionCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardState
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding

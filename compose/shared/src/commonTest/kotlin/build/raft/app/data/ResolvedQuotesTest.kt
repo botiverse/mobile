@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.RaftThreadScreenPayload
+import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals

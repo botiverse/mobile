@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.MviPersistSlice
 import build.raft.app.data.MviPersistSliceTransitionSnapshot
+import build.raft.app.thread.dispatch
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async

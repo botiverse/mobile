@@ -8,6 +8,7 @@ import build.raft.app.data.RaftAppSettingSurface
 import build.raft.app.data.toSystemNotificationActionResult
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.RaftAppUpdateEvents

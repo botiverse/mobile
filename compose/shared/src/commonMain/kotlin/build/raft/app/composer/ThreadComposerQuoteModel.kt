@@ -18,6 +18,9 @@ import build.raft.app.data.normalizeQuoteExcerptKey
 import build.raft.app.data.parseMessageQuoteSegments
 import build.raft.app.data.serializeInlineQuoteBlocks
 import build.raft.app.model.ResolvedInlineQuote
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.key
+import build.raft.app.thread.quoteReplyAuthorType
 import kotlinx.atomicfu.atomic
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized

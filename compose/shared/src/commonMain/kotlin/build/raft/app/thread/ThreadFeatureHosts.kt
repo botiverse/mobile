@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ProvidedValue
@@ -6,6 +6,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import build.raft.app.LocalPendingMentionTargetMap
+import build.raft.app.LocalRaftArtifactOpenConversation
+import build.raft.app.LocalRaftChannelJointServers
+import build.raft.app.LocalRaftChannelKinds
+import build.raft.app.LocalRaftJointActorSurface
+import build.raft.app.LocalRaftMemberAppBotResolver
+import build.raft.app.LocalRaftMemberPreviewCardSource
+import build.raft.app.LocalRaftProfileDescriptionArtifacts
+import build.raft.app.LocalRaftTimeContextProvider
+import build.raft.app.LocalRaftViewerServerLogos
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftMemberAppBotResolver
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.RaftMemberPreviewCardSource
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftTimeContextProvider
+import build.raft.app.SharedThreadComposerDraftViewModel
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.assistant.LocalThreadAssistantOtter
 import build.raft.app.assistant.ThreadAssistantOtter
 import build.raft.app.assistant.newAssistantOtterHostId
@@ -43,12 +63,23 @@ import build.raft.app.markdown.RaftMarkdownPlainCandidateSession
 import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.RaftMessagePermalinkLabelResolver
 import build.raft.app.markdown.raftMarkdownProvidedValuesWith
+import build.raft.app.memberDetailIdentity
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.raftMemberModelLabelResolver
+import build.raft.app.raftOriginServerLogos
+import build.raft.app.raftPlatformMessageTextPointerSelectable
+import build.raft.app.rememberRaftChannelKindsState
+import build.raft.app.rememberThreadPendingMentionTargetMap
+import build.raft.app.rememberThreadProfileDescriptionArtifactHost
+import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.traceId
 
 /**
  * The thread page's feature hosts: in-place text selection, peer read receipts, agent typing, the

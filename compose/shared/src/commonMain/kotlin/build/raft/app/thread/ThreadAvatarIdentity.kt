@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.messages
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -8,6 +9,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.resolveAvatarSlot
 import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.projectedMemberKindOrNull
+import build.raft.app.raftAvatarDiagnosticsHash
+import build.raft.app.toRaftAvatarLabel
 
 /**
  * Converts message-author snapshots into candidates for the server-scoped member-profile SSOT.

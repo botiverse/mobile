@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
+import build.raft.app.thread.accepts
+import build.raft.app.thread.icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -56,6 +58,7 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import build.raft.app.accepts
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject

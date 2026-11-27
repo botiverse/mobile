@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalDensity
+import build.raft.app.LocalRaftAppShellTopBar
 import build.raft.app.data.MOBILE_THREAD_OPEN_TRACE_NAME
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftClientTraceEvents
@@ -20,9 +21,13 @@ import build.raft.app.data.defaultTraceSampleRate
 import build.raft.app.data.resolveTraceSampleRate
 import build.raft.app.data.traceSampleEvaluations
 import build.raft.app.data.traceSampled
+import build.raft.app.fill
+import build.raft.app.get
+import build.raft.app.messages
 import build.raft.app.nav.LocalRaftStackPageInMotion
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import build.raft.app.network.RaftAppIdentityRegistry
+import build.raft.app.offset
 import kotlinx.coroutines.launch
 
 /** `mobile.thread_open`'s rate for this open: flags first, then the App default (RaftTraceSampling.kt). */

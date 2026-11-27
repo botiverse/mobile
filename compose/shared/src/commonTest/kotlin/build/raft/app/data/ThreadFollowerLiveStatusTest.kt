@@ -2,8 +2,8 @@ package build.raft.app.data
 
 import build.raft.app.RaftColor
 import build.raft.app.raftScopedAgentStatusResolver
-import build.raft.app.threadFollowerStatusIndicator
-import build.raft.app.threadFollowerStatusResolver
+import build.raft.app.thread.threadFollowerStatusIndicator
+import build.raft.app.thread.threadFollowerStatusResolver
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

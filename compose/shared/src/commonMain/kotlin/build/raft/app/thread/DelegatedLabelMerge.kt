@@ -1,4 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.thread.withKnownDelegatedByFrom
+import build.raft.app.withKnownDelegatedByFrom
 
 // RFC 077 (web #10751): RaftThreadMessageItem overloads; pure Message / InboxItem merge helpers live in core/DelegatedLabelMergeCore.kt.
 

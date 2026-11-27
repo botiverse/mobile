@@ -1,5 +1,9 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.ConversationOpenSource
+import build.raft.app.ConversationOpenSourceMessageIdentity
+import build.raft.app.JointTaskReadOnlyErrorCode
+import build.raft.app.RaftTaskConversationChannelKind
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.HomeNetworkResponse
@@ -14,11 +18,16 @@ import build.raft.app.data.parseSharedMessageContext
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.raftPublicServerPath
 import build.raft.app.data.toTaskConversationOpenResult
+import build.raft.app.matches
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.resolve
+import build.raft.app.thread.toConversationOpenSourceMessageIdentity
+import build.raft.app.toConversationOpenSourceMessageIdentity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope

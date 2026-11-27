@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.ColumnScope
@@ -15,6 +15,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftNativeSelectableText
+import build.raft.app.RaftNativeTextSelection
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.stripQuoteReplyRefsForPreview

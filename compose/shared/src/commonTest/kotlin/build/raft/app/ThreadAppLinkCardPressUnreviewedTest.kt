@@ -13,6 +13,11 @@ import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardV2Element
 import build.raft.app.resources.*
+import build.raft.app.thread.AppLinkConfirmAttribution
+import build.raft.app.thread.ThreadAppLinkCardActionHost
+import build.raft.app.thread.ThreadAppLinkCardPress
+import build.raft.app.thread.appLinkConfirmAttribution
+import build.raft.app.thread.button
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceTimeBy

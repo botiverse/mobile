@@ -23,6 +23,10 @@ import build.raft.app.data.ArtifactScreenshotReader
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.LocalArtifactScreenshotReader
+import build.raft.app.thread.ThreadArtifactMessageRef
+import build.raft.app.thread.ThreadArtifactMessageRefsContent
+import build.raft.app.thread.ThreadArtifactMessageRefsView
 import coil3.annotation.ExperimentalCoilApi
 import coil3.asImage
 import coil3.compose.AsyncImagePainter

@@ -9,6 +9,10 @@ import build.raft.app.SharedThreadStoreTest.Companion.sampleSession
 import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.model.MessageNew
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadPaging
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadNewerPageLoadOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.CompletableDeferred

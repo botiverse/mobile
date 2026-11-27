@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton

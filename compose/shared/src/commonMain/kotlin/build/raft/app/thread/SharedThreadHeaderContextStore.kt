@@ -1,8 +1,15 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ThreadLaunchOriginFallback
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.safeDisplayNameOrNull
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.threadParentChannelKind
 
 internal data class SharedThreadHeaderContext(
     val title: String,

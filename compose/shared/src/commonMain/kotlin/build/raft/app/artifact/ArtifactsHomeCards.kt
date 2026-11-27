@@ -74,6 +74,11 @@ import build.raft.app.markdown.lucideIcon
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.floorMod
 import build.raft.app.resources.*
+import build.raft.app.thread.ArtifactSettledTag
+import build.raft.app.thread.artifactCardLongPressPointer
+import build.raft.app.thread.artifactCardOpensContextMenuForPointer
+import build.raft.app.thread.artifactCardPointerMenuAnchorPx
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

@@ -21,6 +21,8 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.toRaftTimeContext
+import build.raft.app.toRaftTimeContext
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

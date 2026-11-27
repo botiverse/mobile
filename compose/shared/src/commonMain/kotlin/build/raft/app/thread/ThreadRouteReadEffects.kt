@@ -1,9 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.RaftHostInUse
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.isRaftHostVisible
+import build.raft.app.messages
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect

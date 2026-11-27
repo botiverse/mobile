@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.formatTimestampLabel
+import build.raft.app.thread.icon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement

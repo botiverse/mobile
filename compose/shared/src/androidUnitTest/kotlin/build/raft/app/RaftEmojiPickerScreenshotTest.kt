@@ -20,6 +20,10 @@ import build.raft.app.emoji.RaftEmojiCatalog
 import build.raft.app.emoji.RaftEmojiInMemoryPreferenceStore
 import build.raft.app.emoji.RaftEmojiPickerPreferences
 import build.raft.app.emoji.RaftEmojiSkinTone
+import build.raft.app.thread.RaftEmojiPickerPanel
+import build.raft.app.thread.RaftEmojiPickerPopoverSurface
+import build.raft.app.thread.RaftEmojiPickerPopoverViewportGap
+import build.raft.app.thread.raftEmojiPickerPopoverSize
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

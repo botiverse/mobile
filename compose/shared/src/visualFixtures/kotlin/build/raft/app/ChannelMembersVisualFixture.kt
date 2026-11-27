@@ -13,6 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.compat.pager.Page
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.RaftThreadMemberItem
+import build.raft.app.thread.ThreadMemberRemovalGateState
+import build.raft.app.thread.ThreadMembersPageContent
+import build.raft.app.thread.filterThreadAddMemberCandidates
 import kotlinx.coroutines.flow.flowOf
 
 /** Paired with packages/visual-testing/shared/memberParityFixture.json in botiverse/slock.

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -47,7 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.components.RaftSlotIcon
+import build.raft.app.currentRaftEffectiveDateTimeContext
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftVoiceDictationAudioRecorder
@@ -80,6 +83,7 @@ import build.raft.app.model.formatRaftLocalClock
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.resources.*
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

@@ -4,6 +4,7 @@ import build.raft.app.data.RaftAccountBinding
 import build.raft.app.data.RaftAuthSessionState
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.thread.key
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException

@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.RaftNavDestination
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import androidx.compose.runtime.Composable
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import org.jetbrains.compose.resources.StringResource

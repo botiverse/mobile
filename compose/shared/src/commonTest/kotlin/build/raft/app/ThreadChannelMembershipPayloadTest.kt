@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.channelJoinedHomeIntent
+import build.raft.app.thread.withChannelLeft
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

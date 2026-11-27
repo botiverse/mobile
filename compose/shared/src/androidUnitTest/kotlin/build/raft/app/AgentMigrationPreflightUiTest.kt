@@ -32,6 +32,7 @@ import build.raft.app.data.migrationTargetRuntimeNotReadyFields
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.MemberId
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.dispatch
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

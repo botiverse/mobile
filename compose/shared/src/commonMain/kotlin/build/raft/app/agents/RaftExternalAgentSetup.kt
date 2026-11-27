@@ -51,6 +51,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.thread.formatTimestampLabel
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize

@@ -5,6 +5,9 @@ import build.raft.app.data.SharedMessageTranslationSettings
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
 import build.raft.app.data.TranslationModePreference
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageTranslationIndicatorAction
+import build.raft.app.thread.resolveThreadMessageTranslationUi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

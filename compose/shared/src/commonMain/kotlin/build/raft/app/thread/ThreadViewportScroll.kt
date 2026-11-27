@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.taskHeadRowInView
 import build.raft.designsystem.components.RaftMessageListJumpPillGroup
 import build.raft.designsystem.components.RaftMessageListJumpPillDismiss
 import build.raft.designsystem.components.RaftMessageListJumpPill
@@ -21,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.semantics.onClick
+import build.raft.app.messages
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

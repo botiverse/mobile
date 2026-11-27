@@ -8,6 +8,7 @@ import build.raft.app.data.RaftWebSpanRecord
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.model.ServerId
 import build.raft.app.network.RaftTraceIds
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

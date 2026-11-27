@@ -1,10 +1,15 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.RAFT_FRESHNESS_CONNECTED_FOREGROUND_SKIP_MILLIS
 import build.raft.app.data.RaftFreshnessTrigger
 import build.raft.app.data.raftForegroundGateNowMillis
 import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
+import build.raft.app.messages
 import build.raft.app.model.formatRaftTimestampLabel
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.thread.toRaftTimeContext
+import build.raft.app.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeContext
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -13,6 +18,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.RaftTimeCapabilities
 import androidx.compose.foundation.layout.size
 
 // A focused-message anchor request is identified by (message id, request

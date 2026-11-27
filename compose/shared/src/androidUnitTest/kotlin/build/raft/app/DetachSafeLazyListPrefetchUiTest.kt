@@ -17,6 +17,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.DetachSafeLazyListPrefetchStrategy
+import build.raft.app.thread.detachSafeLazyListPrefetch
+import build.raft.app.thread.rememberDetachSafeLazyListState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

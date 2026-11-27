@@ -7,6 +7,7 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.RaftServerSetupProjectionApi
 import build.raft.app.data.RaftServerSetupProjectionRepository
 import build.raft.app.model.ServerId
+import build.raft.app.thread.key
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

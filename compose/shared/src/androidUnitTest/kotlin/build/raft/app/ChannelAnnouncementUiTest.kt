@@ -35,6 +35,9 @@ import build.raft.app.data.toMessageMetadata
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadDirectMessageSettingsDrawer
+import build.raft.app.thread.ThreadSystemMessageRow
 import build.raft.designsystem.text.RaftText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest

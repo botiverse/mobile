@@ -7,6 +7,8 @@ import build.raft.app.data.SecondFactorRecoveryStatus
 import build.raft.app.data.SharedSecondFactorRecoveryEffect
 import build.raft.app.data.SharedSecondFactorRecoveryIntent
 import build.raft.app.data.SharedSecondFactorRecoveryStore
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.icon
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest

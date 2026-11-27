@@ -1,6 +1,12 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.ThreadAttachmentCommentsDialogState
+import build.raft.app.thread.attachmentCommentsVisibleErrorMessage
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
+import build.raft.app.thread.threadAttachmentCommentBlockedCopy
+import build.raft.app.thread.threadUserFacingErrorLabels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement

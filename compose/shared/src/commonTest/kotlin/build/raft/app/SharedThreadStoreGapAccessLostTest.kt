@@ -10,6 +10,8 @@ import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.authSessionRequiredResult
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

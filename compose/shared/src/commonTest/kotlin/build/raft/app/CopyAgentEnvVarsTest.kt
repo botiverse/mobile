@@ -9,6 +9,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RUNTIME_CONFIG_VERSION
 import build.raft.app.model.ServerId
 import build.raft.app.model.isControlledRuntimeEnvKey
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

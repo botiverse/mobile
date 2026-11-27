@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +18,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIconName
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftMessageCardForm
 import build.raft.app.data.RaftMessageCardFormField

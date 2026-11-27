@@ -35,7 +35,7 @@ import build.raft.app.compat.pager.RaftPagerHost
 import kotlinx.serialization.json.JsonObject
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.asImageBitmap
-import build.raft.app.LocalThreadReactionAtlasImage
+import build.raft.app.thread.LocalThreadReactionAtlasImage
 import build.raft.app.resources.RaftBundledFiles
 import build.raft.app.resources.Res
 import build.raft.designsystem.components.RaftDrawerSnapPoint

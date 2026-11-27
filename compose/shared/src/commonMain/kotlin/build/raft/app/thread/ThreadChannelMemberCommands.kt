@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
-import build.raft.app.SharedThreadDataSource.MembersEnrichOutcome
+import build.raft.app.MemberKindWireContract
+import build.raft.app.thread.SharedThreadDataSource.MembersEnrichOutcome
 import build.raft.app.data.AddChannelMemberRequest
 import build.raft.app.data.ChannelMemberStillInChannel
 import build.raft.app.data.ChannelProfileUpdateRequest
@@ -16,6 +17,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
+import build.raft.app.strictMemberKindOrNull
 import kotlinx.coroutines.CancellationException
 
 internal data class ThreadRemoveChannelMemberResult(

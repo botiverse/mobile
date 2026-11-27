@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.isTaskConversation
 import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.threadUserFacingErrorLabels
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftConversationKindIcon

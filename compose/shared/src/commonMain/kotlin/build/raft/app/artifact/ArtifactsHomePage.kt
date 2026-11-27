@@ -59,6 +59,11 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.model.ActivityChanged
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.thread.ArtifactCardScreenshotView
+import build.raft.app.thread.LocalArtifactScreenshotReader
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
+import build.raft.app.thread.rememberArtifactCardScreenshot
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftPaneGridExpand
 import coil3.compose.LocalPlatformContext

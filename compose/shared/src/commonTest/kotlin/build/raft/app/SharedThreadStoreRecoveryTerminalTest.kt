@@ -20,6 +20,11 @@ import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.thread.RESUME_CATCH_UP_MAX_RETRIES
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.key
+import build.raft.app.thread.resumeCatchUpRetryDelayMs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

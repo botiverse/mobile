@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.ThreadAttachmentCommentItem
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadAttachmentCommentsDialogState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

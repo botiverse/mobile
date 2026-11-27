@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -25,8 +25,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.currentRaftDateTimeContext
 import build.raft.app.data.DelegatedReceipt
 import build.raft.app.data.DelegatedReceiptLine
 import build.raft.app.data.DelegatedRetractResult
@@ -39,9 +44,12 @@ import build.raft.app.data.WeChatDisconnectResult
 import build.raft.app.data.WeChatStatusResult
 import build.raft.app.data.delegatedReceiptOf
 import build.raft.app.data.weChatNoticeBindingId
+import build.raft.app.get
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.raftArgbHex
 import build.raft.app.resources.*
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

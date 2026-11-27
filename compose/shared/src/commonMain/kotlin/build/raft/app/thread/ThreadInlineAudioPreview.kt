@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.threadInlineMediaShouldMountPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -45,6 +46,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import build.raft.app.LocalRaftVideoPlayerAudioOnly
+import build.raft.app.LocalRaftVideoPlayerRole
+import build.raft.app.RaftFilePreviewAttachmentUrlCache
+import build.raft.app.RaftFilePreviewAttachmentUrlCacheKey
+import build.raft.app.RaftFilePreviewKuiklyVideo
+import build.raft.app.RaftFilePreviewVideoSeekRequest
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMediaPlayerRole
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
@@ -55,7 +64,9 @@ import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.get
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.raftFilePreviewAttachmentUrlCache
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton

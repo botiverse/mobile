@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.padding

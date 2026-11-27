@@ -9,6 +9,7 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.data.SharedAdaptiveWorkspaceStore
 import build.raft.app.data.SharedHomeShellIntent
 import build.raft.app.data.SharedHomeShellStore
+import build.raft.app.thread.dispatch
 
 /*
  * The shell's rail places (RaftRailPlaces.kt), wired here and not in SettingsHomePage's RaftAppShellReadyContent,

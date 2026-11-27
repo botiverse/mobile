@@ -37,6 +37,11 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageCard
+import build.raft.app.thread.ThreadMessageHoverToolbarActions
+import build.raft.app.thread.key
+import build.raft.app.thread.raftMessageBodyTextStyle
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftPointerInput

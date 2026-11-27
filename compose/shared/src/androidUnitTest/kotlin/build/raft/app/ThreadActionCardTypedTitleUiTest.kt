@@ -7,6 +7,10 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardMetadataItem
+import build.raft.app.thread.LocalThreadActionCardNames
+import build.raft.app.thread.ThreadActionCardEntityKind
+import build.raft.app.thread.ThreadActionCardNameLookup
+import build.raft.app.thread.ThreadActionCardView
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test

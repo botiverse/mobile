@@ -20,6 +20,9 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import build.raft.app.nav.RaftMobilePageStackDisplay
 import build.raft.app.nav.RaftPageStack
+import build.raft.app.thread.ThreadListScrollOwnerEffect
+import build.raft.app.thread.ThreadListViewport
+import build.raft.app.thread.scrollThreadItemToFocusedViewport
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -21,6 +21,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.LocalThreadInPlaceTextSelectionHost
+import build.raft.app.thread.ThreadInPlaceSelectableBody
+import build.raft.app.thread.ThreadInPlaceSelectionToolbarTag
+import build.raft.app.thread.ThreadInPlaceTextSelectionHost
+import build.raft.app.thread.rememberThreadInPlaceSelectionController
 import kotlin.test.Test
 import kotlin.test.assertTrue
 import org.junit.Rule

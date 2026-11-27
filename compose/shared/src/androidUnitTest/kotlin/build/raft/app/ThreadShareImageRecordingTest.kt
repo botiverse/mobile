@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.threadShareImageGpuFallbackFits
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

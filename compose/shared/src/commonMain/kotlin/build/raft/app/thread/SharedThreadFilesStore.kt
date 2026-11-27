@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.ConversationArtifact
 import build.raft.app.data.DataResult
@@ -6,6 +6,10 @@ import build.raft.app.data.RaftConversationArtifactsApi
 import build.raft.app.data.loadConversationArtifacts
 import build.raft.app.data.ScreenError
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.get
+import build.raft.app.reduce
+import build.raft.app.thread.reduce
+import build.raft.app.traceId
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CoroutineScope

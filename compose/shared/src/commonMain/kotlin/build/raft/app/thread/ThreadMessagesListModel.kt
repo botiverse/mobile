@@ -1,12 +1,23 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_IDENTITY_KEY
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftChildPageOriginRegistry
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftType
 import build.raft.app.data.map
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.messages
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.model.delegatedGroupKey
+import build.raft.app.optString
+import build.raft.app.origin
+import build.raft.app.raftChildPageOriginKey
+import build.raft.app.raftViewportBeyondBoundsItemCount
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.key

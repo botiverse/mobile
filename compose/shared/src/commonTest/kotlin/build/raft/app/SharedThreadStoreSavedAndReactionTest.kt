@@ -14,6 +14,12 @@ import build.raft.app.data.SavedStatusRepository
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadReactionItem
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadMessageDeliveryFailed
+import build.raft.app.thread.ThreadMessageDeliverySending
+import build.raft.app.thread.ThreadTransientLocalSendIdPrefix
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

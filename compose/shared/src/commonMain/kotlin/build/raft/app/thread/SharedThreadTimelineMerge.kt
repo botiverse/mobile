@@ -1,10 +1,14 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.DataResult
 import build.raft.app.data.InboxItem
 import build.raft.app.data.ChannelFilesSnapshot
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.map
+import build.raft.app.fill
+import build.raft.app.get
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
@@ -15,6 +19,11 @@ import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.network.sync.ThreadRepliesScopeIdentity
 import build.raft.app.network.sync.initialThreadRepliesReadModel
+import build.raft.app.origin
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.thread.withKnownDelegatedByFrom
+import build.raft.app.withKnownDelegatedByFrom
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.key
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

@@ -1,6 +1,9 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.thread.displaySizeLabel
+import build.raft.app.traceId
+import build.raft.app.withRaftFontWeight
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -9,6 +12,7 @@ import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftSegment
 import build.raft.designsystem.components.RaftSegmentedControl
 import build.raft.app.downloads.RaftDownloadStatus
+import build.raft.app.fill
 import build.raft.designsystem.components.RaftMessageAttachmentAction
 import build.raft.designsystem.components.RaftMessageAttachmentCard
 import build.raft.app.components.rememberRaftTextareaEditorModifier
@@ -17,7 +21,9 @@ import build.raft.designsystem.components.RaftTextarea
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.map
+import build.raft.app.displaySizeLabel
 import build.raft.app.format.RaftFormat
+import build.raft.app.get
 import build.raft.app.data.ThreadAttachmentCommentItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -53,6 +59,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onVisibilityChanged
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.image.raftImageMayBeAnimated
+import build.raft.app.messages
+import build.raft.app.raftArgbHex
+import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.raftDialogContentPointerBarrier
+import build.raft.app.raftFilePreviewAttachmentSupportsViewerComments
+import build.raft.app.raftFilePreviewIsAudioAttachment
+import build.raft.app.raftFilePreviewIsImageAttachment
+import build.raft.app.raftFilePreviewIsMarkdownAttachment
+import build.raft.app.raftFilePreviewIsPreviewableVideoAttachment
+import build.raft.app.raftFilePreviewIsTextLikeAttachment
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.RaftMessageImageDimensions
 import build.raft.designsystem.components.RaftMessageImageFit
@@ -67,6 +83,22 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.Modal
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAppThemeState
+import build.raft.app.RaftAspectFitImagePreviewSurface
+import build.raft.app.RaftColor
+import build.raft.app.RaftFilePreviewDownloadStatusTerms
+import build.raft.app.RaftImageThumbnailContentScale
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftModalDismissBarrier
+import build.raft.app.RaftModalFullWidthActionButton
+import build.raft.app.RaftModalListShell
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftTraceIdNote
+import build.raft.app.RaftType
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 

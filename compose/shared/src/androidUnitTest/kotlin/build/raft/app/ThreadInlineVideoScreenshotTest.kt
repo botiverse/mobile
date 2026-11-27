@@ -21,6 +21,14 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.thread.LocalThreadInlineVideoPlayer
+import build.raft.app.thread.LocalThreadInlineVideoPreviewHost
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadInlineVideoAttachmentCard
+import build.raft.app.thread.ThreadInlineVideoPlayer
+import build.raft.app.thread.ThreadInlineVideoPreviewHost
+import build.raft.app.thread.ThreadInlineVideoPreviewStatus
+import build.raft.app.thread.ThreadInlineVideoPreviewUiState
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

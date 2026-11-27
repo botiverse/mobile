@@ -1,6 +1,6 @@
 package build.raft.app.markdown
 
-import build.raft.app.isKnownThreadMarkdownTag
+import build.raft.app.thread.isKnownThreadMarkdownTag
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

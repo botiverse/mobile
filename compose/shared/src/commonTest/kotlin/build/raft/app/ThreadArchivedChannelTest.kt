@@ -6,6 +6,16 @@ import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.parseRaftChannelDetail
 import build.raft.app.data.toConversationSummary
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.canConvertMessagesToTasks
+import build.raft.app.thread.channelTaskWritesShown
+import build.raft.app.thread.supportsChannelTasks
+import build.raft.app.thread.threadArchivedChannelCanUnarchive
+import build.raft.app.thread.threadFooterShowsArchived
+import build.raft.app.thread.threadHeaderShowsArchivedBadge
+import build.raft.app.thread.withContentSliceFrom
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

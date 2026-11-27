@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +22,13 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftRelativeTimestampText
+import build.raft.app.RaftTimestampDisplayGroup
+import build.raft.app.RaftType
+import build.raft.app.fill
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftHoverTier

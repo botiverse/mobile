@@ -22,6 +22,14 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftLongMessageCollapseController
+import build.raft.app.thread.RaftLongMessageRawScrollRequest
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.longMessageCollapseConversationId
+import build.raft.app.thread.raftForwardPreviewTruncatedText
+import build.raft.app.thread.raftLongMessageCollapsible
+import build.raft.app.thread.raftLongMessageSearchHitInBody
+import build.raft.app.thread.raftLongMessageToggleScrollPlan
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

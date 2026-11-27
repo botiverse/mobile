@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftAgentLounges
+import build.raft.app.lookupAgentLounge
 import build.raft.app.markdown.raftLoungeConversationAgentName
 import build.raft.app.markdown.resolveRaftLoungeRefAgent
 

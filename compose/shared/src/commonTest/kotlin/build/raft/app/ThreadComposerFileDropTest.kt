@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.thread.ThreadPickedAttachmentComposerAction
+import build.raft.app.thread.resolveThreadPickedAttachmentComposerAction
+import build.raft.app.thread.threadComposerEventAllowed
+import build.raft.app.thread.threadComposerEventRequiresWriteAccess
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

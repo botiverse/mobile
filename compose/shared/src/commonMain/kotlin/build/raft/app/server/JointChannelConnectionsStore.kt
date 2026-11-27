@@ -26,6 +26,8 @@ import build.raft.app.data.MemberConnectServerLimit
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.model.ChannelId
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

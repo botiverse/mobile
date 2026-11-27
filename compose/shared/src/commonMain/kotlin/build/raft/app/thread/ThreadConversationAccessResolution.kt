@@ -1,5 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.ReplyResolutionScope
 import build.raft.app.data.ChannelRepository
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.DataRequestPriority
@@ -13,10 +16,12 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.data.toSharedConversationDirectoryProjection
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.isCurrentOrSuccessorForLocalSend
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.resolve
 import kotlinx.coroutines.CancellationException
 
 /**

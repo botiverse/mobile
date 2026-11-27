@@ -5,6 +5,8 @@ import build.raft.app.model.RaftRelativeTimeLabel
 import build.raft.app.model.RaftRelativeTimeUnit
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.resolveRaftRelativeTimeLabel
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeCapabilities
 import build.raft.app.model.raftEpochDayForDate
 import kotlin.test.Test
 import kotlin.test.assertEquals

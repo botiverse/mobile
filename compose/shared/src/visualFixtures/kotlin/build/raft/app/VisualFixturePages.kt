@@ -25,6 +25,17 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
 import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.ChannelAddMemberPanelVisualScreen
+import build.raft.app.thread.ChannelSettingsPanelVisualScreen
+import build.raft.app.thread.DirectMessageSettingsPanelVisualScreen
+import build.raft.app.thread.Task797ThreadHeaderVisualScreen
+import build.raft.app.thread.ThreadActivityMuteVisualScreen
+import build.raft.app.thread.ThreadDmAgentActivityHeaderVisualScreen
+import build.raft.app.thread.ThreadFilesVisualScreen
+import build.raft.app.thread.ThreadHeaderVisualScreen
+import build.raft.app.thread.ThreadInlineAudioControls
+import build.raft.app.thread.ThreadReactionAtlasVisualScreen
+import build.raft.app.thread.key
 
 @Page("compose_home_titlebar_visual", supportInLocal = true)
 internal class ComposeHomeTitlebarVisualPage : BasePager() {

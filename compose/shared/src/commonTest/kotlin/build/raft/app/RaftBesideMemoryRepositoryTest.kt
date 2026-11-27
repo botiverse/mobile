@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.SyncTestPreferences
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

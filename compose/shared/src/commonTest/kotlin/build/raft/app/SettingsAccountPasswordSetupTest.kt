@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.ScriptedAgentControlsNetworkClient
 import build.raft.app.data.sendSharedPasswordSetupEmail
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runCurrent

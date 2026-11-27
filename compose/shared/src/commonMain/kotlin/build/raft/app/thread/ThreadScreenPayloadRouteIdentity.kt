@@ -1,4 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.ThreadRouteIdentity
+import build.raft.app.nonBlank
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.typedReplyParentConversationKindOrNull
 
 internal fun RaftThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRouteIdentity {
     val parentMessage = parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()

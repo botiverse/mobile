@@ -1,13 +1,24 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.JointChannelKindWireValue
+import build.raft.app.RaftLucideIconName
+import build.raft.app.accepts
 import build.raft.app.data.DataResult
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.data.ForwardTargetSearchUpdate
 import build.raft.app.data.ForwardTargetServerSearchDebounceMillis
+import build.raft.app.get
+import build.raft.app.iconName
 import build.raft.app.model.ServerId
+import build.raft.app.raftChannelKindGlyph
+import build.raft.app.reduce
+import build.raft.app.thread.accepts
+import build.raft.app.thread.iconName
+import build.raft.app.thread.reduce
+import build.raft.app.toRaftAvatarLabel
 import kotlinx.coroutines.delay
 
 internal fun raftForwardPickerActionBottomPadding(bottomSafeArea: Dp): Dp =

@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.shouldSuppressCompactThreadAuthor
+import build.raft.app.thread.threadShareSelectionSuppressesAuthor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

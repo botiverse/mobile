@@ -6,6 +6,9 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.ThreadId
 import build.raft.app.resources.StringDesc
+import build.raft.app.shownAuthorName
+import build.raft.app.thread.shownAuthorName
+import build.raft.app.thread.toRaftThreadMessageItem
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

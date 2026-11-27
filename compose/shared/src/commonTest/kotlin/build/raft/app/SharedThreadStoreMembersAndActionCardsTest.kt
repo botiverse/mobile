@@ -35,6 +35,12 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadReplyMetadata
+import build.raft.app.thread.key
+import build.raft.app.thread.threadInlineReplyPresentation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

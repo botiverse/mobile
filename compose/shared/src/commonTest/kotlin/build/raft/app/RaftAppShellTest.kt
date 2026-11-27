@@ -6,6 +6,9 @@ import build.raft.app.data.HomeSnapshot
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SharedAuthErrorCode
 import build.raft.app.resources.*
+import build.raft.app.thread.key
+import build.raft.app.thread.toConversationOpenSourceMessageIdentity
+import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.data.AuthSessionEvent
 import build.raft.app.data.AuthSessionTerminalSnapshot
 import build.raft.app.data.InboxItem

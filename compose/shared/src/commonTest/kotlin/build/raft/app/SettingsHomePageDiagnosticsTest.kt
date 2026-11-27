@@ -4,6 +4,7 @@ import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsDiagnosticsSnapshot
+import build.raft.app.thread.key
 import build.raft.app.data.SharedSettingsDiagnosticFeatureFlagSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals

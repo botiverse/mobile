@@ -6,6 +6,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftMobileNavDefaults
 import kotlin.test.Test
 import kotlin.test.assertEquals

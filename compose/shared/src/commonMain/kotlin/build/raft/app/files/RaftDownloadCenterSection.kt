@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.messageRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,6 +18,7 @@ import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadErrorKind
 import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.format.RaftFormat
+import build.raft.app.messageRes
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftButtonVariant

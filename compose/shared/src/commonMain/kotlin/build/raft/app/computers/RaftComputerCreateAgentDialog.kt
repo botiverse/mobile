@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
 import androidx.compose.runtime.*
 import build.raft.app.data.*
 import build.raft.app.model.MemberKind

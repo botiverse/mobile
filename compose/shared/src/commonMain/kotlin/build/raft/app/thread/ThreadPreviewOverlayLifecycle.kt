@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RAFT_FILE_PREVIEW_PAGE
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.observe
 
 internal enum class ThreadLifecycleVisibilityVerdict {
     /** A real return to the thread: app foregrounding, or navigating away and back. */

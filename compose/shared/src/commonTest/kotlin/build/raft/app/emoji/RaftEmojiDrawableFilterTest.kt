@@ -1,6 +1,6 @@
 package build.raft.app.emoji
 
-import build.raft.app.raftEmojiPickerSections
+import build.raft.app.thread.raftEmojiPickerSections
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

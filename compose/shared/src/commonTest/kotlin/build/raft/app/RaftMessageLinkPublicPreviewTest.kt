@@ -5,6 +5,9 @@ import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.RaftMessageLink
+import build.raft.app.thread.RaftPublicConversationPreviewStore
+import build.raft.app.thread.RaftPublicPreviewState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

@@ -1,4 +1,9 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadComposerPayload
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.normalizedThreadChannelKind
 
 /** Task v2: a task conversation's composer placeholder (web `message.threadPanel.taskComposerPlaceholder`). */
 internal const val ThreadTaskComposerPlaceholder = "Message this task"

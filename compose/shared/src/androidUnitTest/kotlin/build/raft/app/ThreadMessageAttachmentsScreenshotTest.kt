@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadMessageAttachments
 import coil3.annotation.ExperimentalCoilApi
 import coil3.asImage
 import coil3.request.ErrorResult

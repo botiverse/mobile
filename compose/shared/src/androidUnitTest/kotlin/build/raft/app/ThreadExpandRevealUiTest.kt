@@ -19,6 +19,16 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.ThreadExpandRevealEffect
+import build.raft.app.thread.ThreadExpandRevealOutcome
+import build.raft.app.thread.ThreadExpandRevealOwner
+import build.raft.app.thread.ThreadExpandRevealTopMargin
+import build.raft.app.thread.ThreadListViewport
+import build.raft.app.thread.ThreadReadingAnchorOwner
+import build.raft.app.thread.key
+import build.raft.app.thread.threadExpandRevealDelta
+import build.raft.app.thread.threadReadingAnchorOwns
+import build.raft.app.thread.threadVisibleContentBottom
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

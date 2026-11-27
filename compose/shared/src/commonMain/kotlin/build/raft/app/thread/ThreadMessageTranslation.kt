@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.RaftTextLink
@@ -10,6 +10,7 @@ import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.isSilentTranslationEntry
+import build.raft.app.raftArgbHex
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,9 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.available
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
 import build.raft.app.components.RaftDesignSystemTheme

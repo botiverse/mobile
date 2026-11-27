@@ -1,10 +1,15 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
+import build.raft.app.RaftAppThemeState
+import build.raft.app.RaftAppTypeScale
+import build.raft.app.RaftColor
+import build.raft.app.RaftType
+import build.raft.app.withRaftUserContentLocale
 
 // Message text is user content: Han characters in Simplified Chinese forms, like the Web.
 internal fun raftMessageBodyTextStyle(preferenceKey: String?): TextStyle =

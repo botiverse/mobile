@@ -2,6 +2,10 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerType
+import build.raft.app.thread.ThreadMessageDoubleTapTracker
+import build.raft.app.thread.ThreadMessageRowTapOutcome
+import build.raft.app.thread.decideThreadMessageRowTap
+import build.raft.app.thread.threadMessageIsContextClick
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

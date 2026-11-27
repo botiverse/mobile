@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.threadComposerDraftKey
+import build.raft.app.threadComposerDraftKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

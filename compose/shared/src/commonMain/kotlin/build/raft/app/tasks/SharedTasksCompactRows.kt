@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.data.tasksAssigneeDisplayName
+import build.raft.app.localizedLabel
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.RaftTimeContext
@@ -60,6 +61,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
+import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftGlyph

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -7,6 +7,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.ui.collectAsStateWhileStarted
 import build.raft.app.data.DataRequestPriority
@@ -16,6 +17,7 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*

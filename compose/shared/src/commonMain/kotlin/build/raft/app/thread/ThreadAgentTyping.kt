@@ -1,9 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.toRaftAvatarLabel
+import build.raft.app.workingNowFaces
 import androidx.compose.foundation.background
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -44,6 +46,18 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.EmptyRaftAgentStatusResolver
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftColor
+import build.raft.app.RaftLiveRootAnchorRef
+import build.raft.app.RaftMemberAvatar
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftPopoverAnchorResolver
+import build.raft.app.RaftPopoverLocalPoint
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftWorkingFaces
+import build.raft.app.RaftWorkingNowPopover
+import build.raft.app.RaftWorkingNowSource
 import build.raft.app.data.AgentTypingSentenceTemplates
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftDisplayPreferenceRuntime
@@ -53,12 +67,16 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.formatAgentTypingSentence
 import build.raft.app.data.typingAgentIds
+import build.raft.app.fill
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.raftCaptureLiveRootAnchor
+import build.raft.app.resolveCurrentPlacement
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 

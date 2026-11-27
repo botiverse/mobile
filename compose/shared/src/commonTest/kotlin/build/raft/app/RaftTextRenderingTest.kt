@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.ui.text.intl.LocaleList
 import build.raft.app.data.AppLocale
+import build.raft.app.thread.raftMessageBodyTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import kotlin.test.Test
 import kotlin.test.assertEquals

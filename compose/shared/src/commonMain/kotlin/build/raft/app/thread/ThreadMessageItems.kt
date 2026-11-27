@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.memberOrigin
 import build.raft.app.data.ThreadAttachmentCommentItem
@@ -15,6 +15,11 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.network.sync.ThreadRepliesReadModel
+import build.raft.app.resolveOpenRequest
+import build.raft.app.thread.toRaftTimeContext
+import build.raft.app.toRaftAvatarLabel
+import build.raft.app.toRaftTimeContext
+import build.raft.app.traceId
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.RaftTimeContext
@@ -22,6 +27,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.ChannelMemberRoleAction
+import build.raft.app.ConversationOpenResolution
+import build.raft.app.ConversationOpenSource
+import build.raft.app.ConversationOpenSourceMessageIdentity
+import build.raft.app.HomeMessageOpenRequest
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMessageTimeFormat
+import build.raft.app.RaftPendingAttachmentItem
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.SharedThreadComposerAttachment
+import build.raft.app.SharedThreadComposerExternalShareSource
+import build.raft.app.ThreadComposerClipboardImageSource
 import kotlinx.coroutines.channels.Channel
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient

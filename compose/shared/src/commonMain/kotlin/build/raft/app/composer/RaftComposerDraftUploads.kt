@@ -4,6 +4,7 @@ import build.raft.app.data.MviDispatchReceipt
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftAttachmentUploadCancelReason
 import build.raft.app.data.RaftUploadCancelled
+import build.raft.app.thread.key
 import build.raft.app.transfer.RaftTransferProgress
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized

@@ -14,6 +14,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.thread.RaftThreadMemberItem
+import build.raft.app.thread.displayName
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 

@@ -74,6 +74,7 @@ import build.raft.app.data.SharedTasksDataSource
 import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
+import build.raft.app.localizedLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
@@ -81,6 +82,17 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
+import build.raft.app.thread.ThreadChannelJoinsInFlight
+import build.raft.app.thread.ThreadComposerDock
+import build.raft.app.thread.ThreadFooterNoticeDock
+import build.raft.app.thread.ThreadHeaderContentSpacing
+import build.raft.app.thread.ThreadJoinFooter
+import build.raft.app.thread.ThreadSplitDetailEdgeInset
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.localizedLabel
+import build.raft.app.thread.newThreadSendRandomId
+import build.raft.app.thread.raftThreadComposerLiveKeyboardPadding
+import build.raft.app.thread.rememberThreadComposerKeyboardLiftPx
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftBannerStatus

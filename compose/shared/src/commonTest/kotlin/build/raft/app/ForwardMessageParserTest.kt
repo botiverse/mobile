@@ -7,6 +7,8 @@ import build.raft.app.data.WireMessage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
 import build.raft.app.data.parseSharedChannelMessages
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.forwardSourcePermalink
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 /**
  * The SINGLE absorption point for canonical send echoes.

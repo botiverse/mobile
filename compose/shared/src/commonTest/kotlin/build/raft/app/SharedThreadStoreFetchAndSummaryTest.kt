@@ -26,6 +26,11 @@ import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesSyncHost
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadNewerPageLoadOutcome
+import build.raft.app.thread.key
+import build.raft.app.thread.threadHeaderDisplayModelFromDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

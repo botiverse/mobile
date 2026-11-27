@@ -9,6 +9,7 @@ import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.parseActionCardSpec
 import build.raft.app.data.stripActionCardSpec
+import build.raft.app.thread.typedActionType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

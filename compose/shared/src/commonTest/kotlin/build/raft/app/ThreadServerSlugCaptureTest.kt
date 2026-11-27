@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.resolveThreadServerSlugWithRetry
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

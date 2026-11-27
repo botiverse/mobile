@@ -13,6 +13,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
+import build.raft.app.thread.LocalThreadMessageGeometryTints
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadPendingSendContext
+import build.raft.app.thread.ThreadMessageCard
+import build.raft.app.thread.ThreadMessageDeliveryFailed
+import build.raft.app.thread.ThreadMessageDeliverySending
+import build.raft.app.thread.ThreadMessageDeliverySent
+import build.raft.app.thread.ThreadMessageGeometryTints
+import build.raft.app.thread.raftMessageBodyTextStyle
 
 // task #800 rendering-evidence fixture: four right-aligned own-message cards
 // separated by pure-red full-width markers so the connected test can segment

@@ -1,4 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.messages
 
 /**
  * Minimal render-axis signature for a Thread screen payload.

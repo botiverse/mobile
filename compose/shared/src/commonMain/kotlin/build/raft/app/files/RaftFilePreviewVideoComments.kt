@@ -14,6 +14,7 @@ import build.raft.app.data.ThreadAttachmentCommentAnchor
 import build.raft.app.data.label
 import build.raft.app.data.raftVideoTimestampLabel
 import build.raft.app.resources.*
+import build.raft.app.thread.ThreadAttachmentCommentsDialogState
 import build.raft.designsystem.components.RaftButton
 import kotlin.math.roundToInt
 

@@ -2,6 +2,21 @@ package build.raft.app
 
 import build.raft.app.markdown.RaftCleanCopyClipboardScope
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadAttachmentCommentsDialogState
+import build.raft.app.thread.clearAttachmentCommentsError
+import build.raft.app.thread.genericAttachmentMetaLine
+import build.raft.app.thread.icon
+import build.raft.app.thread.isHtmlAttachment
+import build.raft.app.thread.isMarkdownAttachment
+import build.raft.app.thread.isTextLikeAttachment
+import build.raft.app.thread.messageRes
+import build.raft.app.thread.raftFilePreviewShowsShareAction
+import build.raft.app.thread.toComposerImagePlatformFile
+import build.raft.app.thread.withAttachmentCommentDraftProjection
+import build.raft.app.thread.withAttachmentCommentEditorValue
+import build.raft.app.thread.withAttachmentCommentsError
+import build.raft.app.toComposerImagePlatformFile
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -88,6 +103,7 @@ import build.raft.app.downloads.RaftDownloadStatus
 import build.raft.app.downloads.raftDownloadCenterEntryId
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.messageRes
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftWorkspaceFilePreview
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull

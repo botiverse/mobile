@@ -64,6 +64,7 @@ import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.localizedLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
@@ -74,6 +75,10 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.resources.*
+import build.raft.app.thread.ThreadDateDivider
+import build.raft.app.thread.localizedLabel
+import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toThreadLaunchConversationIdentity
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftCloseButton

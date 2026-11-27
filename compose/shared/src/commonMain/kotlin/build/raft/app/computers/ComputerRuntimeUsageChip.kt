@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
+import build.raft.app.thread.label
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -82,6 +85,7 @@ import build.raft.app.data.creditsLine
 import build.raft.app.data.needsUsageAttention
 import build.raft.app.data.selectComputerServerSlice
 import build.raft.app.data.windowFill
+import build.raft.app.label
 import build.raft.app.data.RuntimeAuthSignedInProvider
 import build.raft.app.data.RuntimeAuthView
 import build.raft.app.data.SettingsComputerAgentSnapshot

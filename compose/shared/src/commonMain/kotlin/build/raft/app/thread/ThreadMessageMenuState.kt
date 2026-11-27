@@ -1,9 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import build.raft.app.RaftPopoverAnchor
 
 /**
  * The message list's open menus and popovers: one per thread open, remembered by

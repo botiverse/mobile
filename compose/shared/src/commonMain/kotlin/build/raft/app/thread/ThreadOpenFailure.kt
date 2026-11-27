@@ -1,5 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.has
 import build.raft.app.resources.*
 import org.jetbrains.compose.resources.StringResource
 

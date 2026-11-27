@@ -17,6 +17,7 @@ import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.model.ChannelId
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -8,6 +8,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftColor
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftType
+import build.raft.app.get
 
 /** raft-ui `continuationTime`: font-mono text-mono-meta, 12/16 regular, ink-3. */
 internal val ThreadMessageGutterClockStyle: TextStyle

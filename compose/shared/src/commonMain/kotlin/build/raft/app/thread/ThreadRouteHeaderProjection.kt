@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -7,6 +7,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import build.raft.app.RaftMemberAppBotResolver
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.agentLoungeActivityMuteState
+import build.raft.app.agentLoungeLookupChannelId
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.ui.collectAsStateWhileStarted
 import build.raft.app.data.RaftAgentLounge
@@ -21,6 +27,9 @@ import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.ServerId
+import build.raft.app.raftMemberAppBotResolver
+import build.raft.app.raftMemberAvatarResolver
+import build.raft.app.rememberAgentLounge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow

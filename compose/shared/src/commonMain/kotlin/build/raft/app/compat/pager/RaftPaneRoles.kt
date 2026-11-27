@@ -4,7 +4,7 @@ import build.raft.app.CHANNEL_SETTINGS_PAGE
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE
 import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
-import build.raft.app.THREAD_MEMBERS_PAGE
+import build.raft.app.thread.THREAD_MEMBERS_PAGE
 
 /**
  * Where a page opens on the wide layout (rail shown, plan option C, artin 2026-10-29). The

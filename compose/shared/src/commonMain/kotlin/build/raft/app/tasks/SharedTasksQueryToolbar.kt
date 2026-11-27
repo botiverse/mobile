@@ -18,8 +18,12 @@ import build.raft.app.data.TasksPageScope
 import build.raft.app.data.TasksQueryIntent
 import build.raft.app.data.TasksQueryState
 import build.raft.app.data.TasksViewMode
+import build.raft.app.localizedLabel
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
+import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftFitToolbar
 import build.raft.designsystem.components.RaftFitToolbarAction

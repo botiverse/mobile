@@ -26,6 +26,12 @@ import build.raft.app.model.MessageReaction
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadReactionItem
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.dispatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

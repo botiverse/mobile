@@ -1,13 +1,13 @@
 package build.raft.app.data
 
-import build.raft.app.ThreadUserFacingErrorReason
+import build.raft.app.thread.ThreadUserFacingErrorReason
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.network.MultipartFile
 import build.raft.app.threadSendFailureErrorCode
 import build.raft.app.threadSendShouldSilentlyRetry
-import build.raft.app.threadUserFacingErrorCodeReason
+import build.raft.app.thread.threadUserFacingErrorCodeReason
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

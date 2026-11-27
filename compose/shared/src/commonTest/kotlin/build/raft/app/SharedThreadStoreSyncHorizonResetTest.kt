@@ -8,6 +8,8 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.realtime.RealtimeSyncHorizon
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin

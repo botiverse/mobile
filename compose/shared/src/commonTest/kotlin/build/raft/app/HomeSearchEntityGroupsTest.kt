@@ -7,10 +7,13 @@ import build.raft.app.data.SearchCoreGroupStatus
 import build.raft.app.data.SearchCoreGroupsState
 import build.raft.app.data.SearchPersonHit
 import build.raft.app.data.SearchRequiredAction
+import build.raft.app.memberDetailIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.key
+import build.raft.app.thread.memberDetailIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

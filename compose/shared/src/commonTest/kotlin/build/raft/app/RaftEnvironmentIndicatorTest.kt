@@ -7,6 +7,7 @@ import build.raft.app.data.RaftSharedKeyValueStoreBinding
 import build.raft.app.data.RaftSharedKeyValueStoreProvider
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedApiEnvironmentStore
+import build.raft.app.thread.key
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

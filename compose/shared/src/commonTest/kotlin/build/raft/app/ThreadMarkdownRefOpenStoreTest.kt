@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.ThreadMarkdownRefOpenStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -9,9 +9,22 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.TextFieldValue
+import build.raft.app.RaftComposerServerUploads
+import build.raft.app.RaftTextFieldNativeEditingStateReadResult
+import build.raft.app.SharedThreadComposerDraftIntent
+import build.raft.app.SharedThreadComposerDraftViewModel
+import build.raft.app.ThreadAttachmentUploadAttemptIdentity
+import build.raft.app.ThreadAttachmentUploadOrchestrator
+import build.raft.app.ThreadComposerSendAdmission
+import build.raft.app.ThreadComposerSendRequest
+import build.raft.app.ThreadComposerSurface
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.normalizeThreadAttachmentUploadDraftKey
+import build.raft.app.recoverOrphanedThreadComposerUploads
+import build.raft.app.threadAttachmentUploadAttemptIdentity
+import build.raft.app.threadAttachmentUploadFile
 import kotlin.coroutines.resume
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect

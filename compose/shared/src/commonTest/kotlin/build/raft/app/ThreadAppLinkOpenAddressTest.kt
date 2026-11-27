@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.AppLinkApp
 import build.raft.app.data.AppLinkResult
+import build.raft.app.thread.icon
+import build.raft.app.thread.openThreadAppLinkAddress
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

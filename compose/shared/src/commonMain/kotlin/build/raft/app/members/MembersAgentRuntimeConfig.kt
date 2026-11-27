@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.label
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.setValue
 import build.raft.app.components.raftCardSurface
@@ -30,6 +31,7 @@ import build.raft.app.data.normalizedAgentRuntimeStatus
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2SubmitBody
 import build.raft.app.data.runtimeform.v2.RuntimeFormV2Access
 import build.raft.app.data.toAgentDetailSummary
+import build.raft.app.label
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.RUNTIME_MODELS
 import build.raft.app.model.RuntimeConfig

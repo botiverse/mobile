@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.SharedThreadStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update

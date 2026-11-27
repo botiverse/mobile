@@ -1,5 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.get
+import build.raft.app.messages
 import build.raft.app.model.Message
 
 // RFC 077 PR 2b (botiverse/slock `assistantSendAsOwnerService.ts` `retractDelegatedMessage`): the

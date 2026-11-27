@@ -13,6 +13,7 @@ import build.raft.app.data.KeyValueNotificationPermissionPromptPreferenceStore
 import build.raft.app.data.NotificationPermissionAutoPrompt
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftDeviceStateKeyValueStore
+import build.raft.app.thread.key
 import kotlinx.coroutines.launch
 
 /**

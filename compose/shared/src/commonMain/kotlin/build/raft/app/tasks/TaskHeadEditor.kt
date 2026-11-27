@@ -33,6 +33,7 @@ import build.raft.app.data.TaskDescriptionMaxLength
 import build.raft.app.data.TaskTitleMaxLength
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

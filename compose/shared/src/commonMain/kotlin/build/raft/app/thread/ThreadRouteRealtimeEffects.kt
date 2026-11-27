@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import build.raft.app.RaftAdaptiveDetailCloseRequest
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.RaftAuthSessionStore
@@ -24,6 +25,7 @@ import build.raft.app.data.SharedRealtimeDomainEventOwner
 import build.raft.app.data.SharedRealtimeRoomLeaseRegistry
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.shouldHoldThreadRoomLease
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch

@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.thread.ConversationSideCard
+import build.raft.app.thread.icon
+import build.raft.app.thread.threadFollowMenuIcon
 import build.raft.designsystem.components.RaftSideActionHostColumn
 import kotlin.test.Test
 import kotlin.test.assertEquals

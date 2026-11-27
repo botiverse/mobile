@@ -1,6 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeCapabilities
+import build.raft.app.traceId
 import build.raft.app.data.sideThreadParentFocus
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.RaftEventBus
@@ -24,8 +29,13 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskSummary
+import build.raft.app.openRaftUpgradeDialog
+import build.raft.app.openSettingsBillingPage
+import build.raft.app.resolve
+import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.model.ServerId
 import build.raft.app.compat.pager.Pager
+import build.raft.app.currentRevisionForReplyCacheOwner
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.MutableState
@@ -34,6 +44,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.SoftwareKeyboardController
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAdaptiveDetailCloseRequest
+import build.raft.app.RaftLinkNavigator
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftUpgradeExternalContext
+import build.raft.app.RaftUpgradeGate
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.TaskCreateFromMessageFlow
+import build.raft.app.agentLoungeLookupChannelId
+import build.raft.app.buildAppShellThreadPayload
 import build.raft.app.data.SharedAdaptiveWorkspaceStore
 import build.raft.app.data.SharedRealtimeRoomLeaseRegistry
 

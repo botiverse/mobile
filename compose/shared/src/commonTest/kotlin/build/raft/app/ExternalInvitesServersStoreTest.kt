@@ -7,6 +7,7 @@ import build.raft.app.data.ExternalInviteRefusal
 import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.OwnConnectableServers
 import build.raft.app.data.ServerConnectOutcome
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent

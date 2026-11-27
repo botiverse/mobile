@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +19,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.EmptyRaftAgentStatusResolver
+import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.EmptyRaftMemberModelLabelResolver
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.RaftMemberModelLabelResolver
 import androidx.compose.foundation.Image
 import build.raft.app.base.putIfAbsent
 import build.raft.app.data.ThreadActionCard

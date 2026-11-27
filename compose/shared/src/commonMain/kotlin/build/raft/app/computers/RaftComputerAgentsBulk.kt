@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.key
+import build.raft.app.thread.label
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -47,6 +49,7 @@ import build.raft.app.data.isRaftBulkModelSelectableRuntime
 import build.raft.app.data.planRaftBulkModelChange
 import build.raft.app.data.raftBulkReasoningEffortOptions
 import build.raft.app.data.raftBulkReconcileReasoningEffort
+import build.raft.app.label
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.getModelLabel

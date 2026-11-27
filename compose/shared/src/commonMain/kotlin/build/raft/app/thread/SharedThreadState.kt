@@ -1,8 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.data.DataResult
 import build.raft.app.data.isAuthSessionBlocker
 import build.raft.app.data.isEdgeBlockedMarker
+import build.raft.app.messages
 import build.raft.app.data.MessageMutationSummary
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadMessagesPage
@@ -10,6 +13,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
+import build.raft.app.present
 
 internal data class SharedThreadState(
     val payload: RaftThreadScreenPayload = RaftThreadScreenPayload(),

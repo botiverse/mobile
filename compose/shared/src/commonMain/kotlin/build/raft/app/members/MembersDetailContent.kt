@@ -4,6 +4,10 @@ import build.raft.app.data.agentOffersLounge
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.data.agentBlockedState
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.formatThreadTimeRevealLabel
+import build.raft.app.thread.formatTimestampLabel
+import build.raft.app.thread.icon
 import androidx.compose.runtime.setValue
 import build.raft.app.components.RaftUiControlledMenu
 import build.raft.app.components.RaftUiMenuItem

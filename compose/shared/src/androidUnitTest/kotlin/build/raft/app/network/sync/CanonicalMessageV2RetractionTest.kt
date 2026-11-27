@@ -2,7 +2,7 @@ package build.raft.app.network.sync
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.data.RaftSqlDatabase
-import build.raft.app.isRetracted
+import build.raft.app.thread.isRetracted
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

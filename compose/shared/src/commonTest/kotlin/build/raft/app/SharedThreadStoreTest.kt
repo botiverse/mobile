@@ -26,6 +26,12 @@ import build.raft.app.model.MessageType
 import build.raft.app.model.Presence
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.RaftThreadTaskItem
+import build.raft.app.thread.key
+import build.raft.app.thread.toMessage
+import build.raft.app.thread.toRaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

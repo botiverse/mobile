@@ -3,10 +3,10 @@ package build.raft.app.assistant
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import build.raft.app.RAFT_EMBEDDED_CHILD_PAGE_PARAM
-import build.raft.app.RaftThreadScreenPayload
+import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.RaftTimeContextProvider
-import build.raft.app.SharedThreadRouteContent
+import build.raft.app.thread.SharedThreadRouteContent
 import build.raft.app.base.BasePager
 import build.raft.app.base.Utils
 import build.raft.app.cmp.host.RaftCmpPageArgs
@@ -21,7 +21,7 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftTasksApi
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.SharedTasksDataSource
-import build.raft.app.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadDataSource
 import build.raft.app.get
 import build.raft.app.data.SharedThreadNetworkApi
 import build.raft.app.data.StoredAuthServer

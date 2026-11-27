@@ -1,8 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.input.pointer.PointerEventType
+import build.raft.app.TouchType
+import build.raft.app.get
 
 internal const val ThreadNewerAutoLoadVisibleItemThreshold = 8
 

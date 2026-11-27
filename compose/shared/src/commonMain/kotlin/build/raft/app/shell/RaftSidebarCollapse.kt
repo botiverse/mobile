@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftCollapsibleColumn
+import build.raft.app.thread.key
 import build.raft.designsystem.theme.RaftPointerInput
 
 /**

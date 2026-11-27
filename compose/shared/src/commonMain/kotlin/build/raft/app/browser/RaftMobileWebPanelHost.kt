@@ -29,6 +29,7 @@ import build.raft.app.compat.pager.raftPlatformName
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.launch

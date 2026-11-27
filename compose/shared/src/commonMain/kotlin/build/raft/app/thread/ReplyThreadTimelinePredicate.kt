@@ -1,4 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.RaftThreadSurfaceKind
 
 internal fun RaftThreadScreenPayload.replyThreadContentChannelId(): String? {
     if (surfaceKind != RaftThreadSurfaceKind.ReplyThread) return null

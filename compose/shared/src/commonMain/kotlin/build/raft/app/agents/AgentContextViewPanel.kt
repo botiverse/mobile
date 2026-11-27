@@ -58,6 +58,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.LocalRaftBarButtons
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftBackButton

@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.data.RaftActivityItemKind
 import build.raft.app.data.RaftMessageAction
 import build.raft.app.model.InboxItemKind
+import build.raft.app.thread.ThreadNewMessageMenuTool
+import build.raft.app.thread.productActivityItemKind
+import build.raft.app.thread.productMessageAction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

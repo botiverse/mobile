@@ -12,6 +12,8 @@ import build.raft.app.data.RaftKeyedSnapshotCache
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent

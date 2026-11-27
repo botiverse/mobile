@@ -8,6 +8,11 @@ import build.raft.app.SharedThreadStoreTestFixtures.contentPayload
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.toInitialPayload
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.CoroutineScope

@@ -55,6 +55,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.thread.dispatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -22,7 +22,7 @@ internal fun raftHostRecreatesOnNewIntentNow(state: Lifecycle.State): Boolean =
 
 /**
  * External link trampoline ([build.raft.app.MainActivity]) bringing a live app shell forward while
- * the link itself rides [build.raft.app.RaftMessageLinkInbox]: recreating the shell here cancels
+ * the link itself rides [build.raft.app.thread.RaftMessageLinkInbox]: recreating the shell here cancels
  * in-flight link resolution and wipes the Nav3 stack back to Home (#proj-mobile:#311). Only an
  * already-running app shell with no prior pending recreation receiving an app-shell reveal intent
  * opts out of recreation; login/destination/notification intents still rebuild as before.

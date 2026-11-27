@@ -47,6 +47,17 @@ import build.raft.app.markdown.raftTextDirection
 import build.raft.app.markdown.toComposeLayoutDirection
 import build.raft.app.markdown.toComposeTextDirection
 import build.raft.app.resources.*
+import build.raft.app.thread.ComposerQuoteBlocksTestTag
+import build.raft.app.thread.ThreadQuoteArmedHint
+import build.raft.app.thread.ThreadQuoteChipAvatarLookup
+import build.raft.app.thread.ThreadQuoteChipFrame
+import build.raft.app.thread.ThreadVoiceDictationHost
+import build.raft.app.thread.composerQuoteArmedHintTestTag
+import build.raft.app.thread.composerQuoteChipTestTag
+import build.raft.app.thread.composerQuoteInsertBelowTestTag
+import build.raft.app.thread.composerQuoteRemoveTestTag
+import build.raft.app.thread.composerQuoteRowTestTag
+import build.raft.app.thread.rememberVoiceDictationComposingUnderlineModifier
 
 /*
  * Interleaved multi-quote composer body (botiverse/slock #16027 / #16059 / #16210,

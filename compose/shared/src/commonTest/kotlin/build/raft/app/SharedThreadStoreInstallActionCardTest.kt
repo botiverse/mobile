@@ -5,6 +5,10 @@ import build.raft.app.data.HomeNetworkResponse
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.thread.ThreadInstallAppActionIntent
+import build.raft.app.thread.ThreadInstallAppStaleCode
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.threadInstallAppActionDialogStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

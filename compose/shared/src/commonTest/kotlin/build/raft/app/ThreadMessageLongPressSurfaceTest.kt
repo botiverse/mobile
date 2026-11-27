@@ -1,6 +1,13 @@
 package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
+import build.raft.app.thread.ThreadMessageTapMovementGate
+import build.raft.app.thread.ThreadVisibleResumeGate
+import build.raft.app.thread.ThreadVisibleResumePlan
+import build.raft.app.thread.decideThreadMessageLongPressDispatch
+import build.raft.app.thread.threadMessageBodyTapEligible
+import build.raft.app.thread.threadMessageDoubleTapShowsReactions
+import build.raft.app.thread.threadMessageTapOpensThread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

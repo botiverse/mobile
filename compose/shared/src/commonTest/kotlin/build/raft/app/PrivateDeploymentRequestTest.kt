@@ -5,6 +5,7 @@ import build.raft.app.network.RaftHttpExecutor
 import build.raft.app.network.RaftHttpExecutorResponse
 import build.raft.app.network.RaftRequestPriority
 import build.raft.app.network.RaftWireTransferProgress
+import build.raft.app.thread.key
 import kotlinx.coroutines.runBlocking
 import build.raft.app.data.SharedApiEnvironmentStore
 import kotlin.test.Test

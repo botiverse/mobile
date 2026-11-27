@@ -34,6 +34,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskStatus
+import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftMentionMarker
 import build.raft.designsystem.components.RaftTaskStatusBadge
 import build.raft.designsystem.components.RaftTaskStatusBadgeSize

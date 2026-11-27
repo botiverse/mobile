@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.app.format.RaftFormat
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress

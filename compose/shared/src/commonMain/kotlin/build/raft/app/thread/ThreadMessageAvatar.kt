@@ -1,11 +1,17 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.withRaftFontWeight
 import build.raft.designsystem.components.RaftPreviewCard
 import build.raft.designsystem.components.RaftPreviewCardState
 import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.app.components.raftControlSurface
+import build.raft.app.fill
 import build.raft.app.model.MessageDelegatedBy
+import build.raft.app.raftGesturePointerInput
+import build.raft.app.raftMemberAvatarCacheSubject
+import build.raft.app.raftOriginServerNames
+import build.raft.app.rememberRaftGestureOwner
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberServerRef
 import androidx.compose.runtime.Composable
@@ -56,6 +62,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAgentStatusIndicatorState
+import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftAppThemeState
+import build.raft.app.RaftAvatarKind
+import build.raft.app.RaftAvatarRowDiagnostics
+import build.raft.app.RaftAvatarWithOriginCorner
+import build.raft.app.RaftAvatarWithStatus
+import build.raft.app.RaftColor
+import build.raft.app.RaftGestureSession
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftType
 import kotlinx.coroutines.channels.Channel
 import build.raft.designsystem.components.raftClickable
 

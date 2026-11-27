@@ -26,6 +26,10 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.threadActionCard
+import build.raft.app.thread.withActionCard
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

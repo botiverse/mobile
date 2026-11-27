@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -17,6 +17,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.PendingComposerQuote
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.SharedThreadComposerDraftIntent
+import build.raft.app.SharedThreadComposerDraftViewModel
+import build.raft.app.ThreadComposerInsertQuoteRequest
+import build.raft.app.ThreadComposerQuoteFeedback
+import build.raft.app.ThreadComposerQuoteInsert
+import build.raft.app.ThreadComposerQuoteMetaCache
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.MAX_INLINE_QUOTES_PER_MESSAGE
 import build.raft.app.data.MessageQuoteSegment
@@ -33,6 +41,8 @@ import build.raft.app.data.quoteChipExcerpt
 import build.raft.app.data.serializeInlineQuoteReply
 import build.raft.app.model.ResolvedInlineQuote
 import build.raft.app.model.ServerId
+import build.raft.app.origin
+import build.raft.app.resolve
 import build.raft.app.resources.*
 
 /*

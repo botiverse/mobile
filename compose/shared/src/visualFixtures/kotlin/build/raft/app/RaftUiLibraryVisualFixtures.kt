@@ -36,6 +36,7 @@ import build.raft.app.components.RaftUiSegmentedItem
 import build.raft.app.components.RaftUiSelectTrigger
 import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.RaftUiTextarea
+import build.raft.app.thread.icon
 import build.raft.app.components.RaftUiMenuRow
 import build.raft.app.components.RaftUiMenuSurface
 import build.raft.app.components.RaftUiNotificationItem

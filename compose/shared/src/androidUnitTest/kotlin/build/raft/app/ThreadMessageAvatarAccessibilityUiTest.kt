@@ -12,6 +12,8 @@ import androidx.compose.ui.test.performSemanticsAction
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.ThreadMessageAvatar
+import build.raft.app.thread.ThreadMessageAvatarTestTag
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest

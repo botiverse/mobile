@@ -1,5 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.model.conversationDisplayTitleCandidate
 import build.raft.app.model.conversationIdentityLikeTitle
 import build.raft.app.model.conversationSafeDisplayTitleOrNull

@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.key
+
 /*
  * Back / forward through what the wide (split) layout showed (artin 2026-10-27, "宽屏还有一个痛点，
  * 就是前进后退"; Slack desktop's history arrows). The shell records one [RaftWideNavEntry] per

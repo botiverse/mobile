@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.group
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.key
 
 /**
  * Builds Compose [ImageVector]s from the generated Lucide path table ([RaftLucideIconPaths]).

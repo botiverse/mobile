@@ -1,11 +1,17 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.SharedThreadReplyCountFact
 import build.raft.app.data.ThreadReplySummariesSnapshot
+import build.raft.app.get
+import build.raft.app.isCurrentOrSuccessorForLocalSend
+import build.raft.app.messages
 import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.ThreadRepliesScopeIdentity
+import build.raft.app.threadPayloadOwnerScopeId
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.flow.StateFlow

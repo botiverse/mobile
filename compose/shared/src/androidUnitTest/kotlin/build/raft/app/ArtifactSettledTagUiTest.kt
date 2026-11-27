@@ -25,6 +25,8 @@ import build.raft.app.data.ArtifactsHomeNews
 import build.raft.app.data.ArtifactsHomeRow
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.ArtifactMessageCard
+import build.raft.app.thread.ArtifactSettledTagTestTag
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

@@ -35,6 +35,8 @@ import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardTextTone
 import build.raft.app.data.RaftLinkCardV2Element
+import build.raft.app.thread.RaftAppLinkCardView
+import build.raft.app.thread.raftAppLinkOpenLinkButton
 import build.raft.app.data.RaftAppLinkCard
 import build.raft.app.data.RaftAppLinkCardElement.Badge
 import build.raft.app.data.RaftAppLinkCardElement.Stack

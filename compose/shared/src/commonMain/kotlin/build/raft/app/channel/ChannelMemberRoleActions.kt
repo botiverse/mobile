@@ -21,6 +21,7 @@ import build.raft.app.data.errorPresentation
 import build.raft.app.data.usableServerRefusalMessage
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.*
+import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

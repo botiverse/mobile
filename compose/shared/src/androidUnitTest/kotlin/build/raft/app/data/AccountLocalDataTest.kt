@@ -3,7 +3,7 @@ package build.raft.app.data
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import build.raft.app.RaftBesideMemoryRepository
 import build.raft.app.RaftBesideState
-import build.raft.app.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadPayloadStore
 import build.raft.app.network.sync.CanonicalMessageV2BaselineCoordinator
 import build.raft.app.network.sync.CanonicalMessageV2DurableLastKnownReader
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine

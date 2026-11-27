@@ -13,6 +13,9 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.key
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

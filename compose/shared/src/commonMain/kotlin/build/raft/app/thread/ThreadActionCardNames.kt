@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -11,6 +11,8 @@ import build.raft.app.data.KnownEntityScope
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedComputersStore
 import build.raft.app.data.selectComputerServerSlice
+import build.raft.app.get
+import build.raft.app.matches
 import build.raft.app.data.RaftKnownEntityResolver
 import build.raft.app.data.SharedJointActorDirectory
 import build.raft.app.data.SharedServerMembersEntry

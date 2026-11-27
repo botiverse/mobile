@@ -11,6 +11,13 @@ import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadSnapshot
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadState
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.isThreadPrimaryFooterReady
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob

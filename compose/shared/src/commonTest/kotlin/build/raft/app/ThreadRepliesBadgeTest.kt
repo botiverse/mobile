@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.thread.ThreadRepliesBadgeSpec
+import build.raft.app.thread.ThreadReplyMetadata
+import build.raft.app.thread.threadRepliesBadgeSpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

@@ -24,6 +24,7 @@ import build.raft.app.data.stringDescLocaleType
 import build.raft.app.markdown.LocalRaftMarkdownFindQuery
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.ThreadFindBar
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest

@@ -8,6 +8,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.ui.Modifier
 import build.raft.app.compat.pager.Page
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.ThreadAgentFollowersHeader
+import build.raft.app.thread.ThreadFollowersOverlayHost
+import build.raft.app.thread.ThreadPageHeader
+import build.raft.app.thread.dispatch
 
 /** Real header, popover, toast and store; only the repository uses deterministic fixture data. */
 @Page("compose_thread_followers_visual", supportInLocal = true)

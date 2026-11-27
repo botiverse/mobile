@@ -1,6 +1,9 @@
 package build.raft.app
 
+import build.raft.app.actionCardIconName
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.thread.actionCardIconName
+import build.raft.app.thread.icon
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

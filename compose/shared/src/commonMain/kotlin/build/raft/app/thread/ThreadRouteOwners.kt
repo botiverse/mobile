@@ -1,7 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import build.raft.app.RaftComposerServerUploads
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.ThreadAttachmentUploadOrchestrator
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedServerChannelMembersSlice

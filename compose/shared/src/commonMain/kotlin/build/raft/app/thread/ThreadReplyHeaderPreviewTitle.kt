@@ -1,4 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.messages
+import build.raft.app.origin
 
 /** task #1143: the reply count rides the subtitle line so it stays visible while scrolling. */
 internal fun replyThreadHeaderSubtitle(subtitle: String?, replyCountLabel: String?): String? =

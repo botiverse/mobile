@@ -21,6 +21,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftLongMessageCollapseConversationSetting
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.runner.RunWith

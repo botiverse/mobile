@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.displaySizeLabel
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.displaySizeLabel
+import build.raft.app.thread.genericAttachmentMetaLine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

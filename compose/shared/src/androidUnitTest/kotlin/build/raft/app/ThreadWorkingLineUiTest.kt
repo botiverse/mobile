@@ -21,6 +21,8 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftLiveAgentActivityItem
 import build.raft.app.model.AgentStatus
+import build.raft.app.thread.ThreadAgentTypingLine
+import build.raft.app.thread.ThreadAgentTypingUi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,5 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -7,6 +8,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.ServerId
 import build.raft.app.network.raftProcessIsForeground
+import build.raft.app.raftNotificationPushBannerOrNull
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 

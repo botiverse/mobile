@@ -81,7 +81,7 @@ private val LINK_CARD_BADGE_COLOR = Regex("^#[0-9a-fA-F]{6}$")
  * `unreviewed_app.v1` (RFC 076 section 17; botiverse/slock #13945 `UNREVIEWED_APP_CAPABILITY`): this
  * client shows Raft's confirmation, naming the App as not reviewed by Raft, before every acting
  * button of an App whose read item says `app.reviewed: false`, undo-window buttons included
- * ([build.raft.app.ThreadAppLinkCardPress]). Without it Raft draws such an App's buttons as navigate
+ * ([build.raft.app.thread.ThreadAppLinkCardPress]). Without it Raft draws such an App's buttons as navigate
  * only; a handle read without it is refused (410) at prepare and execute.
  */
 @RaftCoreInternalApi const val APP_LINK_UNREVIEWED_APP_CAPABILITY = "unreviewed_app.v1"

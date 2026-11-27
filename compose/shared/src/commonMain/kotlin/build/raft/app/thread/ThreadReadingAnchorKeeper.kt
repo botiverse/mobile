@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.lazy.LazyListState
+import build.raft.app.get
+import build.raft.app.messages
 import kotlinx.coroutines.launch
 
 /**

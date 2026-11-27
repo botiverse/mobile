@@ -2,6 +2,11 @@ package build.raft.app
 
 import build.raft.app.data.ThreadOutlineItem
 import build.raft.app.data.parseSharedThreadOutlinePage
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadOutlineOriginJumpStep
+import build.raft.app.thread.threadOutlineCurrentIndex
+import build.raft.app.thread.threadOutlineItems
+import build.raft.app.thread.threadOutlineOriginJumpStep
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

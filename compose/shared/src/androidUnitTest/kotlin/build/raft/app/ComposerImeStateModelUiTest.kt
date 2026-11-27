@@ -44,6 +44,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import build.raft.app.nav.RaftStackPageActivity
+import build.raft.app.thread.ThreadMessageMenuKeepsComposerFocus
+import build.raft.app.thread.key
 import build.raft.designsystem.focus.RaftFocusCoordinator
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost

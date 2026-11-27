@@ -4,6 +4,7 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.lifecycle.Lifecycle
 import build.raft.app.components.RaftPullToRefreshStyle
 import build.raft.app.data.PlatformFile
+import build.raft.app.thread.ThreadImeProgrammaticViewportPolicy
 
 /** The platform's own pull-to-refresh feel: Android = Material 3, iOS = UIRefreshControl-style, desktop = none. */
 internal expect fun raftPlatformPullToRefreshStyle(): RaftPullToRefreshStyle

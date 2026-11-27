@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,15 +27,30 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftRelativeTimestampText
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftTimestampDisplayGroup
+import build.raft.app.RaftUpgradeHistoryContext
+import build.raft.app.SettingsBillingFreeHistoryDays
 import build.raft.app.components.raftBillingLeavesRaftTrailingIcon
 import build.raft.app.components.RaftViewPlanButton
 import build.raft.app.data.HiddenHistory
 import build.raft.app.data.HiddenHistoryMessage
 import build.raft.app.data.RaftHiddenHistoryStore
+import build.raft.app.fill
 import build.raft.app.markdown.markdownToPreviewText
+import build.raft.app.messages
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.normalizedThreadChannelKind
+import build.raft.app.raftAvatarKind
 import build.raft.app.resources.*
+import build.raft.app.settingsBillingOffersUpgrade
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

@@ -1,6 +1,6 @@
 package build.raft.app.markdown
 
-import build.raft.app.isKnownThreadMarkdownTag
+import build.raft.app.thread.isKnownThreadMarkdownTag
 import build.raft.app.model.TaskStatus
 import com.tencent.kuiklybase.markdown.model.parseMarkdownInlineSyntax
 import kotlin.test.Test

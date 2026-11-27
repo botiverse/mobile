@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.MessageMention
 import build.raft.app.model.ThreadId
-import build.raft.app.toRaftThreadMessageItem
+import build.raft.app.thread.toRaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

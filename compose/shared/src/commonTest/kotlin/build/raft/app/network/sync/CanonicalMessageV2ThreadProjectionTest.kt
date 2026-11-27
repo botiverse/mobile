@@ -1,6 +1,6 @@
 package build.raft.app.network.sync
 
-import build.raft.app.ThreadMessageDeliverySent
+import build.raft.app.thread.ThreadMessageDeliverySent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

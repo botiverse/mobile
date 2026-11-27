@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -50,7 +50,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import build.raft.app.ArtifactCardExcerpt
+import build.raft.app.RaftArtifactViewerHeader
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.artifactsHomeAuthorText
+import build.raft.app.badge
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.currentRaftDateTimeContext
 import build.raft.app.data.ArtifactDeletedShown
 import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactKind
@@ -64,12 +71,21 @@ import build.raft.app.data.artifactFollowKey
 import build.raft.app.data.artifactScreenshotFile
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.canToggleFollow
+import build.raft.app.fill
+import build.raft.app.localized
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.raftArgbHex
+import build.raft.app.raftRelativeTimestampLabel
+import build.raft.app.raftWindowWide
+import build.raft.app.raftWindowWidth
+import build.raft.app.rememberRaftArtifactOpener
+import build.raft.app.rememberRaftWebPageOpener
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.resources.*
+import build.raft.app.traceId
 import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

@@ -6,6 +6,7 @@ import build.raft.app.data.RaftTimeFormatRuntime
 import build.raft.app.data.RaftTimeZoneRuntime
 import build.raft.app.model.ChannelId
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.ThreadChannelJoinsInFlight
 import kotlin.test.Test
 import kotlin.test.assertTrue
 

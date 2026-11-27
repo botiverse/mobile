@@ -22,11 +22,16 @@ import build.raft.app.data.SearchPersonHit
 import build.raft.app.data.SearchRequiredAction
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSearchCoreGroupsStore
+import build.raft.app.label
+import build.raft.app.memberDetailIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.topLevelThreadId
 import build.raft.app.resources.*
+import build.raft.app.thread.key
+import build.raft.app.thread.label
+import build.raft.app.thread.memberDetailIdentity
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton

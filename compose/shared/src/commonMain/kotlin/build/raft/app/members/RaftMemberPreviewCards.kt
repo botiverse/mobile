@@ -19,6 +19,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.markdown.LocalRaftMarkdownMentionReadStates
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberServerRef
+import build.raft.app.thread.resolveMention
 import build.raft.designsystem.components.RaftPreviewCardPopup
 import build.raft.designsystem.components.RaftPreviewCardState
 import build.raft.designsystem.components.rememberRaftPreviewCardState

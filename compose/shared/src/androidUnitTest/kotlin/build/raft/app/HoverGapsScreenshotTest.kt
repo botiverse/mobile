@@ -24,6 +24,10 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.model.TaskStatus
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadReactionItem
+import build.raft.app.thread.ThreadAttachmentCommentsDialogState
+import build.raft.app.thread.ThreadReactionChip
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import java.io.File

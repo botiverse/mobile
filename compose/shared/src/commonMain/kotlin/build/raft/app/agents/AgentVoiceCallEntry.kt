@@ -5,7 +5,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftThreadScreenPayload
+import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.agentLoungeDmAgentId
 import build.raft.app.data.AGENT_VOICE_FEATURE_FLAG_KEY

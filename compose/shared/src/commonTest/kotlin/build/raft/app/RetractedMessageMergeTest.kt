@@ -4,6 +4,15 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadReactionItem
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadMessageStore
+import build.raft.app.thread.mergePagedMessages
+import build.raft.app.thread.mergeRealtimeUpdate
+import build.raft.app.thread.preserveStableTimelineFrom
+import build.raft.app.thread.toMessage
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -4,6 +4,12 @@ import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.ComputerAccessRevokedErrorCode
 import build.raft.app.assistant.AssistantOwnerSection
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.icon
+import build.raft.app.thread.localizedLabel
+import build.raft.app.thread.threadChannelHeaderIcon
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeCapabilities
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextAlign
 import build.raft.app.markdown.markdownToPreviewText
@@ -101,6 +107,7 @@ import org.jetbrains.compose.resources.StringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import build.raft.app.data.map
+import build.raft.app.localizedLabel
 import kotlinx.coroutines.launch
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier

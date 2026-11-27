@@ -7,6 +7,9 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.thread.RaftMessageLinkNotFoundScreen
+import build.raft.app.thread.RaftMessageLinkPublicPreviewScreen
+import build.raft.app.thread.RaftPublicPreviewState
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

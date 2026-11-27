@@ -117,7 +117,7 @@ import build.raft.app.nav.RaftStackRootTab
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.runtime.remember
 import build.raft.app.parseRaftJsonObjectOrNull
-import build.raft.app.renderThreadShareImageBitmap
+import build.raft.app.thread.renderThreadShareImageBitmap
 import build.raft.app.toRaftJsonString
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.ComposeView

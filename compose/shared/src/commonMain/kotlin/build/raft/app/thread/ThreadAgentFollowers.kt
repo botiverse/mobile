@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
@@ -9,6 +9,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.data.ThreadFollowersNotice
 import build.raft.app.data.ThreadFollowersNoticeKind
+import build.raft.app.get
+import build.raft.app.isError
+import build.raft.app.localizedMemberStatusLabel
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +30,26 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.zIndex
+import build.raft.app.ChannelMemberOriginServerNames
+import build.raft.app.EmptyRaftAgentStatusResolver
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAgentStatusIndicatorState
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftAnchoredPopover
+import build.raft.app.RaftAvatarWithStatus
+import build.raft.app.RaftColor
+import build.raft.app.RaftFloatingHorizontalPlacement
+import build.raft.app.RaftFloatingOverlayHostZIndex
+import build.raft.app.RaftFloatingVerticalPlacement
+import build.raft.app.RaftLiveRootAnchorRef
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberAvatar
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftPopoverAnchor
+import build.raft.app.RaftPopoverAnchorResolver
+import build.raft.app.RaftPopoverLocalPoint
+import build.raft.app.RaftType
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +73,13 @@ import build.raft.app.data.ThreadAgentFollowersIntent
 import build.raft.app.data.ThreadAgentFollowersState
 import build.raft.app.data.ThreadFollowersError
 import build.raft.app.model.ThreadFollowersUpdated
+import build.raft.app.raftArgbHex
+import build.raft.app.raftCaptureLiveRootAnchor
+import build.raft.app.raftNativeDispatchCapture
+import build.raft.app.raftWindowWide
+import build.raft.app.rememberRaftAgentStatusIndicatorState
+import build.raft.app.resolve
+import build.raft.app.resolveCurrentPlacement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement

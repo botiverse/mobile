@@ -3,6 +3,7 @@ package build.raft.app
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.unit.IntSize
+import build.raft.app.thread.key
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min

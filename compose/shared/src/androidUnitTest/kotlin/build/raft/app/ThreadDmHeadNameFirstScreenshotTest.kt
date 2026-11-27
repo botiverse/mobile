@@ -16,6 +16,11 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.thread.ConversationSideCardsState
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.ThreadHeaderDisplayModel
+import build.raft.app.thread.ThreadHeaderSideCardToggles
+import build.raft.app.thread.ThreadPageHeader
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.runner.RunWith

@@ -12,6 +12,9 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.resources.*
+import build.raft.app.thread.threadChannelHeaderIcon
+import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toThreadLaunchConversationIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,10 +1,15 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeCapabilities
+import build.raft.app.traceId
 import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.resolveThreadRouteIdentity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -12,6 +17,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
+import build.raft.app.RaftColor
+import build.raft.app.SharedThreadComposerDraftProjection
+import build.raft.app.ThreadComposerInsertMentionRequest
 import build.raft.app.compat.pager.Pager
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.MutableState

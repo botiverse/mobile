@@ -6,6 +6,11 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.asSkiaBitmap
+import build.raft.app.thread.ThreadShareImageFilePrefix
+import build.raft.app.thread.ThreadShareImageRasterBandPx
+import build.raft.app.thread.recordThreadShareImage
+import build.raft.app.thread.threadShareImageFilePath
+import build.raft.app.thread.threadShareImageRendersOffscreen
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.OpenDirectMessageResult
+import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toThreadLaunchConversationIdentity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

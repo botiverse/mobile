@@ -5,6 +5,10 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.ThreadLaunchIdentityConstructionError
+import build.raft.app.thread.ThreadLaunchIdentityConstructionResult
+import build.raft.app.thread.toNormalizedLegacyWirePayload
+import build.raft.app.thread.toThreadLaunchIdentityConstruction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

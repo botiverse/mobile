@@ -1,8 +1,8 @@
 package build.raft.app.data
 
-import build.raft.app.ThreadActionCardSpecEffect
-import build.raft.app.ThreadActionCardSpecIntent
-import build.raft.app.ThreadActionCardSpecStore
+import build.raft.app.thread.ThreadActionCardSpecEffect
+import build.raft.app.thread.ThreadActionCardSpecIntent
+import build.raft.app.thread.ThreadActionCardSpecStore
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import kotlin.test.Test

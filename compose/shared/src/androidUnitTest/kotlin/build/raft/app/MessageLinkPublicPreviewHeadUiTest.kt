@@ -14,6 +14,8 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.RaftPublicMessage
+import build.raft.app.thread.RaftMessageLinkPublicPreviewScreen
+import build.raft.app.thread.RaftPublicPreviewState
 import build.raft.designsystem.components.LocalRaftSpinnerStillStep
 import kotlin.test.Test
 import kotlin.test.assertFalse

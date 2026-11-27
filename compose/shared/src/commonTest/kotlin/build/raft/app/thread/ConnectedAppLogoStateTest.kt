@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import coil3.compose.AsyncImagePainter
 import kotlin.test.Test

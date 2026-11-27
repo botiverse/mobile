@@ -20,6 +20,17 @@ import build.raft.app.data.TaskConversationChannelRef
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.TaskId
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedTaskConversationRefKey
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadState
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.isThreadPrimaryFooterReady
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

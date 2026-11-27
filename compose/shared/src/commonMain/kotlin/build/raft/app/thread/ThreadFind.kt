@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -37,6 +37,11 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftType
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.app.data.ScreenError
@@ -48,12 +53,17 @@ import build.raft.app.data.ThreadFindPageSource
 import build.raft.app.data.ThreadFindState
 import build.raft.app.data.ThreadFindWindow
 import build.raft.app.data.normalizeThreadFindQuery
+import build.raft.app.messages
+import build.raft.app.origin
+import build.raft.app.raftLogInfo
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextFieldSize
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
+import build.raft.app.shownAuthorName
+import build.raft.app.thread.shownAuthorName
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
 /**

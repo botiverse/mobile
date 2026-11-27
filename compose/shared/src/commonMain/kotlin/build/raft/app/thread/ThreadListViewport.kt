@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.IntSize
+import build.raft.app.get
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.currentCoroutineContext

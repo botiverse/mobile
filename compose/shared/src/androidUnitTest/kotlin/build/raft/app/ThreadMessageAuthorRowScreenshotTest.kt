@@ -17,6 +17,9 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageCard
+import build.raft.app.thread.raftMessageBodyTextStyle
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.runner.RunWith

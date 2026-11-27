@@ -16,6 +16,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadMemberItem
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import org.junit.Rule

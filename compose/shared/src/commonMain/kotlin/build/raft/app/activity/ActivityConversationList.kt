@@ -19,6 +19,9 @@ import build.raft.designsystem.components.rememberRaftStateOverlay
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.RectangleShape
 import build.raft.app.resources.*
+import build.raft.app.thread.delegatedPreviewSender
+import build.raft.app.thread.key
+import build.raft.app.thread.localizedLabel
 import build.raft.app.markdown.RaftMarkdownPreview
 import build.raft.app.markdown.markdownToPreview
 import build.raft.app.markdown.toAnnotatedString
@@ -102,6 +105,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedActivitySenderProfile
 import build.raft.app.data.typedPinnedOrLegacy
+import build.raft.app.localizedLabel
 import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind

@@ -31,6 +31,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import build.raft.app.compat.ui.raftSoftwareImageBitmap
+import build.raft.app.thread.ThreadShareImageRowInset
+import build.raft.app.thread.renderThreadShareImage
 import kotlinx.coroutines.delay
 
 /**

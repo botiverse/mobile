@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.base.reduceAttachmentDownloadProgress
 import build.raft.app.data.PlatformFile
@@ -10,9 +10,38 @@ import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.displaySizeLabel
+import build.raft.app.get
+import build.raft.app.isReadyThreadAttachmentForSend
+import build.raft.app.messages
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.normalizeThreadAttachmentUploadDraftKey
+import build.raft.app.openRaftFilePreviewPage
+import build.raft.app.raftAttachmentHostMessageForLog
+import build.raft.app.raftAttachmentOpenDiagnosticErrorKind
+import build.raft.app.raftAttachmentOpenDiagnosticStatus
+import build.raft.app.raftAttachmentOpenResultMessage
+import build.raft.app.raftAttachmentSaveFailure
+import build.raft.app.raftFilePreviewAbortComposerImageEventSession
+import build.raft.app.raftFilePreviewAttachmentUrlCache
+import build.raft.app.raftFilePreviewReducePageProgress
+import build.raft.app.raftFilePreviewSavedMessage
+import build.raft.app.raftImageLightboxRequestFor
+import build.raft.app.raftPlatformSavedFileHost
+import build.raft.app.raftPlatformSupportsPrivateAttachmentExport
+import build.raft.app.raftPlatformSupportsPublicAttachmentDownloadReadback
+import build.raft.app.raftShowSavedDownloadToast
+import build.raft.app.registerThreadComposerImagePreviewSession
 import build.raft.app.resources.desc
 import build.raft.app.resources.resolve
+import build.raft.app.thread.displaySizeLabel
+import build.raft.app.thread.toComposerImagePlatformFile
+import build.raft.app.threadAttachmentUploadFile
+import build.raft.app.threadComposerUploadedImagePreviewPayload
+import build.raft.app.toComposerImagePlatformFile
+import build.raft.app.toThreadAttachmentCommentsPreviewPayload
+import build.raft.app.toThreadAttachmentLazyPreviewPayload
+import build.raft.app.traceId
 import build.raft.app.compat.pager.Pager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -27,6 +56,22 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import build.raft.app.AttachmentOperationToken
+import build.raft.app.AttachmentOwnerLease
+import build.raft.app.RaftAttachmentSaveDestination
+import build.raft.app.RaftAttachmentSaveFailure
+import build.raft.app.RaftFilePreviewAttachmentUrlCacheKey
+import build.raft.app.RaftFilePreviewInitialDownloadProgress
+import build.raft.app.RaftFilePreviewPayload
+import build.raft.app.RaftImageLightboxItem
+import build.raft.app.RaftImageLightboxRequest
+import build.raft.app.RaftSavedDownloadOpenTarget
+import build.raft.app.RaftThreadComposerPayload
+import build.raft.app.RaftViewerImageEditOpener
+import build.raft.app.SharedThreadComposerDraftViewModel
+import build.raft.app.ThreadAttachmentUploadAttemptIdentity
+import build.raft.app.ThreadComposerImageEventSessionTracker
+import build.raft.app.attachmentOperationCommitAllowed
 
 /**
  * Retires page-local attachment operation tokens when the active owner changes or when a reused

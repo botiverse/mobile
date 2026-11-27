@@ -11,6 +11,11 @@ import build.raft.app.data.authSessionFixture
 import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadFilesIntent
+import build.raft.app.thread.SharedThreadFilesStore
+import build.raft.app.thread.ThreadFilesArtifactsScope
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent

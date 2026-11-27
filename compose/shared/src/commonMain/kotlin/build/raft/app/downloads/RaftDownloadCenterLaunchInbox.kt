@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.RaftMessageLinkInbox
 import kotlin.time.Clock
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized

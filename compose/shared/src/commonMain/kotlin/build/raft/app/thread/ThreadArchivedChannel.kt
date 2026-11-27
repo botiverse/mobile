@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -8,6 +8,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.raftBottomSafeAreaPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

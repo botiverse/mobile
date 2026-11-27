@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.ThreadSettingsVisibility
+import build.raft.app.thread.threadSettingsVisibility
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

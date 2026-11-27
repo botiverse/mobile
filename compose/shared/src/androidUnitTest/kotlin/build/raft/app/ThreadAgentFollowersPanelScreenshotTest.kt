@@ -19,6 +19,7 @@ import build.raft.app.data.ThreadAgentFollowerRoster
 import build.raft.app.data.ThreadAgentFollowersState
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
+import build.raft.app.thread.ThreadAgentFollowersPanel
 import kotlin.test.Test
 import kotlinx.coroutines.flow.flowOf
 import org.junit.runner.RunWith

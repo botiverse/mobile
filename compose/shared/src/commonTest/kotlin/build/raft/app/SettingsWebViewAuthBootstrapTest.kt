@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals

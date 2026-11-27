@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
+import build.raft.app.thread.composerLocalPreviewUri
+import build.raft.app.thread.toComposerImageGalleryImage
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test

@@ -1,5 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.SharedCreateAgentDialogSubmit
 import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.ActionCardExecuteOutcome
 import build.raft.app.data.ExternalInviteAddressesOutcome
@@ -50,6 +51,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.toCreateAgentRequest
 
 /**
  * The action-card commands of [SharedThreadDataSource] (commit, reconfirm, execute, mark

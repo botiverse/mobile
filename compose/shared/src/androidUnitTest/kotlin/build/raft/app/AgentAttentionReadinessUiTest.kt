@@ -39,6 +39,10 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.ThreadHeaderDisplayModel
+import build.raft.app.thread.ThreadPageHeader
+import build.raft.app.thread.key
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest

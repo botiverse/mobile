@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.DelegatedLabelPlacement
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.delegatedLabelResource
+import build.raft.app.thread.delegatedPreviewSenderResource
+import build.raft.app.thread.shouldSuppressCompactThreadAuthor
 import build.raft.app.model.MessageDelegatedBy
 import kotlin.test.Test
 import kotlin.test.assertEquals

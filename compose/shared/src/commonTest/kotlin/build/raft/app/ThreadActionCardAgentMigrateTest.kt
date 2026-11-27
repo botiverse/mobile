@@ -22,6 +22,11 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
+import build.raft.app.thread.AgentMigrateCardAccess
+import build.raft.app.thread.ThreadActionCardCommands
+import build.raft.app.thread.agentMigrateCardPlacesWithoutSource
+import build.raft.app.thread.evaluateAgentMigrateCardAccess
+import build.raft.app.thread.resolveThreadMigrateAgentActionTarget
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int

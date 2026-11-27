@@ -22,6 +22,13 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadShareImageWidth
+import build.raft.app.thread.ThreadShareImageWidthChoice
+import build.raft.app.thread.ThreadSharePreviewImage
+import build.raft.app.thread.ThreadSharePreviewModal
+import build.raft.app.thread.ThreadSharePreviewOffscreen
+import build.raft.app.thread.ThreadShareRenderedImage
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

@@ -19,6 +19,7 @@ import build.raft.app.data.sampleSession
 import build.raft.app.data.snapshot
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope

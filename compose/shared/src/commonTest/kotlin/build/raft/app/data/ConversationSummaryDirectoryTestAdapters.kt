@@ -1,6 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
 import build.raft.app.memberDetailIdentity
 import build.raft.app.parsedMemberKindOrNull
 import build.raft.app.toRaftSurfaceKind

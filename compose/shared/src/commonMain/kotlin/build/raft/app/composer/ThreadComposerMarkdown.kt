@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import org.jetbrains.compose.resources.StringResource
 
 /**

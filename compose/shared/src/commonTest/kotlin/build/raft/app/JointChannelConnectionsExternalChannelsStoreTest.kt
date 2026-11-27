@@ -6,6 +6,7 @@ import build.raft.app.data.JointChannelRole
 import build.raft.app.data.JointChannelServer
 import build.raft.app.data.JointChannelServerPlan
 import build.raft.app.model.ChannelId
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent

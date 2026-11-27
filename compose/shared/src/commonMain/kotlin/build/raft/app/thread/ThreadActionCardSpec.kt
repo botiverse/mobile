@@ -1,6 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.resources.*
+import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settle
+import build.raft.app.traceId
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.ActionCardCloseOutcome
 import build.raft.app.data.AgentMigrateActionCardType
@@ -45,10 +50,15 @@ import build.raft.app.data.resolvedMcpServerId
 import build.raft.app.data.seatRequestEffectiveSeatsShort
 import build.raft.app.data.seatsAddPurposeTenths
 import build.raft.app.data.stripActionCardSpec
+import build.raft.app.get
+import build.raft.app.matches
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.raftFeedbackCardEntryEnabled
+import build.raft.app.raftPlatformHasFinePointer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow

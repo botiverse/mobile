@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
@@ -27,6 +27,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftPanelBackHeader
+import build.raft.app.RememberKmmResourceLocaleSeedFromLocalActivity
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
@@ -43,7 +46,13 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.parseRaftPublicMessages
 import build.raft.app.data.parseRaftPublicServerCard
 import build.raft.app.data.raftPublicServerPath
+import build.raft.app.get
+import build.raft.app.messages
 import build.raft.app.model.ConversationKind
+import build.raft.app.openRaftPage
+import build.raft.app.optString
+import build.raft.app.raftShellStoreScope
+import build.raft.app.raftTopSafeAreaPadding
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftSpinner

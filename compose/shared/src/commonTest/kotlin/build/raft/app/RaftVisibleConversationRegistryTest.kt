@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.thread.RaftVisibleConversationRegistry
+import build.raft.app.thread.RaftVisibleConversationSnapshot
+import build.raft.app.thread.raftSystemNotificationPushEventOrNull
+import build.raft.app.thread.targetsForegroundVisibleConversation
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertFalse

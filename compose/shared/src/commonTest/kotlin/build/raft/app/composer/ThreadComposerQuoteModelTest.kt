@@ -3,6 +3,8 @@ package build.raft.app
 import androidx.compose.ui.input.key.Key
 import build.raft.app.data.MAX_INLINE_QUOTES_PER_MESSAGE
 import build.raft.app.model.ResolvedInlineQuote
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

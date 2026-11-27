@@ -15,6 +15,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.ThreadBackToBottomButtonState
+import build.raft.app.thread.ThreadJumpArrival
+import build.raft.app.thread.ThreadListViewport
+import build.raft.app.thread.ThreadNewMessagesBelow
+import build.raft.app.thread.ThreadNewMessagesBelowEffect
+import build.raft.app.thread.rememberThreadBackToBottomViewportSignals
+import build.raft.app.thread.shouldShowThreadBackToBottomButton
+import build.raft.app.thread.threadBottomJumpCount
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.CoroutineScope

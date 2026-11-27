@@ -25,6 +25,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampLabel
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.key
 import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.LocalRaftWindowTitleBar
 import build.raft.designsystem.components.RaftFrameInsets

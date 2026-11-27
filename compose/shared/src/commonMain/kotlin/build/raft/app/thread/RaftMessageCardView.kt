@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,6 +18,7 @@ import build.raft.app.data.RaftMessageCardLive
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.badgeVariant
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardV2Element
@@ -30,6 +31,8 @@ import build.raft.app.markdown.LocalRaftMarkdownRenderConfig
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.markdown.raftCardMarkdownRenderSource
 import build.raft.app.markdown.raftCardMarkdownTagValid
+import build.raft.app.raftRelativeTimestampLabel
+import build.raft.app.rememberRaftLinkOpensInRaft
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
@@ -37,10 +40,12 @@ import build.raft.designsystem.components.RaftDescriptionList
 import build.raft.designsystem.components.RaftDescriptionListDirection
 import build.raft.app.data.messageCardRevisionOf
 import build.raft.app.data.readMessageCardFromMetadata
+import build.raft.app.get
 import build.raft.app.data.appLinkDomain
 import build.raft.app.data.messageCardButtons
 import build.raft.app.markdown.raftAppLinkKeepEnd
 import build.raft.app.resources.*
+import build.raft.app.thread.badgeVariant
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard
