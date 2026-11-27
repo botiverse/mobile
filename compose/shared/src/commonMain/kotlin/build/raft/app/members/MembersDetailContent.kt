@@ -299,10 +299,12 @@ internal class MembersAgentRemoteControls(
     val appAccess: MembersAgentAppAccessBinding? = null
 )
 
-/** The Apps tab's revoke store and who may use it (web AgentDetailPanel `canManageAgentAccess`). */
+/** The Apps tab's revoke store, pending request actions, and who may use them (web AgentDetailPanel `canManageAgentAccess`). */
 internal class MembersAgentAppAccessBinding(
     val store: AgentAppGrantsRevokeStore,
-    val canManage: (AgentDetailSnapshot?) -> Boolean
+    val canManage: (AgentDetailSnapshot?) -> Boolean,
+    val onApproveRequest: (suspend (agentId: build.raft.app.model.MemberId, requestId: String) -> build.raft.app.data.DataResult<Unit>)? = null,
+    val onDenyRequest: (suspend (agentId: build.raft.app.model.MemberId, requestId: String) -> build.raft.app.data.DataResult<Unit>)? = null,
 )
 
 /** The migration section's store and page-level inputs (web AgentMigrationSection). */

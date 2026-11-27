@@ -1419,7 +1419,33 @@ internal fun MemberDetailPageContent(
                             appAccess =
                                 MembersAgentAppAccessBinding(
                                     store = agentAppGrantsRevokeStore,
-                                    canManage = { detail -> current.viewerManagesAgentAppAccess(detail) }
+                                    canManage = { detail -> current.viewerManagesAgentAppAccess(detail) },
+                                    onApproveRequest = { targetAgentId, requestId ->
+                                        val result = provider.memberRepository.approveAgentAppRequest(DataRequestPriority.Foreground, requestId)
+                                        if (result is build.raft.app.data.DataResult.Content) {
+                                            when (val fresh = provider.memberRepository.getAgentAppLogins(DataRequestPriority.Visible, targetAgentId)) {
+                                                is build.raft.app.data.DataResult.Content ->
+                                                    provider.updateAgentAppLogins(build.raft.app.data.SharedAgentDetailIntent.SetAgentAppLogins(targetAgentId, fresh.data))
+                                                is build.raft.app.data.DataResult.Error ->
+                                                    provider.updateAgentAppLogins(build.raft.app.data.SharedAgentDetailIntent.SetAgentAppLoginsRefreshFailed(targetAgentId, fresh.error))
+                                                else -> Unit
+                                            }
+                                        }
+                                        result
+                                    },
+                                    onDenyRequest = { targetAgentId, requestId ->
+                                        val result = provider.memberRepository.denyAgentAppRequest(DataRequestPriority.Foreground, requestId)
+                                        if (result is build.raft.app.data.DataResult.Content) {
+                                            when (val fresh = provider.memberRepository.getAgentAppLogins(DataRequestPriority.Visible, targetAgentId)) {
+                                                is build.raft.app.data.DataResult.Content ->
+                                                    provider.updateAgentAppLogins(build.raft.app.data.SharedAgentDetailIntent.SetAgentAppLogins(targetAgentId, fresh.data))
+                                                is build.raft.app.data.DataResult.Error ->
+                                                    provider.updateAgentAppLogins(build.raft.app.data.SharedAgentDetailIntent.SetAgentAppLoginsRefreshFailed(targetAgentId, fresh.error))
+                                                else -> Unit
+                                            }
+                                        }
+                                        result
+                                    },
                                 )
                         ),
                         agentProfileEditAuthority = agentProfileEditAuthority,

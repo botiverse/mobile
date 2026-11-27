@@ -669,4 +669,42 @@ class RaftMobileWebPanelUiTest {
         onNodeWithText("Signed in as artin").assertIsDisplayed()
         onNodeWithText("github.com").assertDoesNotExist()
     }
+
+    @Test
+    fun browserSignInSheetNamesSignInStepForNamedAndUnnamedApps() = runRobolectricComposeUiTest {
+        var sheetState by mutableStateOf(
+            RaftBrowserSignInSheetState(
+                requestId = "req-sign-in-1",
+                appName = "Stamp",
+                logoUrl = null,
+                description = "Code reviews for Raft agents",
+                returnHost = "stamp.build",
+                signedInAsLabel = "artin",
+                scopes = listOf("openid", "profile"),
+                mode = RaftBrowserSignInSheetMode.AccountReady(),
+            ),
+        )
+
+        setContent {
+            RaftBrowserSignInSheetHost(
+                sheet = sheetState,
+                stepUpState = null,
+                onStepUpIntent = {},
+                appForeground = true,
+                onSelectServer = {},
+                onApprove = {},
+                onCancel = {},
+                onOpenInBrowser = {},
+            )
+        }
+
+        waitForIdle()
+        onNodeWithTag(RAFT_BROWSER_SIGN_IN_APPROVE_BUTTON_TAG).assertIsDisplayed()
+        onNodeWithText("Sign in to Stamp").assertIsDisplayed()
+        onNodeWithText("Continue").assertDoesNotExist()
+
+        runOnIdle { sheetState = sheetState.copy(requestId = "req-sign-in-2", appName = null) }
+        waitForIdle()
+        onNodeWithText("Sign in to the app").assertIsDisplayed()
+    }
 }

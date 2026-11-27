@@ -364,24 +364,28 @@ private val managedMcpConnectJson = Json {
 @RaftCoreInternalApi fun ScreenError.mcpAppErrorCode(): McpAppErrorCode {
     val normalized = (serverCode ?: code).trim().lowercase()
     return when (normalized) {
-        "mcp_rate_limited", "http_429" -> McpAppErrorCode.RateLimited
-        "mcp_server_unreachable" -> McpAppErrorCode.Unreachable
-        "mcp_credentials_rejected" -> McpAppErrorCode.CredentialsRejected
-        "mcp_oauth_in_progress" -> McpAppErrorCode.OAuthBusy
-        "mcp_oauth_dcr_rejected" -> McpAppErrorCode.OAuthRegistrationRejected
-        "mcp_oauth_dcr_unsupported" -> McpAppErrorCode.OAuthRegistrationUnsupported
-        "mcp_oauth_discovery_failed" -> McpAppErrorCode.OAuthDiscoveryFailed
-        "mcp_oauth_setup_failed" -> McpAppErrorCode.OAuthSetupFailed
-        "mcp_connection_request_invalid" -> McpAppErrorCode.ConnectionRequestInvalid
-        "mcp_header_names_unset" -> McpAppErrorCode.HeaderNamesUnset
+        "managed_mcp_rate_limited", "mcp_rate_limited", "http_429" -> McpAppErrorCode.RateLimited
+        "managed_mcp_unreachable", "managed_mcp_endpoint_blocked", "mcp_server_unreachable" -> McpAppErrorCode.Unreachable
+        "managed_mcp_endpoint_auth_rejected", "mcp_credentials_rejected" -> McpAppErrorCode.CredentialsRejected
+        "managed_mcp_oauth_busy", "mcp_oauth_in_progress" -> McpAppErrorCode.OAuthBusy
+        "managed_mcp_oauth_registration_rejected", "mcp_oauth_dcr_rejected" -> McpAppErrorCode.OAuthRegistrationRejected
+        "managed_mcp_oauth_client_registration_unsupported", "mcp_oauth_dcr_unsupported" -> McpAppErrorCode.OAuthRegistrationUnsupported
+        "managed_mcp_oauth_discovery_failed", "mcp_oauth_discovery_failed" -> McpAppErrorCode.OAuthDiscoveryFailed
+        "managed_mcp_oauth_setup_failed", "mcp_oauth_setup_failed" -> McpAppErrorCode.OAuthSetupFailed
+        "managed_mcp_connection_request_invalid", "mcp_connection_request_invalid" -> McpAppErrorCode.ConnectionRequestInvalid
+        "managed_mcp_header_names_unset", "mcp_header_names_unset" -> McpAppErrorCode.HeaderNamesUnset
         MCP_OAUTH_UNSAFE_URL_ERROR_CODE -> McpAppErrorCode.OAuthUnsafeUrl
-        "http_403", "forbidden", "insufficient_role" -> McpAppErrorCode.Forbidden
+        "managed_mcp_forbidden", "http_403", "forbidden", "insufficient_role" -> McpAppErrorCode.Forbidden
         else -> McpAppErrorCode.Generic
     }
 }
 
+private val MCP_OAUTH_PROVIDER_ERROR_PATTERN: Regex = Regex("^[a-z][a-z0-9_]{0,63}$")
+
 @RaftCoreInternalApi fun ScreenError.mcpOAuthProviderError(): String? =
-    serverFields[MCP_OAUTH_ERROR_SERVER_FIELD]?.trim()?.takeIf { it.isNotEmpty() }
+    serverFields[MCP_OAUTH_ERROR_SERVER_FIELD]
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() && it != "oauth_error" && MCP_OAUTH_PROVIDER_ERROR_PATTERN.matches(it) }
 
 // ── Wire Request Bodies ──
 

@@ -316,6 +316,9 @@ private fun ThreadActionCard.localizedActionCardProperties(): List<ThreadActionC
                 )
             }
         }
+        // Connect MCP card: the title names the App and Agent, and any reason renders as the hint;
+        // omit raw metadata rows (`mcpServerId` / `agentId`) when falling back to the typed card.
+        ConnectMcpActionCardType -> emptyList()
         else -> genericActionCardProperties()
     }
 }

@@ -150,10 +150,10 @@ internal fun SettingsAppShellHomeContent(
  * Storage (this device's storage, which the web has not). The app's own preferences (the former
  * Mobile page) are part of Appearance, as on the web (1.27.0).
  * On the phone ([serverPanelPages]) the list is the web phone's (artin 2026-11-05, dm task #17):
- * Computers is not a row, it is a page on the server panel (web MobileServerTab), and Applications
- * is a row only for a guest ([guest]; web useSidebarRoute `currentRole === "guest"`): a guest has
- * no Apps page, and their Applications holds only their own link previews; everyone else opens
- * Apps from the server panel. The wide list keeps both rows, next to the rail's Computers and Apps.
+ * Computers is not a row, it is a page on the server panel (web MobileServerTab); the wide list
+ * keeps Computers next to the rail. Settings › Applications was removed on both phone and wide
+ * (botiverse/slock#17260): Apps lives on its own tab/rail destination (`/s/<slug>/apps`) and
+ * per-member connected accounts & link previews live in Settings › App authorizations.
  * IM Bridges follows
  * Administration, as on the web (settingsNavigation.ts, Sidebar.tsx), only with [imBridges]: the
  * server's `slack_bridge_v0` flag (web `isSlackBridgeSurfaceEnabled`). Plan & Billing ([billing]) and
@@ -187,7 +187,6 @@ internal fun settingsHomeRowKeys(
         SettingsDestinationBilling.takeIf { billing },
         SettingsDestinationAdministration.takeIf { administration },
         SettingsDestinationImBridges.takeIf { imBridges },
-        SettingsDestinationConnectedApps.takeIf { !serverPanelPages && !guest },
         SettingsDestinationComputers.takeUnless { serverPanelPages },
         SettingsDestinationLabs.takeIf { labs },
         SettingsNativeDetailPage.About.key,
@@ -319,13 +318,6 @@ internal fun appShellSettingsHomePayload(
                 title = stringResource(Res.string.settings_im_bridges_title),
                 subtitle = stringResource(Res.string.settings_im_bridges_subtitle),
                 iconName = RaftLucideIconName.ArrowLeftRight,
-                section = workspaceSection
-            ),
-            SettingsHomePageLinkPayload(
-                key = SettingsDestinationConnectedApps,
-                title = stringResource(Res.string.settings_connected_apps_title),
-                subtitle = stringResource(Res.string.settings_connected_apps_subtitle),
-                iconName = RaftLucideIconName.AppWindow,
                 section = workspaceSection
             ),
             SettingsHomePageLinkPayload(

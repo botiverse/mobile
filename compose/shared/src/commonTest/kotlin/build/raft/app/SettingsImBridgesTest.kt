@@ -5,7 +5,7 @@ import build.raft.app.data.RaftFeatureFlagsApi
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.model.ServerId
 import build.raft.app.settings.SettingsDestinationAdministration
-import build.raft.app.settings.SettingsDestinationConnectedApps
+import build.raft.app.settings.SettingsDestinationComputers
 import build.raft.app.settings.SettingsDestinationImBridges
 import build.raft.app.settings.settingsHomeRowKeys
 import build.raft.app.settings.settingsImBridgesEnabled
@@ -36,7 +36,7 @@ class SettingsImBridgesTest {
         val at = rows.indexOf(SettingsDestinationImBridges)
         assertTrue(at > 0)
         assertEquals(SettingsDestinationAdministration, rows[at - 1])
-        assertEquals(SettingsDestinationConnectedApps, rows[at + 1])
+        assertEquals(SettingsDestinationComputers, rows[at + 1])
         // Nothing else moves.
         assertEquals(settingsHomeRowKeys(hasThemeServer = true), rows - SettingsDestinationImBridges)
     }

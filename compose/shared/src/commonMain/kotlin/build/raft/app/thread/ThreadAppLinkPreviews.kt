@@ -562,8 +562,9 @@ internal fun String.isAppLinkMessageId(): Boolean =
 /**
  * The first-view question (web `LinkPreviewConsentPrompt` in the chip's Popover; on a phone a
  * bottom sheet): may this App show previews of its links here? It names the App and says what
- * allowing tells it, then where the link goes, with Open Link. Allow is the ink-bordered
- * button, Don't Allow the frameless one, neither pink nor orange.
+ * turning on previews tells it, then where the link goes, with Open Link. Show previews is the
+ * ink-bordered button, Keep plain links the frameless one, neither pink nor orange. Each button
+ * names what it does (App detail v6, botiverse/slock#17247).
  */
 /**
  * Routes an App link card's opened [address] (#proj-workspace:#356 Entry (b)):
@@ -682,7 +683,7 @@ private fun ThreadAppLinkConsentSheet(
             onAllow = {
                 scope.launch {
                     when (host.store.allow(host.viewerKey, host.serverId, prompt.app).await()) {
-                        // Failed: the sheet stays, its Allow button now Retry.
+                        // Failed: the sheet stays, its Show previews button now Retry.
                         AppLinkConsentAnswer.Failed -> Unit
                         AppLinkConsentAnswer.Unavailable -> {
                             host.toast(unavailable)

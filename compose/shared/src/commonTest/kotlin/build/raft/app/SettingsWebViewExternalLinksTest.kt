@@ -22,7 +22,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsWebViewExternalLinksTest {
-    private val webOrigin = "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host"
+    private val webOrigin = "https://app.raft.build/s/workspace/apps?embed=raft-settings-v1&shell=host"
 
     @Test
     fun blockedNavigationFilterAcceptsNavigableSchemesAndIgnoresPopupPlaceholders() {
@@ -90,7 +90,7 @@ class SettingsWebViewExternalLinksTest {
         assertEquals("http://[::1]:8080/callback", settingsWebViewHostOpenExternalUrl(ipv6, webOrigin))
 
         // Explicit default port on pageUrl still matches normalized webOrigin.
-        val defaultPortPage = "https://app.raft.build:443/s/workspace/settings/integrations#host=open-external&to=https%3A%2F%2Fstamp.build"
+        val defaultPortPage = "https://app.raft.build:443/s/workspace/apps#host=open-external&to=https%3A%2F%2Fstamp.build"
         assertEquals(
             "https://stamp.build",
             settingsWebViewHostOpenExternalUrl(defaultPortPage, webOrigin),
@@ -123,7 +123,7 @@ class SettingsWebViewExternalLinksTest {
         assertEquals("https://app.example.com/C++/a%20b", settingsWebViewHostOpenAppUrl(encodedPlusAndSpace, webOrigin))
 
         val defaultPortPage =
-            "https://app.raft.build:443/s/workspace/settings/integrations#host=open-app&to=https%3A%2F%2Fapp.example.com"
+            "https://app.raft.build:443/s/workspace/apps#host=open-app&to=https%3A%2F%2Fapp.example.com"
         assertEquals("https://app.example.com", settingsWebViewHostOpenAppUrl(defaultPortPage, webOrigin))
 
         // `#host=open-app` allows https only, rejects http, non-https, extra parameters, and off-origin pages.

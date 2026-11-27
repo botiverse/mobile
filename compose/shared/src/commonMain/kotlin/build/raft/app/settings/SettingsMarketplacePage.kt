@@ -34,6 +34,12 @@ internal fun settingsMarketplaceWebViewSpec(installedAppId: String? = null): Sta
     )
 }
 
+/**
+ * Builds the host-embedded URL for the Server Apps page (`/s/<slug>/apps`, matching web
+ * `botiverse/slock#17260` where Settings › Applications was removed and old links redirect to
+ * `/s/<slug>/apps`), preserving `hostOpen=app` and optional `installed_app=<id>`.
+ * Falls back to `settings/integrations` only when the session has no server slug.
+ */
 internal fun settingsMarketplaceWebViewUrl(
     webBaseUrl: String?,
     session: StoredAuthSession?,
@@ -43,7 +49,7 @@ internal fun settingsMarketplaceWebViewUrl(
     val path =
         serverSlug
             ?.takeIf { it.isNotBlank() }
-            ?.let { "s/$it/settings/integrations" }
+            ?.let { "s/$it/apps" }
             ?: "settings/integrations"
     val extraQueryParameters =
         buildList {
