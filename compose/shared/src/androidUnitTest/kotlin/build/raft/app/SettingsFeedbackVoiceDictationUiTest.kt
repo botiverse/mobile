@@ -215,7 +215,7 @@ class SettingsFeedbackVoiceDictationUiTest {
             waitForIdle()
 
             // Feedback forms have no chat channel ID; permit request must pass serverId and omit channelId.
-            assertEquals(listOf(serverId to null), permitRequests)
+            assertEquals(listOf<Pair<String, String?>>(serverId to null), permitRequests)
             connection.emitFrame(VoiceDictationV2ServerFrame.Ready)
             connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "New feedback mic works", stableLen = 22, refined = false))
             waitForIdle()
