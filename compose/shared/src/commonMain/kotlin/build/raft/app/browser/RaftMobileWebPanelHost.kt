@@ -576,7 +576,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                             onOpenSystem = ::openCurrentInSystemBrowser,
                             onClose = if (storageResolution.isRaftApp) onClose else null,
                         )
-                    } else if (signInUiState.resolving) {
+                    } else if (!isOutboundChild && signInUiState.resolving) {
                         RaftBrowserSignInResolvingOverlay()
                     }
                 }
