@@ -28,6 +28,7 @@ import build.raft.designsystem.focus.RaftFocusRequestSource
 import build.raft.designsystem.focus.RaftFocusTicket
 import build.raft.designsystem.focus.currentRaftFocusCoordinator
 import build.raft.designsystem.theme.LocalRaftContentColor
+import build.raft.designsystem.theme.LocalRaftStrings
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.ui.graphics.isSpecified
 import build.raft.designsystem.components.RaftEmbeddedControls
@@ -2704,6 +2705,7 @@ internal fun ThreadComposerContentLeaf(
     val quoteReplyHost = LocalThreadQuoteReplyHost.current
     val voiceDictationHost = LocalThreadVoiceDictationHost.current
     val currentVoiceDictationHost by rememberUpdatedState(voiceDictationHost)
+    val voiceDictationAwaitingSubmitFinal = rememberVoiceDictationAwaitingSubmitFinal(voiceDictationHost)
     val unknownQuoteAuthor = stringResource(Res.string.thread_comments_unknown_author)
     val quoteController =
         remember(state.instanceId) {
@@ -3212,6 +3214,7 @@ internal fun ThreadComposerContentLeaf(
     val hasReplyTextForSend = if (isSegmentedQuoteComposer) quoteController.hasReplyText else text.isNotBlank()
     val canSend =
         composerEnabled &&
+            !voiceDictationAwaitingSubmitFinal &&
             state.composerMode != "sending" &&
             state.composerMode != "uploading" &&
             state.composerMode != "no_permission" &&
@@ -3489,12 +3492,12 @@ internal fun ThreadComposerContentLeaf(
         }
     }
 
-    fun sendComposerMessage(forceAsTask: Boolean = false) {
-        currentVoiceDictationHost?.controller?.cancel()
+    fun dispatchComposerSendNow(forceAsTask: Boolean = false) {
+        currentVoiceDictationHost?.controller?.finishForSubmit()
         val sourceSessionId = editorOwner.editorSessionId
         if (!editorOwner.isActiveSession(sourceSessionId)) return
-        val effectiveAsTask = asTask || (forceAsTask && surface.sendsAsTask)
-        val segmentedAtSend = isSegmentedQuoteComposer
+        val effectiveAsTask = currentAsTask || (forceAsTask && surface.sendsAsTask)
+        val segmentedAtSend = quoteController.isSegmented
         val (sendFieldValue, optimisticQuotes) =
             if (segmentedAtSend) {
                 val activeState = quoteController.activeTextFieldState()
@@ -3553,8 +3556,23 @@ internal fun ThreadComposerContentLeaf(
             }
         } else {
             expandState?.collapse()
-            onEvent("send", sendFieldValue.text, effectiveAsTask, null)
+            currentOnEvent("send", sendFieldValue.text, effectiveAsTask, null)
         }
+    }
+
+    fun sendComposerMessage(forceAsTask: Boolean = false) {
+        val dictationController = currentVoiceDictationHost?.controller
+        if (dictationController != null && dictationController.needsSubmitFinalWait()) {
+            if (dictationController.isAwaitingSubmitFinal()) return
+            val startSessionId = editorOwner.editorSessionId
+            composerFocusScope.launch {
+                if (dictationController.awaitPendingFinalBeforeSend() && editorOwner.isActiveSession(startSessionId)) {
+                    dispatchComposerSendNow(forceAsTask = forceAsTask)
+                }
+            }
+            return
+        }
+        dispatchComposerSendNow(forceAsTask = forceAsTask)
     }
 
     fun handleKeyboardSend(fromHardwareEnter: Boolean, forceAsTask: Boolean = false) {
@@ -4473,7 +4491,7 @@ internal fun ThreadComposerContentLeaf(
                                 }
                                 ComposerSendButton(
                                     enabled = canSend,
-                                    sending = state.composerMode == "sending" || state.composerMode == "uploading",
+                                    sending = state.composerMode == "sending" || state.composerMode == "uploading" || voiceDictationAwaitingSubmitFinal,
                                     tooltipShortcut =
                                         if (hardwareKeyboardConnected && activeComposerSendKey == RaftComposerSendKey.ModEnter) {
                                             modEnterKeyLabel
@@ -6456,12 +6474,14 @@ internal fun ComposerIconButton(
     // raft-ui `ComposerIconButton`: ghost (no fill, no ring) on foreground-icon.
     variant: RaftButtonVariant = RaftButtonVariant.Ghost,
     loading: Boolean = false,
+    loadingLabel: String? = null,
     onLongClick: (() -> Unit)? = null,
     longClickLabel: String? = null,
     tooltipShortcut: String? = null,
     onClick: () -> Unit
 ) {
     val showSeparateShortcutTooltip = tooltipShortcut != null && contentDescription.isNotBlank()
+    val resolvedLoadingLabel = loadingLabel ?: LocalRaftStrings.current.loading
     val button: @Composable (Modifier) -> Unit = { buttonModifier ->
         RaftIconButton(
             onClick = onClick,
@@ -6472,6 +6492,7 @@ internal fun ComposerIconButton(
             size = RaftIconButtonSize.Md,
             enabled = enabled,
             loading = loading,
+            loadingLabel = resolvedLoadingLabel,
             onLongClick = onLongClick,
             longClickLabel = longClickLabel,
         ) {
@@ -6501,13 +6522,15 @@ private fun ComposerSendButton(
     tooltipShortcut: String? = null,
     onClick: () -> Unit
 ) {
+    val sendLabel = stringResource(Res.string.common_send)
     // Busy keeps the pink under the spinner and ignores taps (raft-ui Button > States).
     ComposerIconButton(
         icon = RaftLucideIconName.Send,
         enabled = enabled || sending,
-        contentDescription = stringResource(Res.string.common_send),
+        contentDescription = sendLabel,
         variant = RaftButtonVariant.Primary,
         loading = sending,
+        loadingLabel = sendLabel,
         tooltipShortcut = tooltipShortcut,
         onClick = onClick
     )
