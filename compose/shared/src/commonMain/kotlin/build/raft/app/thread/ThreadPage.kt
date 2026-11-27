@@ -195,8 +195,8 @@ import build.raft.app.reduceRaftAdaptivePane
 import build.raft.app.rememberAgentLoungeEnabled
 import build.raft.app.rememberLiveRaftTimeContext
 import build.raft.app.shell.rememberRaftLinkNavigator
-import build.raft.app.rememberRaftMemberAppBot
-import build.raft.app.rememberRaftMemberAvatarWireValue
+import build.raft.app.members.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import build.raft.app.rememberShellRuntimeAccountUsageAccess
 import build.raft.app.rememberTaskChannelTasksViewModel
 import build.raft.app.rememberThreadChannelAnnouncementStripSlot
@@ -263,9 +263,9 @@ import build.raft.app.AuthenticatedProductPager
 import build.raft.app.AuthenticatedProductRoute
 import build.raft.app.CHANNEL_SETTINGS_PAGE
 import build.raft.app.settings.HOME_SEARCH_PAGE
-import build.raft.app.LocalMembersRuntimeAccountUsageAccess
+import build.raft.app.members.LocalMembersRuntimeAccountUsageAccess
 import build.raft.app.shell.LocalRaftForegroundBannerHandoff
-import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.PerformanceSceneEffect
 import build.raft.app.ProcessAttachmentAuthScopes

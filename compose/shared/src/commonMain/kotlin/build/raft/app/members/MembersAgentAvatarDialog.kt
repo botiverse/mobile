@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.thread.key
+import build.raft.app.userFacingMessage
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -46,12 +47,25 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.PixelAvatarActiveDefaultKey
+import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAppAvatarSticker
+import build.raft.app.RaftAvatarKind
+import build.raft.app.RaftCachedImage
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftPixelAvatarRuntime
 import build.raft.app.data.DataResult
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenError
+import build.raft.app.fill
+import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.pixelAvatarPickerGroups
+import build.raft.app.raftArgbHex
+import build.raft.app.raftAvatarCacheSubject
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType

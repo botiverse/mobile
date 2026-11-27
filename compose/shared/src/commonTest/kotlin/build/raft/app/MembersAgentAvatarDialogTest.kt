@@ -5,6 +5,16 @@ import build.raft.app.data.EmptyReason
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenError
+import build.raft.app.members.MembersAgentAvatarDraft
+import build.raft.app.members.MembersAgentAvatarError
+import build.raft.app.members.MembersAgentAvatarMaxUploadBytes
+import build.raft.app.members.membersAgentAvatarPresetDraft
+import build.raft.app.members.membersAgentAvatarSaveError
+import build.raft.app.members.membersAgentAvatarSelectedPreset
+import build.raft.app.members.membersAgentAvatarUploadDraft
+import build.raft.app.members.membersAgentAvatarUploadSelected
+import build.raft.app.members.membersAgentHasCustomAvatar
+import build.raft.app.members.profileAvatarUrl
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

@@ -20,8 +20,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAvatar
-import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
+import build.raft.app.members.iconName
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.AgentContextViewGrant
 import build.raft.app.data.AgentContextViewGrantRevokeOutcome

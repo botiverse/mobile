@@ -10,6 +10,7 @@ import build.raft.app.cmp.host.HostBridgeTransport
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.RaftCmpHost
 import build.raft.app.cmp.host.RaftCmpNavigator
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.shell.RaftDetailConversation
 import build.raft.app.shell.RaftWideSideColumns
 import build.raft.app.shell.rememberRaftWideSideColumns

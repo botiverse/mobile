@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,10 +16,17 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftType
 import build.raft.app.data.AGENT_OPERATOR_EVENTS_FOLD_AT
 import build.raft.app.data.AgentOperatorEvent
 import build.raft.app.data.AgentOperatorEventActor
 import build.raft.app.data.AgentOperatorEventKind
+import build.raft.app.fill
+import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
 import build.raft.app.thread.ThreadMessageTimelineRowInset

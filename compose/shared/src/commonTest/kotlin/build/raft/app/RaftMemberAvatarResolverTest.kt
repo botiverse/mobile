@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.currentMemberAvatarWireValue
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

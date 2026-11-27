@@ -46,6 +46,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ArtifactLinkTarget
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.shell.LocalRaftChannelSideLayoutStore
 import build.raft.app.shell.LocalRaftPaneGridStore
 import build.raft.app.shell.LocalRaftSidePanePage

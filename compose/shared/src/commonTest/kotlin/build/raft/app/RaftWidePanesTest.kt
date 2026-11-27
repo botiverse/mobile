@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.compat.pager.RaftPaneRole
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.shell.RAFT_ARTIFACT_COLUMN_CELL
 import build.raft.app.shell.RaftArtifactColumnPane
 import build.raft.app.shell.RaftPaneGridColumnBounds

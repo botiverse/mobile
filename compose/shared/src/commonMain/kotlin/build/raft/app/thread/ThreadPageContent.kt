@@ -91,8 +91,8 @@ import androidx.compose.ui.unit.sp
 import build.raft.app.AgentLoungeAudienceNotice
 import build.raft.app.AgentLoungeFooter
 import build.raft.app.EmptyRaftAgentStatusResolver
-import build.raft.app.EmptyRaftMemberAvatarResolver
-import build.raft.app.EmptyRaftMemberModelLabelResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberModelLabelResolver
 import build.raft.app.shell.LocalRaftProfileColumn
 import build.raft.app.LocalTaskConversationHeadRow
 import build.raft.app.MemberDetailIdentity
@@ -102,8 +102,9 @@ import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftColor
 import build.raft.app.shell.RaftIncomingNavigationSignal
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberModelLabelResolver
+import build.raft.app.members.iconName
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.RaftType

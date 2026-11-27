@@ -48,6 +48,10 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.ScreenError
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.members.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MembersAgentDetailTab
+import build.raft.app.members.RaftMembersPayload
+import build.raft.app.members.toMemberDetailPageData
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeFormat24Hour

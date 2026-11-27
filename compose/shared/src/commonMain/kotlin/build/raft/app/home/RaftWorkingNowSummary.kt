@@ -50,6 +50,9 @@ import build.raft.app.data.AgentActivitySubscriptions
 import build.raft.app.data.RaftDisplayPreferenceRuntime
 import build.raft.app.data.RaftLiveAgentActivityItem
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
 import build.raft.designsystem.components.RaftAvatarSize

@@ -94,6 +94,7 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind

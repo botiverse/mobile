@@ -26,6 +26,13 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedComputersIntent
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.members.MEMBER_DETAIL_PAGE
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
+import build.raft.app.members.RaftMembersPayload
+import build.raft.app.members.membersComputerId
+import build.raft.app.members.rememberRaftMemberAvatarResolver
+import build.raft.app.members.toMemberDetailPageData
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId

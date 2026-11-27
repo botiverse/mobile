@@ -21,6 +21,7 @@ import build.raft.app.data.SharedActivityState
 import build.raft.app.data.SharedHomeSavedPanelState
 import build.raft.app.data.parseSharedInboxSnapshot
 import build.raft.app.data.parseSharedSavedItems
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.TaskStatus

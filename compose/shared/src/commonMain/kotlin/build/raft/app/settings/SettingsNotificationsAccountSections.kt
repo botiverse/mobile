@@ -45,6 +45,7 @@ import build.raft.app.data.raftQuietHoursPatch
 import build.raft.app.data.raftQuietHoursTimeOptions
 import build.raft.app.localizedLabel
 import build.raft.app.localizedNotificationLevelLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.raftArgbHex
 import build.raft.app.data.DataResult
 import build.raft.app.resources.*

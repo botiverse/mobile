@@ -16,6 +16,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SettingsBillingSnapshot
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.SettingsBillingViewOnlyContent
 import build.raft.app.settings.iconName
 import kotlin.test.Test

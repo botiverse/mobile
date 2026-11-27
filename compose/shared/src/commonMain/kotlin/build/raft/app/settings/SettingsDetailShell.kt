@@ -28,6 +28,7 @@ import build.raft.app.shell.RaftNativeNavBarAction
 import build.raft.app.RaftTopPageHeader
 import build.raft.app.RaftType
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.raftArgbHex
 import build.raft.app.settings.iconName
 

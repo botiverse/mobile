@@ -21,7 +21,7 @@ import build.raft.app.CHANNEL_SETTINGS_PAGE
 import build.raft.app.LocalRaftArtifactOpenInColumn
 import build.raft.app.LocalRaftArtifactViewerColumnWidthDp
 import build.raft.app.LocalRaftArtifactViewerInColumn
-import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.RaftBackHandler
 import build.raft.app.RaftPaneGridColumns
 import build.raft.app.base.BridgeModule

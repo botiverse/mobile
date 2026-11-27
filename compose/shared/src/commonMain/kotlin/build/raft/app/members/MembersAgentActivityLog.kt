@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.thread.key
@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
+import build.raft.app.raftNativeDispatchCapture
 import build.raft.designsystem.components.RaftMessageListJumpControls
 import build.raft.designsystem.components.RaftMessageListJumpPill
 import kotlinx.coroutines.flow.distinctUntilChanged

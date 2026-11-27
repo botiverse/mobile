@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.members.MembersAgentComputerKnownState
+import build.raft.app.members.membersAgentComputerNavigationTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

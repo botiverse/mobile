@@ -45,7 +45,7 @@ import build.raft.app.shell.raftTopSafeAreaPadding
 import build.raft.app.shell.raftWideKeyboardComposerFocus
 import build.raft.app.shell.raftWideKeyboardHeadHidden
 import build.raft.app.shell.raftWindowWidth
-import build.raft.app.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAppBot
 import build.raft.app.resolveThreadComposer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -84,7 +84,7 @@ import build.raft.app.RaftAttachmentSaveFailure
 import build.raft.app.RaftColor
 import build.raft.app.shell.RaftForegroundBannerHost
 import build.raft.app.shell.RaftForegroundMessageBanner
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.shell.RaftOwnLinkRoute
 import build.raft.app.shell.RaftOwnLinkWebPageReason
 import build.raft.app.shell.RaftPaneGrid

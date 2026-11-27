@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.TaskBacklogReasonMaxLength
 import build.raft.app.data.TaskCreateStatuses
 import build.raft.app.localizedLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.*
 import build.raft.app.thread.localizedLabel

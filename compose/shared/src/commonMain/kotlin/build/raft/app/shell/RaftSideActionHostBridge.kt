@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import build.raft.app.available
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.present
 import build.raft.app.settings.iconName
 import build.raft.designsystem.components.RaftSideActionHost

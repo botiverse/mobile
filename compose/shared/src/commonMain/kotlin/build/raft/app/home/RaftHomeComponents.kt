@@ -192,6 +192,7 @@ import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.iconName
 import build.raft.app.label
+import build.raft.app.localized
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -244,6 +245,20 @@ import build.raft.app.components.raftHeaderRefreshIndicatorVisible
 // `inbox.*` / `tabbar.*` phase names).
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
+import build.raft.app.members.EmptyRaftMemberAppBotResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.LocalMembersRuntimeAccountUsageAccess
+import build.raft.app.members.LocalRaftMemberAppBotResolver
+import build.raft.app.members.RaftAppBotBadge
+import build.raft.app.members.RaftMemberAppBotResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
+import build.raft.app.members.raftMemberAppBotResolver
+import build.raft.app.members.raftMemberAvatarResolver
+import build.raft.app.members.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAvatarPending
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier

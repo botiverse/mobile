@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.AgentChannelSummary
+import build.raft.app.members.membersAgentChannelRowIcon
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

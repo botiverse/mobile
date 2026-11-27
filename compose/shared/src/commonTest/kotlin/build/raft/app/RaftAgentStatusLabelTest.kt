@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.members.membersHeroAgentStatusLabel
+import build.raft.app.members.membersLiveAgentStatusLabel
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import kotlin.test.Test

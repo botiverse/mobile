@@ -12,6 +12,7 @@ import build.raft.app.data.ForwardTargetSearchUpdate
 import build.raft.app.data.ForwardTargetServerSearchDebounceMillis
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.ServerId
 import build.raft.app.raftChannelKindGlyph
 import build.raft.app.reduce

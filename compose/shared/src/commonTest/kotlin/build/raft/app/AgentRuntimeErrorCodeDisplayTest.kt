@@ -4,6 +4,7 @@ import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.AgentRuntimeErrorCode
 import build.raft.app.data.SharedServerMemberStatus
+import build.raft.app.members.membersAgentRuntimeErrorDisplay
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

@@ -149,6 +149,7 @@ import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
 import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId

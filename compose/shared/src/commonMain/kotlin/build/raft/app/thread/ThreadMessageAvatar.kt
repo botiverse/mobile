@@ -10,7 +10,7 @@ import build.raft.app.fill
 import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.raftGesturePointerInput
 import build.raft.app.raftMemberAvatarCacheSubject
-import build.raft.app.raftOriginServerNames
+import build.raft.app.members.raftOriginServerNames
 import build.raft.app.rememberRaftGestureOwner
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberServerRef
@@ -70,7 +70,7 @@ import build.raft.app.RaftAppStroke
 import build.raft.app.RaftAppThemeState
 import build.raft.app.RaftAvatarKind
 import build.raft.app.RaftAvatarRowDiagnostics
-import build.raft.app.RaftAvatarWithOriginCorner
+import build.raft.app.members.RaftAvatarWithOriginCorner
 import build.raft.app.RaftAvatarWithStatus
 import build.raft.app.RaftColor
 import build.raft.app.RaftGestureSession

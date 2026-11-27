@@ -21,6 +21,9 @@ import build.raft.app.data.SettingsComputerRevokedVia
 import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputerVersionGateSnapshot
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersAgentComputerRevokedTestTags
+import build.raft.app.members.MembersAgentProfileStatus
+import build.raft.app.members.resolveMembersAgentComputerRevokedNoteState
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

@@ -25,6 +25,15 @@ import build.raft.app.thread.localizedLabel
 import build.raft.app.markdown.RaftMarkdownPreview
 import build.raft.app.markdown.markdownToPreview
 import build.raft.app.markdown.toAnnotatedString
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.RaftAppBotBadge
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.explicitAvatarWireValue
+import build.raft.app.members.localizedLabel
+import build.raft.app.members.rememberRaftJointActor
+import build.raft.app.members.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAvatarPending
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue

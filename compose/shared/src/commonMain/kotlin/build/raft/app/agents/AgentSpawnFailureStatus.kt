@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.AgentActivityDetailKindRuntimeUnavailable
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.members.membersActivityOverviewClock
 import build.raft.app.model.AgentAttention
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentStatus

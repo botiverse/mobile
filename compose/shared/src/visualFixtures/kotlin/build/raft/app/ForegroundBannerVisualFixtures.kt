@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 
 @Composable
 internal fun ForegroundBannerVisualContent() {

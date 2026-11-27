@@ -33,7 +33,7 @@ import build.raft.app.nonBlank
 import build.raft.app.normalizeThreadAttachmentUploadDraftKey
 import build.raft.app.onSizeChangedDp
 import build.raft.app.optString
-import build.raft.app.originLabel
+import build.raft.app.members.originLabel
 import build.raft.app.raftComposerImagePickerIsStrictImage
 import build.raft.app.shell.raftWindowWidth
 import androidx.compose.runtime.Composable
@@ -63,12 +63,12 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.ComposerFocusOnOpen
-import build.raft.app.LocalRaftChannelJointServers
+import build.raft.app.members.LocalRaftChannelJointServers
 import build.raft.app.LocalThreadComposerExpandState
 import build.raft.app.PendingMentionTargetMap
 import build.raft.app.RAFT_FILE_PREVIEW_IMAGE_COMPRESSION_ERROR_CODE
 import build.raft.app.RaftAgentStatusResolver
-import build.raft.app.RaftAppBotIdentity
+import build.raft.app.members.RaftAppBotIdentity
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftColor
 import build.raft.app.RaftComposerChannelItem

@@ -46,10 +46,10 @@ import build.raft.app.settings.HOME_SEARCH_FOCUS_INPUT
 import build.raft.app.settings.HOME_SEARCH_PAGE
 import build.raft.app.settings.HOME_SEARCH_SELECTED_CHANNEL_ID
 import build.raft.app.HomeMessageOpenRequest
-import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.MemberDetailIdentitySource
-import build.raft.app.MemberDetailProfileChannelIdKey
+import build.raft.app.members.MemberDetailProfileChannelIdKey
 import build.raft.app.RaftTaskConversationChannelKind
 import build.raft.app.RaftThreadComposerPayload
 import build.raft.app.RaftThreadSurfaceKind

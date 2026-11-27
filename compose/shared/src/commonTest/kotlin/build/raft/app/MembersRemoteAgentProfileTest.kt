@@ -2,6 +2,10 @@ package build.raft.app
 
 import build.raft.app.data.ResolvedActor
 import build.raft.app.memberDetailIdentity
+import build.raft.app.members.MembersAgentDetailTab
+import build.raft.app.members.membersAgentDetailTabsForAccess
+import build.raft.app.members.membersAgentProfileIsRemote
+import build.raft.app.members.membersRemoteAgentSourceServerName
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

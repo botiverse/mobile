@@ -7,6 +7,11 @@ import build.raft.app.data.SyncTestPreferences
 import build.raft.app.data.openWithinWideDetail
 import build.raft.app.data.visibleSideThread
 import build.raft.app.data.withOpenedDetail
+import build.raft.app.members.MEMBER_DETAIL_PAGE
+import build.raft.app.members.RaftMemberDetailPayload
+import build.raft.app.members.RaftMembersPayload
+import build.raft.app.members.toMemberDetailPageData
+import build.raft.app.members.toRaftMemberDetailPayload
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId

@@ -41,6 +41,7 @@ import build.raft.app.data.SignedInDevicesReauthDialog
 import build.raft.app.data.SignedInDevicesSignOutDialog
 import build.raft.app.data.SignedInDevicesSignOutTarget
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.icon
 import build.raft.app.settings.iconName
 import build.raft.app.model.RaftTimeContext

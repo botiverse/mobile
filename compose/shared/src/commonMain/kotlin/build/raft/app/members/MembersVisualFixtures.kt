@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.runtime.setValue
 import build.raft.app.data.AgentMigrationDataSource
@@ -44,8 +44,9 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.optString
 import build.raft.app.thread.toRaftTimeContext
-import build.raft.app.toRaftTimeContext
+import build.raft.app.members.toRaftTimeContext
 import build.raft.app.model.RaftWorkspaceFileKind
 import build.raft.app.model.RaftWorkspaceNode
 import build.raft.app.model.RaftTimeContext
@@ -53,6 +54,8 @@ import build.raft.app.model.RaftTimeFormat24Hour
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.semantics.Role
+import build.raft.app.MemberDetailAccessMode
+import build.raft.app.RAFT_COMPUTER_DEFAULT_SERVER_URL
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import build.raft.app.compat.pager.LocalActivity

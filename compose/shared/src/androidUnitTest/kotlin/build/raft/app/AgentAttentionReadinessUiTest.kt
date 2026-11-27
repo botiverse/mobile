@@ -29,6 +29,7 @@ import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.data.SettingsComputersSnapshot
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersAgentProfileHeader
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentReadinessFact
 import build.raft.app.model.AgentReadinessResource

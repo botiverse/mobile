@@ -27,8 +27,9 @@ import build.raft.app.RaftArtifactViewerHeader
 import build.raft.app.RaftArtifactViewerPrewarm
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberModelLabelResolver
+import build.raft.app.members.iconName
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftTaskAssigneeMenuOverlay
 import build.raft.app.RaftTaskStatusChip
@@ -118,8 +119,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import build.raft.app.EmptyRaftAgentStatusResolver
-import build.raft.app.EmptyRaftMemberAvatarResolver
-import build.raft.app.EmptyRaftMemberModelLabelResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberModelLabelResolver
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_GENERATION
 import build.raft.app.compat.json.JSONObject

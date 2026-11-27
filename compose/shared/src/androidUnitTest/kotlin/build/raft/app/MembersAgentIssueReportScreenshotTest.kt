@@ -13,6 +13,8 @@ import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AgentIssueTicketRequest
 import build.raft.app.data.AgentIssueTranscriptRequestState
 import build.raft.app.data.RaftPrivacyMode
+import build.raft.app.members.MembersAgentIssueReportDialog
+import build.raft.app.members.MembersAgentIssueReportReceiptDialog
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

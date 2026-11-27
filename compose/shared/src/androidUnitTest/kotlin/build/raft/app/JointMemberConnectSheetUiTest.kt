@@ -36,6 +36,7 @@ import build.raft.app.data.RaftLongMessageCollapseConversationPreference
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
 import build.raft.app.thread.RaftLongMessageCollapseConversationSetting

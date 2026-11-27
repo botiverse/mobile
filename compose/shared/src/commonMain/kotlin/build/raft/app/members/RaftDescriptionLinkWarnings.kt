@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier

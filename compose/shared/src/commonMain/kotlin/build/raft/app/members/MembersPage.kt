@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.settings.RaftUpgradeGate
@@ -10,6 +10,8 @@ import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.shell.rememberRaftLinkNavigator
 import build.raft.app.shell.toRaftAdaptivePaneEventOrNull
 import build.raft.app.thread.dispatch
+import build.raft.app.toCreateAgentRequest
+import build.raft.app.userFacingMessage
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -34,6 +36,14 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
+import build.raft.app.openSettingsComputersPage
+import build.raft.app.optString
+import build.raft.app.raftAvatarDiagnosticsHash
+import build.raft.app.raftScopedAgentStatusResolver
+import build.raft.app.reduceRaftAdaptivePane
+import build.raft.app.rememberCreatedAgent
+import build.raft.app.rememberRaftCreatedAgentReceipt
+import build.raft.app.rememberShellRuntimeAccountUsageAccess
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour
 import androidx.compose.runtime.Composable
@@ -55,11 +65,25 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
+import build.raft.app.createdAgentLanding
+import build.raft.app.currentRaftEffectiveDateTimeContext
 import kotlinx.coroutines.flow.flowOf
 import build.raft.app.data.map
+import build.raft.app.get
+import build.raft.app.inCreatingServer
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.memberDetailAccessMode
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import androidx.compose.ui.semantics.selected
+import build.raft.app.AuthenticatedProductPager
+import build.raft.app.AuthenticatedProductRoute
+import build.raft.app.CreatedAgentLanding
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAdaptivePaneLayout
+import build.raft.app.RaftAdaptivePaneState
+import build.raft.app.RaftExternalAgentCreateHost
+import build.raft.app.SharedCreateAgentDialogSubmit
 
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 

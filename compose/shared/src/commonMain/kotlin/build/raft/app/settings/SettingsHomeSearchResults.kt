@@ -46,8 +46,8 @@ import build.raft.app.raftSearchRowGap
 import build.raft.app.raftSearchRowPressed
 import build.raft.app.rememberRaftAgentStatusIndicatorState
 import build.raft.app.rememberRaftGestureOwner
-import build.raft.app.rememberRaftMemberAppBot
-import build.raft.app.rememberRaftMemberAvatarWireValue
+import build.raft.app.members.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import build.raft.app.resolve
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -92,12 +92,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.AgentLoungeIcon
-import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.HomeSearchEntityBadge
 import build.raft.app.HomeSearchEntityGroupTags
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftAppAvatar
-import build.raft.app.RaftAppBotBadge
+import build.raft.app.members.RaftAppBotBadge
 import build.raft.app.RaftAvatarKind
 import build.raft.app.RaftAvatarWithStatus
 import build.raft.app.RaftChannelKindIcon
@@ -106,7 +106,9 @@ import build.raft.app.RaftGestureSession
 import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftPopoverAnchorResolver

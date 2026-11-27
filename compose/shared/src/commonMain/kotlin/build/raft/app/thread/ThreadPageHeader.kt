@@ -33,7 +33,7 @@ import build.raft.app.RaftAdaptiveDetailCloseRequest
 import build.raft.app.RaftAgentStatusIndicatorState
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftAppAvatar
-import build.raft.app.RaftAppBotBadge
+import build.raft.app.members.RaftAppBotBadge
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftAppStroke
@@ -47,7 +47,8 @@ import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftLoungeAvatar
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.iconName
 import build.raft.app.RaftMonoFamily
 import build.raft.app.shell.RaftNativeNavBarAction
 import build.raft.app.shell.RaftNativeNavBarPlacement
@@ -128,8 +129,8 @@ import build.raft.app.rememberAgentRuntimeSignInResolution
 import build.raft.app.rememberComposerAutofocusOnOpen
 import build.raft.app.rememberComposerFocusOnOpen
 import build.raft.app.rememberRaftAgentStatusIndicatorState
-import build.raft.app.rememberRaftMemberAppBot
-import build.raft.app.rememberRaftMemberAvatarWireValue
+import build.raft.app.members.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import build.raft.app.rememberRaftNotificationLevelIcon
 import build.raft.app.rememberRaftNotificationLevelMenuLabel
 import build.raft.app.resolve
@@ -198,7 +199,7 @@ import build.raft.app.AgentRuntimeSignInTestTags
 import build.raft.app.shell.AppShellScrollToTopRequestFence
 import build.raft.app.ComposerFocusOnOpen
 import build.raft.app.EmptyRaftAgentStatusResolver
-import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.shell.LocalRaftNativeNavBar
 import build.raft.app.shell.LocalRaftNativeNavBarScript
 import build.raft.app.shell.LocalRaftSidePanePage

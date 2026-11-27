@@ -50,6 +50,7 @@ import build.raft.app.data.planRaftBulkModelChange
 import build.raft.app.data.raftBulkReasoningEffortOptions
 import build.raft.app.data.raftBulkReconcileReasoningEffort
 import build.raft.app.label
+import build.raft.app.members.membersReasoningEffortLabel
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.getModelLabel

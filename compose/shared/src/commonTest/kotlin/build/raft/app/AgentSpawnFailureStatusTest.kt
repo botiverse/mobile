@@ -4,6 +4,9 @@ import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.members.membersAgentCanOpenModelSettings
+import build.raft.app.members.membersRuntimeEditorCanOpen
+import build.raft.app.members.membersRuntimeEditorOpenRequestActs
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

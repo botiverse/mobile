@@ -49,6 +49,7 @@ import build.raft.app.data.raftRailPlacesForKeys
 import build.raft.app.data.raftRailRemovePlace
 import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.ServerId
 import build.raft.app.origin
 import build.raft.app.raftAppEntryOriginOf

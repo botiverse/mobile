@@ -25,6 +25,17 @@ import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersAgentComputerOfflineCard
+import build.raft.app.members.MembersAgentComputerOfflineCardState
+import build.raft.app.members.MembersAgentComputerOfflineTestTags
+import build.raft.app.members.MembersAgentDetailCallbacks
+import build.raft.app.members.MembersAgentDetailLoadState
+import build.raft.app.members.MembersAgentDetailPresentation
+import build.raft.app.members.MembersAgentOfflineComputerInputs
+import build.raft.app.members.MembersDetailActions
+import build.raft.app.members.MembersDetailContent
+import build.raft.app.members.MembersMachineRunLabel
+import build.raft.app.members.MembersMachineStatusRow
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

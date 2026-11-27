@@ -7,6 +7,9 @@ import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
 import androidx.compose.runtime.*
 import build.raft.app.data.*
+import build.raft.app.members.MembersCreateAgentMode
+import build.raft.app.members.requiresComputerSelection
+import build.raft.app.members.takenAgentNames
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import androidx.compose.material3.Text

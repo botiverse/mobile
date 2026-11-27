@@ -21,6 +21,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
+import build.raft.app.members.MembersAdaptiveWorkspace
 import build.raft.app.shell.AppShellServerTabKey
 import build.raft.app.shell.LocalRaftHorizontalSafeAreaBleed
 import build.raft.app.shell.LocalRaftNativeTabBarBridge

@@ -35,7 +35,7 @@ import build.raft.app.thread.toThreadLaunchConversationIdentity
 import build.raft.app.threadChannelKindWireValue
 import build.raft.app.threadParentSurfaceKindOrNull
 import build.raft.app.threadStreamChannelId
-import build.raft.app.toRaftTimeContext
+import build.raft.app.members.toRaftTimeContext
 import build.raft.app.toThreadLaunchConversationIdentity
 import build.raft.app.traceId
 import kotlinx.coroutines.flow.filter

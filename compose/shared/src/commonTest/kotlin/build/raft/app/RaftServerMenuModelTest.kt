@@ -4,6 +4,7 @@ import build.raft.designsystem.components.RaftMobileNavServerPopoverState
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.SettingsDestinationComputers
 import build.raft.app.settings.appShellBottomTabsVisible
 import build.raft.app.settings.appShellPhoneBottomTabs

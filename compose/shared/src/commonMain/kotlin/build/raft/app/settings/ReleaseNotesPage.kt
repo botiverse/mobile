@@ -28,6 +28,7 @@ import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.optString
 import build.raft.app.raftReleaseNotesAppSlug
 import build.raft.app.raftWebOriginOf

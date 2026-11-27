@@ -1,6 +1,6 @@
 package build.raft.app.data.realtime
 
-import build.raft.app.membersAgentActivityWakeCrashLoop
+import build.raft.app.members.membersAgentActivityWakeCrashLoop
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.AgentWakeCrashLoop
 import build.raft.app.model.MemberPresenceUpdated

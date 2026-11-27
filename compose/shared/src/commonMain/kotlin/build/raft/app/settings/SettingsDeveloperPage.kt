@@ -28,6 +28,7 @@ import build.raft.app.data.raftProcessRealtimeSessionDemand
 import build.raft.app.iconName
 import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.matches
+import build.raft.app.members.iconName
 import build.raft.app.nav.RaftNav3StackFlag
 import build.raft.app.raftPlatformSupportsMultiShellHost
 import build.raft.app.resolve

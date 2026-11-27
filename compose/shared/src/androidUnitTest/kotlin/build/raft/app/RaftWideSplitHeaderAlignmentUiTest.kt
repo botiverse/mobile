@@ -44,6 +44,8 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RealtimeSubscription
+import build.raft.app.members.MembersDetailHeader
+import build.raft.app.members.MembersHumanDetailHeader
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

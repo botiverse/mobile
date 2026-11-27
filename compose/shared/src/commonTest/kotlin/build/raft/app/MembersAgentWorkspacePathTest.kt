@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.members.membersAgentWorkspacePath
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

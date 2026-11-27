@@ -59,7 +59,8 @@ import build.raft.app.ChannelSettingsContent
 import build.raft.app.ChannelSettingsPermissions
 import build.raft.app.ChannelSettingsScaffold
 import build.raft.app.ChannelSettingsUiModel
-import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.iconName
 import build.raft.app.ExternalInviteChannel
 import build.raft.app.ExternalInvitesSection
 import build.raft.app.ExternalInvitesState

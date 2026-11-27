@@ -35,6 +35,7 @@ import build.raft.app.transfer.RaftTransferPhase
 import build.raft.app.transfer.RaftTransferProgress
 import build.raft.app.format.RaftFormat
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.raftCopyable
 import build.raft.designsystem.components.RaftBannerStatus

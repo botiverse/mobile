@@ -26,6 +26,7 @@ import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.SettingsComputerDetailSnapshot
 import build.raft.app.data.SettingsComputerSnapshot
+import build.raft.app.members.MEMBER_REMOVAL_IMPACT_HANDED_OVER_TAG
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -22,14 +22,21 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.AgentAppGrantRevokeFailure
 import build.raft.app.data.AgentAppGrantsRevoke
 import build.raft.app.data.AgentAppGrantsRevokeIntent
 import build.raft.app.data.AgentAppLoginItem
 import build.raft.app.data.isActiveGrant
+import build.raft.app.get
+import build.raft.app.jointMemberConnectNames
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
 import build.raft.app.shell.rememberRaftLinkOpensInRaft
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

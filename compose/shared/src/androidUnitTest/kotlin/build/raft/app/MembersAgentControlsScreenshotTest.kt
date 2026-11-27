@@ -19,6 +19,12 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentScopeSet
+import build.raft.app.members.MembersAgentPermissionsTab
+import build.raft.app.members.MembersAgentServerRole
+import build.raft.app.members.MembersAgentServerRoleChip
+import build.raft.app.members.MembersAgentServerRoleDisplay
+import build.raft.app.members.MembersLifecycleConfirmation
+import build.raft.app.members.MembersServerRoleEditor
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

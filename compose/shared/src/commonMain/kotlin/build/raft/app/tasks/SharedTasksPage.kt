@@ -49,6 +49,8 @@ import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle
 import build.raft.app.markdown.raftTaskStatusColor
 import build.raft.app.markdown.raftTaskStatusSoft
+import build.raft.app.members.iconName
+import build.raft.app.members.localizedLabel
 import build.raft.app.markdown.raftTaskStatusOutline
 import build.raft.app.markdown.raftTaskStatusPixelStyle
 import build.raft.app.data.KeyValueTasksViewPreferenceRepository

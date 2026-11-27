@@ -8,7 +8,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
-import build.raft.app.LocalRaftJointActorSurface
+import build.raft.app.members.LocalRaftJointActorSurface
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftTaskStatusMenuOverlay

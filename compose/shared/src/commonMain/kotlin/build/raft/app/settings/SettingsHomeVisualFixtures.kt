@@ -21,7 +21,8 @@ import build.raft.app.data.toSettingsMobileSelectionSnapshot
 import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.localizedErrorPresentationStrings
-import build.raft.app.memberPickerKey
+import build.raft.app.members.iconName
+import build.raft.app.members.memberPickerKey
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope

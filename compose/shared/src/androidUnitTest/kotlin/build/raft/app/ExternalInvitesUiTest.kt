@@ -26,6 +26,7 @@ import build.raft.app.data.ChannelExternalInviteList
 import build.raft.app.data.DataResult
 import build.raft.app.data.ExternalInviteAnswer
 import build.raft.app.data.ExternalInvitePreview
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.thread.RaftThreadMemberItem
 import build.raft.app.thread.ThreadMemberRemovalGateState
 import build.raft.app.thread.ThreadMembersPageContent

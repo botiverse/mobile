@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.AgentBlockedState
+import build.raft.app.members.membersMigrationPlacesWithoutSource
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.model.AgentStatus
 import kotlin.test.Test

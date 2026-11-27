@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.background
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -43,9 +43,14 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.action
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.format.RaftFormatLocale
 import build.raft.app.localizedLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.data.AgentUsageFigures
 import build.raft.app.data.AgentUsageRange
 import build.raft.app.data.AgentUsageResponse
@@ -71,6 +76,8 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.getModelLabel
+import build.raft.app.observeAgentRuntimeDisplayName
+import build.raft.app.raftArgbHex
 import build.raft.app.resources.*
 import build.raft.app.settings.settingsCompactDateLabel
 import build.raft.app.thread.icon

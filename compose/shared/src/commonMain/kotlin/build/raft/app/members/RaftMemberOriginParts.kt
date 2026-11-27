@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
@@ -35,7 +35,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.RaftAvatarHttpImage
 import build.raft.app.data.RaftAvatarCacheSubject
+import build.raft.app.fill
 import build.raft.app.model.MemberServerRef
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme

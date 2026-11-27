@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.data.EnsureServerModelLabelCatalog
 import build.raft.app.data.RaftDisplayPreferenceRuntime
@@ -11,6 +11,8 @@ import build.raft.app.data.SharedServerMembersState
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import build.raft.app.model.getModelLabel
+import build.raft.app.origin
+import build.raft.app.raftComputerMachineId
 import build.raft.app.thread.label
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState

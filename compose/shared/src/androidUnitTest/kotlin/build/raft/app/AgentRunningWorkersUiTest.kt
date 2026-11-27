@@ -11,6 +11,9 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftLiveAgentActivityItem
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersAgentProfileHeader
+import build.raft.app.members.RaftProfilePreviewCardContent
+import build.raft.app.members.raftProfilePreviewCardModel
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
 import build.raft.app.model.AgentProviderLimitHoldKind

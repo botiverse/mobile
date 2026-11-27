@@ -28,6 +28,7 @@ import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadSnapshot
 import build.raft.app.data.toHomeChannelRow
+import build.raft.app.members.resource
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary

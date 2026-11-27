@@ -9,6 +9,7 @@ import build.raft.app.data.RaftJointActorRefStore
 import build.raft.app.data.RaftMemberAvatarRefStore
 import build.raft.app.data.ResolvedActor
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.members.raftMemberAvatarResolver
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

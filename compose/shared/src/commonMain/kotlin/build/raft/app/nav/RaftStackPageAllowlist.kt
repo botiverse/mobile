@@ -127,7 +127,7 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
             listOf(
                 RaftStackPageRule(pageName = build.raft.app.settings.HOME_SAVED_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.settings.HOME_DRAFTS_PAGE),
-                RaftStackPageRule(pageName = build.raft.app.MEMBER_DETAIL_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.members.MEMBER_DETAIL_PAGE),
                 // Batch 2.
                 RaftStackPageRule(pageName = build.raft.app.settings.SETTINGS_ACCOUNT_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.settings.SETTINGS_HANDS_FEEDBACK_PAGE),

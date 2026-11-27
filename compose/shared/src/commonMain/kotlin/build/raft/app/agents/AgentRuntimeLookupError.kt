@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import build.raft.app.data.AgentRuntimeErrorCode
+import build.raft.app.members.membersAgentActivityErrorDisplayDetail
 import build.raft.app.model.AgentSpawnFailure
 import build.raft.app.resources.*
 

@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.SharedThreadStoreTestFakes.FakeMemberRepository
-import build.raft.app.currentMemberAvatarWireValue
+import build.raft.app.members.currentMemberAvatarWireValue
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.AvatarReference

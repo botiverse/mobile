@@ -65,8 +65,8 @@ import build.raft.app.RaftAvatarWithStatus
 import build.raft.app.RaftColor
 import build.raft.app.RaftFloatingVerticalPlacement
 import build.raft.app.RaftLiveRootAnchorRef
-import build.raft.app.RaftMemberAvatar
-import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
 import build.raft.app.RaftModalAnchoredPopover
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftPopoverAnchorResolver

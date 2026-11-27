@@ -41,6 +41,7 @@ import build.raft.app.displayTitle
 import build.raft.app.fill
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement

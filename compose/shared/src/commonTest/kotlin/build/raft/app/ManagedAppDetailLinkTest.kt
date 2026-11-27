@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.parseSharedSettingsAgentsAsMembers
+import build.raft.app.members.MembersManagedAppDetailTarget
+import build.raft.app.members.appBotIdentityOrNull
+import build.raft.app.members.membersManagedAppDetailTarget
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

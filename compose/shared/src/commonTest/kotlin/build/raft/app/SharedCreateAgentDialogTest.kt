@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.HostedRuntimeModels
+import build.raft.app.members.MembersCreateAgentMode
+import build.raft.app.members.requiresComputerSelection
 import build.raft.app.data.HostedRuntimeModelOption
 import build.raft.app.data.BundledRuntimeCatalog
 import kotlin.test.Test

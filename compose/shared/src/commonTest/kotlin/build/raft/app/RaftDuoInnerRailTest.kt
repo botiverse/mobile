@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.settings.iconName
 import build.raft.app.shell.RaftBottomTabItemPayload

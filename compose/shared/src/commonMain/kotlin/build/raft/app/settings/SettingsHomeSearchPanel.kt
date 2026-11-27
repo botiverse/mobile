@@ -105,8 +105,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.EmptyRaftAgentStatusResolver
-import build.raft.app.EmptyRaftMemberAppBotResolver
-import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberAppBotResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.HomeSearchArtifactsContext
 import build.raft.app.HomeSearchContinueFooter
 import build.raft.app.HomeSearchCoreGroupsNoteLine
@@ -120,7 +120,7 @@ import build.raft.app.HomeSearchOverlayChrome
 import build.raft.app.HomeSearchOverlayPanel
 import build.raft.app.HomeSearchReturnHighlight
 import build.raft.app.LocalRaftAppShellNetworkOffline
-import build.raft.app.LocalRaftMemberAppBotResolver
+import build.raft.app.members.LocalRaftMemberAppBotResolver
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftAppRadius
 import build.raft.app.shell.RaftAppShellBodyTopBanner
@@ -141,8 +141,10 @@ import build.raft.app.RaftHomeNotificationKind
 import build.raft.app.shell.RaftInlineListSelection
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAppBotResolver
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAppBotResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftPopoverAnchorResolver
 import build.raft.app.RaftSearchEmptyState

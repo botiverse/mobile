@@ -32,6 +32,8 @@ import build.raft.app.data.TasksPageScope
 import build.raft.app.data.TasksQueryState
 import build.raft.app.data.TasksViewMode
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersScopeTestTag
+import build.raft.app.members.MembersSearchTestTag
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.StringDesc
 import build.raft.designsystem.theme.RaftAppearance

@@ -22,6 +22,7 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftEventBuses
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftThreadAttachmentItem

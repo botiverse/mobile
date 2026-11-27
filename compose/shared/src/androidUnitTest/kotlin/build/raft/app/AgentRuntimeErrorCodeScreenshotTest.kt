@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentRuntimeErrorCode
+import build.raft.app.members.MembersAgentRuntimeErrorBanner
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

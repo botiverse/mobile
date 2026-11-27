@@ -9,6 +9,7 @@ import build.raft.app.data.RaftAgentsApiClient
 import build.raft.app.data.RaftComputersApi
 import build.raft.app.data.RaftComputersApiClient
 import build.raft.app.data.SharedCreateAgentCoordinator
+import build.raft.app.members.MembersCreateAgentMode
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId

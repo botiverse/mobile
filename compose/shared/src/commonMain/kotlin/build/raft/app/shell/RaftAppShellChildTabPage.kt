@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.optString
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize

@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.AgentSummary
+import build.raft.app.members.createdAgentMemberProfile
+import build.raft.app.members.groupedAgentMembers
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

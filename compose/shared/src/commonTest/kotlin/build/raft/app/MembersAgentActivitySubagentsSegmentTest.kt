@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.AgentRuntimesWithSubagents
+import build.raft.app.members.membersAgentActivityShowsSubagents
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

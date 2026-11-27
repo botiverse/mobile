@@ -50,8 +50,8 @@ import build.raft.app.EmptyRaftAgentStatusResolver
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftColor
 import build.raft.app.RaftLiveRootAnchorRef
-import build.raft.app.RaftMemberAvatar
-import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
 import build.raft.app.RaftPopoverAnchorResolver
 import build.raft.app.RaftPopoverLocalPoint
 import build.raft.app.RaftThreadSurfaceKind

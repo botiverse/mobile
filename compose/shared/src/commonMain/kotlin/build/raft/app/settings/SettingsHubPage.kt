@@ -5,6 +5,7 @@ import build.raft.app.settings.iconName
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.serverRoleCanViewAdministrationSettings
 import build.raft.app.model.serverRoleCanViewBillingSettings
 import build.raft.app.raftArgbHex

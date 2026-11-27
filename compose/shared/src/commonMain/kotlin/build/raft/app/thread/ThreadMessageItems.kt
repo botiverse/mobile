@@ -18,7 +18,7 @@ import build.raft.app.network.sync.ThreadRepliesReadModel
 import build.raft.app.resolveOpenRequest
 import build.raft.app.thread.toRaftTimeContext
 import build.raft.app.toRaftAvatarLabel
-import build.raft.app.toRaftTimeContext
+import build.raft.app.members.toRaftTimeContext
 import build.raft.app.traceId
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.model.RaftTimeFormat24Hour

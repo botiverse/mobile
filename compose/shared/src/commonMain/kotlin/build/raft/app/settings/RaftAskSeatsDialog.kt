@@ -18,8 +18,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftDialogFooter
-import build.raft.app.RaftMemberAvatar
-import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.RaftUnifiedDialog
 import build.raft.app.ThreadLaunchConversationIdentity

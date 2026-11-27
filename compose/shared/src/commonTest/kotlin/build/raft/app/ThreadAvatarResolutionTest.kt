@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.canOpenThreadAuthorProfile
 import build.raft.app.thread.resolveThreadRowAvatarWireValue

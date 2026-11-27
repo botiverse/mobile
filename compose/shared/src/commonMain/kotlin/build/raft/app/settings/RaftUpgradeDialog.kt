@@ -48,7 +48,7 @@ import build.raft.app.data.percentEncode
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.get
 import build.raft.app.holdsExternalSlot
-import build.raft.app.membersLocalizedCreatedDateOrNull
+import build.raft.app.members.membersLocalizedCreatedDateOrNull
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull

@@ -41,6 +41,12 @@ import build.raft.app.data.RawServerMessagePriority
 import build.raft.app.data.ScreenError
 import build.raft.app.data.errorPresentation
 import build.raft.app.data.usableServerRefusalMessage
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.MembersCreateAgentMode
+import build.raft.app.members.RaftAppBotBadge
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import build.raft.app.model.MemberKind
 import build.raft.app.network.raftValidTraceIdOrNull
 import build.raft.app.components.RaftSlotIcon

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.data.ActorResolveRef
 import build.raft.app.data.ResolvedActor
@@ -9,6 +9,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.avatarSlotResolution
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.resolveAvatarSlot
+import build.raft.app.raftAvatarDiagnosticsHash
+import build.raft.app.raftAvatarDiagnosticsSource
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key

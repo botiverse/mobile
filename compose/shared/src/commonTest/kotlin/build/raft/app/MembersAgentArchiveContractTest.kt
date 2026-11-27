@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.AgentArchiveWorkspaceChoice
+import build.raft.app.members.membersAgentArchiveHasComputerWorkspace
+import build.raft.app.members.membersAgentArchiveRequestBody
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

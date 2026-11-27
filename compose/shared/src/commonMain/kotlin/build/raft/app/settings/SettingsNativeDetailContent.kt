@@ -8,6 +8,7 @@ import build.raft.app.data.RaftAppSettingSurface
 import build.raft.app.data.toSystemNotificationActionResult
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.shell.jumpPage
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*

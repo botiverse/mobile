@@ -46,6 +46,8 @@ import build.raft.app.data.RawServerMessagePriority
 import build.raft.app.data.ScreenError
 import build.raft.app.data.errorPresentation
 import build.raft.app.data.usableServerRefusalMessage
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
 import kotlinx.coroutines.launch
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftButton

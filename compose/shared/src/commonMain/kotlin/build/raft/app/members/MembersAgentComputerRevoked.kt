@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +13,10 @@ import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerRevocationSnapshot
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.raftComputerCommandPlatform
+import build.raft.app.raftComputerCommands
+import build.raft.app.raftComputerRevokedCause
+import build.raft.app.raftComputerRevokedTitle
 import build.raft.app.resources.*
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme

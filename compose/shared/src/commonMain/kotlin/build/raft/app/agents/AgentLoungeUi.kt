@@ -61,6 +61,9 @@ import build.raft.app.data.agentLoungeOpenFailureTraceId
 import build.raft.app.data.agentLoungeSidebarEntry
 import build.raft.app.data.loungeAgentDisplayName
 import build.raft.app.data.rememberServerFeatureLatched
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.rememberRaftMemberAppBot
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

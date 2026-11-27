@@ -31,6 +31,7 @@ import build.raft.app.shell.raftUnderAppShellTopBar
 import build.raft.app.thread.icon
 import build.raft.app.components.RaftIconSpinner
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf

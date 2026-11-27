@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.AgentIssueReportResult
+import build.raft.app.members.buildMembersAgentIssueReportReference
+import build.raft.app.members.membersAgentIssueCanIncludeMachineLog
+import build.raft.app.members.membersAgentIssueMachineLogTailChecked
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

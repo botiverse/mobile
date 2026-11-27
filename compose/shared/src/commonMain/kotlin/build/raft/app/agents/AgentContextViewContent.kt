@@ -54,6 +54,8 @@ import build.raft.app.data.buildAgentContextViewToolPairs
 import build.raft.app.data.findAgentContextViewMatchingRows
 import build.raft.app.data.isAgentContextViewRaftNoticePart
 import build.raft.app.format.RaftFormat
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*

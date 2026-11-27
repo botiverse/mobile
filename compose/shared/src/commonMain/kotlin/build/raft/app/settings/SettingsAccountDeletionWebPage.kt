@@ -20,6 +20,7 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.ServerId
 import build.raft.app.shell.raftShellStoreScope
 import kotlinx.coroutines.launch

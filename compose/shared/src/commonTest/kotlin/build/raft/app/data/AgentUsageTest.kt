@@ -1,16 +1,16 @@
 package build.raft.app.data
 
-import build.raft.app.AgentUsagePluralForm
+import build.raft.app.members.AgentUsagePluralForm
 import build.raft.app.MemberDetailAccessMode
-import build.raft.app.MembersAgentDetailTab
-import build.raft.app.agentUsagePluralForm
-import build.raft.app.membersAgentDetailTabsForAccess
-import build.raft.app.membersOrderedAgentTabs
-import build.raft.app.membersVisibleAgentTabs
+import build.raft.app.members.MembersAgentDetailTab
+import build.raft.app.members.agentUsagePluralForm
+import build.raft.app.members.membersAgentDetailTabsForAccess
+import build.raft.app.members.membersOrderedAgentTabs
+import build.raft.app.members.membersVisibleAgentTabs
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
 import build.raft.app.runPortableCoroutineTest
-import build.raft.app.toMembersAgentDetailTabOrNull
+import build.raft.app.members.toMembersAgentDetailTabOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

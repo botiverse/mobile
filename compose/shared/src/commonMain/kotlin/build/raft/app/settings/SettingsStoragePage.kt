@@ -48,6 +48,7 @@ import build.raft.app.data.isRefreshing
 import build.raft.app.downloads.RaftDownloadCenterProcess
 import build.raft.app.entries
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.optString
 import build.raft.app.raftAttachmentOpenResultMessage
 import build.raft.app.shell.raftBottomSafeAreaPadding

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.members.resource
 import build.raft.app.thread.key
 import java.security.MessageDigest
 import javax.imageio.ImageIO

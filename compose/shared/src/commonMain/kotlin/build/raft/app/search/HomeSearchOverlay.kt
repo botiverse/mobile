@@ -38,6 +38,9 @@ import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.SharedHomeState
 import build.raft.app.label
+import build.raft.app.localized
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.localized
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.designsystem.components.RaftSearchPanel
 import build.raft.designsystem.components.RaftSearchPanelFooter

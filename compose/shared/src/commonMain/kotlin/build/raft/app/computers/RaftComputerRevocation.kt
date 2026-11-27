@@ -9,6 +9,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SettingsComputerRevocationSnapshot
 import build.raft.app.data.SettingsComputerRevokedVia
+import build.raft.app.members.membersLocalizedCreatedDateOrNull
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner

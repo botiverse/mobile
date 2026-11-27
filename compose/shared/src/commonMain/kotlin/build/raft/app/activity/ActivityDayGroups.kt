@@ -16,6 +16,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.InboxItem
+import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerHour
 import build.raft.app.model.MillisPerMinute

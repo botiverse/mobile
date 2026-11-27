@@ -1,6 +1,6 @@
 package build.raft.app.markdown
 
-import build.raft.app.raftMarkdownMentionSpans
+import build.raft.app.members.raftMarkdownMentionSpans
 import build.raft.app.RaftColor
 import build.raft.app.RaftType
 import build.raft.app.raftInlineCodeCharWrapBridgeThreshold

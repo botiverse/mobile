@@ -6,9 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
-import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberDetailIdentity
-import build.raft.app.MemberDetailProfileChannelIdKey
+import build.raft.app.members.MemberDetailProfileChannelIdKey
 import build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE
 import build.raft.app.shell.RAFT_BESIDE_VISIBILITY_TIMEOUT_MILLIS
 import build.raft.app.RaftAdaptiveDetailCloseRequest
@@ -23,7 +23,7 @@ import build.raft.app.shell.RaftBesideState
 import build.raft.app.shell.RaftBesideVisibility
 import build.raft.app.shell.RaftBesideVisit
 import build.raft.app.shell.RaftDetailConversation
-import build.raft.app.RaftMembersPayload
+import build.raft.app.members.RaftMembersPayload
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.shell.RaftWideNavEntry
 import build.raft.app.shell.RaftWideSideColumns
@@ -69,8 +69,8 @@ import build.raft.app.thread.ThreadParentNavigationPrevious
 import build.raft.app.thread.key
 import build.raft.app.toJsonObject
 import build.raft.app.toKuiklyJson
-import build.raft.app.toMemberDetailPageData
-import build.raft.app.toRaftMemberDetailPayload
+import build.raft.app.members.toMemberDetailPageData
+import build.raft.app.members.toRaftMemberDetailPayload
 import build.raft.app.shell.withRaftShellStoreScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async

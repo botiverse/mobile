@@ -2,7 +2,7 @@ package build.raft.app.data
 
 import build.raft.app.model.AvatarReference
 import build.raft.app.SharedThreadStoreTestFakes.FakeMemberRepository
-import build.raft.app.currentMemberAvatarWireValue
+import build.raft.app.members.currentMemberAvatarWireValue
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

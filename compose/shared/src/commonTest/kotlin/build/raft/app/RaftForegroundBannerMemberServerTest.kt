@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
