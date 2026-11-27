@@ -1,7 +1,14 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.traceId
+import build.raft.app.userFacingErrorMessage
 import build.raft.app.format.RaftFormat
+import build.raft.app.iconName
+import build.raft.app.localized
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.localizedUserFacingMessage
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsStorageRow
 import build.raft.app.data.SharedSettingsStorageSnapshot
@@ -17,7 +24,12 @@ import build.raft.app.data.ACCOUNT_ACTION_SHARE_USAGE_DATA
 import build.raft.app.data.SHARE_USAGE_DATA_DEFAULT
 import build.raft.app.data.ConnectedAccountStatus
 import build.raft.app.model.MemberKind
+import build.raft.app.raftMemberAvatarCacheIdentity
+import build.raft.app.resolve
 import androidx.compose.runtime.Composable
+import build.raft.app.ErrorPresentationStrings
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberAvatarCacheIdentity
 import androidx.compose.foundation.layout.size
 import kotlinx.coroutines.flow.map
 import build.raft.app.data.map

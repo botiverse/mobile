@@ -1,6 +1,13 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.settings.AppShellLaunchSelection
+import build.raft.app.settings.HOME_ACTIVITY_PAGE
+import build.raft.app.settings.appShellActiveChildPagerTab
+import build.raft.app.settings.appShellBottomTabPerformanceRoute
+import build.raft.app.settings.appShellBottomTabs
+import build.raft.app.settings.appShellLaunchSelection
+import build.raft.app.settings.appShellRetainedChildTabs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

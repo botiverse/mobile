@@ -8,6 +8,8 @@ import build.raft.app.RaftHostNavigationKind.Initial
 import build.raft.app.RaftHostNavigationKind.Page
 import build.raft.app.RaftHostNavigationKind.Redirect
 import build.raft.app.RaftHostNavigationKind.Reload
+import build.raft.app.matches
+import build.raft.app.settings.matches
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

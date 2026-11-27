@@ -16,6 +16,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.SearchEntityType
+import build.raft.app.settings.homeSearchEntityCandidates
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

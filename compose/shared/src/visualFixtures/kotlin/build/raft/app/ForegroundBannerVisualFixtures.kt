@@ -6,6 +6,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.threadIdentity
+import build.raft.app.settings.iconName
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import build.raft.app.iconName
 
 @Composable
 internal fun ForegroundBannerVisualContent() {

@@ -6,6 +6,9 @@ import androidx.compose.runtime.setValue
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftRatingPrompt
+import build.raft.app.settings.RAFT_APP_SHELL_HOST_DID_APPEAR_PAGER_EVENT
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RaftAppShellContent
 
 @Page(RAFT_APP_SHELL_PAGE, supportInLocal = true)
 internal class ComposeRaftAppShellPage : build.raft.app.base.BasePager() {

@@ -7,6 +7,9 @@ import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.settings.AppShellEmailVerificationGateContent
+import build.raft.app.settings.AppShellServerGateContent
+import build.raft.app.settings.AuthChooseServerVisualApi
 
 @Composable
 internal fun AuthChooseServerVisualContent() {

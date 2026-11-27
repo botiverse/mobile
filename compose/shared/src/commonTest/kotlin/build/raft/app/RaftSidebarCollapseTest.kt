@@ -4,6 +4,8 @@ import androidx.compose.ui.input.key.Key
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftCollapsibleColumn
+import build.raft.app.settings.AppShellRailSavedKey
+import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.thread.key
 import build.raft.designsystem.theme.RaftPointerInput
 import kotlin.test.Test

@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.settings.matches
 import build.raft.app.thread.label
 import build.raft.app.thread.localizedLabel
 import androidx.compose.runtime.setValue
@@ -22,8 +24,10 @@ import build.raft.app.data.ComputerStatus
 import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SharedComputersLoadStatus
 import build.raft.app.data.sharedAgentDetailOwner
+import build.raft.app.iconName
 import build.raft.app.label
 import build.raft.app.localizedLabel
+import build.raft.app.matches
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

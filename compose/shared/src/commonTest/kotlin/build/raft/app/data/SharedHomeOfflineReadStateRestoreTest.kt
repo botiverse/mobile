@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.SharedHomeConversationRowProjector
+import build.raft.app.settings.SharedHomeConversationRowProjector
 import build.raft.app.model.ChannelId
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope

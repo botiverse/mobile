@@ -13,6 +13,8 @@ import build.raft.app.data.FeedbackTicketStatus
 import build.raft.app.data.FeedbackTicketsListPhase
 import build.raft.app.data.SettingsFeedbackTicketsRepository
 import build.raft.app.data.SettingsFeedbackTicketsStore
+import build.raft.app.settings.SettingsFeedbackFiledTicketHandoff
+import build.raft.app.settings.followSettingsFeedbackFiledTickets
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent

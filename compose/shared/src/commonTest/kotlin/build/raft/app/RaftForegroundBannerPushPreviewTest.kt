@@ -1,10 +1,12 @@
 package build.raft.app
 
 import build.raft.app.data.PushPreviewMode
+import build.raft.app.iconName
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ThreadId
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

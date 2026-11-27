@@ -1,6 +1,9 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.sharedSettingsHostShellWebUrl
+import build.raft.app.sharedSettingsWebUrl
 import build.raft.app.thread.key
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +13,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftColor
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTopPageHeader
 import build.raft.app.base.Utils
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.data.StoredAuthSession
@@ -17,6 +25,10 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.get
+import build.raft.app.iconName
+import build.raft.app.raftPlatformFollowsAppStoreBillingRules
+import build.raft.app.raftShellStoreScope
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize

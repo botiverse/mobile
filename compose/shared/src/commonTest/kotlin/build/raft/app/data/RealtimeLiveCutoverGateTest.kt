@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.applySelectedServerTerminalRealtimeTransition
+import build.raft.app.settings.applySelectedServerTerminalRealtimeTransition
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.RealtimeRefreshRequired

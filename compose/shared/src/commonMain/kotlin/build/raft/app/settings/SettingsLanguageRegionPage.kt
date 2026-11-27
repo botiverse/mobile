@@ -1,8 +1,10 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.traceId
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftComboboxOption
 import build.raft.app.components.SegmentedControlOption
@@ -21,10 +23,14 @@ import build.raft.app.data.SettingsMobileSelectionSnapshot
 import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SettingsLanguageRegionSnapshot
 import build.raft.app.data.TranslationTargetLanguages
+import build.raft.app.hasUserFacingError
+import build.raft.app.iconName
+import build.raft.app.localizedUserFacingMessage
 import build.raft.app.data.ASSISTANT_LANGUAGE_REGION_SETTINGS
 import build.raft.app.assistant.AssistantSettingChangesSection
 import build.raft.app.assistant.LocalAssistantSettingChangesSource
 import build.raft.app.assistant.rememberAssistantSettingChanges
+import build.raft.app.available
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -49,6 +55,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
 import kotlinx.coroutines.flow.map
 
 @Composable

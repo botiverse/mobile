@@ -12,6 +12,11 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.settings.RaftUpgradeDialog
+import build.raft.app.settings.RaftUpgradeExternalContext
+import build.raft.app.settings.RaftUpgradeGate
+import build.raft.app.settings.RaftUpgradeMode
+import build.raft.app.settings.RaftUpgradeRequest
 import build.raft.app.thread.LocalThreadActionCardSpecHost
 import build.raft.app.thread.ThreadActionCardSpecHost
 import build.raft.app.thread.ThreadExternalFreezeNoticeBanner

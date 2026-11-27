@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
@@ -26,6 +27,12 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SharedSettingsViewModel
 import build.raft.app.data.kmmResourceLocaleTag
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.iconName
+import build.raft.app.optString
+import build.raft.app.raftReleaseNotesAppSlug
+import build.raft.app.raftWebOriginOf
+import build.raft.app.raftWebViewUrlForLog
+import build.raft.app.rememberRaftWebViewController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +44,16 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
+import build.raft.app.AuthenticatedProductPager
+import build.raft.app.AuthenticatedProductRoute
+import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftWebViewController
+import build.raft.app.RaftWebViewNavigationState
+import build.raft.app.RememberKmmResourceLocaleSeedFromLocalActivity
 import kotlinx.coroutines.CancellationException
 
 const val RELEASE_NOTES_PAGE = "compose_release_notes"

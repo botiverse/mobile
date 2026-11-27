@@ -4,6 +4,7 @@ import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.ComputerAccessRevokedErrorCode
 import build.raft.app.assistant.AssistantOwnerSection
 import build.raft.app.resources.*
+import build.raft.app.settings.observe
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon
 import build.raft.app.thread.localizedLabel

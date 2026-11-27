@@ -22,7 +22,7 @@ import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
 import build.raft.app.assistant.ThreadAssistantPanelSheet
 import build.raft.app.assistant.assistantOtterDmOpenRequest
 import build.raft.app.base.BridgeModule
-import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider

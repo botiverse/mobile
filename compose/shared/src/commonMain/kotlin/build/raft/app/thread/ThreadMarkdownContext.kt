@@ -35,7 +35,7 @@ import androidx.compose.runtime.key
 import build.raft.app.RaftTaskConversationChannelKind
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.TaskOpenTarget
-import build.raft.app.buildStandaloneTaskThreadLaunchPayload
+import build.raft.app.settings.buildStandaloneTaskThreadLaunchPayload
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import kotlinx.coroutines.flow.map

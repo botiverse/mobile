@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import build.raft.app.MainActivity
 import build.raft.app.MainActivityDownloadCenterLaunchPlan
-import build.raft.app.SETTINGS_STORAGE_PAGE
+import build.raft.app.settings.SETTINGS_STORAGE_PAGE
 import build.raft.app.dispatchMainActivityLaunchIntent
 import build.raft.app.downloads.RaftDownloadEntry
 import build.raft.app.downloads.RaftDownloadStatus

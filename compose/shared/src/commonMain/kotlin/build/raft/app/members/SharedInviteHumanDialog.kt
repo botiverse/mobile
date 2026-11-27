@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.settings.matches
+import build.raft.app.settings.raftIsSeatLimitError
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -26,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.DataResult
 import build.raft.app.data.SettingsServerJoinLinkSnapshot
 import build.raft.app.data.SharedMembersDataSource
+import build.raft.app.matches
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerSummary
 import build.raft.designsystem.components.RaftBanner

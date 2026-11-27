@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.settings.retainedAppShellSelectedTab
+
 /** How many earlier tabs Back can walk through. */
 internal const val AppShellTabHistoryCap = 8
 

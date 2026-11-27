@@ -8,6 +8,7 @@ import build.raft.app.assistant.AssistantOwnerPausedNotice
 import build.raft.app.assistant.AssistantOwnerSection
 import build.raft.app.badgeVariant
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.badgeVariant
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon
@@ -27,6 +28,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.PROFILE_DESCRIPTION_INVALID_CODE
 import build.raft.app.data.PROFILE_DESCRIPTION_MAX_LENGTH
 import build.raft.app.data.profileDescriptionTooLong
+import build.raft.app.iconName
 import build.raft.app.localizedLabel
 import build.raft.app.data.SharedAgentDetailActions
 import build.raft.app.data.SharedAgentDetailIntent

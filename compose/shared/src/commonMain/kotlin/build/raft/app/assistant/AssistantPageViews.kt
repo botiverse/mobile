@@ -30,7 +30,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftTraceIdNote
-import build.raft.app.SettingsDetailShell
+import build.raft.app.settings.SettingsDetailShell
 import build.raft.app.raftArgbHex
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner

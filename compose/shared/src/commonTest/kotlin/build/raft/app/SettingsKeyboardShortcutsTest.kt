@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.settings.settingsKeyboardShortcutGroups
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

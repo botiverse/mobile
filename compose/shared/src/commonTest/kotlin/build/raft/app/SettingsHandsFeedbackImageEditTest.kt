@@ -4,6 +4,16 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsHandsFeedbackDraftStore
+import build.raft.app.settings.SettingsHandsFeedbackEditedGroupCommitResult
+import build.raft.app.settings.SettingsHandsFeedbackImageEditEvent
+import build.raft.app.settings.SettingsHandsFeedbackImageEditFoldResult
+import build.raft.app.settings.SettingsHandsFeedbackImageEditSession
+import build.raft.app.settings.commitSettingsHandsFeedbackEditedGroup
+import build.raft.app.settings.foldSettingsHandsFeedbackImageEditEvent
+import build.raft.app.settings.parseSettingsHandsFeedbackImageEditEvent
+import build.raft.app.settings.promoteSettingsHandsFeedbackEditedAttachments
+import build.raft.app.settings.settingsHandsFeedbackMergedAttachments
+import build.raft.app.settings.settingsHandsFeedbackPickedImageToAnnotate
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals

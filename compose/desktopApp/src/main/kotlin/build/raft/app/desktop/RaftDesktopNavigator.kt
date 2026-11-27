@@ -1,7 +1,7 @@
 package build.raft.app.desktop
 
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import build.raft.app.RaftDesktopFileLog
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftPageOpenTransition

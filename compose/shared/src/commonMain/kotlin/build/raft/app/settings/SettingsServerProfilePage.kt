@@ -1,9 +1,13 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.textFieldValueAtEnd
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon
+import build.raft.app.userFacingErrorMessage
+import build.raft.app.withRaftFontWeight
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftAvatar
@@ -50,10 +54,19 @@ import build.raft.app.data.SERVER_ACTION_PROFILE_SAVE
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.serverConfirmationItemId
+import build.raft.app.fill
+import build.raft.app.hasUserFacingError
+import build.raft.app.iconName
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.localizedUserFacingMessage
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.SettingsServerSectionSnapshot
 import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.raftArgbHex
+import build.raft.app.raftFloatingContentClickTarget
+import build.raft.app.raftSpanStyleForWeight
+import build.raft.app.rememberMemberRemovalImpact
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -91,6 +104,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.HandedOverComputersNote
+import build.raft.app.MemberRemovalImpactNote
+import build.raft.app.Modal
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAvatarHttpImage
+import build.raft.app.RaftColor
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftModalDismissBarrier
+import build.raft.app.RaftType
+import build.raft.app.RaftUnifiedDialog
+import build.raft.app.ServerPublicVisibilityErrorKind
+import build.raft.app.ServerPublicVisibilityIntent
+import build.raft.app.ServerPublicVisibilityState
+import build.raft.app.ServerPublicVisibilityStore
 
 @Composable
 internal fun rememberSettingsServerPublicAccessBinding(

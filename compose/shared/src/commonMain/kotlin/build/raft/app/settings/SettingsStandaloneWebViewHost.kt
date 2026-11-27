@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.accepts
 import build.raft.app.thread.icon
 import androidx.compose.runtime.Composable
@@ -36,6 +37,10 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.resolveAppLinkIconUrl
+import build.raft.app.displayTitle
+import build.raft.app.fill
+import build.raft.app.get
+import build.raft.app.iconName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -58,12 +63,44 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import build.raft.app.AuthenticatedProductPager
+import build.raft.app.AuthenticatedProductRoute
+import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.NetworkRaftBrowserSignInApi
+import build.raft.app.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.RAFT_WEB_VIEW_LOAD_STALL_TIMEOUT_MS
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftColor
+import build.raft.app.RaftInstalledAppOriginMatch
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftNativeNavBarAction
+import build.raft.app.RaftSettingsComputersRoute
+import build.raft.app.RaftTopPageHeader
+import build.raft.app.RaftType
+import build.raft.app.RaftWebView
+import build.raft.app.RaftWebViewController
+import build.raft.app.RaftWebViewLoadPhase
+import build.raft.app.RaftWebViewLoadWatchdog
+import build.raft.app.RaftWebViewNavigationState
+import build.raft.app.RememberKmmResourceLocaleSeedFromLocalActivity
+import build.raft.app.SETTINGS_WEB_PAGE_DIAGNOSTICS_NAME
 import build.raft.app.accepts
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
+import build.raft.app.optString
+import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.raftEmbeddedWebLangTag
+import build.raft.app.raftOwnWebUrlForLog
+import build.raft.app.raftPlatformUsesEphemeralAuthWebView
+import build.raft.app.raftShellStoreScope
+import build.raft.app.raftWebOriginOf
+import build.raft.app.raftWebUrlWithLang
+import build.raft.app.raftWebViewUrlForLog
+import build.raft.app.rememberRaftWebViewController
 
 const val SETTINGS_WEB_VIEW_PAGE = "compose_settings_webview"
 internal const val SETTINGS_WEB_VIEW_SURFACE = "settingsWebViewSurface"

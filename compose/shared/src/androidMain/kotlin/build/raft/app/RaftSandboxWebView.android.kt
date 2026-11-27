@@ -47,6 +47,8 @@ import build.raft.webcontainer.filterWebContainerAndroidInsets
 import build.raft.webcontainer.isWebJsDialogPermitted
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
+import build.raft.app.matches
+import build.raft.app.settings.matches
 import build.raft.app.thread.key
 import java.io.ByteArrayInputStream
 import java.net.URI

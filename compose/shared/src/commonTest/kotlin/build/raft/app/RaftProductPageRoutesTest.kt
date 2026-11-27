@@ -4,6 +4,8 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftPageRoute
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSettingsTab
+import build.raft.app.settings.AppShellRailSavedKey
+import build.raft.app.settings.AppShellRailSearchKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.appShellAuthLossEffectShouldApply
+import build.raft.app.settings.appShellAuthLossEffectShouldApply
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart

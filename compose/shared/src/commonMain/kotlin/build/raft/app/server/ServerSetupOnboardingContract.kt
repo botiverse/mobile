@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.matches
+import build.raft.app.settings.matches
 import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException

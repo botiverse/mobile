@@ -21,7 +21,9 @@ import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftEventBus
 import build.raft.app.data.RaftEventBuses
+import build.raft.app.iconName
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftThreadAttachmentItem
 import build.raft.app.thread.icon
 import build.raft.app.components.RaftUiMenuItem

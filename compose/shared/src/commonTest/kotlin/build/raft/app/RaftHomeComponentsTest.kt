@@ -21,6 +21,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.settings.SharedHomeConversationRowProjector
+import build.raft.app.settings.SharedHomeConversationRowSeed
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import androidx.compose.ui.text.font.FontWeight

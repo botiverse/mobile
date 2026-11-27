@@ -19,6 +19,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.optBoolean
 import build.raft.app.raftAgentStatusIndicatorState
 import build.raft.app.raftArgbHex
+import build.raft.app.settings.iconName
 import build.raft.app.thread.iconName
 import build.raft.app.withRaftFontWeight
 import build.raft.app.data.HomeChannelRow

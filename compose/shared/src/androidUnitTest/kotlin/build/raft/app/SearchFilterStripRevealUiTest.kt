@@ -22,6 +22,7 @@ import build.raft.app.data.SearchTimeRange
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.SharedHomeSearchFilters
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest

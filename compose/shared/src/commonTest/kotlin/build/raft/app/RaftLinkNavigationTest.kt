@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.LinkOpenMode
+import build.raft.app.settings.raftUrlIsAppStoreRestrictedPurchaseUrl
+import build.raft.app.settings.raftUrlIsOwnBillingPath
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

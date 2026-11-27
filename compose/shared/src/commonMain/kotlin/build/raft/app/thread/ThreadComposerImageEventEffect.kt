@@ -3,7 +3,7 @@ package build.raft.app.thread
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftEventBus
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import build.raft.app.optString
 import build.raft.app.parseRaftFilePreviewComposerImageEvent
 import build.raft.app.raftFilePreviewAbortComposerImageEventSession

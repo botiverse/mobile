@@ -78,7 +78,9 @@ import build.raft.app.data.raftRailSlots
 import build.raft.app.data.raftVisiblePlaceCount
 import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.data.withRaftRailKeptPlaces
+import build.raft.app.iconName
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftAppRailDefaults

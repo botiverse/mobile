@@ -27,7 +27,10 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RaftRailTabIds
+import build.raft.app.iconName
 import build.raft.app.resources.*
+import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.settings.iconName
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftReorderDefaults
 import build.raft.designsystem.components.RaftReorderState

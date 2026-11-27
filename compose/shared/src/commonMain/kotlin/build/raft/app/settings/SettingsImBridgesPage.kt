@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AppLocale
@@ -6,6 +6,7 @@ import build.raft.app.data.SLACK_BRIDGE_FEATURE_FLAG_KEY
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.ServerId
+import build.raft.app.sharedSettingsHostShellWebUrl
 
 // IM Bridges is the web's Settings section (botiverse/slock packages/web/src/components/settings/
 // IMBridgesSettingsSection.tsx, `/settings/im-bridges`) in the Settings web page, like

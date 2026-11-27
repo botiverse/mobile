@@ -3,6 +3,13 @@ package build.raft.app
 import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.resources.*
+import build.raft.app.settings.AppShellThreadTimeContext
+import build.raft.app.settings.HomeSearchResultGroup
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SharedHomeSearchEntityRow
+import build.raft.app.settings.SharedHomeSearchMessageResultRow
+import build.raft.app.settings.SharedHomeThreadResultGroup
+import build.raft.app.settings.homeSearchEntityCandidates
 import build.raft.app.thread.icon
 import build.raft.app.thread.label
 import androidx.compose.foundation.layout.Box

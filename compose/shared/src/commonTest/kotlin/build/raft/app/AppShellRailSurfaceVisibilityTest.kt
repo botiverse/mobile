@@ -1,5 +1,11 @@
 package build.raft.app
 
+import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.settings.appShellDmsTabShowsDetail
+import build.raft.app.settings.appShellRailSurfaceBackDismissesDetailFirst
+import build.raft.app.settings.appShellSharedDetailSurfaceVisible
+import build.raft.app.settings.appShellTasksPendingColumnAllowed
+import build.raft.app.settings.appShellTasksPendingColumnOpen
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

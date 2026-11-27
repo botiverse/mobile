@@ -1,6 +1,6 @@
 @file:OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect

@@ -1,6 +1,16 @@
 package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.settings.AppShellRailAppsKey
+import build.raft.app.settings.AppShellRailArtifactsKey
+import build.raft.app.settings.AppShellRailAssistantKey
+import build.raft.app.settings.AppShellRailComputersKey
+import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.settings.appShellRailInlinePage
+import build.raft.app.settings.appShellRailInlinePageKey
+import build.raft.app.settings.appShellRailInlinePageRailId
+import build.raft.app.settings.appShellRailSurfaceBackDismissesDetailFirst
+import build.raft.app.settings.appShellSharedDetailSurfaceVisible
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -26,6 +26,7 @@ import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.parseConversationKindOrNull
 import build.raft.app.resolve
+import build.raft.app.settings.matches
 import build.raft.app.thread.toConversationOpenSourceMessageIdentity
 import build.raft.app.toConversationOpenSourceMessageIdentity
 import kotlinx.coroutines.CancellationException

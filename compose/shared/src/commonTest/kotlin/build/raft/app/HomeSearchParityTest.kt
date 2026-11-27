@@ -21,6 +21,15 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.HomeSearchEntityDestination
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SearchEntityType
+import build.raft.app.settings.destinationOrNull
+import build.raft.app.settings.homeSearchEntityResults
+import build.raft.app.settings.homeSearchInlineConversationOrNull
+import build.raft.app.settings.homeSearchThreadTitle
+import build.raft.app.settings.previewMarkdownText
+import build.raft.app.settings.searchHitPreviewText
 import build.raft.app.thread.key
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

@@ -1,15 +1,24 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import build.raft.app.RaftAdaptiveDetailSelection
+import build.raft.app.RaftAdaptiveWorkspaceState
+import build.raft.app.RaftRailChatTab
+import build.raft.app.RaftRailLanding
+import build.raft.app.RaftRailPlaces
+import build.raft.app.RaftWideNavEntry
+import build.raft.app.ServerLastConversationRepository
 import build.raft.app.base.BridgeModule
+import build.raft.app.chatConversation
 import build.raft.app.data.SharedAdaptiveWorkspaceStore
 import build.raft.app.data.SharedHomeShellIntent
 import build.raft.app.data.SharedHomeShellStore
 import build.raft.app.thread.dispatch
+import build.raft.app.withDefaultLandingRearmed
 
 /*
  * The shell's rail places (RaftRailPlaces.kt), wired here and not in SettingsHomePage's RaftAppShellReadyContent,

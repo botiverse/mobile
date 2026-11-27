@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -14,14 +14,22 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.data.AccountLoginSecurity
 import build.raft.app.data.NetworkAccountLoginSecurityDataSource
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedAccountLoginSecurityIntent
 import build.raft.app.data.SharedAccountLoginSecurityState
 import build.raft.app.data.SharedAccountLoginSecurityStore
+import build.raft.app.iconName
+import build.raft.app.raftArgbHex
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.sharedSettingsWebUrl
 import build.raft.app.thread.dispatch
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

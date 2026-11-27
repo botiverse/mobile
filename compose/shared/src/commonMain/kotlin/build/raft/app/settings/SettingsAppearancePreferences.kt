@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +20,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftTraceIdNote
+import build.raft.app.available
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
@@ -38,8 +41,18 @@ import build.raft.app.data.SettingsMobileToggleSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.raftAppSettingToggleValue
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.get
+import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.nav.RaftIosNativeNavFlag
+import build.raft.app.raftPlatformHasFinePointer
+import build.raft.app.raftPlatformIsiOSAppOnMac
+import build.raft.app.raftPlatformLargeScreenPossible
+import build.raft.app.raftPlatformSupportsInAppBrowser
+import build.raft.app.raftPlatformSupportsMultiShellHost
+import build.raft.app.rememberRaftHardwareKeyboardConnected
 import build.raft.app.resources.*
+import build.raft.app.traceId
+import build.raft.app.userFacingErrorMessage
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

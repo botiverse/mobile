@@ -10,6 +10,10 @@ import build.raft.app.data.withOpenedDetail
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.settings.AppShellBesideColumnsHost
+import build.raft.app.settings.AppShellBesideMemory
+import build.raft.app.settings.AppShellBesideVisibilityCheck
+import build.raft.app.settings.AppShellBesideVisitKey
 import build.raft.app.thread.key
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

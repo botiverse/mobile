@@ -1,6 +1,14 @@
-package build.raft.app
+package build.raft.app.settings
 
+import build.raft.app.AuthenticatedProductPager
+import build.raft.app.AuthenticatedProductRoute
+import build.raft.app.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.RAFT_SHELL_SERVER_ID
 import build.raft.app.data.SharedSettingsDestination
+import build.raft.app.matches
+import build.raft.app.optLong
+import build.raft.app.optString
+import build.raft.app.settings.matches
 import build.raft.app.thread.key
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.compat.pager.Page

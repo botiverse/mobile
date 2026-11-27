@@ -1,7 +1,7 @@
 package build.raft.app.data
 
-import build.raft.app.SettingsWebViewSurface
-import build.raft.app.standaloneSettingsWebViewInjectedJavaScript
+import build.raft.app.settings.SettingsWebViewSurface
+import build.raft.app.settings.standaloneSettingsWebViewInjectedJavaScript
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async

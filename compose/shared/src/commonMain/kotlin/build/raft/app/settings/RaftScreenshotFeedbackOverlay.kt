@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -46,6 +46,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import build.raft.app.FeedbackDiagnosticsReference
+import build.raft.app.RaftAspectFitImagePreviewSurface
+import build.raft.app.RaftImageThumbnailContentScale
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.cmp.RaftCmpToasts
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
@@ -57,8 +63,16 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackDiagnosticsUploader
 import build.raft.app.data.SettingsFeedbackProxySubmitter
 import build.raft.app.data.SettingsFeedbackType
+import build.raft.app.fill
 import build.raft.app.format.RaftFormat
+import build.raft.app.get
 import build.raft.app.network.RaftAppIdentityRegistry
+import build.raft.app.origin
+import build.raft.app.post
+import build.raft.app.raftArgbHex
+import build.raft.app.raftFeedbackWebViewClientKind
+import build.raft.app.raftLogInfo
+import build.raft.app.raftShellStoreScope
 import build.raft.app.resources.Res
 import build.raft.app.resources.artifacts_column_title
 import build.raft.app.resources.artifacts_dashboard_title
@@ -103,7 +117,9 @@ import build.raft.app.resources.tab_settings
 import build.raft.app.resources.tab_tasks
 import build.raft.app.resources.thread_members_heading
 import build.raft.app.resources.thread_reply_title
+import build.raft.app.submit
 import build.raft.app.thread.icon
+import build.raft.app.toKuiklyJson
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

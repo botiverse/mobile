@@ -5,6 +5,11 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.settings.SearchEntityPinTarget
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SearchEntityType
+import build.raft.app.settings.dispatchSearchEntityPinMenuSelection
+import build.raft.app.settings.searchEntityPinTarget
 import build.raft.app.thread.ThreadConversationPinTarget
 import build.raft.app.thread.key
 import build.raft.app.thread.toUiState

@@ -4,6 +4,7 @@ import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.localized
 import build.raft.app.localizedLabel
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.iconName
 import build.raft.app.thread.localizedLabel
 import build.raft.app.markdown.markdownToPreviewText

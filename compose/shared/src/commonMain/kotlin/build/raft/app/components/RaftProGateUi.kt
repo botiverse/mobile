@@ -8,8 +8,8 @@ import org.jetbrains.compose.resources.StringResource
 import build.raft.app.RaftContentLucideIcon
 import build.raft.app.RaftDialogFooter
 import build.raft.app.RaftLucideIconName
-import build.raft.app.settingsBillingLeavesRaft
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.settingsBillingLeavesRaft
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.app.RaftUnifiedDialog
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

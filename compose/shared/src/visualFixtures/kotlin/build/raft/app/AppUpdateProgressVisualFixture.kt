@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import build.raft.app.base.BasePager
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedUpdateDownloadProgress
+import build.raft.app.settings.AppUpdateSummary
+import build.raft.app.settings.observe
 import build.raft.app.transfer.RaftTransferMeter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column

@@ -314,7 +314,7 @@ private data class ActivityCanonicalDepthResult(
 /**
  * Ticket 67609860 (artin): a visible-route Refresh shows the Activity header indicator only when
  * the rows shown were last read at least this long ago (wall clock), like the app shell's
- * [build.raft.app.AppShellResumeStaleRefreshMillis] resume backstop.
+ * [build.raft.app.settings.AppShellResumeStaleRefreshMillis] resume backstop.
  */
 @RaftCoreInternalApi const val ActivityHeaderRefreshStaleAfterMillis: Long = 60_000L
 

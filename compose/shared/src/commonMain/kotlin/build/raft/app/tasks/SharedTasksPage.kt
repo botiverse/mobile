@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.designsystem.components.raftSlot
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import build.raft.app.thread.localizedLabel
@@ -38,6 +39,7 @@ import build.raft.app.components.raftCardSurface
 import build.raft.app.components.RaftAnchorPlacement
 import build.raft.app.components.RaftAnchoredMetaChip
 import build.raft.app.designtokens.RaftUiPalette
+import build.raft.app.iconName
 import build.raft.app.localizedLabel
 import build.raft.app.markdown.RaftTaskStatusPixel
 import build.raft.app.markdown.RaftTaskStatusPixelStyle

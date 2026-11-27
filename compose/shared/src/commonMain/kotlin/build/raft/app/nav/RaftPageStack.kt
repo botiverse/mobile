@@ -2,7 +2,7 @@ package build.raft.app.nav
 
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
-import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import build.raft.app.cmp.host.RaftCmpNavigator
 import build.raft.app.cmp.host.RaftPageOpenTransition
 import build.raft.app.cmp.host.RaftCmpPageArgs
@@ -147,7 +147,7 @@ class RaftPageStack(
 
 private val RaftPageStackRedactedUrlKeys =
     setOf(
-        build.raft.app.SETTINGS_WEB_VIEW_TARGET_URL,
+        build.raft.app.settings.SETTINGS_WEB_VIEW_TARGET_URL,
         build.raft.app.RAFT_IN_APP_BROWSER_URL_KEY,
     )
 

@@ -7,6 +7,12 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerNotificationPreferencesChanged
+import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE_KEY
+import build.raft.app.settings.SettingsNativeDetailPage
+import build.raft.app.settings.settingsNativeDetailPageData
+import build.raft.app.settings.settingsNativeDetailPageKeys
+import build.raft.app.settings.settingsNativeDetailRoute
+import build.raft.app.settings.settingsServerNotificationRealtimeEventApplies
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

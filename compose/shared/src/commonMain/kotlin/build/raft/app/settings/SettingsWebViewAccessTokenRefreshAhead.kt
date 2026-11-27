@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.ProcessRaftAccessTokenClock
 import build.raft.app.data.RaftAccessTokenClock

@@ -10,6 +10,11 @@ import build.raft.app.resources.app_update_detail_available_with_size
 import build.raft.app.resources.app_update_detail_current
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
+import build.raft.app.settings.RaftTopBarUpdatePresentation
+import build.raft.app.settings.raftAppTopBarUpdatePresentation
+import build.raft.app.settings.raftAppUpdateChangelogPreviewLines
+import build.raft.app.settings.raftAppUpdateStrongPromptDownloadSizeLabel
+import build.raft.app.settings.raftAppUpdateStrongPromptVersionSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

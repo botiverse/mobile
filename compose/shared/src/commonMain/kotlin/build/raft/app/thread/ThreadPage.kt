@@ -57,7 +57,7 @@ import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
 import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 import build.raft.app.base.Utils
-import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.canRetainThreadPageFor
 import build.raft.app.channelSettingsPageData
 import build.raft.app.data.PlatformFile
@@ -173,14 +173,14 @@ import build.raft.app.nextForegroundBannerRouteOwnerId
 import build.raft.app.nonBlank
 import build.raft.app.normalizeThreadAttachmentUploadDraftKey
 import build.raft.app.normalizedThreadChannelKind
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import build.raft.app.openRaftPage
 import build.raft.app.openTaskPendingPage
 import build.raft.app.optBoolean
 import build.raft.app.optString
 import build.raft.app.parseRaftFilePreviewCompressedImageResult
 import build.raft.app.post
-import build.raft.app.raftFeedbackCardEntryEnabled
+import build.raft.app.settings.raftFeedbackCardEntryEnabled
 import build.raft.app.raftFilePreviewAttachmentUrlCache
 import build.raft.app.raftImageLightboxEnabled
 import build.raft.app.raftPlatformHasFinePointer
@@ -221,7 +221,7 @@ import androidx.compose.runtime.collectAsState
 import build.raft.app.compat.ui.collectAsStateWhileStarted
 import build.raft.app.currentAttachmentOwnerLease
 import build.raft.app.currentRevisionForReplyCacheOwner
-import build.raft.app.currentServerSummary
+import build.raft.app.settings.currentServerSummary
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -262,7 +262,7 @@ import build.raft.app.AttachmentOperationToken
 import build.raft.app.AuthenticatedProductPager
 import build.raft.app.AuthenticatedProductRoute
 import build.raft.app.CHANNEL_SETTINGS_PAGE
-import build.raft.app.HOME_SEARCH_PAGE
+import build.raft.app.settings.HOME_SEARCH_PAGE
 import build.raft.app.LocalMembersRuntimeAccountUsageAccess
 import build.raft.app.LocalRaftForegroundBannerHandoff
 import build.raft.app.MEMBER_DETAIL_PAGE

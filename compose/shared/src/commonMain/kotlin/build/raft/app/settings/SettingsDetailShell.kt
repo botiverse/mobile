@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.theme.RaftTheme
 import androidx.compose.runtime.Composable
@@ -18,6 +18,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftNativeNavBarAction
+import build.raft.app.RaftTopPageHeader
+import build.raft.app.RaftType
+import build.raft.app.iconName
+import build.raft.app.raftArgbHex
+import build.raft.app.settings.iconName
 
 @Composable
 internal fun SettingsDetailShell(

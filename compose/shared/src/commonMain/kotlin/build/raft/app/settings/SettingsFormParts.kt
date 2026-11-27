@@ -1,7 +1,10 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.traceId
+import build.raft.app.userFacingErrorMessage
 import build.raft.app.components.RaftIconSpinner
 import build.raft.designsystem.components.RaftFieldLabelSize
 import build.raft.designsystem.components.RaftReadOnlyField
@@ -32,6 +35,12 @@ import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.SharedSettingsActionState
+import build.raft.app.fill
+import build.raft.app.iconName
+import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.raftArgbHex
+import build.raft.app.raftGesturePointerInput
+import build.raft.app.rememberRaftGestureOwner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -57,6 +66,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftColor
+import build.raft.app.RaftGestureSession
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTraceIdNote
+import build.raft.app.RaftType
 import kotlinx.serialization.Serializable
 import build.raft.designsystem.components.raftClickable
 import build.raft.designsystem.components.RaftHoverTier

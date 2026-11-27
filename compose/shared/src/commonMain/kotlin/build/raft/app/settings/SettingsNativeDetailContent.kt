@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import kotlinx.coroutines.flow.emptyFlow
 import build.raft.app.data.RaftAuthSessionEventSource
@@ -6,8 +6,14 @@ import build.raft.app.data.raftStoredSessionFlow
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.RaftAppSettingSurface
 import build.raft.app.data.toSystemNotificationActionResult
+import build.raft.app.get
+import build.raft.app.iconName
+import build.raft.app.jumpPage
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.settingsComputerRouteIdentity
+import build.raft.app.sharedSettingsResolvedWebBaseUrl
 import build.raft.app.thread.dispatch
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
@@ -45,6 +51,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftAssistantSettingChangesNetworkApi
 import build.raft.app.assistant.AssistantSettingChangesSource
 import build.raft.app.assistant.LocalAssistantSettingChangesSource
+import build.raft.app.available
 import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.isRefreshing
@@ -60,6 +67,10 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerNotificationPreferencesChanged
+import build.raft.app.openAssistantSettings
+import build.raft.app.openSettingsComputerPage
+import build.raft.app.openSettingsComputersPage
+import build.raft.app.raftBottomSafeAreaPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -84,6 +95,10 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RememberKmmResourceLocaleSeedFromLocalActivity
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 

@@ -14,6 +14,13 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.settings.AppShellBootstrapAuthDecision
+import build.raft.app.settings.AppShellBootstrapAuthSignal
+import build.raft.app.settings.appShellAuthoritativeHomeStartAllowed
+import build.raft.app.settings.appShellBootstrapAuthDecision
+import build.raft.app.settings.appShellCanRenderCachedHomePreview
+import build.raft.app.settings.appShellHomeConversationOpenAllowed
+import build.raft.app.settings.shouldApplyHomeAuthErrorGate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

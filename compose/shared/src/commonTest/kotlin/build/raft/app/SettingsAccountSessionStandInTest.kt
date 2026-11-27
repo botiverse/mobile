@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.AccountSettingsSnapshot
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.authSessionFixture
+import build.raft.app.settings.toAccountPayload
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -1,12 +1,12 @@
 package build.raft.app.data
 
-import build.raft.app.AskSeatsOwner
+import build.raft.app.settings.AskSeatsOwner
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
-import build.raft.app.sortAskSeatsOwners
+import build.raft.app.settings.sortAskSeatsOwners
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray

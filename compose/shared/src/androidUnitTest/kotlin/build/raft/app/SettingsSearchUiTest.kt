@@ -15,6 +15,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.settings.LocalSettingsSearchLocator
+import build.raft.app.settings.SettingsSearchLocator
+import build.raft.app.settings.rememberSettingsSearchListState
+import build.raft.app.settings.settingsSearchAnchor
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager

@@ -9,6 +9,7 @@ import build.raft.designsystem.components.RaftPaneGridHeadRowTabs
 import build.raft.designsystem.components.raftPaneGridFitHead
 import build.raft.designsystem.components.raftPaneGridHeadShownActions
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.formatTimestampLabel
 import build.raft.app.thread.icon
 import build.raft.app.thread.localizedLabel
@@ -95,6 +96,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.data.map
+import build.raft.app.iconName
 import build.raft.app.localizedLabel
 import build.raft.app.model.isExternalAgentRuntime
 import build.raft.designsystem.components.raftClickable

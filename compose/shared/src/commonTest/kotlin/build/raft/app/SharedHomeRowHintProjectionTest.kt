@@ -4,6 +4,7 @@ import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.HomeRowRestoredHint
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.SharedHomeConversationRowProjector
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

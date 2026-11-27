@@ -12,6 +12,16 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.format.RaftFormat
+import build.raft.app.settings.SettingsDetailShell
+import build.raft.app.settings.SettingsHandsFeedbackComposer
+import build.raft.app.settings.SettingsHandsFeedbackForm
+import build.raft.app.settings.SettingsHandsFeedbackNotice
+import build.raft.app.settings.settingsFeedbackImageMaxBytes
+import build.raft.app.settings.settingsHandsFeedbackCopy
+import build.raft.app.settings.settingsHandsFeedbackSubtitle
+import build.raft.app.settings.settingsHandsFeedbackTitle
+import build.raft.app.settings.submissionFailure
+import build.raft.app.settings.toFeedbackComposerAttachmentItems
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

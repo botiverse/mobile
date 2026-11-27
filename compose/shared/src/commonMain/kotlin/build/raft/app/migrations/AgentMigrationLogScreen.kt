@@ -52,6 +52,7 @@ import build.raft.app.data.agentMigrationLogStats
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.searchAgentMigrationLog
 import build.raft.app.resources.*
+import build.raft.app.settings.SettingsDetailShell
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

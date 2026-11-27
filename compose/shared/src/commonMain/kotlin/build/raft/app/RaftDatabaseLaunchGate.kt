@@ -13,6 +13,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.data.RaftDatabaseLaunchAttempt
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.attemptRaftDatabaseLaunch
+import build.raft.app.settings.AppShellRestoreSplashContent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.scrollBy
@@ -38,6 +38,11 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.fill
+import build.raft.app.matches
+import build.raft.app.optLong
+import build.raft.app.optString
+import build.raft.app.settings.matches
 import build.raft.designsystem.components.RaftLocatedState
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import build.raft.designsystem.theme.RaftTheme

@@ -25,6 +25,15 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.pager.Page
 import build.raft.designsystem.components.LocalRaftListSkeletonDelayMillis
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.AppShellRestoreSplashContent
+import build.raft.app.settings.AppUpdateDetailsVisualScreen
+import build.raft.app.settings.BottomTabBarVisualContent
+import build.raft.app.settings.HomeCreateChannelDialogVisualContent
+import build.raft.app.settings.SettingsPageVisualContent
+import build.raft.app.settings.SettingsRowVisualContent
+import build.raft.app.settings.SettingsVisualFixtureBridge
+import build.raft.app.settings.SettingsVisualFixtureValues
+import build.raft.app.settings.appShellPhoneBottomTabs
 import build.raft.app.thread.ChannelAddMemberPanelVisualScreen
 import build.raft.app.thread.ChannelSettingsPanelVisualScreen
 import build.raft.app.thread.DirectMessageSettingsPanelVisualScreen

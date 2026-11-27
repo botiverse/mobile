@@ -26,7 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.iconName
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon

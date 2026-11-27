@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.settings.AppShellRailSavedKey
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

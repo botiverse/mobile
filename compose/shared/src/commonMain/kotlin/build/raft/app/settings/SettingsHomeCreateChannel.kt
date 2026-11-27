@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.ArchivedNameCollisionBanner
 import build.raft.app.thread.dispatch
 import build.raft.designsystem.components.RaftTextFieldDefaults
@@ -24,6 +25,10 @@ import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.raftMemberPickerToggle
+import build.raft.app.raftUnifiedDialogKeepFocusedEditorVisible
+import build.raft.app.raftUnifiedDialogScrollToTargetItem
+import build.raft.app.rememberRaftFocusedInputBoundsResolver
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -55,9 +60,38 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import build.raft.app.CreateExternalChannelDraft
+import build.raft.app.CreateExternalChannelIntent
+import build.raft.app.CreateExternalChannelStore
+import build.raft.app.EmptyRaftAgentStatusResolver
+import build.raft.app.ExternalChannelCreateAvailability
+import build.raft.app.ExternalInviteDialogState
+import build.raft.app.ExternalInviteEmailsField
+import build.raft.app.ExternalInviteFailureBanner
+import build.raft.app.ExternalInviteServersField
+import build.raft.app.LocalRaftDialogKeyboardHeightChange
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftColor
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftDialogPresentation
+import build.raft.app.RaftFocusedEditorScrollRequestCoordinator
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberPicker
+import build.raft.app.RaftMemberPickerKey
+import build.raft.app.RaftMemberPickerMode
+import build.raft.app.RaftTraceIdNote
+import build.raft.app.RaftType
+import build.raft.app.RaftUnifiedDialog
+import build.raft.app.RaftUnifiedDialogListScrollPosition
+import build.raft.app.SharedCreateExternalChannelReview
 import build.raft.app.compat.ui.KeyboardParams
 import kotlinx.coroutines.flow.map
 import build.raft.app.data.map
+import build.raft.app.fill
+import build.raft.app.iconName
+import build.raft.app.isAddableToNewChannel
+import build.raft.app.localized
+import build.raft.app.memberPickerKey
 import kotlinx.coroutines.launch
 
 internal const val DiagnosticsFeedbackComposerSeedText: String =

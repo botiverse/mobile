@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.StoredAuthServer
+import build.raft.app.get
 import build.raft.app.thread.isRaftLinkIdentifier
 import build.raft.app.thread.key
 import build.raft.app.thread.raftOwnWebLinkPath

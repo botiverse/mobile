@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.ui.input.key.Key
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SearchEntityType
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

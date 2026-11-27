@@ -5,6 +5,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedSettingsUpdateTransactionState
+import build.raft.app.settings.loadSignedOutAppUpdateNotification
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

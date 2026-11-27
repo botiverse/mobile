@@ -8,6 +8,13 @@ import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
+import build.raft.app.settings.AppShellPresenceTransportCursor
+import build.raft.app.settings.canRefreshRealtimeServer
+import build.raft.app.settings.decodeSharedShellRealtimeEvent
+import build.raft.app.settings.nextAppShellPresenceTransportCursor
+import build.raft.app.settings.resolveSharedShellRealtimeServerId
+import build.raft.app.settings.shouldProjectBackgroundServerUnread
+import build.raft.app.settings.shouldRouteRealtimeEventToShell
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

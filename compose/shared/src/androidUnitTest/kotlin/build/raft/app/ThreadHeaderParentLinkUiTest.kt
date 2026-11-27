@@ -23,6 +23,7 @@ import build.raft.app.data.RealtimeSubscription
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.observe
 import build.raft.app.thread.LocalThreadHeaderMenuEventBus
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.RaftThreadScreenPayload

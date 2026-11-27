@@ -15,6 +15,7 @@ import build.raft.app.data.InboxItem
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadReplySummariesSnapshot
 import build.raft.app.data.WireMessage
+import build.raft.app.matches
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.Message
@@ -25,6 +26,7 @@ import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.initialThreadRepliesReadModel
 import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.settings.matches
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.SharedThreadIntent
 import build.raft.app.thread.SharedThreadStore

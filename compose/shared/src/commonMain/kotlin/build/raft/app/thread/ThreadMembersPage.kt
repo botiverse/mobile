@@ -3,7 +3,7 @@ package build.raft.app.thread
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.text.style.TextOverflow
 import build.raft.app.resources.*
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.app.stillInChannelPersonName
 import build.raft.app.stillInChannelToastStrings
 import build.raft.app.thread.iconName
@@ -59,8 +59,9 @@ import build.raft.app.dotColor
 import build.raft.app.externalInviteAccess
 import build.raft.app.externalInviteEntryGated
 import build.raft.app.externalInviteManagement
-import build.raft.app.externalSlotChannelsKey
-import build.raft.app.externalSlotUpgradeContext
+import build.raft.app.settings.externalSlotChannelsKey
+import build.raft.app.settings.externalSlotUpgradeContext
+import build.raft.app.settings.iconName
 import build.raft.app.filterPeopleSuggestions
 import build.raft.app.get
 import build.raft.app.iconName
@@ -89,8 +90,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.openRaftPage
-import build.raft.app.openRaftUpgradeDialog
-import build.raft.app.openSettingsBillingPage
+import build.raft.app.settings.openRaftUpgradeDialog
+import build.raft.app.settings.openSettingsBillingPage
 import build.raft.app.openSettingsComputersPage
 import build.raft.app.optString
 import build.raft.app.origin
@@ -218,7 +219,7 @@ import build.raft.app.RaftTopPageHeader
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.RaftType
 import build.raft.app.RaftUnifiedDialog
-import build.raft.app.RaftUpgradeGate
+import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.RealExternalInvitesDataSource
 import build.raft.app.ThreadAddMemberPanel
 import build.raft.app.authenticatedRouteOwnerOrNull

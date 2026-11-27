@@ -42,6 +42,14 @@ import build.raft.app.data.SharedAssistantOtterPrefsStore
 import build.raft.app.data.SharedMyAssistantStore
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.model.ServerId
+import build.raft.app.settings.LocalSettingsAppearancePreviewTimeLabel
+import build.raft.app.settings.LocalSettingsAppearanceVisualSwitches
+import build.raft.app.settings.SettingsAppearanceAssistantPanelLinkTag
+import build.raft.app.settings.SettingsAppearanceAssistantSectionTag
+import build.raft.app.settings.SettingsAppearanceAssistantSource
+import build.raft.app.settings.SettingsAppearanceContent
+import build.raft.app.settings.SettingsAppearanceVisualSwitches
+import build.raft.app.settings.settingsAppPreferenceVisibility
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

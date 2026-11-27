@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.OpenDirectMessageResult
+import build.raft.app.settings.HomeSearchEntityDestination
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.destinationOrNull
 import build.raft.app.thread.toThreadLaunchConversationIdentity
 import build.raft.app.toThreadLaunchConversationIdentity
 import kotlinx.coroutines.CoroutineScope

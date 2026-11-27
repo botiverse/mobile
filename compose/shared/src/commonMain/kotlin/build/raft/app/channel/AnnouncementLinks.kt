@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.StoredAuthServer
+import build.raft.app.settings.RaftSettingsLink
+import build.raft.app.settings.RaftSettingsLinkTarget
+import build.raft.app.settings.parseRaftSettingsLink
+import build.raft.app.settings.raftSettingsLinkTarget
 import build.raft.app.thread.raftOwnWebLinkPath
 
 /**

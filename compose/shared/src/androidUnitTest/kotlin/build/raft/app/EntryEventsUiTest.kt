@@ -41,6 +41,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.observe
 import build.raft.app.thread.FOCUS_MODE_MENU_ITEM_ID
 import build.raft.app.thread.LocalThreadHeaderMenuEventBus
 import build.raft.app.thread.RaftThreadScreenPayload

@@ -12,8 +12,15 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.HomeSearchEntityDestination
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SearchEntityType
+import build.raft.app.settings.destinationOrNull
+import build.raft.app.settings.homeSearchInlineConversationOrNull
+import build.raft.app.settings.toHomeSearchEntityResult
 import build.raft.app.thread.key
 import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.toHomeSearchEntityResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

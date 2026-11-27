@@ -5,6 +5,8 @@ import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.settings.settingsAccountDeletionHostIntent
+import build.raft.app.settings.settingsAccountDeletionWebViewUrl
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

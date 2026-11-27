@@ -53,6 +53,15 @@ import build.raft.app.data.AgentContextViewTrigger
 import build.raft.app.data.AgentContextViewVerification
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.settings.AgentContextViewGrantCandidate
+import build.raft.app.settings.AgentContextViewGrantsSectionContent
+import build.raft.app.settings.AgentContextViewGrantsUiState
+import build.raft.app.settings.GrantContextViewDialogSurface
+import build.raft.app.settings.SETTINGS_CONTEXT_GRANTS_CONFIRM_GRANT_TAG
+import build.raft.app.settings.SETTINGS_CONTEXT_GRANTS_DISCLOSURE_TAG
+import build.raft.app.settings.SETTINGS_CONTEXT_GRANTS_OPEN_GRANT_TAG
+import build.raft.app.settings.SETTINGS_CONTEXT_GRANTS_SECTION_TAG
+import build.raft.app.settings.filterEligibleContextViewGrantCandidates
 import build.raft.app.thread.THREAD_MESSAGE_MENU_VIEW_CONTEXT_RETRY_TAG
 import build.raft.app.thread.THREAD_MESSAGE_MENU_VIEW_CONTEXT_TAG
 import build.raft.app.thread.ThreadNewMessageMenuActionAvailability

@@ -1,6 +1,22 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.settings.HOME_ACTIVITY_PAGE
+import build.raft.app.settings.HOME_DRAFTS_PAGE
+import build.raft.app.settings.HOME_SAVED_PAGE
+import build.raft.app.settings.HOME_SEARCH_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_CHILD_TAB_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RELEASE_NOTES_PAGE
+import build.raft.app.settings.SETTINGS_ACCOUNT_PAGE
+import build.raft.app.settings.SETTINGS_FEEDBACK_TICKETS_PAGE
+import build.raft.app.settings.SETTINGS_HANDS_FEEDBACK_PAGE
+import build.raft.app.settings.SETTINGS_HOME_PAGE
+import build.raft.app.settings.SETTINGS_LABS_PAGE
+import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE
+import build.raft.app.settings.SETTINGS_STORAGE_PAGE
+import build.raft.app.settings.SETTINGS_WEB_VIEW_PAGE
+import build.raft.app.settings.openLoginReplacingCurrentPage
 import build.raft.app.thread.THREAD_FORWARD_BUNDLE_PAGE
 import build.raft.app.thread.THREAD_MEMBERS_PAGE
 import build.raft.app.thread.THREAD_PAGE

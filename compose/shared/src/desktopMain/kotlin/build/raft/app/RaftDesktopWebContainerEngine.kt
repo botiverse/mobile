@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import build.raft.app.data.RaftDesktopPaths
+import build.raft.app.settings.stripRaftOwnWebPageEmbedParams
 import build.raft.webcontainer.DesktopWebEngine
 import build.raft.webcontainer.DesktopWebSession
 import build.raft.webcontainer.DesktopWebSessionCallbacks

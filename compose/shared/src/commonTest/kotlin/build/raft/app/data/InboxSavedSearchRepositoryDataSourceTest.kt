@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.resolveInboxAnchorMessageId
-import build.raft.app.sharedHomeSavedPermalink
+import build.raft.app.settings.sharedHomeSavedPermalink
 import build.raft.app.thread.toConversationOpenSourceMessageIdentity
 import build.raft.app.toTaskConversationOpenRequestOrNull
 import build.raft.app.toConversationOpenSourceMessageIdentity

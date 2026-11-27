@@ -21,6 +21,9 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.data.RaftProductPageView
+import build.raft.app.settings.AppShellChildTabEntry
+import build.raft.app.settings.AppShellChildTabRegistry
+import build.raft.app.settings.AppShellChildTabRenderer
 
 /**
  * The phone server panel's Members and Settings as pages on the navigation stack (Android's

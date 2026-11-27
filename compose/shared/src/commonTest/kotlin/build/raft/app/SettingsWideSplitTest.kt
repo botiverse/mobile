@@ -1,6 +1,26 @@
 package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.settings.SETTINGS_ACCOUNT_PAGE
+import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE
+import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE_KEY
+import build.raft.app.settings.SETTINGS_STORAGE_PAGE
+import build.raft.app.settings.SettingsDestinationAccount
+import build.raft.app.settings.SettingsDestinationComputers
+import build.raft.app.settings.SettingsDestinationHandsFeedback
+import build.raft.app.settings.SettingsDestinationReleaseNotes
+import build.raft.app.settings.SettingsDestinationStorage
+import build.raft.app.settings.SettingsNativeDetailPage
+import build.raft.app.settings.SettingsWideDetailKeys
+import build.raft.app.settings.SettingsWidePick
+import build.raft.app.settings.settingsHomeRowKeys
+import build.raft.app.settings.settingsPageClose
+import build.raft.app.settings.settingsReleaseNotesAvailable
+import build.raft.app.settings.settingsWebViewHandlesBack
+import build.raft.app.settings.settingsWideBackReturnsToDefault
+import build.raft.app.settings.settingsWideDetailKey
+import build.raft.app.settings.settingsWideDetailPage
+import build.raft.app.settings.settingsWidePick
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

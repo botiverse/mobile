@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberAvatar
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.AgentContextViewGrant
 import build.raft.app.data.AgentContextViewGrantRevokeOutcome
 import build.raft.app.data.AgentContextViewGrantUnusableReason
@@ -27,11 +31,16 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.MobileUiErrorCode
 import build.raft.app.data.MobileUiErrorSurface
 import build.raft.app.data.isEligibleContextViewGrantCandidate
+import build.raft.app.get
+import build.raft.app.iconName
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.serverRoleCanViewAdministrationSettings
+import build.raft.app.raftLocalizedShortDateTime
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

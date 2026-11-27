@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.settings.RaftFeedbackDiagnosticsBudget
+import build.raft.app.settings.RaftFeedbackLogFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

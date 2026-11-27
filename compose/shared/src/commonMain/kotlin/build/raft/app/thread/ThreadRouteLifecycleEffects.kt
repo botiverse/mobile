@@ -19,7 +19,7 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import build.raft.app.optLong
 import build.raft.app.optString
 import kotlinx.coroutines.CoroutineScope

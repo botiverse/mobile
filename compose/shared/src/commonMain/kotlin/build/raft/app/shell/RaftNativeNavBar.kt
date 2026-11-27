@@ -34,6 +34,8 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.launch
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.iconName
+import build.raft.app.settings.iconName
 import build.raft.app.thread.FOCUS_MODE_MENU_ITEM_ID
 import build.raft.app.thread.FOLLOW_THREAD_MENU_ITEM_ID
 import build.raft.app.thread.MARK_THREAD_UNREAD_MENU_ITEM_ID

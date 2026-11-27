@@ -24,7 +24,7 @@ import build.raft.app.ThreadComposerQuoteInsert
 import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.ThreadPageLounge
 import build.raft.app.base.BridgeModule
-import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.channelSettingsCanStopAllAgents
 import build.raft.app.channelSettingsDisconnectedToast
 import build.raft.app.channelSettingsHidesMembersStrip

@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.settings.settingsFeedbackTicketCopyText
+import build.raft.app.settings.settingsFeedbackTicketLink
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

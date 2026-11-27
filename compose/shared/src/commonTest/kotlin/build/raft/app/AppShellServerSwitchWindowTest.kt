@@ -6,6 +6,11 @@ import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.normalizedOrNull
+import build.raft.app.settings.AUTH_REPLACE_SHELL_ROOT
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.appShellLaunchSelection
+import build.raft.app.settings.appShellPageDataForServerSelection
+import build.raft.app.settings.appShellServerSwitchNewWindowPageDataOrNull
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

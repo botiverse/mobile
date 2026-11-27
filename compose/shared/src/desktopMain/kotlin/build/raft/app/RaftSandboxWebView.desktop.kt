@@ -20,6 +20,7 @@ import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import build.raft.app.settings.stripRaftOwnWebPageEmbedParams
 import java.awt.Component
 import javax.swing.SwingUtilities
 import kotlinx.coroutines.delay

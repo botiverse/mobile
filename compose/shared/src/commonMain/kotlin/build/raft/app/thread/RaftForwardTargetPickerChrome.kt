@@ -2,6 +2,7 @@ package build.raft.app.thread
 
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.iconName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement

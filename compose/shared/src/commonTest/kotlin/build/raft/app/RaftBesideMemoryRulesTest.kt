@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.RaftBesideKind.Artifact
 import build.raft.app.RaftBesideKind.Profile
 import build.raft.app.RaftBesideKind.Thread
+import build.raft.app.settings.AppShellRailSavedKey
+import build.raft.app.settings.AppShellRailSearchKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

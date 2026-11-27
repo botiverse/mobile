@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.matches
+import build.raft.app.settings.matches
+
 /*
  * What was open beside a conversation on the wide layout, remembered per conversation (web
  * docs/frontend/beside-memory.md and packages/web/src/store/besideMemory.ts, botiverse/slock staging 51c1f706a).

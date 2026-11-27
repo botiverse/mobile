@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.settings.observe
 import build.raft.app.thread.THREAD_PAGE
 import build.raft.app.thread.ThreadLifecycleVisibilityVerdict
 import build.raft.app.thread.ThreadPreviewOverlayLifecycleFilter

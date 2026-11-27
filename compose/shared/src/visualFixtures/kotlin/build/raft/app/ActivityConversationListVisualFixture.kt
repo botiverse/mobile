@@ -16,6 +16,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskStatus
+import build.raft.app.settings.homeSearchVisualServer
 import build.raft.app.thread.key
 
 /*

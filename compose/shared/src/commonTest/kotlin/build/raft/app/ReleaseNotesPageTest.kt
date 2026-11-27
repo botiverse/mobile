@@ -4,6 +4,11 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsAboutSnapshot
+import build.raft.app.settings.ReleaseNotesAboutResolution
+import build.raft.app.settings.releaseNotesAboutResolution
+import build.raft.app.settings.releaseNotesLocaleTag
+import build.raft.app.settings.sharedSettingsReleaseNotesUrlForLocale
+import build.raft.app.settings.sharedSettingsReleaseNotesUrlForLocaleWithSlug
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

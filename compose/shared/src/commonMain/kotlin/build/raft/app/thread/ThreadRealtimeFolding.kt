@@ -26,7 +26,7 @@ import build.raft.app.model.ThreadUpdated
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.ThreadRepliesSyncHost
-import build.raft.app.observe
+import build.raft.app.settings.observe
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.sync.Mutex

@@ -28,10 +28,10 @@ import build.raft.app.compat.ui.ProvideRaftPlatformImeInsets
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.RaftProvideAppTypeScale
 import build.raft.app.RaftProvideTextRendering
-import build.raft.app.RaftAskSeatsDialogHost
-import build.raft.app.RaftAskSeatsDialogState
-import build.raft.app.RaftUpgradeDialogHost
-import build.raft.app.RaftUpgradeDialogState
+import build.raft.app.settings.RaftAskSeatsDialogHost
+import build.raft.app.settings.RaftAskSeatsDialogState
+import build.raft.app.settings.RaftUpgradeDialogHost
+import build.raft.app.settings.RaftUpgradeDialogState
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftProvideDesignSystemMisuse
 import build.raft.app.components.RaftProvideDesignSystemCopy
@@ -47,7 +47,7 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import build.raft.app.cmp.RaftOverlayProvider
 import build.raft.app.cmp.RaftPageProvider
 import build.raft.app.cmp.RaftCmpRouter
-import build.raft.app.RaftScreenshotFeedbackRootOverlay
+import build.raft.app.settings.RaftScreenshotFeedbackRootOverlay
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.cmp.host.LocalRaftPageArgs
 import build.raft.app.cmp.host.RaftCmpPageArgs

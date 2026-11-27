@@ -1,6 +1,6 @@
 package build.raft.app.nav
 
-import build.raft.app.RAFT_APP_SHELL_PAGE
+import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -68,22 +68,22 @@ internal val RaftStackChatFilesBrowsePages: List<String> =
         build.raft.app.RAFT_FILE_PREVIEW_PAGE,
         build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
         build.raft.app.RAFT_IN_APP_BROWSER_PAGE,
-        build.raft.app.HOME_SEARCH_PAGE,
+        build.raft.app.settings.HOME_SEARCH_PAGE,
     )
 
 /** The shell tabs the phone server panel opens as stack pages (RAFT_APP_SHELL_SERVER_PAGE): Members, Settings. */
 internal val RaftStackServerPanelTabs: List<String> = listOf("members", build.raft.app.AppShellServerTabKey)
 
 /** The Settings web page surfaces on the stack (the others keep the host's way). */
-internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSurface> =
+internal val RaftStackSettingsWebSurfaces: List<build.raft.app.settings.SettingsWebViewSurface> =
     listOf(
-        build.raft.app.SettingsWebViewSurface.Billing,
-        build.raft.app.SettingsWebViewSurface.Administration,
-        build.raft.app.SettingsWebViewSurface.ImBridges,
-        build.raft.app.SettingsWebViewSurface.AppAuthorizations,
-        build.raft.app.SettingsWebViewSurface.Marketplace,
-        build.raft.app.SettingsWebViewSurface.DataPrivacy,
-        build.raft.app.SettingsWebViewSurface.WebPage,
+        build.raft.app.settings.SettingsWebViewSurface.Billing,
+        build.raft.app.settings.SettingsWebViewSurface.Administration,
+        build.raft.app.settings.SettingsWebViewSurface.ImBridges,
+        build.raft.app.settings.SettingsWebViewSurface.AppAuthorizations,
+        build.raft.app.settings.SettingsWebViewSurface.Marketplace,
+        build.raft.app.settings.SettingsWebViewSurface.DataPrivacy,
+        build.raft.app.settings.SettingsWebViewSurface.WebPage,
     )
 
 /**
@@ -117,27 +117,27 @@ internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSu
  */
 val RaftMobileStackPages: RaftStackPageAllowlist =
     RaftStackPageAllowlist(
-        build.raft.app.SettingsNativeDetailPage.entries.map { page ->
+        build.raft.app.settings.SettingsNativeDetailPage.entries.map { page ->
             RaftStackPageRule(
-                pageName = build.raft.app.SETTINGS_NATIVE_DETAIL_PAGE,
-                field = build.raft.app.SETTINGS_NATIVE_DETAIL_PAGE_KEY,
+                pageName = build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE,
+                field = build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE_KEY,
                 value = page.key,
             )
         } +
             listOf(
-                RaftStackPageRule(pageName = build.raft.app.HOME_SAVED_PAGE),
-                RaftStackPageRule(pageName = build.raft.app.HOME_DRAFTS_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.HOME_SAVED_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.HOME_DRAFTS_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.MEMBER_DETAIL_PAGE),
                 // Batch 2.
-                RaftStackPageRule(pageName = build.raft.app.SETTINGS_ACCOUNT_PAGE),
-                RaftStackPageRule(pageName = build.raft.app.SETTINGS_HANDS_FEEDBACK_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.SETTINGS_ACCOUNT_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.SETTINGS_HANDS_FEEDBACK_PAGE),
                 // The native ticket list (1.23); it opens the submit form above over itself.
-                RaftStackPageRule(pageName = build.raft.app.SETTINGS_FEEDBACK_TICKETS_PAGE),
-                RaftStackPageRule(pageName = build.raft.app.SETTINGS_STORAGE_PAGE),
-                RaftStackPageRule(pageName = build.raft.app.RELEASE_NOTES_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.SETTINGS_FEEDBACK_TICKETS_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.SETTINGS_STORAGE_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.RELEASE_NOTES_PAGE),
                 RaftStackPageRule(pageName = build.raft.app.SETTINGS_COMPUTERS_PAGE),
                 // Settings > Labs (server_labs_ui_v0).
-                RaftStackPageRule(pageName = build.raft.app.SETTINGS_LABS_PAGE),
+                RaftStackPageRule(pageName = build.raft.app.settings.SETTINGS_LABS_PAGE),
                 // The Artifacts home, from the server panel (task #proj-mobile:#62).
                 RaftStackPageRule(pageName = build.raft.app.ARTIFACTS_HOME_PAGE),
                 // The agent migration log, from an agent's or a computer's page.
@@ -155,8 +155,8 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
             } +
             RaftStackSettingsWebSurfaces.map { surface ->
                 RaftStackPageRule(
-                    pageName = build.raft.app.SETTINGS_WEB_VIEW_PAGE,
-                    field = build.raft.app.SETTINGS_WEB_VIEW_SURFACE,
+                    pageName = build.raft.app.settings.SETTINGS_WEB_VIEW_PAGE,
+                    field = build.raft.app.settings.SETTINGS_WEB_VIEW_SURFACE,
                     value = surface.diagnosticsName,
                 )
             }

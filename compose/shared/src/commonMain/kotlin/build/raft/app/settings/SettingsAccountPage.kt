@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.components.RaftDesignSystemEditor
 import build.raft.app.components.rememberRaftDesignSystemEditor
@@ -12,9 +12,12 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.settings.iconName
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
+import build.raft.app.traceId
+import build.raft.app.withRaftFontWeight
 import build.raft.designsystem.components.RaftSpinnerSize
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftBadge
@@ -44,6 +47,13 @@ import build.raft.designsystem.theme.LocalRaftIsDark
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftStroke
 import build.raft.app.RaftCachedImage
+import build.raft.app.RaftColor
+import build.raft.app.RaftLinkOpenIntent
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberAvatarCacheIdentity
+import build.raft.app.RaftType
+import build.raft.app.SecondFactorStepUpDialog
 import build.raft.app.base.Utils
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
@@ -66,7 +76,17 @@ import build.raft.app.data.RaftEventBuses
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.secondFactorStepUpWebUrlResolver
+import build.raft.app.get
+import build.raft.app.iconName
+import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.model.ServerId
+import build.raft.app.openSettingsComputersPage
+import build.raft.app.optString
+import build.raft.app.providerIconAssetSource
+import build.raft.app.raftArgbHex
+import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.raftPlatformSupportsAppleSignIn
+import build.raft.app.raftTopSafeAreaPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -103,6 +123,13 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
+import build.raft.app.AuthenticatedProductPager
+import build.raft.app.AuthenticatedProductRoute
+import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.ProviderIconKey
+import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAvatarKind
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 

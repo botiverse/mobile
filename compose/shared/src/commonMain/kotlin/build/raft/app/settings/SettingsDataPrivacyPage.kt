@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AppLocale
@@ -6,6 +6,11 @@ import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.matches
+import build.raft.app.settings.matches
+import build.raft.app.sharedSettingsHostShellWebUrl
+import build.raft.app.sharedSettingsResolvedWebBaseUrl
+import build.raft.app.submit
 import build.raft.app.thread.RaftMessageLinkInbox
 import build.raft.app.thread.isRaftLinkIdentifier
 import build.raft.app.thread.key

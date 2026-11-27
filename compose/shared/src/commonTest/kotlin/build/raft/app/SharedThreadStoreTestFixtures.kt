@@ -37,6 +37,7 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
 import build.raft.app.thread.RaftThreadAttachmentItem
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.RaftThreadPendingSendContext

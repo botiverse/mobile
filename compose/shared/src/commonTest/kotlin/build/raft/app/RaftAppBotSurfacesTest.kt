@@ -2,6 +2,9 @@ package build.raft.app
 
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.settings.SearchEntityResult
+import build.raft.app.settings.SearchEntityType
+import build.raft.app.settings.withoutAgentKindLabel
 import build.raft.app.thread.key
 import build.raft.app.thread.threadMembersRosterSubtitle
 import kotlin.test.Test

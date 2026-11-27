@@ -34,6 +34,7 @@ import build.raft.app.data.SharedEmailVerificationResult
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.userMessage
 import build.raft.app.resources.resolve
+import build.raft.app.settings.SETTINGS_STORAGE_PAGE
 import android.content.Intent
 import android.content.Context
 import android.content.pm.PackageManager

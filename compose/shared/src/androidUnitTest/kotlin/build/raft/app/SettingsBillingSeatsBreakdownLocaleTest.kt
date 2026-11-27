@@ -5,6 +5,10 @@ import build.raft.app.data.ProPricing
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.resolve
+import build.raft.app.settings.settingsBillingCountUsageDesc
+import build.raft.app.settings.settingsBillingSeatsBreakdown
+import build.raft.app.settings.termDesc
+import build.raft.app.settings.valueDesc
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

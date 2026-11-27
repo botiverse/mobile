@@ -46,6 +46,7 @@ import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.*
+import build.raft.app.settings.observe
 import build.raft.app.thread.LocalThreadHeaderMenuEventBus
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.RaftThreadScreenPayload

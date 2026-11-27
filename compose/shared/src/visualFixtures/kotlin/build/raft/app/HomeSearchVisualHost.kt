@@ -39,6 +39,10 @@ import build.raft.app.model.Presence
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.SharedHomeSearchPanel
+import build.raft.app.settings.homeSearchVisualServer
+import build.raft.app.settings.homeSearchVisualSession
+import build.raft.app.settings.settingsVisualFixtureValues
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box

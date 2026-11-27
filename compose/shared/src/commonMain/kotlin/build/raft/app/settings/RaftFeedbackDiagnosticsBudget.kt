@@ -1,4 +1,6 @@
-package build.raft.app
+package build.raft.app.settings
+
+import build.raft.app.get
 
 /** One persistent diagnostics log shard (`launch-<id>/raft-diagnostics.jsonl[.N]`). */
 data class RaftFeedbackLogFile(

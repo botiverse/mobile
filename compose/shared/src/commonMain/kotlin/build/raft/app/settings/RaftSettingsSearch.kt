@@ -1,6 +1,10 @@
-package build.raft.app
+package build.raft.app.settings
 
+import build.raft.app.get
+import build.raft.app.has
+import build.raft.app.shown
 import build.raft.app.thread.key
+import build.raft.app.words
 
 /*
  * Settings search (raft-design design/products/raft-chat/settings.md#searching-settings): the

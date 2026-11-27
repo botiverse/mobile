@@ -2,9 +2,9 @@ package build.raft.app.core.data.diagnostics
 
 import build.raft.app.BuildConfig
 import build.raft.app.RaftDiagnosticsVolumePolicy
-import build.raft.app.RaftFeedbackDiagnosticsBudget
-import build.raft.app.RaftFeedbackLogFile
-import build.raft.app.RaftFeedbackLogPick
+import build.raft.app.settings.RaftFeedbackDiagnosticsBudget
+import build.raft.app.settings.RaftFeedbackLogFile
+import build.raft.app.settings.RaftFeedbackLogPick
 import build.raft.app.RaftVerboseDiagnostics
 import android.app.Application
 import android.content.Context

@@ -5,6 +5,9 @@ import build.raft.app.resources.common_close
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
 import build.raft.app.resources.localized
+import build.raft.app.settings.iconName
+import build.raft.app.settings.matches
+import build.raft.app.settings.retainedAppShellSelectedTab
 import build.raft.app.shownAuthorName
 import build.raft.app.thread.resolveThreadRouteIdentity
 import build.raft.app.thread.shownAuthorName
@@ -23,6 +26,7 @@ import build.raft.designsystem.components.RaftIconButtonSize
 import org.jetbrains.compose.resources.stringResource
 
 import build.raft.app.markdown.markdownToPreviewText
+import build.raft.app.matches
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.messageNotificationText
@@ -33,6 +37,7 @@ import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.ComposeLocalDataStore
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.toSharedConversationDirectoryState
+import build.raft.app.iconName
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile

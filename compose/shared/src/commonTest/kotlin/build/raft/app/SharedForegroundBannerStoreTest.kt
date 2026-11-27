@@ -1,8 +1,10 @@
 package build.raft.app
 
+import build.raft.app.iconName
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ThreadId
+import build.raft.app.settings.iconName
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield

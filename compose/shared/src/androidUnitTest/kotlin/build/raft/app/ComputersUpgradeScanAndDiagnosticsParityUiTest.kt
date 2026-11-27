@@ -35,6 +35,12 @@ import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.format.RaftFormat
 import build.raft.app.resources.*
+import build.raft.app.settings.SettingsHandsFeedbackComposer
+import build.raft.app.settings.SettingsHandsFeedbackForm
+import build.raft.app.settings.filterSettingsHandsFeedbackProxyAttachments
+import build.raft.app.settings.settingsFeedbackImageMaxBytes
+import build.raft.app.settings.settingsHandsFeedbackCopy
+import build.raft.app.settings.toFeedbackComposerAttachmentItems
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlinx.coroutines.test.runTest

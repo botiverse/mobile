@@ -12,6 +12,12 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.preservingChannelMetadataFrom
+import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION
+import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION
+import build.raft.app.settings.SettingsAboutEarlyAccessOption
+import build.raft.app.settings.settingsAboutEarlyAccessOption
+import build.raft.app.settings.settingsAboutExternalUrl
+import build.raft.app.settings.toAboutPayload
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -12,6 +12,7 @@ import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.encodeServerAppearanceDecorPatchBody
 import build.raft.app.model.RaftServerThemeLook
 import build.raft.app.model.ServerId
+import build.raft.app.settings.SettingsServerThemeStore
 import build.raft.designsystem.tokens.RaftThemeId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi

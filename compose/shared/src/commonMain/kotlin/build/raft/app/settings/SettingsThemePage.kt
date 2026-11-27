@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
@@ -15,11 +15,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftColor
 import build.raft.app.resources.*
 import build.raft.app.assistant.AssistantSettingChangesSection
 import build.raft.app.assistant.LocalAssistantSettingChangesSource
 import build.raft.app.assistant.rememberAssistantSettingChanges
 import build.raft.app.data.ASSISTANT_THEME_SETTINGS
+import build.raft.app.raftPlatformLargeScreenPossible
+import build.raft.app.raftWindowWide
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
 /*

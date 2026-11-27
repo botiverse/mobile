@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
+import build.raft.app.settings.observe
 import build.raft.designsystem.components.LocalRaftSafeAreaInsets
 import build.raft.designsystem.components.RaftSafeAreaInsets
 

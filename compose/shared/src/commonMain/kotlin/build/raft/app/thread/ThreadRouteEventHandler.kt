@@ -1,7 +1,7 @@
 package build.raft.app.thread
 
 import build.raft.app.resources.*
-import build.raft.app.settingsBillingOffersUpgrade
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.app.thread.resolveThreadRouteIdentity
 import build.raft.app.thread.toRaftTimeCapabilities
 import build.raft.app.toRaftTimeCapabilities
@@ -29,8 +29,8 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskSummary
-import build.raft.app.openRaftUpgradeDialog
-import build.raft.app.openSettingsBillingPage
+import build.raft.app.settings.openRaftUpgradeDialog
+import build.raft.app.settings.openSettingsBillingPage
 import build.raft.app.resolve
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.model.ServerId
@@ -48,12 +48,12 @@ import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftAdaptiveDetailCloseRequest
 import build.raft.app.RaftLinkNavigator
 import build.raft.app.RaftThreadSurfaceKind
-import build.raft.app.RaftUpgradeExternalContext
-import build.raft.app.RaftUpgradeGate
+import build.raft.app.settings.RaftUpgradeExternalContext
+import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.TaskCreateFromMessageFlow
 import build.raft.app.agentLoungeLookupChannelId
-import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.data.SharedAdaptiveWorkspaceStore
 import build.raft.app.data.SharedRealtimeRoomLeaseRegistry
 

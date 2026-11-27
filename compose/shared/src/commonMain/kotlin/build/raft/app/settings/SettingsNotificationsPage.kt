@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.selection.toggleable
@@ -31,6 +31,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftType
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.SegmentedControlOption
 import build.raft.app.components.raftCardSurface
@@ -58,8 +62,15 @@ import build.raft.app.data.SettingsMobileSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.raftCurrentTimeZoneId
 import build.raft.app.data.raftNowEpochMillis
+import build.raft.app.fill
+import build.raft.app.localizedUserFacingMessage
+import build.raft.app.raftArgbHex
+import build.raft.app.raftPlatformProductName
+import build.raft.app.raftPlatformSupportsBackgroundRealtime
+import build.raft.app.raftPlatformSupportsPushPreviewPrivacySetting
 import build.raft.app.resources.*
 import build.raft.app.thread.key
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton
@@ -74,6 +85,7 @@ import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.assistant.AssistantSettingChangesSection
 import build.raft.app.assistant.LocalAssistantSettingChangesSource
 import build.raft.app.assistant.rememberAssistantSettingChanges
+import build.raft.app.available
 import build.raft.app.data.ASSISTANT_NOTIFICATION_SETTINGS
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource

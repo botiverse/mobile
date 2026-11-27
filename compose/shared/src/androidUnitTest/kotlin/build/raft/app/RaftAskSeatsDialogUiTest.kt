@@ -22,6 +22,14 @@ import build.raft.app.data.SEAT_REQUEST_REASON_MAX_LENGTH
 import build.raft.app.data.SeatJoinSeatUsage
 import build.raft.app.data.SeatRequestPurpose
 import build.raft.app.resources.StringDesc
+import build.raft.app.settings.ASK_SEATS_ERROR_BANNER_TAG
+import build.raft.app.settings.ASK_SEATS_OWNER_PICKER_TAG
+import build.raft.app.settings.ASK_SEATS_OWNER_ROW_TAG
+import build.raft.app.settings.ASK_SEATS_REASON_FIELD_TAG
+import build.raft.app.settings.ASK_SEATS_SEND_BUTTON_TAG
+import build.raft.app.settings.AskSeatsOwner
+import build.raft.app.settings.AskSeatsOwnerState
+import build.raft.app.settings.RaftAskSeatsDialog
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

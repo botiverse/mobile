@@ -15,6 +15,7 @@ import build.raft.app.iconName
 import build.raft.app.model.ServerId
 import build.raft.app.raftChannelKindGlyph
 import build.raft.app.reduce
+import build.raft.app.settings.iconName
 import build.raft.app.thread.accepts
 import build.raft.app.thread.iconName
 import build.raft.app.thread.reduce

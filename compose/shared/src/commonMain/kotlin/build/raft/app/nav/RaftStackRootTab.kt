@@ -1,7 +1,7 @@
 package build.raft.app.nav
 
 import androidx.compose.runtime.staticCompositionLocalOf
-import build.raft.app.AppShellInitialTabKey
+import build.raft.app.settings.AppShellInitialTabKey
 import build.raft.app.raftAppShellLaunchTab
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive

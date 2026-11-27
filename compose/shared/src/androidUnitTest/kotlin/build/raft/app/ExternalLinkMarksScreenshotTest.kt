@@ -12,6 +12,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
+import build.raft.app.settings.SharedSettingsAboutContent
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

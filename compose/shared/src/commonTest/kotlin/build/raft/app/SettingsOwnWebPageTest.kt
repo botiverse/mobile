@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.settings.raftAuthenticatedOwnWebPageUrlOrNull
+import build.raft.app.settings.raftUrlIsAppStoreRestrictedPurchaseUrl
+import build.raft.app.settings.raftUrlIsOwnBillingPath
+import build.raft.app.settings.settingsOwnWebExternalOpenIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

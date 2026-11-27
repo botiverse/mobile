@@ -34,6 +34,7 @@ import build.raft.app.data.toTaskSummary
 import build.raft.app.model.MemberKind
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.settings.observe
 import build.raft.app.thread.LocalThreadHeaderMenuEventBus
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.ThreadHeaderDisplayModel

@@ -14,6 +14,7 @@ import build.raft.app.data.WindowNavigationReadiness
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.settings.MessageLinkNavigationSource
 import build.raft.app.thread.RaftMessageLink
 import build.raft.app.thread.RaftMessageLinkResolution
 import build.raft.app.thread.RaftMessageLinkResolver

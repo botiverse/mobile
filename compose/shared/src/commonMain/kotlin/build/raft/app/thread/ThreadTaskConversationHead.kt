@@ -15,7 +15,7 @@ import build.raft.app.TaskConversationHeaderChrome
 import build.raft.app.TaskHeadPlacement
 import build.raft.app.TaskHeadScrollState
 import build.raft.app.base.BridgeModule
-import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.settings.buildAppShellThreadPayload
 import build.raft.app.canBeDeletedBy
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.SharedConversationDirectoryState
