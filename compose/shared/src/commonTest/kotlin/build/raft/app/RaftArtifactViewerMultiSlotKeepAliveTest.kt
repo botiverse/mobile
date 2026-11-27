@@ -53,7 +53,7 @@ class RaftArtifactViewerMultiSlotKeepAliveTest {
         assertTrue(keyB.startsWith(maya.artifactKeepAlivePrefix))
 
         // Short ID and canonical `pt_<uuid>` produce the exact same keep-alive slot key.
-        val shortIdA = assertNotNull(encodeArtifactShortId(artifactA.id))
+        val shortIdA = assertNotNull(encodeArtifactShortId(artifactA.id.removePrefix("pt_")))
         assertEquals(
             keyA,
             maya.artifactKeepAliveKey(ArtifactLinkTarget(shortIdA), channel, hostHead = null, langTag = "zh-CN"),
@@ -277,10 +277,13 @@ class RaftArtifactViewerMultiSlotKeepAliveTest {
         assertEquals(1, fullClears)
         assertFalse(cache.keptDocumentUsable(maya, token, channel, null, "en", keyB))
 
-        // Explicit logout clear wipes everything.
+        // Switching to another server also clears the prior scope before adopting the new one.
         assertTrue(cache.rememberKeptDocument(mayaOtherServer, artifactA, urlA, token, slotKey = mayaOtherServer.artifactKeepAliveKey(artifactA)))
-        cache.clear()
         assertEquals(2, fullClears)
+
+        // Explicit logout clear wipes everything.
+        cache.clear()
+        assertEquals(3, fullClears)
         assertFalse(cache.keptDocumentShows(mayaOtherServer, artifactA, mayaOtherServer.artifactKeepAliveKey(artifactA)))
     }
 
