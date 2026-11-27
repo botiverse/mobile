@@ -74,7 +74,14 @@ class MobilePlacesServerPopoverUiTest {
             val pickedRecent = mutableListOf<MobileRecentlyUsedEntry>()
             val state = RaftMobileNavServerPopoverState().apply { show() }
             val places = RaftMobileBuiltInPlaceIds.map(RaftRailPlace::builtIn)
-            val tabKeys = appShellDynamicPhoneTabKeys(enabled = true, mobilePlaces = places, artifactsEnabled = true, isGuest = false)
+            val tabKeys =
+                appShellDynamicPhoneTabKeys(
+                    enabled = true,
+                    mobilePlaces = places,
+                    artifactsEnabled = true,
+                    isGuest = false,
+                    maxPlaceTabs = appShellPhoneMaxPlaceTabs(),
+                )
             val entries = appShellMobileServerMenuEntries(places, tabKeys, wide = false, guest = false, artifacts = true)
 
             setContent {
@@ -145,7 +152,14 @@ class MobilePlacesServerPopoverUiTest {
 
             setContent {
                 val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
-                val tabKeys = appShellDynamicPhoneTabKeys(enabled = true, mobilePlaces = places, artifactsEnabled = true, isGuest = false)
+                val tabKeys =
+                    appShellDynamicPhoneTabKeys(
+                        enabled = true,
+                        mobilePlaces = places,
+                        artifactsEnabled = true,
+                        isGuest = false,
+                        maxPlaceTabs = appShellPhoneMaxPlaceTabs(),
+                    )
                 val entries = appShellMobileServerMenuEntries(places, tabKeys, wide = false, guest = false, artifacts = true)
                 CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                     RaftDesignSystemTheme {
@@ -192,25 +206,25 @@ class MobilePlacesServerPopoverUiTest {
             assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.removeBadge("settings")).fetchSemanticsNodes().size)
             assertEquals(0, onAllNodesWithTag(RaftMobilePlacesPopoverTags.addBadge("settings")).fetchSemanticsNodes().size)
 
-            // Tap − on Home ("chat"): moves chat to More[0], promotes artifacts to Tab bar slot 4.
+            // Tap − on Home ("chat"): on Android (5+1=6), moves chat to More[0], promotes members to Tab bar slot 5.
             onNodeWithTag(RaftMobilePlacesPopoverTags.removeBadge("chat")).assertIsEnabled().performClick()
             waitForIdle()
             assertEquals(
-                listOf("activity", "tasks", "search", "artifacts", "chat", "members", "computers", "apps"),
+                listOf("activity", "tasks", "search", "artifacts", "members", "chat", "computers", "apps"),
                 savedOrders.last(),
             )
-            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("members"), useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("chat"), useUnmergedTree = true).assertIsDisplayed()
 
-            // Tap + on Computers: moves computers to slot 4, bumps artifacts to More[0].
+            // Tap + on Computers: moves computers to slot 5, bumps members to More[0].
             onNodeWithTag(RaftMobilePlacesPopoverTags.addBadge("computers")).performClick()
             waitForIdle()
             assertEquals(
-                listOf("activity", "tasks", "search", "computers", "artifacts", "chat", "members", "apps"),
+                listOf("activity", "tasks", "search", "artifacts", "computers", "members", "chat", "apps"),
                 savedOrders.last(),
             )
             onNodeWithTag(RaftMobilePlacesPopoverTags.tabTile("computers"), useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("artifacts"), useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(RaftMobilePlacesPopoverTags.moreTile("members"), useUnmergedTree = true).assertIsDisplayed()
 
             // Tap Reset: restores default order.
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_RESET_BUTTON).performClick()
@@ -236,7 +250,14 @@ class MobilePlacesServerPopoverUiTest {
         runRobolectricComposeUiTest {
             val places = RaftMobileBuiltInPlaceIds.map(RaftRailPlace::builtIn)
             val state = RaftMobileNavServerPopoverState().apply { show() }
-            val tabKeys = appShellDynamicPhoneTabKeys(enabled = true, mobilePlaces = places, artifactsEnabled = false, isGuest = true)
+            val tabKeys =
+                appShellDynamicPhoneTabKeys(
+                    enabled = true,
+                    mobilePlaces = places,
+                    artifactsEnabled = false,
+                    isGuest = true,
+                    maxPlaceTabs = appShellPhoneMaxPlaceTabs(),
+                )
             val entries = appShellMobileServerMenuEntries(places, tabKeys, wide = false, guest = true, artifacts = false)
 
             setContent {

@@ -285,6 +285,7 @@ internal fun RaftAppServerMenuOverlay(
                                     mobilePlaces = activeMobilePlaces.mobilePlaces,
                                     artifactsEnabled = activeMobilePlaces.artifactsEnabled,
                                     isGuest = activeMobilePlaces.isGuest,
+                                    maxTabBarCount = appShellPhoneMaxPlaceTabs(),
                                 )
                             }
                         RaftMobilePlacesEditPopoverBody(

@@ -472,7 +472,7 @@ internal fun RaftMobilePlacesEditPopoverBody(
                 title = stringResource(Res.string.mobile_nav_edit_tab_bar),
             )
             MobilePlacesEditGrid(
-                columns = AppShellPhoneMaxPlaceTabs,
+                columns = editState.maxTabBarCount,
                 gap = MobilePlacesEditGridGap,
                 modifier = Modifier.testTag(RaftMobilePlacesPopoverTags.EDIT_TAB_BAR_GRID).padding(horizontal = 8.dp, vertical = 4.dp),
             ) {

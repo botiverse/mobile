@@ -33,8 +33,15 @@ import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
-/** Maximum number of dynamic place tabs placed before the fixed Server tab on the phone bar. */
+/** Default/iOS maximum number of dynamic place tabs placed before the fixed Server tab (4 + 1 = 5; iOS UITabBar hard cap). */
 internal const val AppShellPhoneMaxPlaceTabs: Int = 4
+
+/** Android maximum number of dynamic place tabs placed before the fixed Server tab (5 + 1 = 6). */
+internal const val AppShellAndroidPhoneMaxPlaceTabs: Int = 5
+
+/** Platform-resolved phone bottom-bar editable place tab cap (Android 5+1=6, iOS 4+1=5). */
+internal fun appShellPhoneMaxPlaceTabs(isAndroid: Boolean = raftPlatformIsAndroid()): Int =
+    if (isAndroid) AppShellAndroidPhoneMaxPlaceTabs else AppShellPhoneMaxPlaceTabs
 
 /** Number of columns in the phone Server popover's More grid (matches the 5-tab bottom bar density). */
 internal const val AppShellPhoneMoreGridColumns: Int = 5
@@ -150,6 +157,7 @@ internal fun appShellDynamicPhoneTabKeys(
     mobilePlaces: List<RaftRailPlace>?,
     artifactsEnabled: Boolean,
     isGuest: Boolean,
+    maxPlaceTabs: Int = AppShellPhoneMaxPlaceTabs,
 ): List<String> {
     if (!enabled) return AppShellPhoneBottomBarKeys
     val placeTabs =
@@ -159,7 +167,7 @@ internal fun appShellDynamicPhoneTabKeys(
             isGuest = isGuest,
         )
             .mapNotNull(::raftShellTabKeyForMobilePlace)
-            .take(AppShellPhoneMaxPlaceTabs)
+            .take(maxPlaceTabs.coerceAtLeast(1))
             .ifEmpty { listOf(RaftAppDestination.Chat.id) }
     return placeTabs + AppShellServerTabKey
 }
@@ -337,6 +345,7 @@ internal fun rememberAppShellMobilePlacesShellState(
                 mobilePlaces = activeSnapshot?.mobilePlaces,
                 artifactsEnabled = artifactsEnabled,
                 isGuest = isGuest,
+                maxPlaceTabs = appShellPhoneMaxPlaceTabs(),
             )
         }
     return AppShellMobilePlacesShellState(
