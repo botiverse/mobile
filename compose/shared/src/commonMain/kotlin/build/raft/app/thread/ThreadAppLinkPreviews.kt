@@ -138,6 +138,8 @@ internal data class ThreadArtifactLinkHost(
     val readerId: String? = null,
     /** Own Follow/Unfollow state & mutations shared with Artifacts Home (web #16357); null in fixtures. */
     val follows: SharedArtifactFollowStore? = null,
+    /** Whether the hosting thread page is currently visible; gates 15s held-cover re-polls (slock #16979). */
+    val isPageVisible: () -> Boolean = { true },
 )
 
 /** One message's Artifact links answered `ok`, and the hosts they were split on. */

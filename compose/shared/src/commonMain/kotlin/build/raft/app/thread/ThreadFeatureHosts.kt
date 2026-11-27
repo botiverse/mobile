@@ -259,6 +259,7 @@ internal fun rememberThreadFeatureHosts(
     // App link previews (artin #20 lane L): this viewer on this Server, asked once per conversation.
     val appLinkPreviewViewerId = currentSession?.user?.id?.takeIf(String::isNotBlank)
     val appLinkPreviewConversationId = renderedThread.streamChannelId ?: initialRouteIdentity.instanceKey
+    val currentPageActive by rememberUpdatedState(active)
     val appLinkPreviewHost =
         remember(sharedStores, appLinkPreviewViewerId, currentServerId, appLinkPreviewConversationId) {
             val viewerId = appLinkPreviewViewerId
@@ -286,6 +287,7 @@ internal fun rememberThreadFeatureHosts(
                             screenshots = sharedStores.artifactScreenshotStore,
                             readerId = viewerId,
                             follows = sharedStores.artifactFollowStore,
+                            isPageVisible = { currentPageActive },
                         ),
                     // The batched link-card read (App link cards v2).
                     batchedRead = true,
