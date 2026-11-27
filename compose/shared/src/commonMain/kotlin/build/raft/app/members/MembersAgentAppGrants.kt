@@ -11,13 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.collapse
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,6 +29,8 @@ import build.raft.app.data.AgentAppGrantRevokeFailure
 import build.raft.app.data.AgentAppGrantsRevoke
 import build.raft.app.data.AgentAppGrantsRevokeIntent
 import build.raft.app.data.AgentAppLoginItem
+import build.raft.app.data.AgentAppLoginType
+import build.raft.app.data.DataResult
 import build.raft.app.data.isActiveGrant
 import build.raft.app.get
 import build.raft.app.jointMemberConnectNames
@@ -48,10 +49,13 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
-import build.raft.designsystem.components.RaftListRowGroup
+import build.raft.designsystem.components.RaftPresence
 import build.raft.designsystem.components.RaftSeparator
+import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /*
  * The agent's Apps tab, one row per App (web AgentAppGrantsRow + RevokeAppGrantsDialog +
@@ -65,6 +69,7 @@ import build.raft.designsystem.theme.RaftTheme
 
 internal const val MembersAgentAppAbilitiesTag = "agent-app-abilities"
 internal const val MembersAgentAppSourceTag = "agent-app-source"
+internal const val MembersAgentAppPendingScopesTag = "agent-app-pending-scopes"
 internal const val MembersAgentAppRevokeConfirmTag = "agent-app-revoke-confirm"
 internal const val MembersAgentAppRevokePartialFailureTag = "agent-app-revoke-partial-failure"
 internal const val MembersAgentAppRevokeReasonTag = "agent-app-revoke-reason"
@@ -73,8 +78,6 @@ internal fun membersAgentAppRowTag(clientId: String) = "agent-app-row-$clientId"
 
 internal fun membersAgentAppRevokeTag(clientId: String) = "agent-app-revoke-$clientId"
 
-internal fun membersAgentAppDetailsTag(clientId: String) = "agent-app-details-$clientId"
-
 internal fun membersAgentAppGrantDetailsTag(clientId: String) = "agent-app-grant-details-$clientId"
 
 internal fun membersAgentAppGrantTag(grantId: String) = "agent-app-grant-$grantId"
@@ -82,6 +85,16 @@ internal fun membersAgentAppGrantTag(grantId: String) = "agent-app-grant-$grantI
 internal fun membersAgentAppRevokeGrantTag(grantId: String) = "agent-app-revoke-grant-$grantId"
 
 internal fun membersAgentAppRevokeItemTag(grantId: String) = "agent-app-revoke-item-$grantId"
+
+internal fun membersAgentAppPendingRowTag(requestId: String) = "agent-app-pending-$requestId"
+
+internal fun membersAgentAppPendingApproveTag(requestId: String) = "agent-app-pending-approve-$requestId"
+
+internal fun membersAgentAppPendingDenyTag(requestId: String) = "agent-app-pending-deny-$requestId"
+
+/** Pending access requests for this agent (web AgentAppAccessTab `pending`). */
+internal fun membersAgentAppPendingRequests(items: List<AgentAppLoginItem>): List<AgentAppLoginItem> =
+    items.filter { it.type == AgentAppLoginType.Pending && it.resolvedAt.isNullOrBlank() && it.revokedAt.isNullOrBlank() }
 
 /** One App the agent has, with every live grant it holds (web `AgentAppGrantGroup`). */
 internal data class MembersAgentAppGrantGroup(
@@ -141,10 +154,134 @@ private fun membersAgentAppGrantSourceTitle(source: String?): String =
     }
 
 /**
- * One App on the Apps tab (web AgentAppGrantsRow): its name, since when, how it got access (one
- * way for all its grants), status, description, and one plain line of what it can do across its
- * grants. [canManage] adds Revoke access (every grant, [onRevoke] with `whole`); more than one
- * grant adds Details, which lists them grouped by source, each with its own Revoke for [canManage].
+ * One pending App access request on the Apps tab (web AgentAppAccessTab pending section,
+ * botiverse/slock#17263): lists requested permissions in plain words (never raw scope chips for
+ * known permissions) and names its step buttons "Approve request" / "Deny request".
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun MembersAgentAppPendingRequestRow(
+    request: AgentAppLoginItem,
+    canManage: Boolean,
+    timeContext: RaftTimeContext,
+    onApprove: (suspend () -> DataResult<Unit>)?,
+    onDeny: (suspend () -> DataResult<Unit>)?,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val scope = rememberCoroutineScope()
+    val approveFailed = stringResource(Res.string.member_app_approve_failed)
+    val denyFailed = stringResource(Res.string.member_app_deny_failed)
+    var busyAction by remember(request.id) { mutableStateOf<String?>(null) }
+    var actionError by remember(request.id) { mutableStateOf<Pair<String, String?>?>(null) }
+
+    fun submit(actionKey: String, fallbackError: String, block: suspend () -> DataResult<Unit>) {
+        if (busyAction != null) return
+        busyAction = actionKey
+        actionError = null
+        scope.launch {
+            try {
+                when (val result = block()) {
+                    is DataResult.Content -> Unit
+                    is DataResult.Error -> {
+                        val message = result.error.serverMessage?.takeIf { it.isNotBlank() } ?: fallbackError
+                        actionError = message to result.error.traceId
+                    }
+                    is DataResult.NoPermission -> {
+                        val message = result.blocker.serverMessage?.takeIf { it.isNotBlank() } ?: fallbackError
+                        actionError = message to result.blocker.traceId
+                    }
+                    is DataResult.Empty -> actionError = fallbackError to null
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                actionError = fallbackError to null
+            } finally {
+                busyAction = null
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag(membersAgentAppPendingRowTag(request.id)),
+        verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                RaftText(
+                    text = request.clientName,
+                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                    color = colors.foreground,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                request.createdAt?.let {
+                    RaftText(
+                        text = it.membersReminderShortDateTime(timeContext),
+                        style = typography.monoMeta,
+                        color = colors.foregroundHint
+                    )
+                }
+            }
+            RaftBadge(
+                text = stringResource(Res.string.member_app_pending_badge),
+                appearance = RaftBadgeAppearance.Soft,
+                variant = RaftBadgeVariant.Warning,
+                icon = { RaftStatusDot(color = colors.taskStatusTodo) }
+            )
+        }
+        if (request.scopes.isNotEmpty()) {
+            MembersAgentAppGrantAbilities(
+                scopes = request.scopes,
+                modifier = Modifier.testTag(MembersAgentAppPendingScopesTag)
+            )
+        }
+        actionError?.let { (message, traceId) ->
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                RaftBanner(description = message, status = RaftBannerStatus.Warning, size = RaftBannerSize.Sm)
+                RaftTraceIdNote(traceId)
+            }
+        }
+        if (canManage && onApprove != null && onDeny != null) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
+            ) {
+                RaftButton(
+                    text = stringResource(Res.string.member_app_approve_request),
+                    onClick = { submit("approve", approveFailed, onApprove) },
+                    modifier = Modifier.testTag(membersAgentAppPendingApproveTag(request.id)),
+                    variant = RaftButtonVariant.Primary,
+                    size = RaftButtonSize.Md,
+                    enabled = busyAction == null,
+                    loading = busyAction == "approve"
+                )
+                RaftButton(
+                    text = stringResource(Res.string.member_app_deny_request),
+                    onClick = { submit("deny", denyFailed, onDeny) },
+                    modifier = Modifier.testTag(membersAgentAppPendingDenyTag(request.id)),
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Md,
+                    enabled = busyAction == null,
+                    loading = busyAction == "deny"
+                )
+            }
+        }
+    }
+}
+
+/**
+ * One App row inside the Apps tab's flat [RaftListRowGroup] (web AgentAppGrantsRow, App detail v6):
+ * its name, since when, how it got access (when one way for all grants), status badge, description,
+ * and one plain line of what it can do across its grants. With more than one grant, individual
+ * grants are laid out flat under the row with hairline dividers (no collapsed accordion or nested
+ * box). [canManage] adds Revoke access (every grant, [onRevoke] with `whole`) and per-grant Revoke.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -155,13 +292,12 @@ internal fun MembersAgentAppGrantsCard(
     onOpenUrl: (String) -> Unit,
     onRevoke: (whole: Boolean, grantIds: List<String>) -> Unit,
 ) {
-    var detailsOpen by remember(group.clientId) { mutableStateOf(false) }
     val multiple = group.grants.size > 1
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    // raft-ui Card (default): no shadow, the hairline edge.
+    val homepageUrl = group.homepageUrl?.takeIf { it.isNotBlank() }
     Column(
-        modifier = Modifier.fillMaxWidth().membersRaftCard().padding(RaftAppSpacing.Md).testTag(membersAgentAppRowTag(group.clientId)),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag(membersAgentAppRowTag(group.clientId)),
         verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm)
     ) {
         Row(
@@ -172,7 +308,7 @@ internal fun MembersAgentAppGrantsCard(
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 RaftText(
                     text = group.name,
-                    style = typography.cardTitle,
+                    style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
                     color = colors.foreground,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -188,7 +324,7 @@ internal fun MembersAgentAppGrantsCard(
                         color = colors.foregroundHint
                     )
                 }
-                // Several sources: Details says it per grant.
+                // Several sources: individual grant rows below say how each grant arrived.
                 group.onlyGrantSource()?.let(::membersAgentAppGrantSourceLabel)?.let { label ->
                     RaftText(
                         text = stringResource(label),
@@ -201,7 +337,8 @@ internal fun MembersAgentAppGrantsCard(
             RaftBadge(
                 text = stringResource(Res.string.member_label_active),
                 appearance = RaftBadgeAppearance.Soft,
-                variant = RaftBadgeVariant.Success
+                variant = RaftBadgeVariant.Success,
+                icon = { RaftStatusDot(presence = RaftPresence.Online) }
             )
         }
         group.description?.takeIf { it.isNotBlank() }?.let {
@@ -217,10 +354,10 @@ internal fun MembersAgentAppGrantsCard(
                 modifier = Modifier.testTag(MembersAgentAppAbilitiesTag)
             )
         }
-        if (multiple && detailsOpen) {
+        if (multiple) {
             MembersAgentAppGrantDetails(group = group, canManage = canManage, timeContext = timeContext, onRevoke = onRevoke)
         }
-        if (canManage || multiple) {
+        if (canManage || homepageUrl != null) {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
@@ -238,49 +375,28 @@ internal fun MembersAgentAppGrantsCard(
                         size = RaftButtonSize.Md
                     )
                 }
-                if (multiple) {
-                    val detailsFor = stringResource(Res.string.member_app_grant_details_for, group.name)
+                if (homepageUrl != null) {
+                    val leavesRaft = !rememberRaftLinkOpensInRaft(homepageUrl)
                     RaftButton(
-                        text = stringResource(Res.string.member_app_grant_details),
-                        onClick = { detailsOpen = !detailsOpen },
-                        modifier = Modifier
-                            .testTag(membersAgentAppDetailsTag(group.clientId))
-                            .semantics {
-                                contentDescription = detailsFor
-                                if (detailsOpen) collapse { detailsOpen = false; true } else expand { detailsOpen = true; true }
-                            },
+                        text = stringResource(Res.string.member_action_view_service),
+                        onClick = { onOpenUrl(homepageUrl) },
                         variant = RaftButtonVariant.Ghost,
                         size = RaftButtonSize.Md,
-                        trailingIcon = {
-                            RaftContentLucideIcon(
-                                if (detailsOpen) RaftLucideIconName.ChevronUp else RaftLucideIconName.ChevronDown,
-                                size = 16.dp
-                            )
-                        }
+                        // raft-ui 0.26 (#758) & slock #16676: show ↗ only when the click leaves Raft.
+                        trailingIcon =
+                            if (leavesRaft) {
+                                { RaftContentLucideIcon(RaftLucideIconName.ArrowUpRight, size = 16.dp) }
+                            } else {
+                                null
+                            },
                     )
                 }
             }
         }
-        group.homepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
-            val leavesRaft = !rememberRaftLinkOpensInRaft(homepageUrl)
-            RaftButton(
-                text = stringResource(Res.string.member_action_view_service),
-                onClick = { onOpenUrl(homepageUrl) },
-                modifier = Modifier.fillMaxWidth(),
-                size = RaftButtonSize.Lg,
-                // raft-ui 0.26 (#758) & slock #16676: show ↗ only when the click leaves Raft.
-                trailingIcon =
-                    if (leavesRaft) {
-                        { RaftContentLucideIcon(RaftLucideIconName.ArrowUpRight, size = 18.dp) }
-                    } else {
-                        null
-                    },
-            )
-        }
     }
 }
 
-/** Web AgentAppGrantsRow's details: the App's grants by source, each its abilities, when it was granted and its own Revoke. */
+/** Flat per-grant breakdown under a multi-grant App row: grouped by source with hairline separators, no nested box. */
 @Composable
 private fun MembersAgentAppGrantDetails(
     group: MembersAgentAppGrantGroup,
@@ -290,8 +406,9 @@ private fun MembersAgentAppGrantDetails(
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().testTag(membersAgentAppGrantDetailsTag(group.clientId)),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        RaftSeparator()
         membersAgentAppGrantsBySource(group.grants).forEach { (source, grants) ->
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 RaftText(
@@ -299,18 +416,15 @@ private fun MembersAgentAppGrantDetails(
                     style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
                     color = RaftTheme.colors.foregroundMuted
                 )
-                RaftListRowGroup(Modifier.fillMaxWidth()) {
-                    grants.forEachIndexed { index, grant ->
-                        // ListRow plain: the hairline from the edge (16dp).
-                        if (index > 0) RaftSeparator(Modifier.padding(start = 16.dp))
-                        MembersAgentAppGrantDetailRow(
-                            grant = grant,
-                            appName = group.name,
-                            canManage = canManage,
-                            timeContext = timeContext,
-                            onRevoke = { onRevoke(false, listOf(grant.id)) }
-                        )
-                    }
+                grants.forEachIndexed { index, grant ->
+                    if (index > 0) RaftSeparator()
+                    MembersAgentAppGrantDetailRow(
+                        grant = grant,
+                        appName = group.name,
+                        canManage = canManage,
+                        timeContext = timeContext,
+                        onRevoke = { onRevoke(false, listOf(grant.id)) }
+                    )
                 }
             }
         }
@@ -326,9 +440,8 @@ private fun MembersAgentAppGrantDetailRow(
     timeContext: RaftTimeContext,
     onRevoke: () -> Unit,
 ) {
-    // ListRow plain, display only (`px-4 py-3`, top-aligned): its Revoke is the target.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).testTag(membersAgentAppGrantTag(grant.id)),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag(membersAgentAppGrantTag(grant.id)),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.Top
     ) {
@@ -366,8 +479,9 @@ private fun membersAgentAppGrantWords(scopes: List<String>): String =
     )
 
 /**
- * Web AppGrantAbilities: what one grant lets the App do, each ability in plain words with the raw
- * scopes behind it in small mono text under it; a scope without words shows as itself.
+ * Plain-word permission list (web `PlainScope` / `AppGrantAbilities`, botiverse/slock#17263):
+ * each known ability reads as a plain sentence without raw scope names; a scope this build has
+ * no words for still shows as itself so nothing is hidden.
  */
 @Composable
 internal fun MembersAgentAppGrantAbilities(scopes: List<String>, modifier: Modifier = Modifier) {
@@ -377,14 +491,7 @@ internal fun MembersAgentAppGrantAbilities(scopes: List<String>, modifier: Modif
         membersAgentAppAbilities(scopes).forEach { item ->
             val ability = item.ability
             if (ability != null) {
-                Column {
-                    RaftText(text = stringResource(ability.long), style = typography.subhead, color = colors.foreground)
-                    RaftText(
-                        text = ability.scopes.filter { it in scopes }.joinToString(" / "),
-                        style = typography.monoMeta,
-                        color = colors.foregroundHint
-                    )
-                }
+                RaftText(text = stringResource(ability.long), style = typography.subhead, color = colors.foreground)
             } else {
                 RaftText(text = item.rawScope.orEmpty(), style = typography.monoMeta, color = colors.foreground)
             }

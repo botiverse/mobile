@@ -537,6 +537,18 @@ interface MemberRepository {
         grantId: String
     ): AgentAppGrantRevokeOutcome =
         AgentAppGrantRevokeOutcome.NotRevoked(AgentAppGrantRevokeFailure.NoAnswer)
+    /** Web AgentAppAccessTab: approve one pending agent app access request (`POST /api/integrations/requests/:id/approve`). */
+    suspend fun approveAgentAppRequest(
+        priority: DataRequestPriority,
+        requestId: String
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError(code = "agent_app_request_unsupported"))
+    /** Web AgentAppAccessTab: deny one pending agent app access request (`POST /api/integrations/requests/:id/deny`). */
+    suspend fun denyAgentAppRequest(
+        priority: DataRequestPriority,
+        requestId: String
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError(code = "agent_app_request_unsupported"))
     /** Web AgentAppAccessTab › App events: a page of the events apps sent to the agent. */
     suspend fun getAgentAppEvents(
         priority: DataRequestPriority,

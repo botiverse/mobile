@@ -182,8 +182,8 @@ class SettingsWebViewServerSwitchUiTest {
                 waitForIdle()
                 val first = webViews().single()
                 assertTrue(
-                    first.loadedTargetUrl().contains("/s/alpha/settings/integrations"),
-                    "Expected Server A integrations URL, got: ${first.loadedTargetUrl()}",
+                    first.loadedTargetUrl().contains("/s/alpha/apps"),
+                    "Expected Server A apps URL, got: ${first.loadedTargetUrl()}",
                 )
 
                 runBlocking {
@@ -202,8 +202,8 @@ class SettingsWebViewServerSwitchUiTest {
                 val second = attachedAfterSwitch.single()
                 assertNotSame(first, second)
                 assertTrue(
-                    second.loadedTargetUrl().contains("/s/beta/settings/integrations"),
-                    "Expected Server B integrations URL, got: ${second.loadedTargetUrl()}",
+                    second.loadedTargetUrl().contains("/s/beta/apps"),
+                    "Expected Server B apps URL, got: ${second.loadedTargetUrl()}",
                 )
             } finally {
                 scope.cancel()

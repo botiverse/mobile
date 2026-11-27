@@ -5444,17 +5444,23 @@ private fun RaftAppShellReadyContent(
                 "section=${link.section != null} anchor=${anchor?.id ?: "none"} switched=${target.switchToServerId != null}"
         )
         if (navRailActive) {
-            railInlineSecondaryDestination = null
-            // The wide rail's Settings: the section beside the list, or a page over it.
-            selectAppShellTab("settings", directChildSwitch = true, source = AppShellTabSwitchSource.User)
-            retainedAppShellTabs = retainedAppShellTabs + "settings"
-            when {
-                key == null -> settingsWidePicked = null
-                settingsWidePick(key) is SettingsWidePick.Detail -> {
-                    settingsWidePicked = key
-                    settingsWideAnchor = anchor?.let { key to it }
+            if (key == SettingsDestinationConnectedApps) {
+                // Settings › Applications was removed (botiverse/slock#17260); route links directly
+                // to the rail's Apps destination (`/s/<slug>/apps`) rather than into Settings.
+                railInlineSecondaryDestination = AppShellRailAppsKey
+            } else {
+                railInlineSecondaryDestination = null
+                // The wide rail's Settings: the section beside the list, or a page over it.
+                selectAppShellTab("settings", directChildSwitch = true, source = AppShellTabSwitchSource.User)
+                retainedAppShellTabs = retainedAppShellTabs + "settings"
+                when {
+                    key == null -> settingsWidePicked = null
+                    settingsWidePick(key) is SettingsWidePick.Detail -> {
+                        settingsWidePicked = key
+                        settingsWideAnchor = anchor?.let { key to it }
+                    }
+                    else -> openSettingsRowAt(key, anchor)
                 }
-                else -> openSettingsRowAt(key, anchor)
             }
         } else if (key != null) {
             openSettingsRowAt(key, anchor)

@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
  */
 @RunWith(RobolectricTestRunner::class)
 class SettingsMarketplaceOriginFenceAndroidTest {
-    private val marketplaceUrl = "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host"
+    private val marketplaceUrl = "https://app.raft.build/s/workspace/apps?embed=raft-settings-v1&shell=host"
 
     private fun request(url: String, mainFrame: Boolean = true) =
         object : WebResourceRequest {
@@ -66,18 +66,18 @@ class SettingsMarketplaceOriginFenceAndroidTest {
         val client = shadowOf(webView).webViewClient
 
         // Same-origin Raft routes stay inside the Apps WebView.
-        assertFalse(client.shouldOverrideUrlLoading(webView, request("https://app.raft.build/s/workspace/settings/integrations/stamp")))
+        assertFalse(client.shouldOverrideUrlLoading(webView, request("https://app.raft.build/s/workspace/apps/stamp")))
         assertEquals(emptyList<String>(), blocked)
         assertEquals(emptyList<String>(), openedExternal)
 
         // Third-party App homepages and same-host scheme/port downgrades are blocked and routed to link opening.
         assertTrue(client.shouldOverrideUrlLoading(webView, request("https://stamp.build/")))
-        assertTrue(client.shouldOverrideUrlLoading(webView, request("http://app.raft.build/s/workspace/settings/integrations")))
+        assertTrue(client.shouldOverrideUrlLoading(webView, request("http://app.raft.build/s/workspace/apps")))
         assertTrue(client.shouldOverrideUrlLoading(webView, request("https://app.raft.build:8443/other")))
         assertEquals(
             listOf(
                 "https://stamp.build/",
-                "http://app.raft.build/s/workspace/settings/integrations",
+                "http://app.raft.build/s/workspace/apps",
                 "https://app.raft.build:8443/other",
             ),
             openedExternal,

@@ -986,9 +986,9 @@ internal fun MembersAgentAppsTab(
     appAccess: MembersAgentAppAccessBinding? = null,
     appEventsState: MembersAgentAppEventsState = remember(agentId) { MembersAgentAppEventsState() },
 ) {
-    // Web AgentAppAccessTab (`stack-y-6`): the Apps section, then App events.
-    // Not in the app yet: Grant Access (its picker, scopes and MCP connection), MCP App rows and
-    // pending requests.
+    // Web AgentAppAccessTab (`stack-y-6`): pending requests (when any), the Apps section, then
+    // App events (hidden until at least one event exists or loading fails, botiverse/slock#17263).
+    // Not in the app yet: Grant Access (its picker, scopes and MCP connection) and MCP App rows.
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(24.dp)) {
         MembersAgentAppsSection(
             agentId = agentId,
@@ -1016,81 +1016,119 @@ private fun MembersAgentAppsSection(
     appAccess: MembersAgentAppAccessBinding?
 ) {
     val errorStrings = localizedErrorPresentationStrings()
-    // Web AgentDetailPanel `canManageAgentAccess`: every Revoke, and the confirmation, need it.
+    // Web AgentDetailPanel `canManageAgentAccess`: every Revoke, pending approval, and confirmation needs it.
     val canManage = appAccess?.canManage?.invoke(detail) == true
     val fallbackRevokeState = remember { MutableStateFlow(AgentAppGrantsRevokeState()) }
     val revokeState by (appAccess?.store?.state ?: fallbackRevokeState).collectAsState()
-    // Web AgentAppAccessTab's Apps section (`stack-y-3`): the eyebrow, its description, then the
-    // apps or the hint.
-    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            MembersDetailSectionTitle(stringResource(Res.string.member_section_connected_apps))
-            RaftText(
-                text = stringResource(Res.string.member_hint_connected_apps),
-                style = RaftTheme.typography.callout,
-                color = RaftTheme.colors.foregroundMuted
-            )
-        }
-        val appLogins = detail?.appLogins
-        when (appLogins?.loadState) {
-            AgentAppLoginLoadState.NoPermission ->
-                MembersDetailField(
-                    stringResource(Res.string.member_tab_apps),
-                    appLogins.permissionBlocker?.userFacingMessage(errorStrings)
-                        ?: appLogins.errorCode?.userFacingErrorCodeMessage(errorStrings)
-                        ?: stringResource(Res.string.member_error_apps_private)
+    val appLogins = detail?.appLogins
+    val items = appLogins?.items.orEmpty()
+    val pending = remember(items) { membersAgentAppPendingRequests(items) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        if (pending.isNotEmpty() && appLogins?.loadState != AgentAppLoginLoadState.NoPermission && appLogins?.loadState != AgentAppLoginLoadState.Error) {
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                RaftText(
+                    text = stringResource(Res.string.member_app_pending_title),
+                    style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                    color = RaftTheme.colors.foreground
                 )
-            AgentAppLoginLoadState.Error ->
-                MembersDetailField(
-                    stringResource(Res.string.member_tab_apps),
-                    stringResource(
-                        Res.string.member_error_apps_load,
-                        appLogins.screenError?.userFacingMessage(errorStrings)
-                            ?: appLogins.errorCode.userFacingErrorCodeMessage(errorStrings)
-                    )
-                )
-            else -> {
-                // The re-read after a revoke failed: the list stays as it is, and says so (web: the
-                // tab's warning banner with the server's reason), with the request's trace ID.
-                appLogins?.refreshError?.let { error ->
-                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        RaftBanner(
-                            description = stringResource(Res.string.member_error_apps_load, error.userFacingMessage(errorStrings)),
-                            status = RaftBannerStatus.Warning,
-                            size = RaftBannerSize.Sm
-                        )
-                        RaftTraceIdNote(error.traceId)
-                    }
-                }
-                // One row per App (`clientId`), however many grants it holds.
-                val items = appLogins?.items.orEmpty()
-                val apps = remember(items) { membersAgentAppGrantGroups(items) }
-                if (apps.isEmpty()) {
-                    RaftText(
-                        text = stringResource(Res.string.member_state_no_connected_apps),
-                        style = RaftTheme.typography.callout,
-                        color = RaftTheme.colors.foregroundHint
-                    )
-                } else {
-                    apps.forEach { app ->
-                        key(app.clientId) {
-                            MembersAgentAppGrantsCard(
-                                group = app,
+                RaftListRowGroup(Modifier.fillMaxWidth()) {
+                    val approveRequest = appAccess?.onApproveRequest
+                    val denyRequest = appAccess?.onDenyRequest
+                    pending.forEachIndexed { index, request ->
+                        if (index > 0) RaftSeparator(Modifier.padding(start = 16.dp))
+                        key(request.id) {
+                            val approveHandler: (suspend () -> DataResult<Unit>)? =
+                                if (approveRequest != null) {
+                                    { approveRequest(agentId, request.id) }
+                                } else {
+                                    null
+                                }
+                            val denyHandler: (suspend () -> DataResult<Unit>)? =
+                                if (denyRequest != null) {
+                                    { denyRequest(agentId, request.id) }
+                                } else {
+                                    null
+                                }
+                            MembersAgentAppPendingRequestRow(
+                                request = request,
                                 canManage = canManage,
                                 timeContext = timeContext,
-                                onOpenUrl = onOpenUrl,
-                                onRevoke = { whole, grantIds ->
-                                    appAccess?.store?.dispatch(
-                                        AgentAppGrantsRevokeIntent.Start(
-                                            agentId = agentId,
-                                            clientId = app.clientId,
-                                            appName = app.name,
-                                            whole = whole,
-                                            grantIds = grantIds
-                                        )
+                                onApprove = approveHandler,
+                                onDeny = denyHandler,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            RaftText(
+                text = stringResource(Res.string.member_section_connected_apps),
+                style = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                color = RaftTheme.colors.foreground
+            )
+            when (appLogins?.loadState) {
+                AgentAppLoginLoadState.NoPermission ->
+                    MembersDetailField(
+                        stringResource(Res.string.member_tab_apps),
+                        appLogins.permissionBlocker?.userFacingMessage(errorStrings)
+                            ?: appLogins.errorCode?.userFacingErrorCodeMessage(errorStrings)
+                            ?: stringResource(Res.string.member_error_apps_private)
+                    )
+                AgentAppLoginLoadState.Error ->
+                    MembersDetailField(
+                        stringResource(Res.string.member_tab_apps),
+                        stringResource(
+                            Res.string.member_error_apps_load,
+                            appLogins.screenError?.userFacingMessage(errorStrings)
+                                ?: appLogins.errorCode.userFacingErrorCodeMessage(errorStrings)
+                        )
+                    )
+                else -> {
+                    // The re-read after a revoke failed: the list stays as it is, and says so (web: the
+                    // tab's warning banner with the server's reason), with the request's trace ID.
+                    appLogins?.refreshError?.let { error ->
+                        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            RaftBanner(
+                                description = stringResource(Res.string.member_error_apps_load, error.userFacingMessage(errorStrings)),
+                                status = RaftBannerStatus.Warning,
+                                size = RaftBannerSize.Sm
+                            )
+                            RaftTraceIdNote(error.traceId)
+                        }
+                    }
+                    // One flat row per App (`clientId`) inside a single RaftListRowGroup (App detail v6).
+                    val apps = remember(items) { membersAgentAppGrantGroups(items) }
+                    if (apps.isEmpty()) {
+                        RaftText(
+                            text = stringResource(Res.string.member_state_no_connected_apps),
+                            style = RaftTheme.typography.callout,
+                            color = RaftTheme.colors.foregroundHint
+                        )
+                    } else {
+                        RaftListRowGroup(Modifier.fillMaxWidth()) {
+                            apps.forEachIndexed { index, app ->
+                                if (index > 0) RaftSeparator(Modifier.padding(start = 16.dp))
+                                key(app.clientId) {
+                                    MembersAgentAppGrantsCard(
+                                        group = app,
+                                        canManage = canManage,
+                                        timeContext = timeContext,
+                                        onOpenUrl = onOpenUrl,
+                                        onRevoke = { whole, grantIds ->
+                                            appAccess?.store?.dispatch(
+                                                AgentAppGrantsRevokeIntent.Start(
+                                                    agentId = agentId,
+                                                    clientId = app.clientId,
+                                                    appName = app.name,
+                                                    whole = whole,
+                                                    grantIds = grantIds
+                                                )
+                                            )
+                                        }
                                     )
                                 }
-                            )
+                            }
                         }
                     }
                 }

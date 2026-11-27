@@ -1099,6 +1099,16 @@ class RealMemberRepository(
         return integrationsApiClient.revokeIntegrationGrant(grantId)
     }
 
+    override suspend fun approveAgentAppRequest(priority: DataRequestPriority, requestId: String): DataResult<Unit> {
+        currentContext() ?: return authRequired()
+        return integrationsApiClient.approveIntegrationRequest(requestId, """{"remember":true}""").map { Unit }
+    }
+
+    override suspend fun denyAgentAppRequest(priority: DataRequestPriority, requestId: String): DataResult<Unit> {
+        currentContext() ?: return authRequired()
+        return integrationsApiClient.denyIntegrationRequest(requestId).map { Unit }
+    }
+
     override suspend fun getAgentAppEvents(
         priority: DataRequestPriority,
         agentId: MemberId,

@@ -575,11 +575,11 @@ internal fun ThreadMcpConnectCardSlot(
         loadedView.options == null -> {
             // Server flag `mcp_personal_accounts` is OFF: observer sees locked copy; manager opens on web.
             if (loadedView.viewerRole == McpConnectionViewerRole.Observer) {
-                RaftText(
-                    text = stringResource(Res.string.thread_action_card_mcp_locked),
-                    style = RaftTheme.typography.footnote,
-                    color = RaftTheme.colors.foregroundMuted,
-                    modifier = modifier.fillMaxWidth().padding(top = 4.dp).testTag(ThreadActionCardMcpConnectLockedTag),
+                RaftBanner(
+                    description = stringResource(Res.string.thread_action_card_mcp_locked),
+                    status = RaftBannerStatus.Info,
+                    size = RaftBannerSize.Sm,
+                    modifier = modifier.padding(top = 4.dp).testTag(ThreadActionCardMcpConnectLockedTag),
                 )
             } else {
                 RaftMessageActionCardActions(modifier = modifier) {
@@ -680,29 +680,13 @@ internal fun ThreadMcpConnectCardSlot(
                 }
                 val activeWaiting = waitingSession
                 if (activeWaiting != null) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().testTag(ThreadActionCardMcpConnectOAuthWaitingTag),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        RaftBanner(
-                            description = stringResource(Res.string.thread_action_card_mcp_oauth_waiting),
-                            status = RaftBannerStatus.Info,
-                            size = RaftBannerSize.Sm,
-                            pending = true,
-                        )
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            itemVerticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RaftButton(
-                                text = stringResource(Res.string.thread_action_card_mcp_oauth_open_sign_in_page),
-                                onClick = { currentHost.openAuthorizationUrl(activeWaiting.authorizationUrl) },
-                                variant = RaftButtonVariant.Default,
-                                size = RaftButtonSize.Md,
-                                modifier = Modifier.testTag(ThreadActionCardMcpConnectOAuthOpenTag),
-                            )
+                    RaftBanner(
+                        description = stringResource(Res.string.thread_action_card_mcp_oauth_waiting),
+                        status = RaftBannerStatus.Info,
+                        size = RaftBannerSize.Sm,
+                        pending = true,
+                        modifier = Modifier.testTag(ThreadActionCardMcpConnectOAuthWaitingTag),
+                        action = {
                             RaftButton(
                                 text = stringResource(Res.string.thread_action_card_mcp_oauth_cancel_sign_in),
                                 onClick = {
@@ -713,8 +697,15 @@ internal fun ThreadMcpConnectCardSlot(
                                 size = RaftButtonSize.Md,
                                 modifier = Modifier.testTag(ThreadActionCardMcpConnectOAuthCancelTag),
                             )
-                        }
-                    }
+                            RaftButton(
+                                text = stringResource(Res.string.thread_action_card_mcp_oauth_open_sign_in_page),
+                                onClick = { currentHost.openAuthorizationUrl(activeWaiting.authorizationUrl) },
+                                variant = RaftButtonVariant.Default,
+                                size = RaftButtonSize.Md,
+                                modifier = Modifier.testTag(ThreadActionCardMcpConnectOAuthOpenTag),
+                            )
+                        },
+                    )
                 }
                 val allowLabel =
                     when {
@@ -726,7 +717,12 @@ internal fun ThreadMcpConnectCardSlot(
                         else -> stringResource(Res.string.thread_action_card_mcp_accounts_allow)
                     }
                 val allowingLabel = stringResource(Res.string.thread_action_card_mcp_accounts_allowing)
-                RaftMessageActionCardActions {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
                     RaftButton(
                         text = allowLabel,
                         onClick = {

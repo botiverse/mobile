@@ -591,6 +591,35 @@ class ThreadActionCardMcpConnectTest {
         assertNull(store.state.value.errors["m-reconfirm"])
     }
 
+    @Test
+    fun managedMcpServerErrorCodesMapToPlainLocalizedBuckets() {
+        val pairs =
+            listOf(
+                "managed_mcp_rate_limited" to McpAppErrorCode.RateLimited,
+                "managed_mcp_unreachable" to McpAppErrorCode.Unreachable,
+                "managed_mcp_endpoint_blocked" to McpAppErrorCode.Unreachable,
+                "managed_mcp_endpoint_auth_rejected" to McpAppErrorCode.CredentialsRejected,
+                "managed_mcp_oauth_busy" to McpAppErrorCode.OAuthBusy,
+                "managed_mcp_oauth_registration_rejected" to McpAppErrorCode.OAuthRegistrationRejected,
+                "managed_mcp_oauth_client_registration_unsupported" to McpAppErrorCode.OAuthRegistrationUnsupported,
+                "managed_mcp_oauth_discovery_failed" to McpAppErrorCode.OAuthDiscoveryFailed,
+                "managed_mcp_oauth_setup_failed" to McpAppErrorCode.OAuthSetupFailed,
+                "managed_mcp_connection_request_invalid" to McpAppErrorCode.ConnectionRequestInvalid,
+                "managed_mcp_header_names_unset" to McpAppErrorCode.HeaderNamesUnset,
+                "managed_mcp_forbidden" to McpAppErrorCode.Forbidden,
+            )
+        for ((wireCode, expected) in pairs) {
+            assertEquals(expected, ScreenError(code = "http_400", serverCode = wireCode).mcpAppErrorCode(), wireCode)
+        }
+        // Opaque placeholder "oauth_error" and malformed provider codes drop the parenthetical code.
+        assertNull(ScreenError(code = "http_422", serverFields = mapOf("oauthError" to "oauth_error")).mcpOAuthProviderError())
+        assertNull(ScreenError(code = "http_422", serverFields = mapOf("oauthError" to "Bad Code!")).mcpOAuthProviderError())
+        assertEquals(
+            "invalid_redirect_uri",
+            ScreenError(code = "http_422", serverFields = mapOf("oauthError" to "invalid_redirect_uri")).mcpOAuthProviderError(),
+        )
+    }
+
     private class FakeMcpConnectApi : RaftManagedMcpConnectApi {
         val calls = mutableListOf<String>()
         var authResponse: HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = """{"viewerRole":"observer","app":null}""")

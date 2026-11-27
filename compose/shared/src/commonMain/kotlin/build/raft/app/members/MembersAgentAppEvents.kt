@@ -50,7 +50,6 @@ import build.raft.designsystem.components.RaftCodeBlock
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftListRowVariant
-import build.raft.designsystem.components.RaftSectionEyebrow
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.tokens.RaftRadius
@@ -88,10 +87,10 @@ internal class MembersAgentAppEventsState {
 }
 
 /**
- * Web AgentAppAccessTab › AgentAppEventsSection: the events apps sent to this agent, newest
- * first. A SectionHeader ("App events" with an outline Refresh), its description, then app filters
- * (once more than one app shows), the events as plain list rows that open the payload under them,
- * or "No app events yet"; Load More while there are older ones. Loaded when shown.
+ * Web AgentAppAccessTab › AgentAppEventsSection (botiverse/slock#17263): the events apps sent to
+ * this agent, newest first. Hidden completely until at least one event has been sent to this agent
+ * (or loading fails); once visible, shows "App events" with Refresh, app filters (when more than
+ * one app appears), expandable plain event rows, and Load More while older events exist.
  */
 @Composable
 internal fun MembersAgentAppEventsSection(
@@ -173,29 +172,30 @@ internal fun MembersAgentAppEventsSection(
         }
     }
 
+    // No App has sent this Agent an event (or the first read is still out): hide the section
+    // completely (App detail v6, botiverse/slock#17263). Once one has, or on error, keep it shown.
+    if (state.events.isEmpty() && state.apps.isEmpty() && state.error == null) return
+
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Column(Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RaftSectionEyebrow(text = stringResource(Res.string.member_app_events_title), modifier = Modifier.weight(1f))
-                RaftButton(
-                    text =
-                        if (state.loading) stringResource(Res.string.common_loading)
-                        else stringResource(Res.string.member_app_events_refresh),
-                    onClick = { load(null) },
-                    variant = RaftButtonVariant.Default,
-                    size = RaftButtonSize.Md,
-                    enabled = !state.loading && loader != null,
-                )
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             RaftText(
-                text = stringResource(Res.string.member_app_events_hint),
-                style = typography.callout,
-                color = colors.foregroundMuted,
-                modifier = Modifier.padding(top = 4.dp),
+                text = stringResource(Res.string.member_app_events_title),
+                style = typography.subhead.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.foreground,
+                modifier = Modifier.weight(1f),
+            )
+            RaftButton(
+                text =
+                    if (state.loading) stringResource(Res.string.common_loading)
+                    else stringResource(Res.string.member_app_events_refresh),
+                onClick = { load(null) },
+                variant = RaftButtonVariant.Default,
+                size = RaftButtonSize.Md,
+                enabled = !state.loading && loader != null,
             )
         }
         if (state.apps.size > 1) {

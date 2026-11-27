@@ -8,6 +8,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import build.raft.app.components.RaftDesignSystemTheme
@@ -15,11 +16,20 @@ import build.raft.app.data.AgentAppEvent
 import build.raft.app.data.AgentAppEventDetail
 import build.raft.app.data.AgentAppEventPage
 import build.raft.app.data.AgentAppEventStatus
+import build.raft.app.data.AgentAppLoginItem
+import build.raft.app.data.AgentAppLoginType
 import build.raft.app.data.AppLocale
 import build.raft.app.data.DataResult
+import build.raft.app.data.EmptyReason
+import build.raft.app.data.ScreenError
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.members.MembersAgentAppEventsSection
 import build.raft.app.members.MembersAgentAppEventsState
+import build.raft.app.members.MembersAgentAppGrantGroup
+import build.raft.app.members.MembersAgentAppGrantsCard
+import build.raft.app.members.MembersAgentAppPendingRequestRow
+import build.raft.app.members.membersAgentAppPendingApproveTag
+import build.raft.app.members.membersAgentAppPendingDenyTag
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
@@ -151,5 +161,139 @@ class MembersAgentAppEventsUiTest {
             onAllNodesWithText("Loading…", useUnmergedTree = true).assertCountEquals(0)
             assertEquals(1, listCalls, "re-entering Apps tab with hoisted state must not refetch list")
             assertEquals(1, detailCalls, "re-entering Apps tab with hoisted state must not refetch expanded payload")
+        }
+
+    @Test
+    fun emptyAppEventsHidesSectionCompletelyAndSurfacesErrors(): Unit =
+        runRobolectricComposeUiTest {
+            var shouldFail by mutableStateOf(false)
+            var activeAgentId by mutableStateOf(MemberId("agent-empty"))
+            setContent {
+                RaftDesignSystemTheme {
+                    MembersAgentAppEventsSection(
+                        agentId = activeAgentId,
+                        loader = { _, _, _ ->
+                            if (shouldFail) {
+                                DataResult.Error(ScreenError(code = "http_500"))
+                            } else {
+                                DataResult.Empty(EmptyReason.NoMembers)
+                            }
+                        },
+                        detailLoader = null,
+                        timeContext = timeContext,
+                    )
+                }
+            }
+            waitForIdle()
+            onAllNodesWithText("App events", useUnmergedTree = true).assertCountEquals(0)
+            onAllNodesWithText("No app events yet", useUnmergedTree = true).assertCountEquals(0)
+            onAllNodesWithText("Refresh", useUnmergedTree = true).assertCountEquals(0)
+
+            shouldFail = true
+            activeAgentId = MemberId("agent-error")
+            waitUntil(timeoutMillis = 5_000) {
+                onAllNodesWithText("Failed to load app events", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+            }
+            onNodeWithText("App events", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Failed to load app events", useUnmergedTree = true).assertIsDisplayed()
+        }
+
+    @Test
+    fun multiGrantAppRowLaysOutPlainPermissionsFlatWithoutDetailsAccordion(): Unit =
+        runRobolectricComposeUiTest {
+            val group =
+                MembersAgentAppGrantGroup(
+                    clientId = "stamp",
+                    name = "Stamp",
+                    description = "GitHub reviews for Raft agents.",
+                    homepageUrl = "https://stamp.build",
+                    since = "2026-11-20T09:00:00Z",
+                    grants =
+                        listOf(
+                            AgentAppLoginItem(
+                                id = "grant-1",
+                                type = AgentAppLoginType.Active,
+                                clientId = "stamp",
+                                clientName = "Stamp",
+                                scopes = listOf("openid", "profile"),
+                                createdAt = "2026-11-20T09:00:00Z",
+                                grantSource = "agent_login",
+                            ),
+                            AgentAppLoginItem(
+                                id = "grant-2",
+                                type = AgentAppLoginType.Active,
+                                clientId = "stamp",
+                                clientName = "Stamp",
+                                scopes = listOf("agent:notification:write", "custom:scope"),
+                                createdAt = "2026-11-22T12:00:00Z",
+                                grantSource = "person",
+                            ),
+                        ),
+                )
+            setContent {
+                RaftDesignSystemTheme {
+                    MembersAgentAppGrantsCard(
+                        group = group,
+                        canManage = true,
+                        timeContext = timeContext,
+                        onOpenUrl = {},
+                        onRevoke = { _, _ -> },
+                    )
+                }
+            }
+            waitForIdle()
+            // Per-grant details are visible immediately without a collapsed "Details" accordion.
+            onAllNodesWithText("Details", useUnmergedTree = true).assertCountEquals(0)
+            onNodeWithText("Sign in as this agent", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Send it notifications", useUnmergedTree = true).assertIsDisplayed()
+            // Unknown scope falls back to raw name, while known scopes do not show raw tokens.
+            onNodeWithText("custom:scope", useUnmergedTree = true).assertIsDisplayed()
+            onAllNodesWithText("openid / profile", useUnmergedTree = true).assertCountEquals(0)
+            onAllNodesWithText("agent:notification:write", useUnmergedTree = true).assertCountEquals(0)
+        }
+
+    @Test
+    fun pendingAppRequestShowsPlainPermissionsAndStepNamedButtons(): Unit =
+        runRobolectricComposeUiTest {
+            val actions = mutableListOf<String>()
+            val request =
+                AgentAppLoginItem(
+                    id = "req-1",
+                    type = AgentAppLoginType.Pending,
+                    clientId = "stamp",
+                    clientName = "Stamp",
+                    scopes = listOf("openid", "profile", "agent:notification:write"),
+                    createdAt = "2026-11-25T10:00:00Z",
+                )
+            setContent {
+                RaftDesignSystemTheme {
+                    MembersAgentAppPendingRequestRow(
+                        request = request,
+                        canManage = true,
+                        timeContext = timeContext,
+                        onApprove = {
+                            actions += "approve"
+                            DataResult.Content(Unit)
+                        },
+                        onDeny = {
+                            actions += "deny"
+                            DataResult.Content(Unit)
+                        },
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithText("Pending", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Sign in as this agent", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Send it notifications", useUnmergedTree = true).assertIsDisplayed()
+            onAllNodesWithText("openid", useUnmergedTree = true).assertCountEquals(0)
+            onNodeWithText("Approve request", useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithText("Deny request", useUnmergedTree = true).assertIsDisplayed()
+
+            onNodeWithTag(membersAgentAppPendingApproveTag("req-1")).performClick()
+            waitForIdle()
+            onNodeWithTag(membersAgentAppPendingDenyTag("req-1")).performClick()
+            waitForIdle()
+            assertEquals(listOf("approve", "deny"), actions)
         }
 }

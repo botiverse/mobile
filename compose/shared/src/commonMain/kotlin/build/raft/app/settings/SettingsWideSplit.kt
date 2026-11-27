@@ -114,7 +114,6 @@ internal val SettingsWideWebDetailKeys: Set<String> =
         SettingsDestinationAdministration,
         SettingsDestinationImBridges,
         SettingsDestinationAppAuthorizations,
-        SettingsDestinationConnectedApps,
         SettingsDestinationReleaseNotes,
     )
 

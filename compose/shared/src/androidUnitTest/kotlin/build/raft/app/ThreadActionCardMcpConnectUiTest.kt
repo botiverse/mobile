@@ -294,12 +294,22 @@ class ThreadActionCardMcpConnectUiTest {
 
     @Test
     fun flagOffFallsBackToLegacyOpenOnWebCard() = runRobolectricComposeUiTest {
-        val current by mutableStateOf(connectCard())
+        val current by mutableStateOf(
+            connectCard().copy(
+                metadataItems =
+                    listOf(
+                        build.raft.app.data.ThreadActionCardMetadataItem(key = "mcpServerId", value = "app-notion"),
+                        build.raft.app.data.ThreadActionCardMetadataItem(key = "agentId", value = "ag-scout"),
+                    )
+            )
+        )
         assertNull(current.actionCardSpecToRender(RAFT_APP_ACTION_CARD_CAPABILITIES, mcpConnectNative = false))
         mountMcpCard(cardState = { current }, flagEnabled = { false }, hostState = { null })
         waitForIdle()
         onNodeWithText("Open on the web").assertExists()
         onNodeWithTag(ThreadActionCardMcpConnectAccountsTag).assertDoesNotExist()
+        onNodeWithText("Mcp Server Id").assertDoesNotExist()
+        onNodeWithText("Agent Id").assertDoesNotExist()
     }
 
     @Test
@@ -348,7 +358,7 @@ class ThreadActionCardMcpConnectUiTest {
         gate.complete(DataResult.Error(ScreenError(code = "http_500", traceId = "0123456789abcdef0123456789abcdef")))
         advance()
         onNodeWithTag(ThreadActionCardMcpConnectLoadFailedTag).assertExists()
-        onNodeWithText("Couldn't load this App's connections.").assertExists()
+        onNodeWithText("Couldn't load accounts for this app.").assertExists()
         onNodeWithTag(RaftTraceIdNoteTestTag).assertExists()
 
         // Retry -> server flag OFF, observer sees locked notice.
@@ -546,6 +556,8 @@ class ThreadActionCardMcpConnectUiTest {
         advance()
         onNodeWithTag(ThreadActionCardMcpConnectErrorTag).assertExists()
         onNode(hasText("invalid_redirect_uri", substring = true)).assertExists()
+        onNode(hasText("Ask an admin to check its sign-in settings.", substring = true)).assertExists()
+        onNode(hasText("OAuth client", substring = true)).assertDoesNotExist()
         onNodeWithTag(RaftTraceIdNoteTestTag).assertExists()
 
         // Now succeed -> opens browser URL, shows waiting banner, polls connected -> executed.

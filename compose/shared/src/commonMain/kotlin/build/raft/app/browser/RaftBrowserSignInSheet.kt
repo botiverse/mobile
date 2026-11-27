@@ -217,6 +217,7 @@ private fun StoredAuthSession.toSignInAccountContext(environmentKey: String): Ra
     )
 
 internal const val RAFT_BROWSER_SIGN_IN_RESOLVING_OVERLAY_TAG = "raft_browser_sign_in_resolving_overlay"
+internal const val RAFT_BROWSER_SIGN_IN_APPROVE_BUTTON_TAG = "raft_browser_sign_in_approve_button"
 
 internal fun raftBrowserSignInDeclinedStringRes(reason: RaftBrowserSignInDropReason?): StringResource =
     when (reason) {
@@ -290,7 +291,8 @@ internal fun RaftBrowserSignInSheetHost(
                     ready = sheet.canApprove,
                     appForeground = appForeground,
                 )
-            val displayAppName = sheet.appName ?: stringResource(Res.string.in_app_browser_sign_in_this_app)
+            val namedAppName = sheet.appName?.trim()?.takeIf { it.isNotEmpty() }
+            val displayAppName = namedAppName ?: stringResource(Res.string.in_app_browser_sign_in_this_app)
             val isReadyMode =
                 sheet.mode is RaftBrowserSignInSheetMode.ServerReady ||
                     sheet.mode is RaftBrowserSignInSheetMode.AccountReady
@@ -304,6 +306,7 @@ internal fun RaftBrowserSignInSheetHost(
                 showClose = true,
                 actions = {
                     RaftBrowserSignInSheetActions(
+                        namedAppName = namedAppName,
                         isReadyMode = isReadyMode,
                         canApprove = sheet.canApprove,
                         approveLocked = approveLocked,
@@ -370,6 +373,7 @@ internal fun rememberRaftSignInApproveLock(
 
 @Composable
 private fun RaftBrowserSignInSheetActions(
+    namedAppName: String?,
     isReadyMode: Boolean,
     canApprove: Boolean,
     approveLocked: Boolean,
@@ -379,10 +383,16 @@ private fun RaftBrowserSignInSheetActions(
     onCancel: () -> Unit,
 ) {
     if (isReadyMode) {
+        val approveLabel =
+            if (namedAppName != null) {
+                stringResource(Res.string.in_app_browser_sign_in_approve_app, namedAppName)
+            } else {
+                stringResource(Res.string.in_app_browser_sign_in_approve)
+            }
         RaftButton(
-            text = stringResource(Res.string.common_continue),
+            text = approveLabel,
             onClick = onApprove,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().testTag(RAFT_BROWSER_SIGN_IN_APPROVE_BUTTON_TAG),
             variant = RaftButtonVariant.Primary,
             size = RaftButtonSize.Lg,
             enabled = canApprove && !approveLocked,

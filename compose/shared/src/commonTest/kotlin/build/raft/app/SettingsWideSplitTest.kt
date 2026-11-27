@@ -5,8 +5,10 @@ import build.raft.app.settings.SETTINGS_ACCOUNT_PAGE
 import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE
 import build.raft.app.settings.SETTINGS_NATIVE_DETAIL_PAGE_KEY
 import build.raft.app.settings.SETTINGS_STORAGE_PAGE
+import build.raft.app.settings.SETTINGS_WEB_VIEW_PAGE
 import build.raft.app.settings.SettingsDestinationAccount
 import build.raft.app.settings.SettingsDestinationComputers
+import build.raft.app.settings.SettingsDestinationConnectedApps
 import build.raft.app.settings.SettingsDestinationHandsFeedback
 import build.raft.app.settings.SettingsDestinationReleaseNotes
 import build.raft.app.settings.SettingsDestinationStorage
@@ -97,6 +99,10 @@ class SettingsWideSplitTest {
         assertEquals(SETTINGS_NATIVE_DETAIL_PAGE, notifications?.first)
         assertEquals("notifications", notifications?.second?.optString(SETTINGS_NATIVE_DETAIL_PAGE_KEY))
         SettingsWideDetailKeys.forEach { key -> assertTrue(settingsWideDetailPage(key, scope) != null, key) }
+        assertFalse(SettingsDestinationConnectedApps in rows)
+        assertFalse(SettingsDestinationConnectedApps in SettingsWideDetailKeys)
+        // Rail Apps and phone Apps tab still resolve the Apps WebView page through settingsWideDetailPage.
+        assertEquals(SETTINGS_WEB_VIEW_PAGE, settingsWideDetailPage(SettingsDestinationConnectedApps, scope)?.first)
         assertNull(settingsWideDetailPage(SettingsNativeDetailPage.Developer.key, scope))
     }
 }

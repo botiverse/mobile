@@ -17,16 +17,20 @@ class SettingsMarketplaceWebViewTest {
         val session = marketplaceSession()
 
         assertEquals(
-            "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host&hostOpen=app&installed_app=stamp-app",
+            "https://app.raft.build/s/workspace/apps?embed=raft-settings-v1&shell=host&hostOpen=app&installed_app=stamp-app",
             settingsMarketplaceWebViewUrl("https://app.raft.build/", session, installedAppId = "stamp-app")
         )
         assertEquals(
-            "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host&hostOpen=app&installed_app=app%2F1%26b%3D2",
+            "https://app.raft.build/s/workspace/apps?embed=raft-settings-v1&shell=host&hostOpen=app&installed_app=app%2F1%26b%3D2",
             settingsMarketplaceWebViewUrl("https://app.raft.build/", session, installedAppId = " app/1&b=2 ")
         )
         assertEquals(
-            "https://app.raft.build/s/workspace/settings/integrations?embed=raft-settings-v1&shell=host&hostOpen=app",
+            "https://app.raft.build/s/workspace/apps?embed=raft-settings-v1&shell=host&hostOpen=app",
             settingsMarketplaceWebViewUrl("https://app.raft.build/", session, installedAppId = "   ")
+        )
+        assertEquals(
+            "https://app.raft.build/settings/integrations?embed=raft-settings-v1&shell=host&hostOpen=app",
+            settingsMarketplaceWebViewUrl("https://app.raft.build/", session = null)
         )
     }
 

@@ -304,7 +304,7 @@ internal fun RaftMessageCardActingNoteView(note: RaftMessageCardActingNote, allo
                         onClick = { onAllow(note.app) },
                         variant = RaftButtonVariant.Ghost,
                         loading = allowing,
-                        loadingLabel = stringResource(Res.string.thread_link_preview_prompt_allowing),
+                        loadingLabel = stringResource(Res.string.message_card_consent_allowing),
                     )
                 }
             }
@@ -427,7 +427,7 @@ internal fun ThreadMessageCardConsentPrompt(
             modifier = Modifier.fillMaxWidth(),
             size = RaftButtonSize.Lg,
             loading = status == AppLinkConsentStatus.Allowing,
-            loadingLabel = stringResource(Res.string.thread_link_preview_prompt_allowing),
+            loadingLabel = stringResource(Res.string.message_card_consent_allowing),
         )
         RaftButton(
             text = stringResource(Res.string.message_card_consent_not_now),
