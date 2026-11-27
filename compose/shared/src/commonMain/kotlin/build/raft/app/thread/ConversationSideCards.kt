@@ -29,6 +29,8 @@ import build.raft.app.shell.RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP
 import build.raft.app.RaftAppStroke
 import build.raft.app.RaftColor
 import build.raft.app.RaftContentLucideIcon
+import build.raft.app.shell.LocalRaftNativeNavBar
+import build.raft.app.shell.LocalRaftNativeNavBarScript
 import build.raft.app.shell.RaftIncomingNavigationSignal
 import build.raft.app.RaftLucideIconName
 import build.raft.app.shell.RaftPaneGridCard
@@ -275,8 +277,14 @@ internal fun ConversationSideCardsCover(
 ) {
     val shown = cards.shown ?: return
     val swipeClose = rememberRaftBackSwipeDismiss(onDismiss = onSwipeClose)
-    // A phone/overlay cover sits under the conversation header and never steals the grid's row tabs.
-    CompositionLocalProvider(LocalRaftPaneGridHeadTabs provides null) {
+    // A phone/overlay cover sits under the conversation header and never steals the grid's row
+    // tabs or the page's native UINavigationBar (owned by ThreadPageHeader, keeping the channel
+    // title, Search, and More/Tasks toggle reachable while the card covers the body).
+    CompositionLocalProvider(
+        LocalRaftPaneGridHeadTabs provides null,
+        LocalRaftNativeNavBar provides null,
+        LocalRaftNativeNavBarScript provides null,
+    ) {
         Column(
             modifier
                 .then(swipeClose)

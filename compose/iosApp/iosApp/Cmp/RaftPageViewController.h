@@ -34,6 +34,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL raftUsesNativeNavBar;
 /** PROTOTYPE: no head on screen publishes (a shell tab with its own Compose head): bar hidden. */
 @property (nonatomic, assign) BOOL raftNativeNavBarHeadHidden;
+/**
+ * PROTOTYPE: true while the page's published native nav bar intercepts Back (e.g. an open
+ * Tasks/Files cover on a phone or an in-page sub-view), so the system edge pop yields to the
+ * cover's own back swipe instead of popping the whole page.
+ */
+@property (nonatomic, assign) BOOL raftNativeNavBarInterceptsBack;
 /** PROTOTYPE: keeps the Swift RaftNativeNavBarHost alive with the page. */
 @property (nonatomic, strong, nullable) id raftNativeNavBarHost;
 /**
@@ -94,6 +100,9 @@ NS_ASSUME_NONNULL_BEGIN
  * Set by `RaftPageControllerFactory`.
  */
 @property (nonatomic, copy, nullable) void (^raftToastAvoidanceActiveHook)(BOOL active);
+
+/** Whether the system interactive pop gesture should be enabled when this page is top. */
+- (BOOL)raftShouldEnableSystemInteractivePopGesture;
 
 /** Full-page back swipe probe: [locationInView] is in this controller's view. */
 - (BOOL)raftContentConsumesBackSwipeAtPoint:(CGPoint)locationInView;
