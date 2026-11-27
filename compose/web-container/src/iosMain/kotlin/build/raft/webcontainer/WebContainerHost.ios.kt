@@ -1093,12 +1093,13 @@ internal class WebContainerIosHost(
 
     private fun syncObservedState(view: WKWebView) {
         val observedUrl = view.URL?.absoluteString
-        if (!shouldIgnoreWarmSpareBlankNavigation(usingSpare, observedUrl, config?.url.orEmpty())) {
+        val isHostCancelled = observedUrl != null && observedUrl == hostCancelledUrl
+        if (!isHostCancelled && !shouldIgnoreWarmSpareBlankNavigation(usingSpare, observedUrl, config?.url.orEmpty())) {
             currentUrl = observedUrl ?: currentUrl
         }
         currentTitle = view.title ?: ""
         currentProgress = (view.estimatedProgress * 100.0 + 0.5).toInt().coerceIn(0, 100)
-        currentLoading = view.loading
+        currentLoading = if (isHostCancelled) false else view.loading
         notifyNavigationState(force = false)
     }
 
@@ -1150,7 +1151,12 @@ internal class WebContainerIosHost(
             is WebNavigationDecision.InterceptedByHost -> return
             is WebNavigationDecision.ReissueWithHeader -> {
                 val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-                chainState.startChain(carriesHeader = true, reissueBudget = budget, starter = WebNavigationStarter.Launch)
+                chainState.startChain(
+                    carriesHeader = true,
+                    reissueBudget = budget,
+                    starter = WebNavigationStarter.Launch,
+                    initialHop = resolvedTarget,
+                )
                 pendingHostLoadUrl = resolvedTarget
                 pendingHostLoadIsReissue = false
                 hostCancelledUrl = null
@@ -1158,7 +1164,12 @@ internal class WebContainerIosHost(
             }
             else -> {
                 val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Launch)
+                chainState.startChain(
+                    carriesHeader = false,
+                    reissueBudget = budget,
+                    starter = WebNavigationStarter.Launch,
+                    initialHop = resolvedTarget,
+                )
                 pendingHostLoadUrl = resolvedTarget
                 pendingHostLoadIsReissue = false
                 hostCancelledUrl = null
@@ -1186,9 +1197,26 @@ internal class WebContainerIosHost(
         val view = webView ?: return
         val cfg = config ?: return
         when (command) {
-            WebContainerCommand.GoBack -> if (canGoBack(view)) view.goBack()
-            WebContainerCommand.GoForward -> if (view.canGoForward) view.goForward()
-            WebContainerCommand.Reload -> view.reload()
+            WebContainerCommand.GoBack ->
+                if (canGoBack(view)) {
+                    hostCancelledUrl = null
+                    val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                    chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
+                    view.goBack()
+                }
+            WebContainerCommand.GoForward ->
+                if (view.canGoForward) {
+                    hostCancelledUrl = null
+                    val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                    chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
+                    view.goForward()
+                }
+            WebContainerCommand.Reload -> {
+                hostCancelledUrl = null
+                val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
+                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Reload)
+                view.reload()
+            }
             WebContainerCommand.Stop -> {
                 view.stopLoading()
                 currentLoading = false
@@ -1415,12 +1443,20 @@ internal class WebContainerIosHost(
         val headerRule = cfg.navigationPolicy.requestHeaderRule
         val carriesHeader =
             headerRule != null && !action.request.valueForHTTPHeaderField(headerRule.headerName).isNullOrBlank()
-        if (isUserClickOrForm) {
+        val explicitStarter =
+            when (navTypeRaw) {
+                0L -> WebNavigationStarter.Link
+                1L -> WebNavigationStarter.Form
+                2L -> WebNavigationStarter.BackForward
+                3L, 4L -> WebNavigationStarter.Reload
+                else -> null
+            }
+        if (explicitStarter != null) {
             val budget = headerRule?.maxSameOriginReissues ?: 0
             chainState.startChain(
                 carriesHeader = carriesHeader,
                 reissueBudget = budget,
-                starter = if (navTypeRaw == 1L) WebNavigationStarter.Form else WebNavigationStarter.Link,
+                starter = explicitStarter,
             )
         }
         val decision =
@@ -1436,9 +1472,17 @@ internal class WebContainerIosHost(
                 routesMainFrameNavigation = events.routesMainFrameNavigation,
             )
         return when (decision) {
-            WebNavigationDecision.Allow -> WKNavigationActionPolicy.WKNavigationActionPolicyAllow
+            WebNavigationDecision.Allow -> {
+                hostCancelledUrl = null
+                WKNavigationActionPolicy.WKNavigationActionPolicyAllow
+            }
             is WebNavigationDecision.InterceptedByHost -> {
                 hostCancelledUrl = targetUrl
+                currentLoading = false
+                if (loadGeneration > 0) {
+                    watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), webContainerMonotonicMillis())
+                }
+                notifyNavigationState(force = false)
                 WKNavigationActionPolicy.WKNavigationActionPolicyCancel
             }
             is WebNavigationDecision.Block -> {
@@ -1479,7 +1523,9 @@ internal class WebContainerIosHost(
 
     internal fun didStartProvisional(source: WKWebView) {
         if (disposed || !isSameObjCObject(source, webView)) return
-        if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, source.URL?.absoluteString, config?.url.orEmpty())) return
+        val provisionalUrl = source.URL?.absoluteString
+        if (provisionalUrl != null && provisionalUrl == hostCancelledUrl) return
+        if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, provisionalUrl, config?.url.orEmpty())) return
         downloadCancelledUrl = null
         jsDialogTracker.cancelActive()
         jsbDispatcher?.cancelInFlight("main_frame_navigation")
@@ -1620,6 +1666,9 @@ internal class WebContainerIosHost(
             if (failingUrl == null || failingUrl == hostCancelledUrl) {
                 hostCancelledUrl = null
             }
+            currentLoading = false
+            watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), webContainerMonotonicMillis())
+            notifyNavigationState(force = false)
             return
         }
         mainFrameLoadFailed = true

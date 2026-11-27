@@ -254,7 +254,12 @@ class DesktopWebContainerHostController(
                         DesktopNavigationDecision.Cancel
                     }
                 }
-                if (request.starter == WebNavigationStarter.Link || request.starter == WebNavigationStarter.Form) {
+                if (
+                    request.starter == WebNavigationStarter.Link ||
+                    request.starter == WebNavigationStarter.Form ||
+                    request.starter == WebNavigationStarter.BackForward ||
+                    request.starter == WebNavigationStarter.Reload
+                ) {
                     val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                     chainState.startChain(
                         carriesHeader = request.requestCarriesScopedHeader,
@@ -559,6 +564,7 @@ class DesktopWebContainerHostController(
                 carriesHeader = decision is WebNavigationDecision.ReissueWithHeader,
                 reissueBudget = budget,
                 starter = WebNavigationStarter.Launch,
+                initialHop = initial,
             )
         }
         activeSession.start()

@@ -742,6 +742,67 @@ class RaftMobileRailPlacesTest {
         assertEquals(listOf("artifact:art-other"), store.recentItems("acc-2", "srv-1").map { it.placeKey })
     }
 
+    @Test
+    fun mobileRecentlyUsedStorePersistsAcrossRestartPreservesPriorItemsAndDropsServer() {
+        val prefs = InMemoryRaftKeyValueStore()
+        val firstSession = MobileRecentlyUsedStore(preferenceStore = prefs, nowMillis = { 100L })
+        firstSession.recordArtifact("acc-1", "srv-1", "art-1", "Release Notes")
+        firstSession.recordApp("acc-1", "srv-1", stampId, "Stamp", "/stamp.png", "https://stamp.build")
+        firstSession.recordArtifact("acc-1", "srv-2", "art-s2", "Other Server Spec")
+
+        // New store instance backed by the same preference store restores persisted entries on cold start.
+        val afterRestart = MobileRecentlyUsedStore(preferenceStore = prefs, nowMillis = { 200L })
+        val restored = afterRestart.recentItems("acc-1", "srv-1")
+        assertEquals(listOf("app:$stampId", "artifact:art-1"), restored.map { it.placeKey })
+        val restoredApp = assertIs<MobileRecentlyUsedEntry.App>(restored.first())
+        assertEquals("Stamp", restoredApp.name)
+        assertEquals("/stamp.png", restoredApp.iconUrl)
+        assertEquals("https://stamp.build", restoredApp.homepageUrl)
+
+        // Recording before reading on a fresh instance hydrates first so previous items are not overwritten.
+        val coldWrite = MobileRecentlyUsedStore(preferenceStore = prefs, nowMillis = { 300L })
+        coldWrite.recordArtifact("acc-1", "srv-1", "art-2", "Follow-up")
+        assertEquals(
+            listOf("artifact:art-2", "app:$stampId", "artifact:art-1"),
+            coldWrite.recentItems("acc-1", "srv-1").map { it.placeKey },
+        )
+
+        // Dropping srv-1 removes it from memory and disk while keeping srv-2 intact.
+        coldWrite.dropServer("srv-1", "acc-1")
+        val afterDrop = MobileRecentlyUsedStore(preferenceStore = prefs, nowMillis = { 400L })
+        assertEquals(emptyList(), afterDrop.recentItems("acc-1", "srv-1"))
+        assertEquals(listOf("artifact:art-s2"), afterDrop.recentItems("acc-1", "srv-2").map { it.placeKey })
+    }
+
+    @Test
+    fun mobilePhoneTabCountStoreDefaultsToFourPersistsAndroidFifthTabResetsAndDropsServer() {
+        val prefs = InMemoryRaftKeyValueStore()
+        val firstSession = build.raft.app.MobilePhoneTabCountStore(preferenceStore = prefs, nowMillis = { 100L })
+
+        // Both Android (max=5) and iOS (max=4) default to 4 place tabs (+ Server = 5 total).
+        assertEquals(4, firstSession.tabCount("acc-1", "srv-1", maxCount = 5))
+        assertEquals(4, firstSession.tabCount("acc-1", "srv-1", maxCount = 4))
+
+        // Android user manually adds a 5th place tab -> persisted across restart for that account × server.
+        firstSession.setTabCount("acc-1", "srv-1", count = 5, maxCount = 5)
+        firstSession.setTabCount("acc-1", "srv-2", count = 5, maxCount = 5)
+        val afterRestart = build.raft.app.MobilePhoneTabCountStore(preferenceStore = prefs, nowMillis = { 200L })
+        assertEquals(5, afterRestart.tabCount("acc-1", "srv-1", maxCount = 5))
+        assertEquals(4, afterRestart.tabCount("acc-1", "srv-1", maxCount = 4))
+        assertEquals(4, afterRestart.tabCount("acc-2", "srv-1", maxCount = 5))
+
+        // Reset restores default 4 on disk and in memory.
+        afterRestart.resetServer("acc-1", "srv-1")
+        val afterReset = build.raft.app.MobilePhoneTabCountStore(preferenceStore = prefs, nowMillis = { 300L })
+        assertEquals(4, afterReset.tabCount("acc-1", "srv-1", maxCount = 5))
+        assertEquals(5, afterReset.tabCount("acc-1", "srv-2", maxCount = 5))
+
+        // Dropping srv-2 wipes its stored tab count.
+        afterReset.dropServer("srv-2", "acc-1")
+        val afterDrop = build.raft.app.MobilePhoneTabCountStore(preferenceStore = prefs, nowMillis = { 400L })
+        assertEquals(4, afterDrop.tabCount("acc-1", "srv-2", maxCount = 5))
+    }
+
     private class FakeMobilePlacesDataSource : MobilePlacesDataSource {
         val readCalls = mutableListOf<String>()
         val saveCalls = mutableListOf<Pair<List<String>?, Int>>()

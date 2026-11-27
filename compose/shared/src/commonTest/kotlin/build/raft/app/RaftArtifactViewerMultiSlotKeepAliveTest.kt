@@ -428,4 +428,111 @@ class RaftArtifactViewerMultiSlotKeepAliveTest {
         )
         assertFalse("s-secret" in reuseLine)
     }
+
+    @Test
+    fun hostClosePreservesKeepAliveSlotWhileOffArtifactAndOtherLeaveNavigationsDropIt() {
+        val urlAWithClose = embeddedUrl(artifactA, hostToolbar = true) + RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT
+        val urlAWithSection = embeddedUrl(artifactA, hostToolbar = true) + "#section-2"
+        val urlBWithClose = embeddedUrl(artifactB, hostToolbar = true) + RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT
+
+        // Only `#host=close` while still on this Artifact preserves the keep-alive slot.
+        assertTrue(raftArtifactViewerIsHostCloseOnArtifact(urlAWithClose, web, artifactA.id))
+        assertFalse(
+            raftArtifactViewerIsHostCloseOnArtifact("$web/$RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT", web, artifactA.id),
+            "Off-Artifact root URL with #host=close must still evict the slot",
+        )
+        assertFalse(
+            raftArtifactViewerIsHostCloseOnArtifact("$web/s/demo/channels/1$RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT", web, artifactA.id),
+            "Non-Artifact route with #host=close must still evict the slot",
+        )
+        assertFalse(
+            raftArtifactViewerIsHostCloseOnArtifact(urlBWithClose, web, artifactA.id),
+            "Another Artifact's URL with #host=close must not preserve artifactA's slot",
+        )
+        assertFalse(
+            raftArtifactViewerIsHostCloseOnArtifact(urlAWithSection, web, artifactA.id),
+            "Ordinary fragment must not trigger host-close preservation path",
+        )
+
+        // Dedicated `#host=close` cleanup script targets `#host=close` and never writes `#host=close` back.
+        val clearToEmpty = raftArtifactViewerHostCloseTakenScript(web, "")
+        assertTrue("""window.location.hash === "#host=close"""" in clearToEmpty)
+        assertTrue("""url.hash = "";""" in clearToEmpty)
+        val restorePrior = raftArtifactViewerHostCloseTakenScript(web, "panel=comments")
+        assertTrue("""url.hash = "panel=comments";""" in restorePrior)
+        val guardAgainstLoop = raftArtifactViewerHostCloseTakenScript(web, "host=close")
+        assertTrue("""url.hash = "";""" in guardAgainstLoop)
+        val guardAgainstHashLoop = raftArtifactViewerHostCloseTakenScript(web, "#host=close")
+        assertTrue("""url.hash = "";""" in guardAgainstHashLoop)
+
+        assertEquals(embeddedUrl(artifactA, hostToolbar = true), raftArtifactViewerStripCloseFragment(urlAWithClose))
+        assertEquals(urlAWithSection, raftArtifactViewerStripCloseFragment(urlAWithSection))
+        assertTrue(raftArtifactViewerKeptUrlMatchesTarget(urlAWithClose, web, artifactA))
+
+        // Even if the parked WebView URL still ended with #host=close before JS replaceState flushed,
+        // switching A -> #host=close -> B -> #host=close -> A -> B resolves both slots warm with zero reload.
+        val pool = LinkedHashMap<String, RaftWebViewKeptDocument>()
+        val cache = RaftArtifactViewerCache(onKeptSlotDropped = { pool.remove(it) }, onKeptDocumentDropped = { pool.clear() })
+        val keyA = maya.artifactKeepAliveKey(artifactA, channel, hostHead = null, langTag = "zh-CN")
+        val keyB = maya.artifactKeepAliveKey(artifactB, channel, hostHead = null, langTag = "zh-CN")
+
+        pool[keyA] = RaftWebViewKeptDocument(src = embeddedUrl(artifactA, hostToolbar = false), currentUrl = urlAWithClose, loaded = true)
+        cache.rememberKeptDocument(maya, artifactA, embeddedUrl(artifactA, hostToolbar = true), token, slotKey = keyA, renderedArtifact = true)
+        cache.noteKeptBoot(maya, channel, null, "zh-CN", slotKey = keyA)
+
+        pool[keyB] = RaftWebViewKeptDocument(src = embeddedUrl(artifactB, hostToolbar = false), currentUrl = urlBWithClose, loaded = true)
+        cache.rememberKeptDocument(maya, artifactB, embeddedUrl(artifactB, hostToolbar = true), token, slotKey = keyB, renderedArtifact = true)
+        cache.noteKeptBoot(maya, channel, null, "zh-CN", slotKey = keyB)
+
+        assertTrue(
+            raftArtifactViewerInitialWarmBarReady(
+                scope = maya,
+                target = artifactA,
+                accessToken = token,
+                conversationId = channel,
+                hostHead = null,
+                langTag = "zh-CN",
+                useMultiSlot = true,
+                cache = cache,
+                readKept = pool::get,
+            ),
+        )
+        val resA =
+            resolveRaftArtifactViewerKeptSlot(
+                scope = maya,
+                target = artifactA,
+                accessToken = token,
+                conversationId = channel,
+                hostHead = null,
+                langTag = "zh-CN",
+                useMultiSlot = true,
+                cache = cache,
+                readKept = pool::get,
+                promoteKept = { _, _ -> false },
+                dropKept = { pool.remove(it) },
+            )
+        assertNotNull(resA.document)
+        assertTrue(resA.showsTarget)
+        assertTrue(resA.alreadyNavigated)
+        assertTrue(resA.renderedArtifact)
+
+        val resB =
+            resolveRaftArtifactViewerKeptSlot(
+                scope = maya,
+                target = artifactB,
+                accessToken = token,
+                conversationId = channel,
+                hostHead = null,
+                langTag = "zh-CN",
+                useMultiSlot = true,
+                cache = cache,
+                readKept = pool::get,
+                promoteKept = { _, _ -> false },
+                dropKept = { pool.remove(it) },
+            )
+        assertNotNull(resB.document)
+        assertTrue(resB.showsTarget)
+        assertTrue(resB.alreadyNavigated)
+        assertTrue(resB.renderedArtifact)
+    }
 }

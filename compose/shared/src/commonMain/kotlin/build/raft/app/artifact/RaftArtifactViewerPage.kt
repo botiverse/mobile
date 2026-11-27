@@ -990,6 +990,12 @@ private fun RaftArtifactViewerScreen() {
                             splashKinds = splashKinds,
                             splashOpenedAt = splashOpenedAt,
                             onPageLoadStarted = ::splashStartsNowIfWaiting,
+                            onHostClose = {
+                                host.bridge.log(
+                                    "artifact_viewer_left action=${RaftArtifactViewerNavigation.Close.logToken()} to=$RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT",
+                                )
+                                closePage()
+                            },
                             onLeave = { navigation, to -> bodyState = RaftArtifactViewerBodyState.Left(navigation, to) },
                             onReloadFresh = { to ->
                                 freshReloadUsed = true
@@ -1055,6 +1061,8 @@ private fun RaftArtifactViewerWebBody(
     splashOpenedAt: kotlin.time.TimeMark,
     /** A new document starts loading (the splash then counts from it, as the page's own does). */
     onPageLoadStarted: () -> Unit,
+    /** Page's own Back (`#host=close`): closes the viewer while preserving the parked keep-alive slot. */
+    onHostClose: () -> Unit,
     onLeave: (navigation: RaftArtifactViewerNavigation, to: String) -> Unit,
     onReloadFresh: (to: String) -> Unit,
     accessTokenRefresher: SettingsWebViewAccessTokenRefresher,
@@ -1151,9 +1159,12 @@ private fun RaftArtifactViewerWebBody(
     // shown this Artifact: before that a kept document is still on the warm route or the last one.
     var armed by remember { mutableStateOf(false) }
     var left by remember { mutableStateOf(false) }
+    var closingForHostBack by remember { mutableStateOf(false) }
+    var staleHostCloseUrl by remember { mutableStateOf(kept?.currentUrl?.takeIf(::raftArtifactViewerAsksHostClose)) }
     val currentOnStay by rememberUpdatedState(onStay)
     val currentOnSwitch by rememberUpdatedState(onSwitch)
     val currentOnDownload by rememberUpdatedState(onDownload)
+    val currentOnHostClose by rememberUpdatedState(onHostClose)
     val currentOnLeave by rememberUpdatedState(onLeave)
     val currentOnReloadFresh by rememberUpdatedState(onReloadFresh)
     val currentOnSessionLost by rememberUpdatedState(onSessionLost)
@@ -1182,7 +1193,7 @@ private fun RaftArtifactViewerWebBody(
     var pageLoadedAt by remember { mutableStateOf<kotlin.time.TimeMark?>(null) }
     var splashEnded by remember { mutableStateOf(false) }
     // The last address seen (keeps `hostDesktop` current, takes a handled `#host=<name>` off).
-    var address by remember { mutableStateOf(kept?.currentUrl.orEmpty()) }
+    var address by remember { mutableStateOf(kept?.currentUrl?.let(::raftArtifactViewerStripCloseFragment).orEmpty()) }
     // A `#host=<name>` address being handled: its fragment is taken off first, then the App acts
     // (Desktop Mode reloads the document on Android: at the address without it, never asking again).
     var pendingHostAction by remember { mutableStateOf<Pair<RaftArtifactViewerHostAction, String>?>(null) }
@@ -1198,8 +1209,16 @@ private fun RaftArtifactViewerWebBody(
     // Artifact), being handled: the link (null: not one the App takes) and the fragment the address had before.
     var pendingOpenMessage by remember { mutableStateOf<Pair<String?, String>?>(null) }
     var hashBeforeHostRequest by remember { mutableStateOf("") }
-    fun onAddress(url: String) {
-        if (left) return
+    fun onAddress(url: String, fromPlatform: Boolean = true) {
+        if (left || closingForHostBack) return
+        if (staleHostCloseUrl != null) {
+            if (url == staleHostCloseUrl) {
+                onAddress(raftArtifactViewerStripCloseFragment(url), fromPlatform = false)
+                return
+            } else if (fromPlatform && !raftArtifactViewerAsksHostClose(url)) {
+                staleHostCloseUrl = null
+            }
+        }
         address = url
         if (!pageAcked && raftArtifactViewerPageDrawsHostBar(url)) {
             pageAcked = true
@@ -1207,10 +1226,12 @@ private fun RaftArtifactViewerWebBody(
         }
         val hostAction = raftArtifactViewerHostAction(url)
         val asksOpen = raftArtifactViewerAsksHostOpen(url)
-        if (hostAction == null && !asksOpen) {
+        val asksClose = raftArtifactViewerAsksHostClose(url)
+        if (hostAction == null && !asksOpen && !asksClose) {
             handledHostActionCleared = true
             hashBeforeHostRequest = url.substringAfter('#', "")
         } else if (
+            !asksClose &&
             pendingHostAction == null && pendingOpenMessage == null &&
             raftArtifactViewerHostActionIsNew(
                 url = url,
@@ -1272,29 +1293,51 @@ private fun RaftArtifactViewerWebBody(
             RaftArtifactViewerNavigation.Ignore, is RaftArtifactViewerNavigation.SystemBrowser -> Unit
             else ->
                 if (armed) {
-                    left = true
-                    val to = raftArtifactViewerLogDestination(url)
-                    val action =
-                        raftArtifactViewerLeaveAction(
-                            navigation = navigation,
-                            url = url,
-                            reusedKept = kept != null,
-                            sinceShownMs = attachedAt.elapsedNow().inWholeMilliseconds,
-                            reloadAvailable = currentFreshReloadAvailable,
-                            sessionLossEvident =
-                                pageTokens.sessionLossEvident(currentToken = currentAppToken, nowMs = build.raft.app.data.defaultNowMillis()),
-                            sessionRecoveryAvailable = currentSessionRecoveryAvailable(),
+                    if (
+                        navigation == RaftArtifactViewerNavigation.Close &&
+                        raftArtifactViewerIsHostCloseOnArtifact(url, scope.webOrigin, shownTarget.id)
+                    ) {
+                        // Normal top-left Back from the page's toolbar (`#host=close`) while still
+                        // on this Artifact: clear the fragment before closing so the parked WebView
+                        // stays warm in multi-slot keep-alive (matching native Back / KEYCODE_BACK)
+                        // instead of dropping it.
+                        closingForHostBack = true
+                        controller.evaluateJavaScript(
+                            raftArtifactViewerHostCloseTakenScript(scope.webOrigin, hashBeforeHostRequest),
                         )
-                    when (action) {
-                        RaftArtifactViewerLeaveAction.ReloadFresh -> currentOnReloadFresh(to)
-                        RaftArtifactViewerLeaveAction.Leave -> currentOnLeave(navigation, to)
-                        RaftArtifactViewerLeaveAction.RecoverSession -> currentOnSessionLost(to, true, pageTokens.pageToken)
-                        RaftArtifactViewerLeaveAction.SessionLost -> currentOnSessionLost(to, false, pageTokens.pageToken)
+                        currentOnHostClose()
+                    } else {
+                        left = true
+                        val to = raftArtifactViewerLogDestination(url)
+                        val action =
+                            raftArtifactViewerLeaveAction(
+                                navigation = navigation,
+                                url = url,
+                                reusedKept = kept != null,
+                                sinceShownMs = attachedAt.elapsedNow().inWholeMilliseconds,
+                                reloadAvailable = currentFreshReloadAvailable,
+                                sessionLossEvident =
+                                    pageTokens.sessionLossEvident(currentToken = currentAppToken, nowMs = build.raft.app.data.defaultNowMillis()),
+                                sessionRecoveryAvailable = currentSessionRecoveryAvailable(),
+                            )
+                        when (action) {
+                            RaftArtifactViewerLeaveAction.ReloadFresh -> currentOnReloadFresh(to)
+                            RaftArtifactViewerLeaveAction.Leave -> currentOnLeave(navigation, to)
+                            RaftArtifactViewerLeaveAction.RecoverSession -> currentOnSessionLost(to, true, pageTokens.pageToken)
+                            RaftArtifactViewerLeaveAction.SessionLost -> currentOnSessionLost(to, false, pageTokens.pageToken)
+                        }
                     }
                 }
         }
     }
-    LaunchedEffect(Unit) { kept?.currentUrl?.let(::onAddress) }
+    LaunchedEffect(Unit) { kept?.currentUrl?.let { onAddress(raftArtifactViewerStripCloseFragment(it), fromPlatform = false) } }
+    LaunchedEffect(documentReady, staleHostCloseUrl) {
+        if (documentReady && staleHostCloseUrl != null) {
+            controller.evaluateJavaScript(raftArtifactViewerHostCloseTakenScript(scope.webOrigin, ""))
+            kotlinx.coroutines.delay(RAFT_ARTIFACT_VIEWER_HOST_ACTION_REPEAT_MS)
+            staleHostCloseUrl = null
+        }
+    }
     val currentOnPageLoadStarted by rememberUpdatedState(onPageLoadStarted)
     LaunchedEffect(Unit) {
         RaftArtifactOpenTrace.mark(
@@ -1569,7 +1612,7 @@ private fun RaftArtifactViewerWebBody(
                     "artifact_viewer_load_failed reason=${normalized.take(64)}",
                 )
             },
-            onUrlChange = ::onAddress,
+            onUrlChange = { onAddress(it) },
             onNavigationStateChange = { state ->
                 if (state.isLoading && state.progress == 0) RaftArtifactOpenTrace.mark("webview_page_started")
                 // iOS sees the web app's own history changes only here (its URL poll).

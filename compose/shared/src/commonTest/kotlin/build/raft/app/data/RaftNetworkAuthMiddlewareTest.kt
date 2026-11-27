@@ -427,6 +427,165 @@ class RaftNetworkAuthMiddlewareTest {
         assertEquals("fresh-access", store.readSession()?.accessToken)
     }
 
+    @Test
+    fun keepsInitialServerIdAcross401RefreshRetryWhenCurrentServerSwitches() = runBlocking {
+        val initial = multiServerSession(selectedServerId = "server-1")
+        val store = InMemoryRaftAuthSessionStore(initial)
+        val api =
+            FakeAuthApi(
+                refreshResult = AuthApiResult.Success(AuthRefreshResponse("fresh-access", "fresh-refresh")),
+                beforeRefresh = {
+                    store.updateSelectedServer(serverId = "server-2", serverSlug = "other")
+                },
+            )
+        val sent = mutableListOf<RaftAuthenticatedRequestContext>()
+        val middleware = RaftNetworkAuthMiddleware(store, api)
+
+        val response =
+            middleware.request { auth ->
+                sent += auth
+                if (sent.size == 1) {
+                    HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+                } else {
+                    HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+                }
+            }
+
+        assertEquals(200, response.code)
+        assertEquals(2, sent.size)
+        assertEquals("server-1", sent[0].serverId)
+        assertEquals("Bearer expired-access", sent[0].authorization)
+        assertEquals("server-1", sent[1].serverId)
+        assertEquals("Bearer fresh-access", sent[1].authorization)
+        assertEquals("server-2", store.readSession()?.currentServerId)
+    }
+
+    @Test
+    fun keepsCapturedServerScopeAcrossServerSwitchBeforeFirstAttemptAnd401Refresh() = runBlocking {
+        val switched = multiServerSession(selectedServerId = "server-2")
+        val store = InMemoryRaftAuthSessionStore(switched)
+        val api =
+            FakeAuthApi(
+                refreshResult = AuthApiResult.Success(AuthRefreshResponse("fresh-access", "fresh-refresh")),
+            )
+        val sent = mutableListOf<RaftAuthenticatedRequestContext>()
+        val middleware = RaftNetworkAuthMiddleware(store, api)
+
+        val response =
+            middleware.request(
+                capturedServerScope = RaftCapturedServerScope(accountId = "user-1", serverId = ServerId("server-1")),
+            ) { auth ->
+                sent += auth
+                if (sent.size == 1) {
+                    HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+                } else {
+                    HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+                }
+            }
+
+        assertEquals(200, response.code)
+        assertEquals(listOf("server-1", "server-1"), sent.map { it.serverId })
+        assertEquals("Bearer fresh-access", sent[1].authorization)
+        assertEquals("server-2", store.readSession()?.currentServerId)
+    }
+
+    @Test
+    fun rejectsCapturedServerScopeWhenAccountSwitchesBeforeFirstAttempt() = runBlocking {
+        val otherAccount =
+            multiServerSession(selectedServerId = "server-2").copy(
+                user = StoredAuthUser(id = "user-2", email = "other@slock.ai"),
+            )
+        val store = InMemoryRaftAuthSessionStore(otherAccount)
+        val middleware = RaftNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+        var calls = 0
+
+        val response =
+            middleware.request(
+                capturedServerScope = RaftCapturedServerScope(accountId = "user-1", serverId = ServerId("server-1")),
+            ) {
+                calls += 1
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(0, calls)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
+    fun rejects401RefreshRetryWhenAccountSwitchesMidFlight() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore(multiServerSession(selectedServerId = "server-1"))
+        val middleware = RaftNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+        var calls = 0
+
+        val response =
+            middleware.request {
+                calls += 1
+                store.saveSession(
+                    multiServerSession(
+                        accessToken = "user2-access",
+                        refreshToken = "user2-refresh",
+                        selectedServerId = "server-2",
+                    ).copy(user = StoredAuthUser(id = "user-2", email = "other@slock.ai"))
+                )
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(1, calls)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
+    fun expectedAuthorityStillRejectsServerSwitchDuring401Refresh() = runBlocking {
+        val initial = multiServerSession(selectedServerId = "server-1")
+        val store = InMemoryRaftAuthSessionStore(initial)
+        val api =
+            FakeAuthApi(
+                refreshResult = AuthApiResult.Success(AuthRefreshResponse("fresh-access", "fresh-refresh")),
+                beforeRefresh = {
+                    store.updateSelectedServer(serverId = "server-2", serverSlug = "other")
+                },
+            )
+        val middleware = RaftNetworkAuthMiddleware(store, api)
+        var calls = 0
+
+        val response =
+            middleware.request(
+                expectedAuthority = initial.expectedBinding(),
+                capturedServerScope = RaftCapturedServerScope(accountId = "user-1", serverId = ServerId("server-1")),
+            ) {
+                calls += 1
+                HomeNetworkResponse(code = 401, bodyText = null, errorBodyText = """{"error":"expiredToken"}""")
+            }
+
+        assertEquals(409, response.code)
+        assertEquals(1, calls)
+        assertEquals("fresh-access", store.readSession()?.accessToken)
+        assertEquals("server-2", store.readSession()?.currentServerId)
+        assertEquals(true, response.errorBodyText?.contains("auth_authority_changed"))
+    }
+
+    @Test
+    fun explicitBlankServerIdOverrideFailsClosedEvenWithCapturedServerScope() = runBlocking {
+        val store = InMemoryRaftAuthSessionStore(multiServerSession(selectedServerId = "server-1"))
+        val middleware = RaftNetworkAuthMiddleware(store, FakeAuthApi(refreshResult = null))
+        var calls = 0
+
+        val response =
+            middleware.request(
+                serverIdOverride = ServerId(""),
+                capturedServerScope = RaftCapturedServerScope(accountId = "user-1", serverId = ServerId("server-1")),
+            ) {
+                calls += 1
+                HomeNetworkResponse(code = 200, bodyText = "{}")
+            }
+
+        assertEquals(401, response.code)
+        assertEquals(0, calls)
+        assertEquals(true, response.errorBodyText?.contains("session_expired"))
+    }
+
     private class FakeAuthApi(
         private val refreshResult: AuthApiResult<AuthRefreshResponse>?,
         private val refreshTokenAssertion: String = "refresh-token",
@@ -499,6 +658,24 @@ class RaftNetworkAuthMiddlewareTest {
             selectedServerId = "server-1",
             selectedServerSlug = "slock",
             servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+        )
+
+    private fun multiServerSession(
+        accessToken: String = "expired-access",
+        refreshToken: String = "refresh-token",
+        selectedServerId: String = "server-1",
+    ): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "artin@slock.ai"),
+            accessToken = accessToken,
+            refreshToken = refreshToken,
+            selectedServerId = selectedServerId,
+            selectedServerSlug = if (selectedServerId == "server-1") "slock" else "other",
+            servers =
+                listOf(
+                    StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"),
+                    StoredAuthServer(id = "server-2", name = "Other", slug = "other"),
+                ),
         )
 
     private fun StoredAuthSession.expectedBinding(): RaftExpectedAuthBinding =

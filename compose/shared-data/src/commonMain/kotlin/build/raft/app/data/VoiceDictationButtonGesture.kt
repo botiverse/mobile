@@ -22,7 +22,12 @@ import kotlinx.coroutines.launch
 @RaftCoreInternalApi
 const val VOICE_DICTATION_HOLD_THRESHOLD_MS: Long = 350L
 
-private const val VOICE_DICTATION_CLICK_SUPPRESSION_RESET_MS: Long = 1L
+/**
+ * Suppression window after `pointerUp` to absorb trailing `onClick` callbacks without double-toggling
+ * (matches web 200 ms window so slow frames or desktop mouse clicks never immediately stop/reopen).
+ */
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CLICK_SUPPRESSION_RESET_MS: Long = 200L
 
 /**
  * Presentation mode for the single-button voice dictation control:

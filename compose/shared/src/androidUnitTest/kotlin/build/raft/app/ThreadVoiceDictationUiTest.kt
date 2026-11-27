@@ -13,8 +13,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
@@ -479,6 +482,92 @@ class ThreadVoiceDictationUiTest {
         }
 
     @Test
+    fun tappingSendWhileActivelyListeningStopsDictationImmediatelyAndRejectsLateFrames() =
+        runRobolectricComposeUiTest {
+            val recorder = FakeRecorder()
+            val connection = FakeStreamConnection()
+            val sentMessages = mutableListOf<String>()
+            var controllerRef: VoiceDictationV2Controller? = null
+
+            setContent {
+                val scope = rememberCoroutineScope()
+                var commandNonce by remember { mutableStateOf(0) }
+                var clearCommand by remember { mutableStateOf<ThreadComposerEditorCommand?>(null) }
+                val controller = remember {
+                    VoiceDictationV2Controller(
+                        permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
+                        streamConnector = FakeStreamConnector(connection),
+                        scope = scope,
+                        audioRecorderProvider = { recorder },
+                    ).also { controllerRef = it }
+                }
+                val host = remember(controller) {
+                    ThreadVoiceDictationHost(
+                        flagEnabled = true,
+                        viewerIsGuest = false,
+                        recorderAvailable = true,
+                        serverId = "srv-1",
+                        channelId = "550e8400-e29b-41d4-a716-446655440000",
+                        threadId = null,
+                        languageHint = "en",
+                        controller = controller,
+                    )
+                }
+                RaftDesignSystemTheme {
+                    CompositionLocalProvider(LocalThreadVoiceDictationHost provides host) {
+                        ThreadComposerContent(
+                            surface = ThreadComposerSurface(channelId = "chan-send-active"),
+                            state =
+                                ThreadComposerUiState(
+                                    instanceId = "voice-send-active",
+                                    enabled = true,
+                                    editorCommand = clearCommand,
+                                ),
+                            onEvent = { action, value, _, _ ->
+                                if (action == "send" && value != null) {
+                                    sentMessages += value
+                                    commandNonce += 1
+                                    clearCommand =
+                                        ThreadComposerEditorCommand(
+                                            id = commandNonce,
+                                            kind = ThreadComposerEditorCommandKind.Clear,
+                                            expectedText = value,
+                                        )
+                                }
+                            },
+                            contentPaddingTop = 0.dp,
+                            contentPaddingBottom = 0.dp,
+                            attachmentPreviewEnabled = false,
+                        )
+                    }
+                }
+            }
+
+            onNodeWithContentDescription("Voice dictation").performClick()
+            connection.emitFrame(VoiceDictationV2ServerFrame.Ready)
+            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Testing one two.", stableLen = 16, refined = false))
+            waitForIdle()
+
+            val controller = assertNotNull(controllerRef)
+            assertEquals(VoiceDictationV2Phase.Listening, controller.state.value.phase)
+
+            // Tapping Send while still actively listening stops dictation immediately and clears composer.
+            onNodeWithContentDescription("Send").assertIsEnabled().performClick()
+            waitForIdle()
+            assertEquals(listOf("Testing one two."), sentMessages)
+            assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
+            assertFalse(controller.state.value.hasBackgroundDrain)
+            assertTrue(recorder.stopCount >= 1)
+            onNodeWithText("Testing one two.").assertDoesNotExist()
+
+            // Any late server frame after Send must never repopulate the cleared composer.
+            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Testing one two. Late tail.", stableLen = 27, refined = true))
+            waitForIdle()
+            onNodeWithText("Testing one two. Late tail.").assertDoesNotExist()
+            onNodeWithText("Testing one two.").assertDoesNotExist()
+        }
+
+    @Test
     fun micPermissionDeniedRendersLocalizedNoticeAndCanBeDismissed() =
         runRobolectricComposeUiTest {
             val deniedRecorder = FakeRecorder(startResult = VoiceDictationAudioStartResult.PermissionDenied)
@@ -866,7 +955,9 @@ class ThreadVoiceDictationUiTest {
             assertEquals("0:00", formatVoiceDictationClock(0L))
             assertEquals("0:04", formatVoiceDictationClock(4_900L))
             assertEquals("1:23", formatVoiceDictationClock(83_000L))
-            assertEquals(1.25f, voiceDictationHaloScale(0.9f, reducedMotion = true))
+            assertEquals(32f / 28f, voiceDictationHaloScale(0f, reducedMotion = false), 0.001f)
+            assertEquals(44f / 28f, voiceDictationHaloScale(1f, reducedMotion = false), 0.001f)
+            assertEquals(34f / 28f, voiceDictationHaloScale(0.9f, reducedMotion = true), 0.001f)
             assertEquals(0.35f, voiceDictationHaloAlpha(0.9f, reducedMotion = true))
 
             setContent {

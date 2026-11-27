@@ -420,7 +420,9 @@ internal fun raftArtifactViewerKeptUrlMatchesTarget(
     webOrigin: String,
     target: ArtifactLinkTarget,
 ): Boolean {
-    val stay = raftArtifactViewerNavigation(url, webOrigin, target.id) as? RaftArtifactViewerNavigation.Stay ?: return false
+    val stay =
+        raftArtifactViewerNavigation(raftArtifactViewerStripCloseFragment(url), webOrigin, target.id)
+            as? RaftArtifactViewerNavigation.Stay ?: return false
     return stay.version == target.version
 }
 
@@ -759,6 +761,28 @@ internal fun raftArtifactViewerHostOpenTakenScript(webOrigin: String, hash: Stri
         webOrigin,
         """
         if (/^#host=open&to=/.test(window.location.hash)) {
+          var url = new URL(window.location.href);
+          url.hash = $previous;
+          window.history.replaceState(window.history.state, '', url.href);
+        }
+        """.trimIndent(),
+    )
+}
+
+/**
+ * Takes a handled `#host=close` request ([RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT]) off the page's
+ * address before parking or after reattaching a kept Artifact WebView, restoring [hash] (normalizing
+ * `"host=close"` / `"#host=close"` to empty so the close fragment is never re-written).
+ */
+internal fun raftArtifactViewerHostCloseTakenScript(webOrigin: String, hash: String = ""): String {
+    val closeToken = RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT.removePrefix("#")
+    val normalizedHash = hash.removePrefix("#").takeUnless { it == closeToken }.orEmpty()
+    val previous = Json.encodeToString(String.serializer(), normalizedHash)
+    val closeFragment = Json.encodeToString(String.serializer(), RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT)
+    return raftArtifactViewerGuardedScript(
+        webOrigin,
+        """
+        if (window.location.hash === $closeFragment) {
           var url = new URL(window.location.href);
           url.hash = $previous;
           window.history.replaceState(window.history.state, '', url.href);
@@ -1234,6 +1258,28 @@ internal fun raftArtifactViewerNavigation(
 /** Whether [url] carries the page's own Back (`#host=close`, [RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT]). */
 internal fun raftArtifactViewerAsksHostClose(url: String): Boolean =
     url.substringAfter('#', "") == RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT.removePrefix("#")
+
+/**
+ * Strips the page's own Back fragment (`#host=close`, [RAFT_ARTIFACT_VIEWER_CLOSE_FRAGMENT]) from
+ * [url], leaving every other fragment untouched. Keeps a parked Artifact document reusable after
+ * the user tapped the page's top-left Back arrow without re-triggering close on next open.
+ */
+internal fun raftArtifactViewerStripCloseFragment(url: String): String =
+    if (raftArtifactViewerAsksHostClose(url)) url.substringBefore('#') else url
+
+/**
+ * Whether [url] is the page's own Back (`#host=close`) while the document is still on [artifactId]
+ * (not an off-Artifact route such as `/#host=close`). Only then may the viewer close while keeping
+ * the parked WebView slot warm in multi-slot keep-alive.
+ */
+internal fun raftArtifactViewerIsHostCloseOnArtifact(
+    url: String,
+    webOrigin: String,
+    artifactId: String,
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Boolean =
+    raftArtifactViewerAsksHostClose(url) &&
+        raftArtifactViewerNavigation(raftArtifactViewerStripCloseFragment(url), webOrigin, artifactId, appHosts) is RaftArtifactViewerNavigation.Stay
 
 /**
  * The Artifact the page moved to in place, which the viewer then shows (its title, Open in Browser,
