@@ -307,6 +307,85 @@ class SignedInDevicesTest {
         assertIs<SignedInDeviceList>(store.state.value.list)
     }
 
+    @Test
+    fun parsesDisconnectPreviewAndBuildsQueryPaths() {
+        val parsed =
+            assertNotNull(
+                parseSharedDisconnectPreview(
+                    """{"computers":[
+                        {"kind":"computer","id":"comp-1","name":"Studio Mac","serverId":"srv-1","serverName":"Botiverse","agentCount":3},
+                        {"kind":"legacy_machine","id":"mach-2","name":"Old Box","serverId":"srv-2","serverName":"Lab","agentCount":0},
+                        {"id":"broken","name":"Missing server"}
+                    ],"agentKeys":4}"""
+                )
+            )
+        assertEquals(2, parsed.computers.size)
+        assertEquals(SecurityRevokePreviewComputerKind.Computer, parsed.computers[0].kind)
+        assertEquals("Studio Mac", parsed.computers[0].name)
+        assertEquals("Botiverse", parsed.computers[0].serverName)
+        assertEquals(3, parsed.computers[0].agentCount)
+        assertEquals(SecurityRevokePreviewComputerKind.LegacyMachine, parsed.computers[1].kind)
+        assertEquals(0, parsed.computers[1].agentCount)
+        assertEquals(4, parsed.agentKeys)
+        assertNull(parseSharedDisconnectPreview("[]"))
+        assertEquals(
+            "me/sessions/disconnect-preview?action=lost_device_one&familyId=fam%2F1",
+            signedInDisconnectPreviewPath(SignedInDisconnectPreviewTarget.LostDeviceOne("fam/1")),
+        )
+        assertEquals(
+            "me/sessions/disconnect-preview?action=lost_device_others",
+            signedInDisconnectPreviewPath(SignedInDisconnectPreviewTarget.LostDeviceOthers),
+        )
+        assertEquals(
+            "me/sessions/disconnect-preview?action=password_change",
+            signedInDisconnectPreviewPath(SignedInDisconnectPreviewTarget.PasswordChange),
+        )
+    }
+
+    @Test
+    fun openingSignOutFetchesDisconnectPreviewOnlyWhenComputersAreCounted() = runTest {
+        val keysOnlyList =
+            """{"sessions":[
+                {"id":"fam-current","platform":"android","version":"1.27.0","createdAt":"2026-11-01T08:00:00.000Z","lastActiveAt":"2026-11-18T09:00:00.000Z","current":true,"lostDeviceReach":{"computers":0,"agentKeys":0}},
+                {"id":"fam-keys","platform":"browser","version":null,"createdAt":"2026-10-02T08:00:00.000Z","lastActiveAt":"2026-11-17T09:00:00.000Z","current":false,"lostDeviceReach":{"computers":0,"agentKeys":3}},
+                {"id":"fam-comp","platform":"desktop_app","version":"1.27.0","createdAt":"2026-10-03T08:00:00.000Z","lastActiveAt":"2026-11-17T09:00:00.000Z","current":false,"lostDeviceReach":{"computers":1,"agentKeys":1}}
+            ],"othersLostDeviceReach":{"computers":1,"agentKeys":4}}"""
+        val previewBody =
+            """{"computers":[{"kind":"computer","id":"comp-1","name":"Studio Mac","serverId":"srv-1","serverName":"Botiverse","agentCount":2}],"agentKeys":1}"""
+        val network =
+            ScriptedAgentControlsNetworkClient().apply {
+                respond("GET", "me/sessions", 200, keysOnlyList)
+                respond("GET", "me/sessions/disconnect-preview?action=lost_device_one&familyId=fam-comp", 200, previewBody)
+                respond("GET", "me/sessions/disconnect-preview?action=lost_device_others", 200, previewBody)
+            }
+        val store = store(network)
+        store.dispatch(SharedSignedInDevicesIntent.Refresh)
+        runCurrent()
+
+        // Keys-only device must NOT fetch disconnect preview (`slock#17081`).
+        val keysOnly = store.state.value.list!!.sessions.single { it.id == "fam-keys" }
+        store.dispatch(SharedSignedInDevicesIntent.OpenSignOut(keysOnly))
+        runCurrent()
+        assertEquals(0, network.requests.count { it.path.startsWith("me/sessions/disconnect-preview") })
+        assertNull(store.state.value.signOut?.disconnectPreview)
+        store.dispatch(SharedSignedInDevicesIntent.CloseSignOut)
+
+        // Device with computers fetches lost_device_one preview and discards it on close.
+        val withComputer = store.state.value.list!!.sessions.single { it.id == "fam-comp" }
+        store.dispatch(SharedSignedInDevicesIntent.OpenSignOut(withComputer))
+        runCurrent()
+        assertEquals(1, network.requests.count { it.path == "me/sessions/disconnect-preview?action=lost_device_one&familyId=fam-comp" })
+        assertEquals("Studio Mac", store.state.value.signOut?.disconnectPreview?.computers?.single()?.name)
+        store.dispatch(SharedSignedInDevicesIntent.CloseSignOut)
+        assertNull(store.state.value.signOut)
+
+        // Others fetches lost_device_others preview.
+        store.dispatch(SharedSignedInDevicesIntent.OpenSignOutOthers)
+        runCurrent()
+        assertEquals(1, network.requests.count { it.path == "me/sessions/disconnect-preview?action=lost_device_others" })
+        assertEquals(1, store.state.value.signOut?.disconnectPreview?.computers?.size)
+    }
+
     private fun TestScope.store(network: ScriptedAgentControlsNetworkClient) =
         SharedSignedInDevicesStore(NetworkSignedInDevicesDataSource(network), this)
 }

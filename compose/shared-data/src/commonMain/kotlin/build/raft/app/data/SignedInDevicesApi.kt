@@ -36,6 +36,7 @@ private val signedInDevicesJson = Json {
  * `platform` and `version` are the client's own claims, display only.
  */
 private const val MY_SESSIONS_PATH = "me/sessions"
+private const val DISCONNECT_PREVIEW_PATH = "me/sessions/disconnect-preview"
 private const val REAUTH_PASSWORD_PATH = "auth/second-factor/reauth/password"
 private const val FORGOT_PASSWORD_PATH = "auth/forgot-password"
 private const val SECOND_FACTOR_RECOVERY_REQUEST_PATH = "auth/second-factor/recovery"
@@ -94,6 +95,36 @@ data class SignedInDeviceList(
 enum class SignedInDeviceCascade { Done, Pending, None }
 
 data class SignedInDevicesRevokedOthers(val revoked: Int, val cascade: SignedInDeviceCascade)
+
+/** Kind of Computer row returned by `GET /api/me/sessions/disconnect-preview` (`slock#17061`). */
+enum class SecurityRevokePreviewComputerKind { Computer, LegacyMachine }
+
+/** One Computer that a security action (`lost_device` or password change) would disconnect. */
+data class SecurityRevokePreviewComputer(
+    val kind: SecurityRevokePreviewComputerKind = SecurityRevokePreviewComputerKind.Computer,
+    val id: String,
+    val name: String,
+    val serverId: String,
+    val serverName: String,
+    val agentCount: Int = 0,
+)
+
+/**
+ * Named preview of what a security action disconnects (`GET /api/me/sessions/disconnect-preview`,
+ * `botiverse/slock` #17061 / #17069 / #17081). `agentKeys` is parsed for wire fidelity but never
+ * named in UI (`#17081`).
+ */
+data class SecurityRevokePreview(
+    val computers: List<SecurityRevokePreviewComputer> = emptyList(),
+    val agentKeys: Int = 0,
+)
+
+/** Query target for `GET /api/me/sessions/disconnect-preview`. */
+sealed interface SignedInDisconnectPreviewTarget {
+    data class LostDeviceOne(val familyId: String) : SignedInDisconnectPreviewTarget
+    data object LostDeviceOthers : SignedInDisconnectPreviewTarget
+    data object PasswordChange : SignedInDisconnectPreviewTarget
+}
 
 /** POST /auth/second-factor/reauth/password's answer (web PasskeysSection `ReauthDialog` with `useFailureCopy`). */
 sealed interface SignedInDevicesReauthResult {
@@ -192,6 +223,66 @@ fun parseSharedSignedInDevicesRevokedOthers(bodyText: String?): SignedInDevicesR
     return SignedInDevicesRevokedOthers(revoked = body?.get("revoked").countOrZero(), cascade = body.cascade())
 }
 
+/**
+ * Parses `GET /api/me/sessions/disconnect-preview` (web `parseDisconnectPreview`, `slock#17069`):
+ * rows without string `id`, `name`, `serverId`, and `serverName` are omitted; non-positive counts
+ * read as 0. Returns `null` when the body is not a JSON object.
+ */
+fun parseSharedDisconnectPreview(bodyText: String?): SecurityRevokePreview? {
+    val body = bodyText.jsonObjectOrNull() ?: return null
+    val rows = body["computers"] as? JsonArray ?: JsonArray(emptyList())
+    val computers =
+        rows.mapNotNull { raw ->
+            val row = raw as? JsonObject ?: return@mapNotNull null
+            val id = (row["id"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val name = (row["name"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val serverId = (row["serverId"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val serverName = (row["serverName"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+            val kind =
+                if ((row["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.content == "legacy_machine") {
+                    SecurityRevokePreviewComputerKind.LegacyMachine
+                } else {
+                    SecurityRevokePreviewComputerKind.Computer
+                }
+            SecurityRevokePreviewComputer(
+                kind = kind,
+                id = id,
+                name = name,
+                serverId = serverId,
+                serverName = serverName,
+                agentCount = row["agentCount"].countOrZero(),
+            )
+        }
+    return SecurityRevokePreview(computers = computers, agentKeys = body["agentKeys"].countOrZero())
+}
+
+/** Query path for `GET /api/me/sessions/disconnect-preview`. */
+@RaftCoreInternalApi fun signedInDisconnectPreviewPath(target: SignedInDisconnectPreviewTarget): String =
+    when (target) {
+        is SignedInDisconnectPreviewTarget.LostDeviceOne ->
+            "$DISCONNECT_PREVIEW_PATH?action=lost_device_one&familyId=${encodeSignedInDevicePathSegment(target.familyId)}"
+        SignedInDisconnectPreviewTarget.LostDeviceOthers ->
+            "$DISCONNECT_PREVIEW_PATH?action=lost_device_others"
+        SignedInDisconnectPreviewTarget.PasswordChange ->
+            "$DISCONNECT_PREVIEW_PATH?action=password_change"
+    }
+
+/**
+ * Fetches `GET /api/me/sessions/disconnect-preview` (web `fetchSignedInDisconnectPreview`).
+ * Returns `null` on any non-2xx or network error so the caller keeps its general notice.
+ */
+@RaftCoreInternalApi suspend fun RaftNetworkClient.fetchSharedSignedInDisconnectPreview(
+    target: SignedInDisconnectPreviewTarget,
+): SecurityRevokePreview? =
+    try {
+        val response = request(DataRequestPriority.Visible, signedInDisconnectPreviewPath(target))
+        if (response.isSuccessful) parseSharedDisconnectPreview(response.bodyText) else null
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Throwable) {
+        null
+    }
+
 fun buildSharedSignedInDeviceRevokeBody(reason: SignedInDeviceRevokeReason): String =
     signedInDevicesJson.encodeToString(SignedInDeviceRevokeBody.serializer(), SignedInDeviceRevokeBody(reason.wireName))
 
@@ -241,6 +332,8 @@ fun parseSharedRecoveryEmailResult(statusCode: Int): SecondFactorRecoveryEmailRe
 @RaftCoreInternalApi interface SignedInDevicesDataSource {
     /** The list; Content(null) when the server has no such list (404). */
     suspend fun list(): DataResult<SignedInDeviceList?>
+    /** Named disconnect preview for a `lost_device` revoke; null on failure so the dialog keeps its count line only. */
+    suspend fun disconnectPreview(target: SignedInDisconnectPreviewTarget): SecurityRevokePreview? = null
     suspend fun revoke(id: String, reason: SignedInDeviceRevokeReason): DataResult<SignedInDeviceCascade>
     suspend fun revokeOthers(reason: SignedInDeviceRevokeReason): DataResult<SignedInDevicesRevokedOthers>
     suspend fun reauthenticateWithPassword(password: String): SignedInDevicesReauthResult
@@ -280,6 +373,9 @@ fun parseSharedRecoveryEmailResult(statusCode: Int): SecondFactorRecoveryEmailRe
                         )
             }
         }
+
+    override suspend fun disconnectPreview(target: SignedInDisconnectPreviewTarget): SecurityRevokePreview? =
+        networkClient.fetchSharedSignedInDisconnectPreview(target)
 
     override suspend fun revoke(id: String, reason: SignedInDeviceRevokeReason): DataResult<SignedInDeviceCascade> =
         guarded({ DataResult.Error(ScreenError(code = "network_unavailable", retryable = true, traceId = null)) }) {

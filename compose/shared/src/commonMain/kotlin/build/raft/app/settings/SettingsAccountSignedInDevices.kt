@@ -303,74 +303,43 @@ private fun SettingsSignedInDeviceRow(
     )
 }
 
-/** "3 computers", "1 agent key". */
-@Composable
-private fun computersCount(count: Int): String =
-    stringResource(
-        if (count == 1) Res.string.settings_signed_in_devices_computers_count_one else Res.string.settings_signed_in_devices_computers_count_other,
-        count
-    )
-
-@Composable
-private fun agentKeysCount(count: Int): String =
-    stringResource(
-        if (count == 1) Res.string.settings_signed_in_devices_agent_keys_count_one else Res.string.settings_signed_in_devices_agent_keys_count_other,
-        count
-    )
-
-/** Which of a sentence's three forms (web `lostBodyId`): both, Computers only, agent keys only. */
-internal enum class SettingsLostReachForm { Both, Computers, Keys }
-
-internal fun settingsLostReachForm(reach: SignedInDeviceLostReach): SettingsLostReachForm =
-    when {
-        reach.computers > 0 && reach.agentKeys > 0 -> SettingsLostReachForm.Both
-        reach.computers > 0 -> SettingsLostReachForm.Computers
-        else -> SettingsLostReachForm.Keys
-    }
-
-/** What `lost_device` also disconnects, for one device, the others, or the leftovers. */
+/**
+ * What `lost_device` also disconnects, for one device, the others, or the leftovers (`slock#17083`).
+ * Agent keys are never named: when at least one Computer is counted, name only the Computers;
+ * otherwise use the neutral approved-items line.
+ */
 @Composable
 private fun settingsLostReachText(target: SignedInDevicesSignOutTarget, reach: SignedInDeviceLostReach): String {
-    val form = settingsLostReachForm(reach)
-    if (form == SettingsLostReachForm.Both) {
-        val both =
+    if (reach.computers <= 0) {
+        val resource =
             when (target) {
-                is SignedInDevicesSignOutTarget.One -> Res.string.settings_signed_in_devices_choice_lost_body
-                SignedInDevicesSignOutTarget.Others -> Res.string.settings_signed_in_devices_choice_lost_all_body
-                SignedInDevicesSignOutTarget.Leftovers -> Res.string.settings_signed_in_devices_leftovers_body
+                is SignedInDevicesSignOutTarget.One -> Res.string.settings_signed_in_devices_choice_lost_body_approved
+                SignedInDevicesSignOutTarget.Others -> Res.string.settings_signed_in_devices_choice_lost_all_body_approved
+                SignedInDevicesSignOutTarget.Leftovers -> Res.string.settings_signed_in_devices_leftovers_body_approved
             }
-        return stringResource(both, computersCount(reach.computers), agentKeysCount(reach.agentKeys))
+        return stringResource(resource)
     }
-    val count = if (form == SettingsLostReachForm.Computers) reach.computers else reach.agentKeys
-    val one = count == 1
+    val one = reach.computers == 1
     val resource =
         when (target) {
             is SignedInDevicesSignOutTarget.One ->
-                if (form == SettingsLostReachForm.Computers) {
-                    if (one) Res.string.settings_signed_in_devices_choice_lost_body_computers_one else Res.string.settings_signed_in_devices_choice_lost_body_computers_other
-                } else {
-                    if (one) Res.string.settings_signed_in_devices_choice_lost_body_keys_one else Res.string.settings_signed_in_devices_choice_lost_body_keys_other
-                }
+                if (one) Res.string.settings_signed_in_devices_choice_lost_body_computers_one
+                else Res.string.settings_signed_in_devices_choice_lost_body_computers_other
             SignedInDevicesSignOutTarget.Others ->
-                if (form == SettingsLostReachForm.Computers) {
-                    if (one) Res.string.settings_signed_in_devices_choice_lost_all_body_computers_one else Res.string.settings_signed_in_devices_choice_lost_all_body_computers_other
-                } else {
-                    if (one) Res.string.settings_signed_in_devices_choice_lost_all_body_keys_one else Res.string.settings_signed_in_devices_choice_lost_all_body_keys_other
-                }
+                if (one) Res.string.settings_signed_in_devices_choice_lost_all_body_computers_one
+                else Res.string.settings_signed_in_devices_choice_lost_all_body_computers_other
             SignedInDevicesSignOutTarget.Leftovers ->
-                if (form == SettingsLostReachForm.Computers) {
-                    if (one) Res.string.settings_signed_in_devices_leftovers_body_computers_one else Res.string.settings_signed_in_devices_leftovers_body_computers_other
-                } else {
-                    if (one) Res.string.settings_signed_in_devices_leftovers_body_keys_one else Res.string.settings_signed_in_devices_leftovers_body_keys_other
-                }
+                if (one) Res.string.settings_signed_in_devices_leftovers_body_computers_one
+                else Res.string.settings_signed_in_devices_leftovers_body_computers_other
         }
-    return stringResource(resource, count)
+    return stringResource(resource, reach.computers)
 }
 
 /**
  * Web SignOutDeviceDialog: with something `lost_device` would also disconnect, two answers (Sign out,
- * the default and the least it changes; or I no longer have it, which says how many Computers and
- * agent keys go too); without, one question, Sign out. The leftovers only disconnect, in red.
+ * the default and the least it changes; or I no longer have it, which says how many Computers go
+ * too, plus a named disconnect preview once loaded); without, one question, Sign out. The leftovers
+ * only disconnect, in red.
  */
 @Composable
 private fun SettingsSignOutDeviceDialog(
@@ -435,8 +404,10 @@ private fun SettingsSignOutDeviceDialog(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             val muted = RaftTheme.colors.foregroundMuted
             when {
-                dialog.leftovers ->
+                dialog.leftovers -> {
                     RaftText(settingsLostReachText(target, dialog.reach), style = RaftTheme.typography.subhead, color = muted)
+                    dialog.disconnectPreview?.let { SettingsDisconnectPreviewList(it) }
+                }
                 dialog.hasChoice -> {
                     summary?.let { RaftText(it, style = RaftTheme.typography.subhead, color = muted) }
                     val others = one == null
@@ -464,6 +435,9 @@ private fun SettingsSignOutDeviceDialog(
                             description = settingsLostReachText(target, dialog.reach),
                             enabled = !dialog.submitting
                         )
+                    }
+                    if (dialog.reason == SignedInDeviceRevokeReason.LostDevice) {
+                        dialog.disconnectPreview?.let { SettingsDisconnectPreviewList(it) }
                     }
                 }
                 else -> {
