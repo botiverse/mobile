@@ -692,7 +692,7 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
             selectedTab != RaftThreadTab.Chat &&
             payload.isReadyForThreadPerformanceGate()
         ) {
-            delay(ThreadLayoutStabilityFrameDelayMs)
+            awaitNextThreadFrame()
             onFirstContentReady()
         }
     }

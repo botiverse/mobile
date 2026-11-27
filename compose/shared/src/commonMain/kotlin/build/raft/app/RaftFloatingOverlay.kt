@@ -2,13 +2,11 @@ package build.raft.app
 
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -18,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -172,12 +171,9 @@ internal fun RaftAnchoredPopover(
 internal fun RaftFloatingOverlayHost(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    // task #436 follow-up: the activation delay exists for LONG-PRESS-opened menus,
-    // where the press release lands after the host has composed and would instantly
-    // dismiss. CLICK-opened popovers complete their opening gesture before the host
-    // mounts, so they pass 0 — with a nonzero delay, rapid consecutive taps either
-    // land on the trigger pre-mount (toggling) or inside the window (eaten), which
-    // reads as "the popover won't close".
+    // Legacy parameter retained for source compatibility. Outside-tap dismissal now ignores any
+    // finger already pressed when the barrier attaches via fresh-down detection instead of waiting
+    // on a fixed delay window.
     dismissActivationDelayMillis: Long = RaftFloatingOverlayDismissActivationDelayMillis,
     // Suggestion/autocomplete surfaces remain part of the focused editor experience. They use a
     // pass-through host so the editor toolbar stays interactive, while modal menus keep the
@@ -196,30 +192,16 @@ internal fun RaftFloatingOverlayHost(
     // the row. Keep everything in pixels to avoid the unit mismatch.
     // Contract: docs/kuikly-overlay-coordinate-contract.md.
     var overlayLayout by remember { mutableStateOf(RaftFloatingOverlayLayout()) }
-    // Defer the host's dismiss-clickable so the long-press release that
-    // opens the menu does not immediately propagate to the host's
-    // onDismiss and close the menu before the user sees anything. The
-    // 150ms window covers the standard Android long-press threshold
-    // (~500ms) minus the time to compose + render the menu. The menu's
-    // own content Column already has a no-op clickable
-    // (raftFloatingContentClickTarget) so clicks on the menu do not
-    // bubble up; the host only needs to dismiss on clicks outside the
-    // menu.
-    var dismissClickableActive by remember { mutableStateOf(dismissActivationDelayMillis <= 0) }
     val currentOnDismiss by rememberUpdatedState(onDismiss)
     RaftBackHandler(enabled = true, label = "floating_overlay", onBack = currentOnDismiss)
     // A menu or popover the user opened keeps focus from a conversation opened underneath; a
     // pass-through surface (the composer's @ suggestions) is part of the editor, not a popover.
     LocalRaftAutofocusGuard.current.HoldOpenSurface(enabled = outsidePointerMode.installsOutsideDismissBarrier)
-    // #223: defer the dismiss clickable so the long-press release does not
-    // immediately propagate to onDismiss. 150ms covers the standard Android
-    // long-press threshold (~500ms) minus the time to compose + render the menu.
-    if (dismissActivationDelayMillis > 0) {
-        LaunchedEffect(Unit) {
-            delay(dismissActivationDelayMillis)
-            dismissClickableActive = true
-        }
-    }
+    // First-principles dismiss barrier: ignore any pointer already down when the overlay attached
+    // (such as a long-press finger lifting after opening a menu) by requiring a fresh press down
+    // (`changedToDownIgnoreConsumed()`) rather than guessing a fixed 150ms delay.
+    @Suppress("UNUSED_EXPRESSION")
+    dismissActivationDelayMillis
     Box(
         modifier = modifier
             .zIndex(RaftFloatingOverlayHostZIndex)
@@ -234,7 +216,6 @@ internal fun RaftFloatingOverlayHost(
     ) {
         if (outsidePointerMode.installsOutsideDismissBarrier) {
             RaftFloatingOverlayDismissBarrier(
-                dismissClickableActive = dismissClickableActive,
                 onDismiss = onDismiss
             )
         }
@@ -288,7 +269,6 @@ internal fun RaftModalDismissBarrier(
 
 @Composable
 private fun RaftFloatingOverlayDismissBarrier(
-    dismissClickableActive: Boolean,
     onDismiss: () -> Unit
 ) {
     val currentOnDismiss by rememberUpdatedState(onDismiss)
@@ -303,7 +283,7 @@ private fun RaftFloatingOverlayDismissBarrier(
             // (task #370).
             .background(RaftColor.SurfaceWhite.copy(alpha = RaftFloatingOverlayTouchGuardAlpha))
             .raftNativeDispatchCapture()
-            .pointerInput(dismissClickableActive) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     val tap = RaftOutsideTapTracker()
                     // Where each finger went down. A finger always wobbles a few pixels during a
@@ -317,13 +297,15 @@ private fun RaftFloatingOverlayDismissBarrier(
                                 val start = downPositions.getOrPut(change.id) { change.previousPosition }
                                 (change.position - start).getDistance() > viewConfiguration.touchSlop
                             }
+                        val freshDown = event.changes.any { it.changedToDownIgnoreConsumed() }
                         event.changes.forEach { it.consume() }
                         val dismiss =
                             tap.onEvent(
                                 anyPressed = event.changes.any { it.pressed },
                                 moved = moved,
+                                freshDown = freshDown,
                             ) ?: continue
-                        if (dismiss && dismissClickableActive) currentOnDismiss()
+                        if (dismiss) currentOnDismiss()
                         break
                     }
                 }
@@ -332,21 +314,21 @@ private fun RaftFloatingOverlayDismissBarrier(
 }
 
 /**
- * One outside gesture on the dismiss barrier: a press and its release without moving past the
- * touch slop is a tap that dismisses; a drag (a scroll attempt) does not. Only a press starts a
- * gesture. A mouse also sends hover events (enter, move, exit) with no button down: the barrier
- * appearing under the pointer sends an enter at once, and counting that "release" as a tap closed
- * a click-opened popover the moment it opened (desktop, the thread followers popover). Touch input
- * always starts with the press, so it is unchanged.
+ * One outside gesture on the dismiss barrier: a fresh press and its release without moving past
+ * the touch slop is a tap that dismisses; a drag (a scroll attempt) does not. Only a fresh press
+ * (`freshDown == true`) starts a gesture:
+ * - A mouse hover event (enter, move, exit) with no button down does not start a gesture.
+ * - A finger that was already pressed before the barrier attached (e.g. releasing a long-press
+ *   that opened the menu) has `freshDown == false` and is ignored without any hardcoded ms delay.
  */
 internal class RaftOutsideTapTracker {
     private var down = false
     private var moved = false
 
     /** Feeds one pointer event; null while the gesture goes on, else whether it was a dismissing tap. */
-    fun onEvent(anyPressed: Boolean, moved: Boolean): Boolean? {
+    fun onEvent(anyPressed: Boolean, moved: Boolean, freshDown: Boolean = anyPressed): Boolean? {
         if (!down) {
-            if (!anyPressed) return false
+            if (!anyPressed || !freshDown) return false
             down = true
             return null
         }

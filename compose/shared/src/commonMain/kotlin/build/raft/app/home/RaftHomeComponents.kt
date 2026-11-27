@@ -373,7 +373,9 @@ private const val HomeServerSwitcherMaxVisibleRows = 6
 internal val HomeServerPublicPageGlobeGap = 4.dp
 internal val HomeServerPublicPageGlobeSize = 13.dp
 private val RaftSortEdgeScrollZone = 56.dp
-private val RaftSortEdgeScrollStep = 10.dp
+// 600 dp/s matches the original 10 dp/frame at 60 Hz while keeping physical speed constant across 90/120 Hz & LTPO panels.
+private val RaftSortEdgeScrollSpeed = 600.dp
+private const val RaftSortEdgeScrollMaxFrameDeltaSeconds = 0.05f
 private const val SharedListMaxBeyondBoundsItemCount = 96
 private const val HomeListMinBeyondBoundsItemCount = 6
 private const val HomeListMaxBeyondBoundsItemCount = 24
@@ -5523,15 +5525,29 @@ internal fun resolveSortDraggedRowTop(
     return (pointerY - rowSize / 2f).coerceIn(viewportStart, maxTop)
 }
 
+internal fun resolveSortAutoScrollStepPx(
+    edgeScrollSpeedPxPerSec: Float,
+    frameDeltaNanos: Long
+): Float {
+    if (!edgeScrollSpeedPxPerSec.isFinite() || edgeScrollSpeedPxPerSec <= 0f || frameDeltaNanos <= 0L) return 0f
+    val dtSeconds = (frameDeltaNanos / 1_000_000_000f).coerceIn(0f, RaftSortEdgeScrollMaxFrameDeltaSeconds)
+    return edgeScrollSpeedPxPerSec * dtSeconds
+}
+
 private suspend fun runRaftSortAutoScrollLoop(
     listState: LazyListState,
     isDragging: () -> Boolean,
     pointerViewportY: () -> Float,
     edgeScrollZonePx: Float,
-    edgeScrollStepPx: Float,
+    edgeScrollSpeedPxPerSec: Float,
     onScrolled: (delta: Float, consumed: Float) -> Unit
 ) {
+    var previousFrameNanos = withFrameNanos { it }
     while (isDragging()) {
+        val currentFrameNanos = withFrameNanos { it }
+        if (!isDragging()) break
+        val stepPx = resolveSortAutoScrollStepPx(edgeScrollSpeedPxPerSec, currentFrameNanos - previousFrameNanos)
+        previousFrameNanos = currentFrameNanos
         val info = listState.layoutInfo
         val delta =
             resolveSortAutoScrollDelta(
@@ -5539,7 +5555,7 @@ private suspend fun runRaftSortAutoScrollLoop(
                 viewportStart = info.viewportStartOffset.toFloat(),
                 viewportEnd = info.viewportEndOffset.toFloat(),
                 edgeScrollZone = edgeScrollZonePx,
-                edgeScrollStep = edgeScrollStepPx,
+                edgeScrollStep = stepPx,
                 canScrollBackward = listState.canScrollBackward,
                 canScrollForward = listState.canScrollForward
             )
@@ -5547,7 +5563,6 @@ private suspend fun runRaftSortAutoScrollLoop(
             val consumed = listState.dispatchRawDelta(delta)
             onScrolled(delta, consumed)
         }
-        withFrameNanos { }
     }
 }
 
@@ -7336,7 +7351,7 @@ internal fun ServerSwitcherPanel(
     var initialRevealApplied by remember { mutableStateOf(incomingOrder.isNotEmpty()) }
     val rowStepPx = with(density) { HomeServerSwitcherMenuRowHeight.toPx().coerceAtLeast(1f) }
     val edgeScrollZonePx = with(density) { RaftSortEdgeScrollZone.toPx() }
-    val edgeScrollStepPx = with(density) { RaftSortEdgeScrollStep.toPx() }
+    val edgeScrollSpeedPxPerSec = with(density) { RaftSortEdgeScrollSpeed.toPx() }
     var draggedId by remember { mutableStateOf<String?>(null) }
     var draggedStartIndex by remember { mutableStateOf(0) }
     var pointerViewportY by remember { mutableStateOf(0f) }
@@ -7393,7 +7408,7 @@ internal fun ServerSwitcherPanel(
             isDragging = { draggedId != null },
             pointerViewportY = { pointerViewportY },
             edgeScrollZonePx = edgeScrollZonePx,
-            edgeScrollStepPx = edgeScrollStepPx
+            edgeScrollSpeedPxPerSec = edgeScrollSpeedPxPerSec
         ) { delta, consumed ->
             recomputeDrag()
             raftLogInfo(
@@ -8458,7 +8473,7 @@ private fun RaftSidebarSortOverlay(
     val itemsById = remember(items) { items.associateBy { it.id } }
     val density = LocalDensity.current
     val edgeScrollZonePx = with(density) { RaftSortEdgeScrollZone.toPx() }
-    val edgeScrollStepPx = with(density) { RaftSortEdgeScrollStep.toPx() }
+    val edgeScrollSpeedPxPerSec = with(density) { RaftSortEdgeScrollSpeed.toPx() }
     val listState = rememberLazyListState()
 
     // Content-space drag model. The LazyColumn item order and layout stay FIXED
@@ -8520,7 +8535,7 @@ private fun RaftSidebarSortOverlay(
             isDragging = { draggedId != null },
             pointerViewportY = { pointerViewportY },
             edgeScrollZonePx = edgeScrollZonePx,
-            edgeScrollStepPx = edgeScrollStepPx
+            edgeScrollSpeedPxPerSec = edgeScrollSpeedPxPerSec
         ) { delta, consumed ->
             recomputeDrag()
             raftLogInfo(

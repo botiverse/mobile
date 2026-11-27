@@ -1,9 +1,15 @@
 package build.raft.app.core.data.diagnostics
 
 import android.app.Activity
+import android.content.Context
+import android.hardware.display.DisplayManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.view.Choreographer
+import android.view.Display
+import androidx.annotation.RequiresApi
 import build.raft.app.RaftScrollFrameSignal
 import build.raft.app.data.RaftFrameMetricsTraceReporter
 import java.lang.ref.WeakReference
@@ -72,18 +78,20 @@ object RaftScrollFrameProbe {
         // Two lists scrolling at once (nested pager + list) keep the first session.
         if (current != null) return
         val activity = activityRef?.get() ?: return
+        val initialInterval = frameIntervalNanos(activity)
         val probe =
             ActiveProbe(
                 activity = WeakReference(activity),
                 pageName = pageName,
                 list = list,
+                initialDisplayIntervalNanos = initialInterval,
                 stats = RaftScrollFrameStats(
                     startNanos = System.nanoTime(),
-                    frameIntervalNanos = frameIntervalNanos(activity)
+                    frameIntervalNanos = initialInterval
                 )
             )
         active = probe
-        Choreographer.getInstance().postFrameCallback(probe)
+        probe.start()
     }
 
     private fun frameIntervalNanos(activity: Activity?): Long {
@@ -96,26 +104,142 @@ object RaftScrollFrameProbe {
         private val activity: WeakReference<Activity>,
         private val pageName: String,
         val list: String,
+        initialDisplayIntervalNanos: Long,
         private val stats: RaftScrollFrameStats,
-    ) : Choreographer.FrameCallback {
+    ) : Choreographer.FrameCallback, DisplayManager.DisplayListener {
         private var finished = false
+        private var displayListenerRegistered = false
+        private var trackedDisplayId: Int = Display.INVALID_DISPLAY
+        private var displayManager: DisplayManager? = null
+        private var displayFrameIntervalNanos: Long = initialDisplayIntervalNanos
+        private val vsyncCallback: Any? =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                createVsyncCallback()
+            } else {
+                null
+            }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun createVsyncCallback(): Choreographer.VsyncCallback =
+            Choreographer.VsyncCallback { frameData ->
+                if (finished) return@VsyncCallback
+                val timelines = frameData.frameTimelines
+                val timelineIntervalNanos =
+                    raftFrameTimelineIntervalNanos(timelines.size) { index ->
+                        timelines[index].expectedPresentationTimeNanos
+                    }
+                // Prefer the slower (larger) interval between Display.refreshRate and FrameTimeline
+                // spacing so LTPO downclocks during slow flings never count as jank.
+                val liveInterval = maxOf(displayFrameIntervalNanos, timelineIntervalNanos ?: 0L)
+                stats.onScrollVsync(
+                    frameTimeNanos = frameData.frameTimeNanos,
+                    nowNanos = System.nanoTime(),
+                    liveFrameIntervalNanos = liveInterval,
+                )
+                postNextFrame()
+            }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun postVsyncCallbackApi33(callback: Any) {
+            Choreographer.getInstance().postVsyncCallback(callback as Choreographer.VsyncCallback)
+        }
+
+        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+        private fun removeVsyncCallbackApi33(callback: Any) {
+            Choreographer.getInstance().removeVsyncCallback(callback as Choreographer.VsyncCallback)
+        }
+
+        fun start() {
+            attachDisplayListener()
+            postNextFrame()
+        }
+
+        private fun postNextFrame() {
+            val cb = vsyncCallback
+            if (cb != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                postVsyncCallbackApi33(cb)
+            } else {
+                Choreographer.getInstance().postFrameCallback(this)
+            }
+        }
+
+        private fun removeNextFrame() {
+            val cb = vsyncCallback
+            if (cb != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                removeVsyncCallbackApi33(cb)
+            } else {
+                Choreographer.getInstance().removeFrameCallback(this)
+            }
+        }
+
+        private fun attachDisplayListener() {
+            val currentActivity = activity.get() ?: return
+            val display =
+                currentActivity.window?.decorView?.display
+                    ?: if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        runCatching { currentActivity.display }.getOrNull()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        currentActivity.windowManager?.defaultDisplay
+                    }
+                    ?: return
+            val manager =
+                currentActivity.applicationContext.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
+                    ?: return
+            trackedDisplayId = display.displayId
+            runCatching {
+                manager.registerDisplayListener(this, Handler(Looper.getMainLooper()))
+                displayManager = manager
+                displayListenerRegistered = true
+            }
+        }
+
+        private fun detachDisplayListener() {
+            if (!displayListenerRegistered) return
+            displayListenerRegistered = false
+            val manager = displayManager
+            displayManager = null
+            if (manager != null) {
+                runCatching { manager.unregisterDisplayListener(this) }
+            }
+        }
+
+        override fun onDisplayAdded(displayId: Int) = Unit
+
+        override fun onDisplayRemoved(displayId: Int) = Unit
+
+        override fun onDisplayChanged(displayId: Int) {
+            if (finished || displayId != trackedDisplayId) return
+            val updated = frameIntervalNanos(activity.get())
+            displayFrameIntervalNanos = updated
+            stats.onFrameIntervalChanged(updated)
+        }
 
         override fun doFrame(frameTimeNanos: Long) {
             if (finished) return
-            stats.onScrollVsync(frameTimeNanos = frameTimeNanos, nowNanos = System.nanoTime())
-            Choreographer.getInstance().postFrameCallback(this)
+            stats.onScrollVsync(
+                frameTimeNanos = frameTimeNanos,
+                nowNanos = System.nanoTime(),
+                liveFrameIntervalNanos = displayFrameIntervalNanos,
+            )
+            postNextFrame()
         }
 
         fun finish(reason: String) {
             if (finished) return
             finished = true
-            Choreographer.getInstance().removeFrameCallback(this)
+            removeNextFrame()
+            val hadLiveRateTracking = displayListenerRegistered || vsyncCallback != null
+            detachDisplayListener()
             if (active === this) active = null
+            if (!hadLiveRateTracking) {
+                stats.onFrameIntervalChanged(frameIntervalNanos(activity.get()))
+            }
             val summary = stats.summary(System.nanoTime())
             // Drop tiny smooth micro-touches (< MinFrames), never a short scroll that hit jank.
             if (summary.frames < MinFrames && summary.jankFrames == 0) return
             val carried = throttle.record(nowMillis = SystemClock.elapsedRealtime(), list = list, summary = summary) ?: return
-            val endFrameIntervalNanos = frameIntervalNanos(activity.get())
+            val endFrameIntervalNanos = summary.endFrameIntervalNanos
             RaftAppLog.w(
                 Tag,
                 raftScrollFramesLine(
@@ -244,7 +368,7 @@ internal fun raftScrollFramesLine(
     list: String,
     reason: String,
     summary: RaftScrollFrameStats.Summary,
-    endFrameIntervalNanos: Long = summary.frameIntervalNanos,
+    endFrameIntervalNanos: Long = summary.endFrameIntervalNanos,
     skipped: RaftScrollSkippedCarryover = RaftScrollSkippedCarryover(),
 ): String {
     val firstFramePart = if (summary.firstFrameMs >= 0L) " firstFrameMs=${summary.firstFrameMs}" else ""
@@ -279,11 +403,20 @@ internal class RaftScrollFrameStats(
     private val histogram = IntArray(HistogramBuckets)
     private var hasAnchor = false
     private var lastVsyncNanos = 0L
+    private var currentFrameIntervalNanos: Long = frameIntervalNanos
+    private var previousFrameIntervalNanos: Long = frameIntervalNanos
     private var firstFrameGapNanos = -1L
     private var frames = 0
     private var jankFrames = 0
     private var longestGapNanos = 0L
     private var shortestGapNanos = Long.MAX_VALUE
+
+    /** Updates the live vsync frame interval when LTPO/VRR shifts refresh rate mid-session. */
+    fun onFrameIntervalChanged(nextFrameIntervalNanos: Long) {
+        if (nextFrameIntervalNanos in MinValidFrameIntervalNanos..MaxValidFrameIntervalNanos) {
+            currentFrameIntervalNanos = nextFrameIntervalNanos
+        }
+    }
 
     /**
      * Scroll-session callback: anchors on the first callback and measures the scroll-start ->
@@ -292,25 +425,32 @@ internal class RaftScrollFrameStats(
      * p95 instead of being silently dropped. Normal sub-vsync partial first intervals are not fed
      * into [shortestGapNanos] so `minFrameMs` keeps reflecting steady vsync cadence.
      */
-    fun onScrollVsync(frameTimeNanos: Long, nowNanos: Long) {
+    fun onScrollVsync(
+        frameTimeNanos: Long,
+        nowNanos: Long,
+        liveFrameIntervalNanos: Long = currentFrameIntervalNanos,
+    ) {
         if (hasAnchor) {
-            onVsync(frameTimeNanos)
+            onVsync(frameTimeNanos, liveFrameIntervalNanos)
             return
         }
+        onFrameIntervalChanged(liveFrameIntervalNanos)
+        val effectiveInterval = maxOf(previousFrameIntervalNanos, currentFrameIntervalNanos)
+        previousFrameIntervalNanos = currentFrameIntervalNanos
         hasAnchor = true
         val firstGap = (nowNanos - startNanos).coerceAtLeast(0L)
         firstFrameGapNanos = firstGap
         // If Choreographer handed us an un-clamped pre-stall vsync timestamp, advance the anchor
-        // in whole frameIntervalNanos steps up to nowNanos so the next vsync does not double-count
+        // in whole effectiveInterval steps up to nowNanos so the next vsync does not double-count
         // the same stall or produce a sub-vsync minFrameMs.
         val lag = (nowNanos - frameTimeNanos).coerceAtLeast(0L)
         lastVsyncNanos =
-            if (frameIntervalNanos > 0L && lag >= frameIntervalNanos) {
-                frameTimeNanos + (lag / frameIntervalNanos) * frameIntervalNanos
+            if (effectiveInterval > 0L && lag >= effectiveInterval) {
+                frameTimeNanos + (lag / effectiveInterval) * effectiveInterval
             } else {
                 frameTimeNanos
             }
-        if (firstGap * 4 >= 7 * frameIntervalNanos) {
+        if (firstGap * 4 >= 7 * effectiveInterval) {
             frames += 1
             jankFrames += 1
             if (firstGap > longestGapNanos) longestGapNanos = firstGap
@@ -319,7 +459,15 @@ internal class RaftScrollFrameStats(
         }
     }
 
-    fun onVsync(frameTimeNanos: Long) {
+    fun onVsync(
+        frameTimeNanos: Long,
+        liveFrameIntervalNanos: Long = currentFrameIntervalNanos,
+    ) {
+        onFrameIntervalChanged(liveFrameIntervalNanos)
+        // Use the larger of previous & current intervals during LTPO/VRR transitions so a clean
+        // 120 Hz -> 60 Hz downclock step never counts as a missed frame.
+        val effectiveInterval = maxOf(previousFrameIntervalNanos, currentFrameIntervalNanos)
+        previousFrameIntervalNanos = currentFrameIntervalNanos
         // The first callback only anchors the cadence; its gap to the scroll start is not a frame.
         if (!hasAnchor) {
             hasAnchor = true
@@ -335,7 +483,7 @@ internal class RaftScrollFrameStats(
         if (gap > longestGapNanos) longestGapNanos = gap
         if (gap < shortestGapNanos) shortestGapNanos = gap
         // 1.75x: a missed vsync (~2 intervals) counts, a 60 Hz frame on a 90 Hz estimate (1.5x) does not.
-        if (gap * 4 >= 7 * frameIntervalNanos) jankFrames += 1
+        if (gap * 4 >= 7 * effectiveInterval) jankFrames += 1
         histogram[(gap / 1_000_000L).toInt().coerceIn(0, HistogramBuckets - 1)] += 1
     }
 
@@ -349,6 +497,7 @@ internal class RaftScrollFrameStats(
             p95FrameMs = percentileMs(95),
             frameIntervalNanos = frameIntervalNanos,
             firstFrameMs = if (firstFrameGapNanos >= 0L) firstFrameGapNanos / 1_000_000L else -1L,
+            endFrameIntervalNanos = currentFrameIntervalNanos,
         )
 
     /** Upper edge (ms) of the histogram bucket holding the [percent]th frame; 0 with no frames. */
@@ -372,8 +521,9 @@ internal class RaftScrollFrameStats(
         val p95FrameMs: Long,
         val frameIntervalNanos: Long,
         val firstFrameMs: Long = -1L,
+        val endFrameIntervalNanos: Long = frameIntervalNanos,
     ) {
-        fun wireFields(endFrameIntervalNanos: Long = frameIntervalNanos): String =
+        fun wireFields(endFrameIntervalNanos: Long = this.endFrameIntervalNanos): String =
             "durationMs=$durationMs frames=$frames jankFrames=$jankFrames " +
                 "longestFrameMs=$longestFrameMs p95FrameMs=$p95FrameMs " +
                 "minFrameMs=${oneDecimal(shortestFrameMs)} " +

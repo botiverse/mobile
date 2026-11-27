@@ -864,6 +864,19 @@ class RaftHomeComponentsTest {
     }
 
     @Test
+    fun resolveSortAutoScrollStepPxMatchesDistanceAcross60HzAnd120HzAndClampsJank() {
+        val speedPxPerSec = 600f
+        val step60Hz = resolveSortAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 16_666_667L)
+        val step120Hz = resolveSortAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 8_333_333L)
+        // Two 120 Hz frames advance the same distance as one 60 Hz frame (~10 px).
+        assertTrue(kotlin.math.abs(step60Hz - 2f * step120Hz) < 0.01f)
+        // A stalled frame (e.g. 250 ms) is clamped to the 50 ms cap (30 px max).
+        assertEquals(30f, resolveSortAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 250_000_000L))
+        assertEquals(0f, resolveSortAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = 0L))
+        assertEquals(0f, resolveSortAutoScrollStepPx(speedPxPerSec, frameDeltaNanos = -5_000_000L))
+    }
+
+    @Test
     fun homeConversationLaunchDropsUnknownKindInsteadOfDefaultingChannel() {
         val payload =
             RaftHomePayload(

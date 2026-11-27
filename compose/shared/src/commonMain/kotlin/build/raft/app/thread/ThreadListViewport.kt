@@ -17,7 +17,6 @@ import build.raft.app.get
 import build.raft.app.nav.LocalRaftStackPageLeaving
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 
@@ -244,7 +243,7 @@ internal class ThreadListViewport(
     private suspend fun awaitVisible(index: Int) {
         repeat(ThreadListViewportSettleFrames) {
             if (layoutInfo.visibleItemsInfo.any { it.index == index }) return
-            delay(ThreadListViewportSettleFrameMs)
+            awaitNextThreadFrame()
         }
     }
 }
@@ -303,7 +302,6 @@ internal fun ThreadListScrollOwnerEffect(
 }
 
 private const val ThreadListViewportSettleFrames = 6
-private const val ThreadListViewportSettleFrameMs = 16L
 
 /** Forward `scrollBy` that brings a row at [itemOffset] to `offset == -scrollOffset`. */
 internal fun forwardScrollToItemDelta(itemOffset: Int, scrollOffset: Int): Int = itemOffset + scrollOffset

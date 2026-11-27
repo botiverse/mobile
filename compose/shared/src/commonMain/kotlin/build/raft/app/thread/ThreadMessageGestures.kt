@@ -2,12 +2,14 @@ package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -238,14 +240,30 @@ internal fun decideThreadMessageRowTap(
 @Composable
 internal fun BoxScope.ThreadMessagePressRipple(
     pressed: Boolean,
-    origin: Offset?
+    origin: Offset?,
+    onFadeOutFinished: () -> Unit = {},
 ) {
+    val currentPressed by rememberUpdatedState(pressed)
+    val currentOrigin by rememberUpdatedState(origin)
+    val currentOnFadeOutFinished by rememberUpdatedState(onFadeOutFinished)
     val washFraction by animateFloatAsState(
         targetValue = if (pressed && origin != null) 1f else 0f,
         animationSpec =
             tween(durationMillis = if (pressed) ThreadMessagePressFadeInMs else ThreadMessageRippleFadeMs),
-        label = "thread-message-press-wash"
+        label = "thread-message-press-wash",
+        finishedListener = { value ->
+            if (!currentPressed && currentOrigin != null && value == 0f) {
+                currentOnFadeOutFinished()
+            }
+        }
     )
+    // If released before any fade-in progressed (washFraction already 0f), clear immediately
+    // without waiting for an animation that will never run (zero hardcoded wall-clock delay).
+    LaunchedEffect(pressed, origin) {
+        if (!pressed && origin != null && washFraction == 0f) {
+            currentOnFadeOutFinished()
+        }
+    }
     if (!shouldDrawThreadMessagePressWash(origin != null, washFraction)) return
     val wash = RaftColor.FillPressed
     Box(
