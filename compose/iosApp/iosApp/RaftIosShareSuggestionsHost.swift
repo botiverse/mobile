@@ -114,6 +114,7 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
     static let interactionGroupIdentifier = "build.raft.app.share-suggestions.v1"
     static let donatedIdsDefaultsKey = "raftIosShareSuggestionsDonatedIds.v1"
     static let donatedAccountIdDefaultsKey = "raftIosShareSuggestionsAccountId.v1"
+    static let donatedIconStyleVersionDefaultsKey = "raftIosShareSuggestionsIconStyleVersion.v1"
 
     private struct NormalizedSuggestion {
         let canonicalShortcutId: String
@@ -295,17 +296,23 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
 
     private func apply(snapshot: Snapshot, done: @escaping () -> Void) {
         let persistedAccountId = defaults.string(forKey: Self.donatedAccountIdDefaultsKey)
+        let persistedIds = defaults.stringArray(forKey: Self.donatedIdsDefaultsKey) ?? []
+        let persistedIconStyleVersion = defaults.string(forKey: Self.donatedIconStyleVersionDefaultsKey)
         let accountSwitched = !snapshot.clearAll
             && persistedAccountId != nil
             && persistedAccountId != snapshot.accountId
+        let iconStyleUpgraded = !snapshot.clearAll
+            && persistedIconStyleVersion != Self.iconStyleVersion
+            && (persistedAccountId != nil || !persistedIds.isEmpty)
         let needsPurge = appliedPurgeGeneration < snapshot.requestedPurgeGeneration
             || snapshot.clearAll
             || accountSwitched
+            || iconStyleUpgraded
 
         if needsPurge {
             let reason = snapshot.requestedPurgeReason
                 ?? snapshot.clearReason
-                ?? (accountSwitched ? "account_switched" : "clear")
+                ?? (accountSwitched ? "account_switched" : (iconStyleUpgraded ? "icon_style_upgraded" : "clear"))
             backend.deleteAll { [weak self] error in
                 guard let self else {
                     done()
@@ -348,6 +355,7 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
                 lastAppliedSignature = signature
                 if let accountId = snapshot.accountId {
                     defaults.set(accountId, forKey: Self.donatedAccountIdDefaultsKey)
+                    defaults.set(Self.iconStyleVersion, forKey: Self.donatedIconStyleVersionDefaultsKey)
                 }
                 done()
                 return
@@ -364,6 +372,7 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
                         self.defaults.set([String](), forKey: Self.donatedIdsDefaultsKey)
                         if let accountId = snapshot.accountId {
                             self.defaults.set(accountId, forKey: Self.donatedAccountIdDefaultsKey)
+                            self.defaults.set(Self.iconStyleVersion, forKey: Self.donatedIconStyleVersionDefaultsKey)
                         }
                         self.lastAppliedSignature = signature
                         self.log("info", "share_suggestions_emptied removed=\(idsToRemove.count)")
@@ -434,6 +443,7 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
                         self.defaults.set(Array(trackedIds).sorted(), forKey: Self.donatedIdsDefaultsKey)
                         if let accountId = snapshot.accountId {
                             self.defaults.set(accountId, forKey: Self.donatedAccountIdDefaultsKey)
+                            self.defaults.set(Self.iconStyleVersion, forKey: Self.donatedIconStyleVersionDefaultsKey)
                         }
                         self.lastAppliedSignature = nil
                         self.log("warn", "share_suggestions_donate_failed count=\(donations.count) error=\(error.localizedDescription)")
@@ -442,6 +452,7 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
                         self.defaults.set(Array(trackedIds).sorted(), forKey: Self.donatedIdsDefaultsKey)
                         if let accountId = snapshot.accountId {
                             self.defaults.set(accountId, forKey: Self.donatedAccountIdDefaultsKey)
+                            self.defaults.set(Self.iconStyleVersion, forKey: Self.donatedIconStyleVersionDefaultsKey)
                         }
                         self.lastAppliedSignature = staleDeleteFailed ? nil : signature
                         self.log("info", "share_suggestions_donated count=\(donations.count) staleRemoved=\(staleDeleteFailed ? 0 : staleIds.count)")
@@ -475,6 +486,7 @@ final class RaftIosShareSuggestionsEngine: NSObject, RaftShareSuggestionsHost {
     private func clearPersistedState() {
         defaults.removeObject(forKey: Self.donatedIdsDefaultsKey)
         defaults.removeObject(forKey: Self.donatedAccountIdDefaultsKey)
+        defaults.removeObject(forKey: Self.donatedIconStyleVersionDefaultsKey)
     }
 
     private static func canonicalShortcutIdIfConsistent(_ suggestion: RaftShareSuggestion) -> String? {
