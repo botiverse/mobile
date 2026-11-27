@@ -564,7 +564,7 @@ class SettingsFeedbackVoiceDictationUiTest {
             val ticket =
                 FeedbackTicket(
                     id = "11111111-2222-4333-8444-555555555555",
-                    kind = FeedbackTicketKind.Idea,
+                    kind = FeedbackTicketKind.Feedback,
                     status = FeedbackTicketStatus.Open,
                     closureReason = null,
                     message = "Add voice button to feedback",
