@@ -27,6 +27,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class VoiceDictationV2Test {
@@ -2009,6 +2010,460 @@ class VoiceDictationV2Test {
         assertEquals(true, outcomes4.single().clientMetrics.reRecorded)
         c4.cancel()
         runCurrent()
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. Per-session telemetry (`slock.composer.voice_dictation_session`, #wg-mobile-sync:#357)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun controllerEmitsSessionTelemetryWithHoldModeTimingsPauseGapsPreReadyChunksAndZeroLeakage() = runTest {
+        var fakeNowMs = 10_000L
+        val micGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+        val permitGate = CompletableDeferred<VoiceDictationV2PermitOutcome>()
+        val recorder = FakeDictationAudioRecorder(startGate = micGate)
+        val ws = FakeDictationWebSocketSession()
+        val emissions = mutableListOf<Pair<String, VoiceDictationSessionSummary>>()
+
+        val controller =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(), gate = permitGate),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws },
+                scope = backgroundScope,
+                audioRecorderProvider = { recorder },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { serverId, summary -> emissions += serverId to summary },
+            )
+
+        val secretDraft = "SECRET_DRAFT_BEFORE_CARET"
+        val secretHint = "SECRET_CONTACT_HINT"
+        val secretSpoken = "SECRET_SPOKEN_UTTERANCE"
+
+        controller.start(
+            serverId = "srv-telemetry",
+            channelId = validChannelUuid,
+            baseText = secretDraft,
+            insertStart = secretDraft.length,
+            insertEnd = secretDraft.length,
+            draftBefore = secretDraft,
+            contactHints = listOf(secretHint),
+            mode = VoiceDictationSessionMode.Tap,
+            onComposerUpdate = {},
+        )
+        runCurrent()
+
+        // Mic becomes live at +120 ms; hold gesture engages while listening.
+        fakeNowMs += 120L
+        micGate.complete(VoiceDictationAudioStartResult.Started)
+        runCurrent()
+        controller.setSessionMode(VoiceDictationSessionMode.Hold)
+
+        // Emit 3 pre-ready PCM chunks while permit + WS connect are in flight.
+        recorder.emitChunk(ByteArray(3_200) { 1 })
+        recorder.emitChunk(ByteArray(3_200) { 2 })
+        recorder.emitChunk(ByteArray(3_200) { 3 })
+
+        // Permit resolves with streamUrlSource = raft_edge; transport becomes ready at +600 ms.
+        fakeNowMs += 280L
+        permitGate.complete(
+            defaultPermitOutcome(
+                sessionId = "jti_session_telemetry",
+                streamUrlSource = VoiceStreamUrlSource.RaftEdge,
+            ),
+        )
+        runCurrent()
+        fakeNowMs += 200L
+        ws.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        assertEquals(3, ws.sentBinary.size)
+
+        // Post-ready live audio chunk does NOT inflate pre-ready counters.
+        recorder.emitChunk(ByteArray(3_200) { 4 })
+        runCurrent()
+        assertEquals(4, ws.sentBinary.size)
+
+        // Utterance 1 partials (+500 ms -> first partial at 1100 ms; +800 ms -> midsentence gap 800 ms) + final (+1200 ms).
+        fakeNowMs += 500L
+        ws.pushText("""{"deck":"text","text":"$secretSpoken","stable_len":0}""")
+        runCurrent()
+        fakeNowMs += 800L
+        ws.pushText("""{"deck":"text","text":"$secretSpoken part two","stable_len":0}""")
+        runCurrent()
+        fakeNowMs += 1_200L
+        val utt1 = "$secretSpoken part two."
+        ws.pushText("""{"deck":"text","text":"$utt1","stable_len":${utt1.length}}""")
+        runCurrent()
+
+        // Utterance 2 after 2600 ms inter-final gap, 400 ms midsentence gap, then finalized.
+        fakeNowMs += 2_600L
+        ws.pushText("""{"deck":"text","text":"$utt1 Next","stable_len":${utt1.length}}""")
+        runCurrent()
+        fakeNowMs += 400L
+        ws.pushText("""{"deck":"text","text":"$utt1 Next line","stable_len":${utt1.length}}""")
+        runCurrent()
+        fakeNowMs += 600L
+        val utt2 = "$utt1 Next line."
+        ws.pushText("""{"deck":"text","text":"$utt2","stable_len":${utt2.length}}""")
+        runCurrent()
+
+        // User stops 3.3 s after final -> duration 10_000 ms; background refine & done settle 950 ms later.
+        fakeNowMs += 3_300L
+        controller.stop(VoiceDictationStopReason.Button)
+        runCurrent()
+        assertTrue(emissions.isEmpty(), "telemetry emits once background drain settles")
+
+        fakeNowMs += 400L
+        ws.pushText("""{"deck":"text","text":"$utt2","stable_len":${utt2.length},"refined":true}""")
+        runCurrent()
+        fakeNowMs += 550L
+        ws.pushText("""{"deck":"done"}""")
+        runCurrent()
+
+        // Repeated cancel / owner change after completion must never emit a duplicate event.
+        controller.cancel()
+        controller.onOwnerChanged(serverId = "srv-other")
+        runCurrent()
+
+        assertEquals(1, emissions.size)
+        val (emittedServerId, summary) = emissions.single()
+        assertEquals("srv-telemetry", emittedServerId)
+        assertEquals(VoiceDictationSessionMode.Hold, summary.mode)
+        assertEquals(VoiceDictationStopReason.Button, summary.stoppedBy)
+        assertEquals(10_000L, summary.durationMs)
+        assertEquals(2, summary.utterances)
+        assertEquals(2, summary.finalsCount)
+        assertEquals(3_300L, summary.stopAfterFinalMs)
+        assertEquals(3_300L, summary.stopAfterLastPartialMs)
+        assertEquals(800L, summary.maxMidSentenceGapMs)
+        assertEquals(2_600L, summary.maxGapBetweenFinalsMs)
+        assertEquals(3, summary.preReadyChunksQueued)
+        assertEquals(3, summary.preReadyChunksSent)
+        assertEquals(120L, summary.micStartMs)
+        assertEquals(600L, summary.connectMs)
+        assertEquals(1_100L, summary.firstPartialMs)
+        assertEquals(950L, summary.finishingMs)
+        assertEquals(VoiceStreamUrlSource.RaftEdge, summary.streamUrlSource)
+        assertNull(summary.errorCode)
+
+        val attrs = voiceDictationSessionTraceAttrs(summary)
+        assertEquals("hold", attrs["mode"]?.jsonPrimitive?.content)
+        assertEquals("button", attrs["stopped_by"]?.jsonPrimitive?.content)
+        assertEquals("raft_edge", attrs["stream_url_source"]?.jsonPrimitive?.content)
+        assertEquals(10_000L, attrs["duration_ms"]?.jsonPrimitive?.long)
+        assertEquals(950L, attrs["finishing_ms"]?.jsonPrimitive?.long)
+        assertFalse("error_code" in attrs)
+
+        val serialized = attrs.toString()
+        for (secret in listOf(secretDraft, secretHint, secretSpoken, "srv-telemetry", validChannelUuid, "jti_session_telemetry")) {
+            assertFalse(secret in serialized, "secret '$secret' leaked into voice_dictation_session attrs: $serialized")
+        }
+    }
+
+    @Test
+    fun controllerEmitsExactStopReasonsAcrossAllLifecyclePathsAndIsolatesCallbackThrows() = runTest {
+        var fakeNowMs = 1_000L
+
+        // 1. Early button stop before mic resolves -> stoppedBy = Button, micStartMs = null, finishingMs = null.
+        val earlyMicGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+        val earlyEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cEarlyStop =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> FakeDictationWebSocketSession() },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder(startGate = earlyMicGate) },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> earlyEmissions += s },
+            )
+        cEarlyStop.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        fakeNowMs += 250L
+        cEarlyStop.stop(VoiceDictationStopReason.Button)
+        earlyMicGate.complete(VoiceDictationAudioStartResult.Started)
+        runCurrent()
+        assertEquals(1, earlyEmissions.size)
+        assertEquals(VoiceDictationStopReason.Button, earlyEmissions.single().stoppedBy)
+        assertEquals(250L, earlyEmissions.single().durationMs)
+        assertNull(earlyEmissions.single().micStartMs)
+        assertNull(earlyEmissions.single().finishingMs)
+
+        // 2. Blur stop -> drains in background and emits stoppedBy = Blur with finishingMs.
+        val wsBlur = FakeDictationWebSocketSession()
+        val blurEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cBlur =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(streamUrlSource = VoiceStreamUrlSource.Direct)),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsBlur },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> blurEmissions += s },
+            )
+        cBlur.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsBlur.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        fakeNowMs += 400L
+        cBlur.stop(VoiceDictationStopReason.Blur)
+        runCurrent()
+        fakeNowMs += 180L
+        wsBlur.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertEquals(1, blurEmissions.size)
+        assertEquals(VoiceDictationStopReason.Blur, blurEmissions.single().stoppedBy)
+        assertEquals(180L, blurEmissions.single().finishingMs)
+        assertEquals(VoiceStreamUrlSource.Direct, blurEmissions.single().streamUrlSource)
+
+        // 3. Esc cancel (discardProvisional = true) -> stoppedBy = Esc, finishingMs = null.
+        val wsEsc = FakeDictationWebSocketSession()
+        val escEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cEsc =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsEsc },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> escEmissions += s },
+            )
+        cEsc.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsEsc.pushText("""{"deck":"ready"}""")
+        wsEsc.pushText("""{"deck":"text","text":"draft","stable_len":0}""")
+        runCurrent()
+        cEsc.cancel(discardProvisional = true)
+        runCurrent()
+        assertEquals(1, escEmissions.size)
+        assertEquals(VoiceDictationStopReason.Esc, escEmissions.single().stoppedBy)
+        assertNull(escEmissions.single().finishingMs)
+
+        // 4. Server-initiated Done while active -> stoppedBy = Server, finishingMs = 0.
+        val wsServer = FakeDictationWebSocketSession()
+        val serverEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cServer =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsServer },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> serverEmissions += s },
+            )
+        cServer.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsServer.pushText("""{"deck":"ready"}""")
+        wsServer.pushText("""{"deck":"text","text":"Finished by server.","stable_len":19}""")
+        wsServer.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertEquals(1, serverEmissions.size)
+        assertEquals(VoiceDictationStopReason.Server, serverEmissions.single().stoppedBy)
+        assertEquals(0L, serverEmissions.single().finishingMs)
+        assertEquals(1, serverEmissions.single().utterances)
+
+        // 5a. Submit while active -> stoppedBy = Submit, finishingMs = null.
+        val wsSubmitActive = FakeDictationWebSocketSession()
+        val submitActiveEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cSubmitActive =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsSubmitActive },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> submitActiveEmissions += s },
+            )
+        cSubmitActive.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsSubmitActive.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cSubmitActive.finishForSubmit()
+        runCurrent()
+        assertEquals(1, submitActiveEmissions.size)
+        assertEquals(VoiceDictationStopReason.Submit, submitActiveEmissions.single().stoppedBy)
+        assertNull(submitActiveEmissions.single().finishingMs)
+
+        // 5b. Submit while draining after Button stop -> preserves stoppedBy = Button and records finishingMs.
+        val wsSubmitBg = FakeDictationWebSocketSession()
+        val submitBgEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cSubmitBg =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsSubmitBg },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> submitBgEmissions += s },
+            )
+        cSubmitBg.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsSubmitBg.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cSubmitBg.stop(VoiceDictationStopReason.Button)
+        runCurrent()
+        fakeNowMs += 320L
+        cSubmitBg.finishForSubmit()
+        runCurrent()
+        assertEquals(1, submitBgEmissions.size)
+        assertEquals(VoiceDictationStopReason.Button, submitBgEmissions.single().stoppedBy)
+        assertEquals(320L, submitBgEmissions.single().finishingMs)
+
+        // 6. Owner change -> stoppedBy = Reset, finishingMs = null.
+        val wsReset = FakeDictationWebSocketSession()
+        val resetEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cReset =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsReset },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> resetEmissions += s },
+            )
+        cReset.start(serverId = "srv-1", channelId = validChannelUuid, onComposerUpdate = {})
+        runCurrent()
+        wsReset.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cReset.onOwnerChanged(serverId = "srv-2")
+        runCurrent()
+        assertEquals(1, resetEmissions.size)
+        assertEquals(VoiceDictationStopReason.Reset, resetEmissions.single().stoppedBy)
+        assertNull(resetEmissions.single().finishingMs)
+
+        // 7. Error paths: missing recorder, unsupported sample rate, mic permission, pre-ready overflow,
+        //    background pre-ready refusal, and server stream error.
+        val errorEmissions = mutableListOf<VoiceDictationSessionSummary>()
+        val cNoMic =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> FakeDictationWebSocketSession() },
+                scope = backgroundScope,
+                audioRecorderProvider = { null },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> errorEmissions += s },
+            )
+        cNoMic.start(serverId = "srv-1", onComposerUpdate = {})
+        assertEquals(VoiceDictationStopReason.Error, errorEmissions.last().stoppedBy)
+        assertEquals(VoiceDictationSessionErrorCode.MicNone, errorEmissions.last().errorCode)
+
+        val cBadRate =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> FakeDictationWebSocketSession() },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder(sampleRateHz = 4_000) },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> errorEmissions += s },
+            )
+        cBadRate.start(serverId = "srv-1", onComposerUpdate = {})
+        assertEquals(VoiceDictationStopReason.Error, errorEmissions.last().stoppedBy)
+        assertEquals(VoiceDictationSessionErrorCode.MicUnsupported, errorEmissions.last().errorCode)
+
+        val cPermDenied =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> FakeDictationWebSocketSession() },
+                scope = backgroundScope,
+                audioRecorderProvider = {
+                    FakeDictationAudioRecorder(startResult = VoiceDictationAudioStartResult.PermissionDenied)
+                },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> errorEmissions += s },
+            )
+        cPermDenied.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        assertEquals(VoiceDictationStopReason.Error, errorEmissions.last().stoppedBy)
+        assertEquals(VoiceDictationSessionErrorCode.MicPermission, errorEmissions.last().errorCode)
+
+        // Pre-ready buffer overflow -> connection_lost with 100 queued, 0 sent.
+        val overflowRecorder = FakeDictationAudioRecorder()
+        val overflowPermitGate = CompletableDeferred<VoiceDictationV2PermitOutcome>()
+        val cOverflow =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(), gate = overflowPermitGate),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> FakeDictationWebSocketSession() },
+                scope = backgroundScope,
+                audioRecorderProvider = { overflowRecorder },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> errorEmissions += s },
+            )
+        cOverflow.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        repeat(VOICE_DICTATION_MAX_PRE_READY_CHUNKS + 1) {
+            overflowRecorder.emitChunk(ByteArray(320) { 1 })
+        }
+        runCurrent()
+        assertEquals(VoiceDictationStopReason.Error, errorEmissions.last().stoppedBy)
+        assertEquals(VoiceDictationSessionErrorCode.ConnectionLost, errorEmissions.last().errorCode)
+        assertEquals(VOICE_DICTATION_MAX_PRE_READY_CHUNKS, errorEmissions.last().preReadyChunksQueued)
+        assertEquals(0, errorEmissions.last().preReadyChunksSent)
+
+        // Background stop before ready + permit failure -> stoppedBy = Error, errorCode = Unavailable.
+        val bgFailGate = CompletableDeferred<VoiceDictationV2PermitOutcome>()
+        val cBgFail =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(), gate = bgFailGate),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> FakeDictationWebSocketSession() },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> errorEmissions += s },
+            )
+        cBgFail.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        cBgFail.stop(VoiceDictationStopReason.Button)
+        runCurrent()
+        bgFailGate.complete(VoiceDictationV2PermitOutcome.Refused(VoiceDictationV2PermitFailure.Unavailable()))
+        runCurrent()
+        assertEquals(VoiceDictationStopReason.Error, errorEmissions.last().stoppedBy)
+        assertEquals(VoiceDictationSessionErrorCode.Unavailable, errorEmissions.last().errorCode)
+        assertNull(errorEmissions.last().finishingMs)
+
+        // Stream error frame -> stoppedBy = Error, errorCode = SessionLimitReached.
+        val wsStreamErr = FakeDictationWebSocketSession()
+        val cStreamErr =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsStreamErr },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, s -> errorEmissions += s },
+            )
+        cStreamErr.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsStreamErr.pushText("""{"deck":"ready"}""")
+        wsStreamErr.pushText("""{"deck":"error","code":"session_limit_reached","message":"limit reached"}""")
+        runCurrent()
+        assertEquals(VoiceDictationStopReason.Error, errorEmissions.last().stoppedBy)
+        assertEquals(VoiceDictationSessionErrorCode.SessionLimitReached, errorEmissions.last().errorCode)
+
+        // 8. Throwing onSessionTelemetry callback must never break dictation state transitions.
+        val wsThrowing = FakeDictationWebSocketSession()
+        var throwingCalls = 0
+        val cThrowing =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsThrowing },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, _ ->
+                    throwingCalls += 1
+                    error("simulated telemetry sink failure")
+                },
+            )
+        cThrowing.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsThrowing.pushText("""{"deck":"ready"}""")
+        wsThrowing.pushText("""{"deck":"text","text":"Still works.","stable_len":12}""")
+        runCurrent()
+        cThrowing.stop(VoiceDictationStopReason.Button)
+        runCurrent()
+        wsThrowing.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertEquals(1, throwingCalls)
+        assertEquals(VoiceDictationV2Phase.Idle, cThrowing.state.value.phase)
+        assertFalse(cThrowing.state.value.hasBackgroundDrain)
     }
 
     // -------------------------------------------------------------------------
