@@ -367,7 +367,7 @@ internal fun RaftMobileWebPanelBrowserBody(
         bridge.briefToast(copiedLabel)
     }
 
-    fun handleTopBarBack() {
+    fun handleExitToHost() {
         if (isOutboundChild) {
             onClose()
         } else {
@@ -375,21 +375,23 @@ internal fun RaftMobileWebPanelBrowserBody(
         }
     }
 
-    // Android Back / gesture: WebView back if history exists, else pop child or suspend App to pill.
+    fun handleNavigateBack() {
+        when (resolveRaftAppBrowserBackAction(navigationState.canGoBack, isOutboundChild)) {
+            RaftAppBrowserBackAction.WebGoBack -> {
+                loadError = null
+                controller.goBack()
+            }
+            RaftAppBrowserBackAction.PopOutboundChild -> onClose()
+            RaftAppBrowserBackAction.SuspendAppToPill -> onSuspend?.invoke() ?: onClose()
+        }
+    }
+
+    // Android Back / gesture & top-bar ←: WebView back if history exists, else pop child or suspend App to pill.
     RaftBackHandler(
         enabled = !inColumn && pageVisible,
         label = if (isOutboundChild) "in_app_browser_outbound" else "in_app_browser_app",
         blocksBackSwipe = false,
-        onBack = {
-            when (resolveRaftAppBrowserBackAction(navigationState.canGoBack, isOutboundChild)) {
-                RaftAppBrowserBackAction.WebGoBack -> {
-                    loadError = null
-                    controller.goBack()
-                }
-                RaftAppBrowserBackAction.PopOutboundChild -> onClose()
-                RaftAppBrowserBackAction.SuspendAppToPill -> onSuspend?.invoke() ?: onClose()
-            }
-        },
+        onBack = ::handleNavigateBack,
     )
 
     Column(modifier = modifier.background(RaftTheme.colors.layerCanvas)) {
@@ -400,7 +402,7 @@ internal fun RaftMobileWebPanelBrowserBody(
             appName = if (isOutboundChild) null else entryContext?.appName ?: fallbackAppName,
             appLogoUrl = if (isOutboundChild) null else entryContext?.appLogoUrl ?: fallbackAppLogoUrl,
             signedInAsName = if (isOutboundChild) null else signInHost.signedInAsName,
-            onBack = ::handleTopBarBack,
+            onBack = ::handleNavigateBack,
             onClosePage = onClose,
             onReload = {
                 loadError = null
@@ -410,6 +412,8 @@ internal fun RaftMobileWebPanelBrowserBody(
             onCopyLink = ::copyCurrentUrl,
             onOpenInBrowser = ::openCurrentInSystemBrowser,
             inColumn = inColumn,
+            canGoBack = navigationState.canGoBack,
+            onExitToHost = ::handleExitToHost,
             openTabCount = openTabCount,
             onOpenSwitcher = onOpenSwitcher,
             onForwardToRaft =
@@ -616,27 +620,6 @@ internal fun RaftMobileWebPanelBrowserBody(
                 )
             }
         }
-        RaftAppBrowserBottomBar(
-            canGoBack = navigationState.canGoBack,
-            canGoForward = navigationState.canGoForward,
-            onGoBack = {
-                if (navigationState.canGoBack) {
-                    loadError = null
-                    controller.goBack()
-                }
-            },
-            onGoForward = {
-                if (navigationState.canGoForward) {
-                    loadError = null
-                    controller.goForward()
-                }
-            },
-            onReload = {
-                loadError = null
-                controller.reload()
-            },
-            onClose = onClose,
-        )
         if (bottomInsetDp > 0.dp) {
             Spacer(
                 modifier =

@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -52,25 +51,23 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
 /*
- * Top bar and compact bottom navigation strip for the right-to-left pushed in-app browser
- * (#proj-mobile:#398, #proj-workspace:#412 / raft-design #1417):
- * - Installed Raft App page: leading ← suspends to the right-edge floating pill (× in wide side
- *   column), center shows App icon + name + "Signed in as", trailing shows [N] multi-page switcher
- *   trigger when ≥2 pages are open and ⋮ overflow menu (Reload, Forward to Raft, Share, Copy link,
- *   Open in browser ↗, Close page).
- * - Cross-origin outbound child page: leading ← returns to parent App, center displays ONLY the
- *   start-truncated LTR domain (no App branding or Raft sign-in status), trailing shows ⋮ menu.
- * - Compact bottom bar: ‹ WebView Back, › WebView Forward, ↻ Reload, and explicit × Close.
+ * Top bar for the right-to-left pushed in-app browser (#proj-mobile:#398, #proj-workspace:#412 /
+ * raft-design #1417), aligned with Feishu/WeChat mini-app navigation (no redundant bottom toolbar):
+ * - Installed Raft App page: leading ← steps back through WebView history first and suspends to
+ *   the right-edge floating pill at root (a compact × appears beside ← once web history exists so
+ *   deep pages can return to Raft in one tap; in wide side column, ← appears when canGoBack and
+ *   trailing × always exits the column). Center shows App icon + name + "Signed in as"; trailing
+ *   shows [N] multi-page switcher trigger when ≥2 pages are open and ⋮ overflow menu (Reload,
+ *   Forward to Raft, Share, Copy link, Open in browser ↗, Close page).
+ * - Cross-origin outbound child page: leading ← steps back through WebView history then returns to
+ *   parent App (with compact × quick-return beside ← when deep in history), center displays ONLY
+ *   the start-truncated LTR domain (no App branding or Raft sign-in status), trailing shows ⋮ menu.
  */
 
 internal const val RAFT_APP_BROWSER_TOP_BAR_TAG = "raft_app_browser_top_bar"
 internal const val RAFT_APP_BROWSER_BACK_NAV_TAG = "raft_app_browser_back_nav"
+internal const val RAFT_APP_BROWSER_EXIT_NAV_TAG = "raft_app_browser_exit_nav"
 internal const val RAFT_APP_BROWSER_SWITCHER_BUTTON_TAG = "raft_app_browser_switcher_button"
-internal const val RAFT_APP_BROWSER_RELOAD_BUTTON_TAG = "raft_app_browser_reload_button"
-internal const val RAFT_WEB_PANEL_BOTTOM_BAR_TAG = "raft_web_panel_bottom_bar"
-internal const val RAFT_WEB_PANEL_CLOSE_BUTTON_TAG = "raft_web_panel_close_button"
-internal const val RAFT_WEB_PANEL_BACK_BUTTON_TAG = "raft_web_panel_back_button"
-internal const val RAFT_WEB_PANEL_FORWARD_BUTTON_TAG = "raft_web_panel_forward_button"
 internal const val RAFT_WEB_PANEL_MORE_BUTTON_TAG = "raft_web_panel_more_button"
 internal const val RAFT_WEB_PANEL_HOST_LABEL_TAG = "raft_web_panel_host_label"
 internal const val RAFT_WEB_PANEL_APP_NAME_TAG = "raft_web_panel_app_name"
@@ -149,6 +146,8 @@ internal fun RaftAppBrowserTopBar(
     onOpenInBrowser: (() -> Unit)?,
     modifier: Modifier = Modifier,
     inColumn: Boolean = false,
+    canGoBack: Boolean = false,
+    onExitToHost: (() -> Unit)? = null,
     openTabCount: Int = 1,
     onOpenSwitcher: (() -> Unit)? = null,
     onForwardToRaft: (() -> Unit)? = null,
@@ -156,6 +155,8 @@ internal fun RaftAppBrowserTopBar(
     val colors = RaftTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
     val showAppIdentity = isRaftApp && !isOutboundChild
+    val showLeadingBack = !inColumn || isOutboundChild || canGoBack
+    val showLeadingQuickExit = (!inColumn || isOutboundChild) && canGoBack && onExitToHost != null
     val displayHost = remember(currentUrl) { raftMobileWebPanelDisplayHost(currentUrl) }
     val cleanAppName = appName?.trim()?.takeIf { it.isNotEmpty() }
     val displayAppName = cleanAppName ?: displayHost
@@ -181,12 +182,25 @@ internal fun RaftAppBrowserTopBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (!inColumn || isOutboundChild) {
-                RaftBackButton(
-                    onClick = onBack,
-                    label = stringResource(Res.string.common_back),
-                    modifier = Modifier.testTag(RAFT_APP_BROWSER_BACK_NAV_TAG),
-                )
+            if (showLeadingBack) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RaftBackButton(
+                        onClick = onBack,
+                        label = stringResource(Res.string.common_back),
+                        modifier = Modifier.testTag(RAFT_APP_BROWSER_BACK_NAV_TAG),
+                    )
+                    if (showLeadingQuickExit) {
+                        RaftCloseButton(
+                            onClick = onExitToHost!!,
+                            label = stringResource(Res.string.common_close),
+                            size = RaftCloseButtonSize.Bar,
+                            modifier = Modifier.testTag(RAFT_APP_BROWSER_EXIT_NAV_TAG),
+                        )
+                    }
+                }
             }
             Box(
                 modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
@@ -314,7 +328,7 @@ internal fun RaftAppBrowserTopBar(
                 }
                 if (inColumn && !isOutboundChild) {
                     RaftCloseButton(
-                        onClick = onBack,
+                        onClick = onExitToHost ?: onBack,
                         label = stringResource(Res.string.common_close),
                         size = RaftCloseButtonSize.Bar,
                     )
@@ -360,81 +374,6 @@ private fun RaftAppBrowserTabCountButton(
             color = colors.foreground,
             maxLines = 1,
         )
-    }
-}
-
-/** Compact bottom navigation strip below the WebView: Back, Forward, Reload, and explicit Close `×`. */
-@Composable
-internal fun RaftAppBrowserBottomBar(
-    canGoBack: Boolean,
-    canGoForward: Boolean,
-    onGoBack: () -> Unit,
-    onGoForward: () -> Unit,
-    onReload: () -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = RaftTheme.colors
-    Column(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(colors.layerCanvas)
-                .testTag(RAFT_WEB_PANEL_BOTTOM_BAR_TAG),
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(RaftStroke.Hairline)
-                    .background(colors.lineHairline),
-        )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(44.dp) // app-only: compact in-app browser bottom navigation strip
-                    .padding(horizontal = RaftBackButtonDefaults.EdgeInset),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RaftIconButton(
-                onClick = onGoBack,
-                tooltip = stringResource(Res.string.common_back),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg,
-                enabled = canGoBack,
-                modifier = Modifier.testTag(RAFT_WEB_PANEL_BACK_BUTTON_TAG),
-            ) {
-                RaftSlotIcon(RaftLucideIconName.ChevronLeft)
-            }
-            RaftIconButton(
-                onClick = onGoForward,
-                tooltip = stringResource(Res.string.in_app_browser_forward),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg,
-                enabled = canGoForward,
-                modifier = Modifier.testTag(RAFT_WEB_PANEL_FORWARD_BUTTON_TAG),
-            ) {
-                RaftSlotIcon(RaftLucideIconName.ChevronRight)
-            }
-            RaftIconButton(
-                onClick = onReload,
-                tooltip = stringResource(Res.string.in_app_browser_reload),
-                variant = RaftButtonVariant.Ghost,
-                size = RaftIconButtonSize.Lg,
-                modifier = Modifier.testTag(RAFT_APP_BROWSER_RELOAD_BUTTON_TAG),
-            ) {
-                RaftSlotIcon(RaftLucideIconName.RefreshCw)
-            }
-            Spacer(Modifier.weight(1f))
-            RaftCloseButton(
-                onClick = onClose,
-                label = stringResource(Res.string.in_app_browser_close_page),
-                size = RaftCloseButtonSize.Bar,
-                modifier = Modifier.testTag(RAFT_WEB_PANEL_CLOSE_BUTTON_TAG),
-            )
-        }
     }
 }
 
