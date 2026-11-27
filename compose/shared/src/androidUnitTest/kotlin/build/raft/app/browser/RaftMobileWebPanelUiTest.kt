@@ -9,6 +9,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -423,7 +424,9 @@ class RaftMobileWebPanelUiTest {
         // Once the initial document commits, placeholder disappears while top bar continues loading.
         committed = true
         progress = 40
+        Snapshot.sendApplyNotifications()
         mainClock.advanceTimeByFrame()
+        waitForIdle()
         onNodeWithTag(RAFT_MOBILE_WEB_PANEL_LOADING_PLACEHOLDER_TAG).assertDoesNotExist()
         onNodeWithTag(RAFT_WEB_PAGE_LOADING_BAR_TAG).assertExists()
     }
