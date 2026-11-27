@@ -1,0 +1,246 @@
+diff --git a/latex-renderer/build.gradle.kts b/latex-renderer/build.gradle.kts
+index 2323f78..544fcb1 100644
+--- a/latex-renderer/build.gradle.kts
++++ b/latex-renderer/build.gradle.kts
+@@ -99,6 +99,14 @@ kotlin {
+                 project(":latex-fonts-katex").tasks.named("assembleMacosArm64MainResources")
+             )
+         }
++        getByName("iosSimulatorArm64Test") {
++            // Raft patch 1.7.2-raft.1: run the Skia glyph tests on the iOS simulator as well, with the
++            // same test-only font resource wiring as macosTest.
++            dependsOn(skiaTest)
++            resources.srcDir(
++                project(":latex-fonts-katex").tasks.named("assembleIosSimulatorArm64MainResources")
++            )
++        }
+         jvmTest {
+             dependsOn(skiaTest)
+         }
+diff --git a/latex-renderer/src/jvmTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsWidthJvmTest.kt b/latex-renderer/src/jvmTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsWidthJvmTest.kt
+new file mode 100644
+index 0000000..1c878c0
+--- /dev/null
++++ b/latex-renderer/src/jvmTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsWidthJvmTest.kt
+@@ -0,0 +1,49 @@
++package com.hrm.latex.renderer.utils
++
++import com.hrm.latex.renderer.font.loadKatexFonts
++import kotlinx.coroutines.test.runTest
++import org.jetbrains.compose.resources.readResourceBytes
++import org.jetbrains.skia.Data
++import org.jetbrains.skia.Font
++import org.jetbrains.skia.FontMgr
++import org.jetbrains.skia.impl.use
++import kotlin.math.abs
++import kotlin.test.Test
++import kotlin.test.assertNotNull
++import kotlin.test.assertTrue
++
++/**
++ * Raft patch 1.7.2-raft.1: on the JVM, Skiko passes real UTF-16 to Font.measureTextWidth, so the
++ * old call is correct there. The glyph-id advance sum the Apple actual now uses must equal it for
++ * multi-character ASCII, BMP symbols and non-BMP text.
++ */
++class GlyphBoundsWidthJvmTest {
++    @Test
++    fun glyphAdvanceSumEqualsMeasureTextWidth() = runTest {
++        val fonts = loadKatexFonts { readResourceBytes(it) }
++        val allBytes = listOfNotNull(fonts.mainBytes, fonts.mathBytes, fonts.amsBytes, fonts.size1Bytes)
++        val texts = listOf(
++            "Ag", "lim", "sin", "arcsin", "operatorname", "for all x in R", "x+y=z",
++            "∑", "∫", "→", "≤", "αβγ", "a∑b", "ℝ", "ℝℕℤ", "𝔸", "x𝔸y", "aؠ",
++        )
++        var compared = 0
++        for (bytes in allBytes) {
++            val typeface = assertNotNull(Data.makeFromBytes(bytes).use { FontMgr.default.makeFromData(it) })
++            try {
++                for (size in listOf(12f, 24f, 48f)) {
++                    Font(typeface, size).use { font ->
++                        for (text in texts) {
++                            val expected = font.measureTextWidth(text)
++                            val actual = font.getWidths(font.getStringGlyphs(text)).sum()
++                            assertTrue(abs(actual - expected) < 1e-3f, "$text @$size: $actual vs $expected")
++                            compared++
++                        }
++                    }
++                }
++            } finally {
++                typeface.close()
++            }
++        }
++        println("GLYPH_WIDTH_COMPARED|$compared")
++    }
++}
+diff --git a/latex-renderer/src/skiaTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsTextEncodingTest.kt b/latex-renderer/src/skiaTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsTextEncodingTest.kt
+new file mode 100644
+index 0000000..5b3d550
+--- /dev/null
++++ b/latex-renderer/src/skiaTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsTextEncodingTest.kt
+@@ -0,0 +1,166 @@
++package com.hrm.latex.renderer.utils
++
++import androidx.compose.ui.text.TextMeasurer
++import androidx.compose.ui.text.font.createFontFamilyResolver
++import androidx.compose.ui.unit.Density
++import androidx.compose.ui.unit.LayoutDirection
++import androidx.compose.ui.unit.sp
++import com.hrm.latex.renderer.export.LatexExporterState
++import com.hrm.latex.renderer.export.SvgExportConfig
++import com.hrm.latex.renderer.model.LatexFontFamilies
++import com.hrm.latex.renderer.font.loadKatexFonts
++import com.hrm.latex.renderer.model.LatexConfig
++import kotlinx.coroutines.test.runTest
++import org.jetbrains.compose.resources.readResourceBytes
++import org.jetbrains.skia.Data
++import org.jetbrains.skia.Font
++import org.jetbrains.skia.FontMgr
++import org.jetbrains.skia.impl.use
++import kotlin.math.abs
++import kotlin.test.Test
++import kotlin.test.assertNotNull
++import kotlin.test.assertTrue
++
++/**
++ * Raft patch 1.7.2-raft.1 (botiverse/mobile third_party/latex-renderer-1.7.2).
++ *
++ * On Kotlin/Native, Skiko's Font.measureTextWidth(String) hands Skia a zero-terminated UTF-8 copy
++ * of the string but tells it to read `length` UTF-16 code units. Skia then reads past the buffer
++ * and, when those bytes form an unpaired surrogate, aborts in SkTypeface_Mac::onCharsToGlyphs.
++ * measureGlyphBounds must not reach that call for any text.
++ */
++class GlyphBoundsTextEncodingTest {
++    private suspend fun fonts(): LatexFontFamilies = loadKatexFonts { readResourceBytes(it) }
++
++    /** Multi-character ASCII (named operators, \text runs) of every length up to 200 characters. */
++    @Test
++    fun multiCharAsciiDoesNotAbort() = runTest {
++        val bytes = assertNotNull(fonts().mainBytes)
++        val alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 +-=()[],.;:"
++        val names = listOf("lim", "sin", "cos", "log", "max", "arcsin", "operatorname", "for all x in R")
++        var measured = 0
++        repeat(5) { round ->
++            for (name in names) {
++                assertNotNull(measureGlyphBounds(name, 24f, bytes), name)
++                measured++
++            }
++            for (length in 2..200) {
++                val text = buildString {
++                    for (i in 0 until length) append(alphabet[(i * 7 + length * 3 + round) % alphabet.length])
++                }
++                // Allocate between calls so the bytes after each temporary buffer differ.
++                val padding = ByteArray(1 + (length * 13 + round) % 97) { (it * 31 + length).toByte() }
++                assertTrue(padding.isNotEmpty())
++                measureGlyphBounds(text, 12f + round * 6f, bytes)
++                measured++
++            }
++        }
++        println("GLYPH_ASCII_MEASURED|$measured")
++    }
++
++    /**
++     * Deterministic trigger of the same abort on the unpatched path: U+0620 is D8 A0 in UTF-8, so
++     * "aؠ" is the bytes 61 D8 A0 00, which Skia reads as the UTF-16 units D861 00A0 (a high
++     * surrogate without its low surrogate).
++     */
++    @Test
++    fun bmpTextWhoseUtf8ReadsAsUnpairedSurrogateDoesNotAbort() = runTest {
++        val bytes = assertNotNull(fonts().mainBytes)
++        for (text in listOf("aؠ", "x߿", "ؠؠؠ")) {
++            measureGlyphBounds(text, 24f, bytes)
++        }
++    }
++
++    /** BMP math symbols, \mathbb{R}, non-BMP math letters and unpaired surrogates, in every KaTeX font. */
++    @Test
++    fun symbolsAndNonBmpDoNotAbort() = runTest {
++        val fonts = fonts()
++        val allBytes = listOfNotNull(
++            fonts.mainBytes, fonts.mathBytes, fonts.amsBytes, fonts.size1Bytes, fonts.size2Bytes,
++        )
++        assertTrue(allBytes.size >= 3)
++        val texts = listOf(
++            "∑", "∫", "→", "≤", "±", "αβγ", "a∑b", "∑∫∏", "ℝ", "ℝℕℤℚℂ",
++            "𝔸", "𝐀𝐁", "x𝔸y", "😀",
++            "\uD835", "\uDD38", "a\uD835b", "a\uDD38\uD835",
++        )
++        for (bytes in allBytes) {
++            for (text in texts) {
++                measureGlyphBounds(text, 24f, bytes)
++            }
++        }
++        val r = assertNotNull(measureGlyphBounds("R", 24f, assertNotNull(fonts.amsBytes)))
++        assertTrue(r.inkWidth > 0f && r.inkHeight > 0f)
++    }
++
++    /**
++     * The width is the advance sum Skia's measureText returns. For one ASCII character the old
++     * call is exact on every platform (its UTF-8 bytes "c\0" are the UTF-16 unit of "c"), so compare
++     * against it there, and check that longer texts are the sum of their characters (no kerning in
++     * either path).
++     */
++    @Test
++    fun widthMatchesSkiaAdvanceSum() = runTest {
++        val bytes = assertNotNull(fonts().mainBytes)
++        val typeface = Data.makeFromBytes(bytes).use { FontMgr.default.makeFromData(it) }
++        assertNotNull(typeface)
++        try {
++            for (size in listOf(12f, 24f, 48f)) {
++                Font(typeface, size).use { font ->
++                    for (c in '!'..'~') {
++                        val glyph = measureGlyphBounds(c.toString(), size, bytes) ?: continue
++                        val expected = font.measureTextWidth(c.toString())
++                        assertTrue(abs(glyph.inkWidth - expected) < 1e-3f, "'$c' @$size: ${glyph.inkWidth} vs $expected")
++                    }
++                }
++                for (text in listOf("Ag", "lim", "sin", "arcsin", "operatorname", "x+y=z")) {
++                    val whole = assertNotNull(measureGlyphBounds(text, size, bytes), text).inkWidth
++                    val parts = text.map { measureGlyphBounds(it.toString(), size, bytes)?.inkWidth ?: 0f }.sum()
++                    assertTrue(abs(whole - parts) < 1e-2f, "$text @$size: $whole vs $parts")
++                }
++            }
++        } finally {
++            typeface.close()
++        }
++    }
++
++    /**
++     * Prints a fingerprint of the laid-out SVG of formulas whose measured texts are short enough not
++     * to trip the unpatched path. The patch workflow runs this before and after the patch and
++     * requires identical lines: formula layout must not change.
++     */
++    @Test
++    fun layoutFingerprint() = runTest {
++        val density = Density(1f)
++        val exporter = LatexExporterState(
++            density,
++            TextMeasurer(createFontFamilyResolver(), density, LayoutDirection.Ltr),
++            fonts(),
++        )
++        val formulas = listOf(
++            "x^2+y^2=z^2",
++            """\frac{a}{b} + \sqrt{x}""",
++            """\sum_{i=1}^{n} i^2""",
++            """\int_0^1 f(x)\,dx""",
++            """\lim_{x\to 0}\frac{\sin x}{x}""",
++            """\mathbb{R}^n""",
++            """\left(\begin{matrix}a & b \\ c & d\end{matrix}\right)""",
++            """\alpha\beta\gamma \le \pi""",
++            """\prod_{k} \max(a_k, b_k)""",
++            """e^{i\pi} + 1 = 0""",
++        )
++        for (size in listOf(16, 24)) {
++            for (formula in formulas) {
++                val svg = assertNotNull(
++                    exporter.exportSvg(formula, LatexConfig(fontSize = size.sp), SvgExportConfig(transparentBackground = true)),
++                    formula,
++                )
++                var hash = 0xcbf29ce484222325uL
++                for (ch in svg.svg) {
++                    hash = (hash xor ch.code.toULong()) * 0x100000001b3uL
++                }
++                println("LAYOUT_FINGERPRINT|$size|$formula|${svg.width}x${svg.height}|${svg.svg.length}|${hash.toString(16)}")
++            }
++        }
++    }
++}
