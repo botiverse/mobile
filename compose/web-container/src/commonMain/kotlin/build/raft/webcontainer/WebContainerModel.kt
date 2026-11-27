@@ -173,7 +173,7 @@ data class WebRequestHeaderRule(
     }
 }
 
-/** Navigation, origin lock, subframe host allowlist, and restore-URL sanitization policy. */
+/** Navigation, origin lock, subframe host allowlist, audio capture allowlist, and restore-URL sanitization policy. */
 data class WebNavigationPolicy(
     val allowNavigation: Boolean = false,
     val allowedSchemes: Set<String> = setOf("https"),
@@ -184,6 +184,7 @@ data class WebNavigationPolicy(
     val restoreStripQueryKeys: Set<String> = DefaultRestoreStripQueryKeys,
     val restoreStripFragments: Boolean = true,
     val restoreBootstrapPathMarkers: Set<String> = emptySet(),
+    val audioCaptureAllowedOrigin: WebContainerOrigin? = null,
 ) {
     val normalizedAllowedSchemes: Set<String> =
         allowedSchemes.mapTo(LinkedHashSet()) { it.trim().lowercase() }.filterTo(LinkedHashSet()) { it.isNotEmpty() }

@@ -763,4 +763,54 @@ class RaftWebContainerAdapterTest {
                 .toWebContainerConfig(isDarkTheme = false)
         assertFalse(malformedMapped.navigationPolicy.allowNewWindows)
     }
+
+    @Test
+    fun toWebContainerConfigMapsAudioCaptureAllowedOriginOnlyWhenOriginLockedAndNonIsolated() {
+        // Default fails closed to null.
+        val defaultMapped =
+            baseConfig(mainFrameOrigin = "https://app.raft.build")
+                .toWebContainerConfig(isDarkTheme = false)
+        assertNull(defaultMapped.navigationPolicy.audioCaptureAllowedOrigin)
+
+        // Exact match with mainFrameOrigin on Default partition maps cleanly.
+        val matched =
+            baseConfig(mainFrameOrigin = "https://app.raft.build")
+                .copy(audioCaptureAllowedOrigin = "https://app.raft.build")
+                .toWebContainerConfig(isDarkTheme = false)
+        assertEquals(
+            WebContainerOrigin(scheme = "https", host = "app.raft.build"),
+            matched.navigationPolicy.audioCaptureAllowedOrigin,
+        )
+
+        // Unlocked surface (mainFrameOrigin = null) fails closed.
+        val unlocked =
+            baseConfig(mainFrameOrigin = null)
+                .copy(audioCaptureAllowedOrigin = "https://app.raft.build")
+                .toWebContainerConfig(isDarkTheme = false)
+        assertNull(unlocked.navigationPolicy.audioCaptureAllowedOrigin)
+
+        // Mismatched audio origin vs locked mainFrameOrigin fails closed.
+        val mismatched =
+            baseConfig(mainFrameOrigin = "https://app.raft.build")
+                .copy(audioCaptureAllowedOrigin = "https://abc.w.raftusercontent.com")
+                .toWebContainerConfig(isDarkTheme = false)
+        assertNull(mismatched.navigationPolicy.audioCaptureAllowedOrigin)
+
+        // IsolatedThirdParty partition never receives audio capture permission.
+        val thirdParty =
+            baseConfig(
+                mainFrameOrigin = "https://app.raft.build",
+                storagePartition = RaftWebViewStoragePartition.IsolatedThirdParty,
+            )
+                .copy(audioCaptureAllowedOrigin = "https://app.raft.build")
+                .toWebContainerConfig(isDarkTheme = false)
+        assertNull(thirdParty.navigationPolicy.audioCaptureAllowedOrigin)
+
+        // Malformed mainFrameOrigin fails closed.
+        val malformed =
+            baseConfig(mainFrameOrigin = "not a valid origin")
+                .copy(audioCaptureAllowedOrigin = "https://app.raft.build")
+                .toWebContainerConfig(isDarkTheme = false)
+        assertNull(malformed.navigationPolicy.audioCaptureAllowedOrigin)
+    }
 }

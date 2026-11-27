@@ -8,6 +8,7 @@ import build.raft.app.settings.SettingsWebViewBackAction
 import build.raft.app.settings.SettingsWebViewHeaderTitleState
 import build.raft.app.settings.SettingsWebViewNavigationAuthority
 import build.raft.app.settings.SettingsWebViewSurface
+import build.raft.app.settings.settingsWebViewAudioCaptureAllowedOrigin
 import build.raft.app.settings.settingsWebViewBackAction
 import build.raft.app.settings.settingsWebViewPageData
 import build.raft.app.settings.settingsWebViewSurfaceFromPageData
@@ -97,5 +98,56 @@ class SettingsStandaloneWebViewHostTest {
         assertEquals(false, authority.accepts(oldOwner))
         assertEquals(true, authority.accepts(currentOwner))
         assertEquals("Computers", currentCommittedState.displayTitle("Computers"))
+    }
+
+    @Test
+    fun settingsWebViewAudioCaptureAllowedOriginRequiresOwnRaftOriginLock() {
+        assertEquals(
+            "https://app.raft.build",
+            settingsWebViewAudioCaptureAllowedOrigin(
+                lockToWebOrigin = true,
+                mainFrameOrigin = "https://app.raft.build",
+                webBaseUrl = "https://app.raft.build/",
+            ),
+        )
+        assertEquals(
+            "https://raft-app-staging.botiverse.dev",
+            settingsWebViewAudioCaptureAllowedOrigin(
+                lockToWebOrigin = true,
+                mainFrameOrigin = "https://raft-app-staging.botiverse.dev",
+                webBaseUrl = "https://raft-app-staging.botiverse.dev",
+            ),
+        )
+        // Unlocked settings surfaces (Billing, Administration, IM Bridges, Account Deletion) fail closed.
+        assertNull(
+            settingsWebViewAudioCaptureAllowedOrigin(
+                lockToWebOrigin = false,
+                mainFrameOrigin = "https://app.raft.build",
+                webBaseUrl = "https://app.raft.build",
+            ),
+        )
+        // Non-Raft hosts (e.g. Hands Release Notes) fail closed even when origin-locked.
+        assertNull(
+            settingsWebViewAudioCaptureAllowedOrigin(
+                lockToWebOrigin = true,
+                mainFrameOrigin = "https://hands.raft.build",
+                webBaseUrl = "https://app.raft.build",
+            ),
+        )
+        // Blank/missing webBaseUrl and Artifact content hosts fail closed.
+        assertNull(
+            settingsWebViewAudioCaptureAllowedOrigin(
+                lockToWebOrigin = true,
+                mainFrameOrigin = "https://app.raft.build",
+                webBaseUrl = "   ",
+            ),
+        )
+        assertNull(
+            settingsWebViewAudioCaptureAllowedOrigin(
+                lockToWebOrigin = true,
+                mainFrameOrigin = "https://abc.w.raftusercontent.com",
+                webBaseUrl = "https://abc.w.raftusercontent.com",
+            ),
+        )
     }
 }

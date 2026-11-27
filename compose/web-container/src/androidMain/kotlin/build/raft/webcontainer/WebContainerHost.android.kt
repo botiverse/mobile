@@ -652,6 +652,31 @@ internal class WebContainerAndroidView(
     private val jsDialogTracker = WebJsDialogTracker()
     internal val fullscreenController = WebContainerAndroidFullscreenController()
     internal val newWindowTransport = WebContainerAndroidNewWindowTransport()
+    internal val audioPermissionController =
+        WebContainerAndroidAudioPermissionController(
+            scope = hostScope,
+            contextProvider = { context.applicationContext ?: context },
+            allowedOriginProvider = { config.navigationPolicy.audioCaptureAllowedOrigin },
+            isHostForegroundActive = { isForegroundVisibleAndActive(webView) },
+            mainHandler = mainHandler,
+            onDecision = { granted, kind, reason, origin ->
+                runCatching {
+                    val activeUrl = if (destroyed) currentUrl else webView.url.orEmpty().ifBlank { currentUrl }
+                    val activeOrigin = parseWebContainerOrigin(activeUrl.ifBlank { config.url })?.asOriginString()
+                    telemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.MediaCapturePermission(
+                            surfaceId = config.surfaceId,
+                            kind = kind.name,
+                            grantedPrompt = granted,
+                            reason = if (granted) null else reason,
+                            missingKeys = emptyList(),
+                            origin = origin,
+                            isMainFrame = activeOrigin != null && activeOrigin == origin,
+                        ),
+                    )
+                }
+            },
+        )
 
     private val watchdogTickRunnable =
         object : Runnable {
@@ -695,6 +720,7 @@ internal class WebContainerAndroidView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        audioPermissionController.cancelAll()
         syncWatchdogLifecycle()
         super.onDetachedFromWindow()
     }
@@ -853,6 +879,9 @@ internal class WebContainerAndroidView(
         if (!next.navigationPolicy.allowNewWindows) {
             newWindowTransport.cancelAll()
         }
+        if (wasConfigured && previous.navigationPolicy.audioCaptureAllowedOrigin != next.navigationPolicy.audioCaptureAllowedOrigin) {
+            audioPermissionController.cancelAll()
+        }
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
 
         if (scopeChanged) {
@@ -914,6 +943,7 @@ internal class WebContainerAndroidView(
         fullscreenController.hide()
         newWindowTransport.cancelAll()
         speculativeLinkLoading = false
+        audioPermissionController.cancelAll()
         clearHostCancellationState()
         boundController?.unbindDispatcher(this)
         boundController = null
@@ -972,6 +1002,7 @@ internal class WebContainerAndroidView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        audioPermissionController.cancelAll()
         WebContainerAndroidKeepAlive.onParkedLoadFinished(this)
         fileChooser = null
         cancelWatchdogTick()
@@ -1038,6 +1069,7 @@ internal class WebContainerAndroidView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        audioPermissionController.cancelAll()
         removeJsbBridge()
         removeDownloadBridge()
         clearDocumentStartScripts()
@@ -1198,9 +1230,16 @@ internal class WebContainerAndroidView(
                 }
 
                 override fun onPermissionRequest(request: PermissionRequest?) {
-                    // Per product decision (#proj-mobile:#395 / #397): deny all web camera/microphone/media
-                    // permission requests on Android without forwarding system runtime permission prompts.
-                    runCatching { request?.deny() }
+                    if (configuredWebView !== webView) {
+                        runCatching { request?.deny() }
+                        return
+                    }
+                    audioPermissionController.onPermissionRequest(request)
+                }
+
+                override fun onPermissionRequestCanceled(request: PermissionRequest?) {
+                    if (configuredWebView !== webView) return
+                    audioPermissionController.onPermissionRequestCanceled(request)
                 }
 
                 override fun onShowFileChooser(
@@ -1301,6 +1340,7 @@ internal class WebContainerAndroidView(
                     jsDialogTracker.cancelActive()
                     fullscreenController.hide()
                     newWindowTransport.cancelAll()
+                    audioPermissionController.cancelAll()
                     jsbDispatcher?.cancelInFlight("render_process_gone")
                     if (parkedForKeepAlive) {
                         runCatching {
@@ -1385,6 +1425,7 @@ internal class WebContainerAndroidView(
                     }
                     jsDialogTracker.cancelActive()
                     fullscreenController.hide()
+                    audioPermissionController.cancelAll()
                     jsbDispatcher?.cancelInFlight("main_frame_navigation")
                     if (target.isNotEmpty() && !target.equals(ABOUT_BLANK_URL, ignoreCase = true)) {
                         val isConfiguredInitialDocument =

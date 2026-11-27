@@ -172,6 +172,13 @@ internal data class RaftWebViewConfig(
      * Off by default so origin-locked surfaces (Artifact viewer, Settings) preserve existing behavior.
      */
     val allowNewWindows: Boolean = false,
+    /**
+     * Android: explicit origin (`https://host[:port]`) allowed to auto-grant audio-only WebView
+     * capture (`RESOURCE_AUDIO_CAPTURE`) after ensuring Android OS `RECORD_AUDIO` runtime
+     * permission (`#proj-workspace:#463`). Strictly fail-closed (`null` by default) and requires
+     * [mainFrameOrigin] to lock to the exact same origin on a non-isolated partition.
+     */
+    val audioCaptureAllowedOrigin: String? = null,
 ) {
     val effectiveStoragePartition: RaftWebViewStoragePartition
         get() =

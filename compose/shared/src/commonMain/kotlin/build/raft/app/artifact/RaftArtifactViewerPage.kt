@@ -156,6 +156,8 @@ internal fun raftArtifactViewerWebViewConfig(
         diagnosticsSurface = RAFT_ARTIFACT_VIEWER_WEBVIEW_SURFACE,
         // #proj-workspace:#360: pinch-to-zoom stays available outside Desktop Mode too.
         allowPinchZoom = true,
+        // #proj-workspace:#463: own-origin microphone capture for Artifact comment voice dictation.
+        audioCaptureAllowedOrigin = scope.webOrigin,
     )
 
 /** [RaftWebViewConfig.diagnosticsSurface] of the Artifact viewer (its prewarmed view too). */
@@ -1610,6 +1612,7 @@ private fun RaftArtifactViewerWebBody(
             backgroundArgb = RaftColor.Canvas.toArgb(),
             persistBackgroundAfterPaint = true,
             androidInsetMode = insetMode,
+            audioCaptureAllowedOrigin = scope.webOrigin,
             loadWatchdog = loadWatchdog,
             onLoadCommit = {
                 // A new document: it holds the token its injected session wrote.
