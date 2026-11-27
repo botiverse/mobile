@@ -255,18 +255,15 @@ internal fun ThreadAppLinkPreviewScope(
     val openInSystemBrowser = rememberRaftSystemBrowserOpener()
     val currentOnOpenLink by rememberUpdatedState(onOpenLink)
     val linkNavigator = LocalRaftLinkNavigator.current
-    val webPanelHost = LocalRaftMobileWebPanelHost.current
-    val currentWebPanelSource by rememberUpdatedState(LocalRaftMobileWebPanelMessageSource.current)
     val installedAppLookupScope = rememberCoroutineScope()
     val installedAppLookupGate = remember(messageId) { RaftPendingInstalledAppLookupGate() }
     DisposableEffect(installedAppLookupGate) {
         onDispose { installedAppLookupGate.cancel() }
     }
     val openAppEntry: (String, RaftAppEntryRequest) -> Unit =
-        remember(linkNavigator, currentOnOpenLink, webPanelHost, installedAppLookupGate) {
+        remember(linkNavigator, currentOnOpenLink, installedAppLookupGate) {
             { address, request ->
                 installedAppLookupGate.cancel()
-                webPanelHost?.setPendingSource(currentWebPanelSource)
                 if (linkNavigator != null) {
                     linkNavigator.openAppEntry(address, request)
                 } else {

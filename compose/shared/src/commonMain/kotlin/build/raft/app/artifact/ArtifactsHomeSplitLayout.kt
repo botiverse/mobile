@@ -112,7 +112,11 @@ internal fun ArtifactsHomeSplitLayout(
     RaftPaneHost(
         wide = true,
         openInPane = { role, pageName, pageData ->
-            if (role == RaftPaneRole.Artifact) openArtifact(pageName, pageData) else shellHost.navigator.openPage(pageName, pageData)
+            if (role == RaftPaneRole.Artifact && pageName == RAFT_ARTIFACT_VIEWER_PAGE) {
+                openArtifact(pageName, pageData)
+            } else {
+                shellHost.navigator.openPage(pageName, pageData)
+            }
         },
     ) {
         CompositionLocalProvider(LocalRaftArtifactOpenInColumn provides true) {

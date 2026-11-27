@@ -6892,6 +6892,14 @@
     <string name="in_app_browser_external_app_title">是否打开外部应用？</string>
     <string name="in_app_browser_external_app_message">当前页面请求打开外部应用「%1$s」。</string>
     <string name="in_app_browser_external_app_open">打开</string>
+    <string name="in_app_browser_close_page">关闭页面</string>
+    <string name="in_app_browser_open_pages_title">已打开的页面（%1$d）</string>
+    <string name="in_app_browser_open_pages_a11y">已打开 %1$d 个页面</string>
+    <string name="in_app_browser_close_all_pages">全部关闭</string>
+    <string name="in_app_browser_floating_pill_single_a11y">继续浏览 %1$s</string>
+    <string name="in_app_browser_floating_pill_multi_a11y">已打开 %1$d 个页面，点击切换</string>
+    <string name="in_app_browser_tab_state_live">运行中</string>
+    <string name="in_app_browser_tab_state_hibernated">已休眠</string>
     <string name="server_panel_recently_used">最近使用</string>
     <string name="mobile_nav_edit_reset">重置</string>
     <string name="mobile_nav_edit_tab_bar">标签栏</string>

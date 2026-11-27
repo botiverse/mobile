@@ -3,6 +3,7 @@ package build.raft.app.compat.pager
 import build.raft.app.CHANNEL_SETTINGS_PAGE
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE
+import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
 import build.raft.app.THREAD_MEMBERS_PAGE
 
 /**
@@ -49,4 +50,7 @@ internal val raftPagePaneRoles: Map<String, RaftPaneRole> =
         MEMBER_DETAIL_PAGE to RaftPaneRole.Supporting,
         // Web F41: an Artifact opened in a conversation shows in the channel's side area, beside the messages.
         RAFT_ARTIFACT_VIEWER_PAGE to RaftPaneRole.Artifact,
+        // Wide/tablet side-column parity (#proj-workspace:#412): installed Raft Apps opened from a
+        // conversation present beside the chat in the same side column as Artifact Viewer.
+        RAFT_IN_APP_BROWSER_PAGE to RaftPaneRole.Artifact,
     )

@@ -405,6 +405,12 @@ object WebContainerAndroidKeepAlive {
         return true
     }
 
+    /** Evicts and destroys any pooled views matching [keepAliveKey] across themes and scopes. */
+    fun evictKey(keepAliveKey: String): Int {
+        if (Looper.myLooper() != Looper.getMainLooper()) return 0
+        return pool.evictKey(keepAliveKey).also { pruneInactivePrewarmTimeouts() }
+    }
+
     /** Evicts pooled views under OS memory pressure (`onTrimMemory`). */
     fun onMemoryPressure(level: WebMemoryTrimLevel): Int {
         if (Looper.myLooper() != Looper.getMainLooper()) {

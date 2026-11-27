@@ -290,6 +290,17 @@ object WebContainerIosKeepAlive {
         return true
     }
 
+    /** Evicts and destroys any pooled hosts matching [keepAliveKey] across themes and scopes. */
+    fun evictKey(keepAliveKey: String): Int {
+        val clean = keepAliveKey.trim()
+        if (clean.isEmpty()) return 0
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { pool.evictKey(clean) }
+            return 0
+        }
+        return pool.evictKey(clean)
+    }
+
     /** Evicts and destroys all pooled instances bound to [scope]. */
     fun evictScope(scope: WebIsolationScope): Int {
         if (!NSThread.isMainThread) {

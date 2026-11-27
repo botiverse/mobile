@@ -1,9 +1,16 @@
 package build.raft.app.nav
 
+import build.raft.app.RAFT_IN_APP_BROWSER_OUTBOUND_KEY
+import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
+import build.raft.app.RAFT_IN_APP_BROWSER_TAB_ID_KEY
+import build.raft.app.RAFT_IN_APP_BROWSER_URL_KEY
 import build.raft.app.THREAD_PAGE
 import build.raft.app.cmp.host.RaftPageRouteIdentities
 import build.raft.app.threadLaunchPayloadOrNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * The route identity of a page open (task #151), installed into :ui-cmp's open guard and used by
@@ -32,8 +39,24 @@ internal fun raftPageRouteIdentity(pageName: String, pageData: JsonObject): Any 
             )
         }
     }
+    if (pageName == RAFT_IN_APP_BROWSER_PAGE) {
+        val outbound = (pageData[RAFT_IN_APP_BROWSER_OUTBOUND_KEY] as? JsonPrimitive)?.booleanOrNull == true
+        val tabId = (pageData[RAFT_IN_APP_BROWSER_TAB_ID_KEY] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+        val url = (pageData[RAFT_IN_APP_BROWSER_URL_KEY] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+        return RaftInAppBrowserRouteIdentity(
+            outbound = outbound,
+            tabId = tabId,
+            url = if (outbound || tabId.isEmpty()) url else "",
+        )
+    }
     return RaftPageRouteIdentities.default.identityOf(pageName, JsonObject(pageData - RaftPageRouteIgnoredKeys))
 }
+
+private data class RaftInAppBrowserRouteIdentity(
+    val outbound: Boolean,
+    val tabId: String,
+    val url: String,
+)
 
 private data class RaftThreadRouteIdentity(
     val surfaceKind: String,

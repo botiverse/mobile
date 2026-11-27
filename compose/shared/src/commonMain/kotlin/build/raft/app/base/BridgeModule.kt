@@ -548,12 +548,14 @@ internal class BridgeModule : Module() {
         mimeType: String? = null,
         inBrowser: Boolean = false,
         externalBrowser: Boolean = false,
+        systemInAppBrowser: Boolean = false,
     ) {
         val methodArgs = JSONObject()
         methodArgs.put("url", url)
         mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
         if (inBrowser) methodArgs.put("browser", true)
         if (externalBrowser) methodArgs.put("externalBrowser", true)
+        if (systemInAppBrowser) methodArgs.put("systemInAppBrowser", true)
         callNativeMethod("openUrl", methodArgs, null)
     }
 

@@ -1,43 +1,26 @@
 package build.raft.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toPixelMap
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
-import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.designsystem.theme.RaftTheme
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -53,19 +36,22 @@ class RaftMobileWebPanelUiTest {
     val activities = RobolectricComposeActivityRule()
 
     @Test
-    fun thirdPartyBottomBarUpdatesHostOnNavigationAndOffersOpenInBrowser() = runRobolectricComposeUiTest {
+    fun outboundChildTopBarDisplaysOnlyDomainAndOffersOpenInBrowser() = runRobolectricComposeUiTest {
         var currentUrl by mutableStateOf("https://www.docs.example.com/push/ios-setup")
         val actions = mutableListOf<String>()
 
         setContent {
             RaftDesignSystemTheme {
-                RaftMobileWebPanelBottomBar(
+                RaftAppBrowserTopBar(
                     isRaftApp = false,
+                    isOutboundChild = true,
                     currentUrl = currentUrl,
-                    appName = null,
+                    appName = "IgnoredApp",
                     appLogoUrl = null,
-                    signedInAsName = null,
-                    onClose = { actions += "close" },
+                    signedInAsName = "IgnoredUser",
+                    onBack = { actions += "back" },
+                    onClosePage = { actions += "close" },
+                    onReload = { actions += "reload" },
                     onShare = { actions += "share" },
                     onCopyLink = { actions += "copy" },
                     onOpenInBrowser = { actions += "open_browser" },
@@ -73,8 +59,12 @@ class RaftMobileWebPanelUiTest {
             }
         }
 
-        // Layer 3 center shows host without www., updated live on navigation, with IDN punycode.
+        // Cross-origin outbound child page displays ONLY the formatted domain (no App name or Signed in as).
         onNodeWithText("docs.example.com").assertIsDisplayed()
+        onNodeWithText("IgnoredApp").assertDoesNotExist()
+        onNodeWithText("Signed in as IgnoredUser").assertDoesNotExist()
+        onNodeWithTag(RAFT_APP_BROWSER_SWITCHER_BUTTON_TAG).assertDoesNotExist()
+
         runOnIdle { currentUrl = "https://bücher.example/login" }
         onNodeWithText("xn--bcher-kva.example").assertIsDisplayed()
         val spoofHost = "accounts.google.com.sign-in.account-recovery.evil-example.net"
@@ -82,31 +72,39 @@ class RaftMobileWebPanelUiTest {
         onNodeWithTag(RAFT_WEB_PANEL_HOST_LABEL_TAG).assertIsDisplayed()
         onNodeWithText(spoofHost).assertIsDisplayed()
 
-        // Overflow menu contains Share, Copy link, and Open in browser for third-party websites.
+        // Overflow menu contains Reload, Share, Copy link, Open in browser (and no Close page).
         onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
+        onNodeWithText("Reload").assertIsDisplayed()
         onNodeWithText("Share").assertIsDisplayed()
         onNodeWithText("Copy link").assertIsDisplayed()
+        onNodeWithText("Close page").assertDoesNotExist()
         onNodeWithText("Open in browser").assertIsDisplayed().performClick()
 
-        // Leading close button triggers close.
-        onNodeWithTag(RAFT_WEB_PANEL_CLOSE_BUTTON_TAG).performClick()
+        // Leading back arrow returns to parent App.
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).performClick()
 
-        assertEquals(listOf("open_browser", "close"), actions)
+        assertEquals(listOf("open_browser", "back"), actions)
     }
 
     @Test
-    fun raftAppBottomBarShowsAppIdentitySignedInAsAndOffersOpenInBrowser() = runRobolectricComposeUiTest {
+    fun raftAppTopBarShowsAppIdentitySignedInAsTabCountSwitcherAndClosePage() = runRobolectricComposeUiTest {
         val actions = mutableListOf<String>()
 
         setContent {
             RaftDesignSystemTheme {
-                RaftMobileWebPanelBottomBar(
+                RaftAppBrowserTopBar(
                     isRaftApp = true,
+                    isOutboundChild = false,
                     currentUrl = "https://tracker.example/views/19",
                     appName = "Tracker",
                     appLogoUrl = null,
                     signedInAsName = "Mia",
-                    onClose = { actions += "close" },
+                    openTabCount = 3,
+                    onOpenSwitcher = { actions += "switcher" },
+                    onBack = { actions += "suspend" },
+                    onClosePage = { actions += "close_page" },
+                    onReload = { actions += "reload" },
+                    onForwardToRaft = { actions += "forward_to_raft" },
                     onShare = { actions += "share" },
                     onCopyLink = { actions += "copy" },
                     onOpenInBrowser = { actions += "open_browser" },
@@ -119,210 +117,33 @@ class RaftMobileWebPanelUiTest {
         onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
         onNodeWithText("Signed in as Mia").assertIsDisplayed()
 
-        // Layer 2 Raft App overflow menu also offers "Open in browser" (#proj-mobile:#409).
+        // Multi-page [3] switcher button is shown when >= 2 pages are open.
+        onNodeWithTag(RAFT_APP_BROWSER_SWITCHER_BUTTON_TAG).assertIsDisplayed().performClick()
+
+        // Overflow menu includes Reload, Forward to Raft, Open in browser, and Close page.
         onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
-        onNodeWithText("Share").assertIsDisplayed()
-        onNodeWithText("Copy link").assertIsDisplayed()
-        onNodeWithText("Open in browser").assertIsDisplayed().performClick()
+        onNodeWithText("Reload").assertIsDisplayed()
+        onNodeWithText("Forward to Raft").assertIsDisplayed().performClick()
 
-        assertEquals(listOf("open_browser"), actions)
+        onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
+        onNodeWithText("Close page").assertIsDisplayed().performClick()
+
+        onNodeWithTag(RAFT_APP_BROWSER_BACK_NAV_TAG).performClick()
+
+        assertEquals(listOf("switcher", "forward_to_raft", "close_page", "suspend"), actions)
     }
 
     @Test
-    fun sourceStripCollapseKeepsAliveInlineBadgeReopensAndCloseRemovesBadge() = runRobolectricComposeUiTest {
-        val coordinator = RaftMobileWebPanelCoordinator(releaseEntryToken = { _, _ -> })
-        val host = RaftMobileWebPanelHostController(hostId = "test-host", coordinator = coordinator)
-        val msg1Source =
-            RaftMobileWebPanelSource.Message(
-                messageId = "msg-1",
-                authorName = "Xiaofan",
-                authorAvatarKind = RaftAvatarKind.Agent,
-                previewText = "Check iOS push certificate docs",
-                timestampLabel = "",
-            )
-
-        setContent {
-            RaftDesignSystemTheme {
-                CompositionLocalProvider(LocalRaftMobileWebPanelHost provides host) {
-                    val session by coordinator.session.collectAsState()
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        if (session?.isExpanded == true) {
-                            RaftMobileWebPanelSourceStrip(
-                                source = session?.source,
-                                topSafeArea = 0.dp,
-                                onCollapse = { host.collapse(session!!.sessionId) },
-                            )
-                        }
-                        ThreadMessageKeepOpenBadgeSlot(messageId = "msg-1")
-                        ThreadMessageKeepOpenBadgeSlot(messageId = "msg-2")
-                    }
-                }
-            }
-        }
-
-        // Open panel from msg-1 -> source strip visible, keep-open chip hidden while expanded.
-        val opened =
-            runOnIdle {
-                host.setPendingSource(msg1Source)
-                host.openLink("https://docs.example.com/push/ios-setup")
-                coordinator.session.value!!
-            }
-        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).assertIsDisplayed()
-        onNodeWithText("Xiaofan").assertIsDisplayed()
-        onAllNodesWithText("docs.example.com · Page still open").assertCountEquals(0)
-
-        // Tap source strip -> collapses panel keeping page alive; inline keep-open badge shows under msg-1.
-        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).performClick()
-        runOnIdle {
-            assertTrue(coordinator.session.value?.isCollapsedKeptAlive == true)
-        }
-        onNodeWithTag(RAFT_WEB_PANEL_KEEP_OPEN_CHIP_TAG).assertIsDisplayed()
-        onNodeWithText("docs.example.com · Page still open").assertIsDisplayed()
-
-        // Tap inline keep-open chip -> re-expands exact live session immediately.
-        onNodeWithTag(RAFT_WEB_PANEL_KEEP_OPEN_CHIP_TAG).performClick()
-        runOnIdle {
-            assertEquals(opened.sessionId, coordinator.session.value?.sessionId)
-            assertTrue(coordinator.session.value?.isExpanded == true)
-        }
-        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).assertIsDisplayed()
-
-        // Collapse again, then close -> destroys session and removes keep-open badge.
-        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).performClick()
-        onNodeWithTag(RAFT_WEB_PANEL_KEEP_OPEN_CHIP_TAG).assertIsDisplayed()
-        runOnIdle { host.close(opened.sessionId) }
-        runOnIdle { assertNull(coordinator.session.value) }
-        onAllNodesWithText("docs.example.com · Page still open").assertCountEquals(0)
-    }
-
-    @Test
-    fun surfaceSourceStripAndFloatingKeepOpenChipReopenAppEntry() = runRobolectricComposeUiTest {
-        val coordinator = RaftMobileWebPanelCoordinator(releaseEntryToken = { _, _ -> })
-        val host = RaftMobileWebPanelHostController(hostId = "apps-host", coordinator = coordinator)
-
-        setContent {
-            RaftDesignSystemTheme {
-                val session by coordinator.session.collectAsState()
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    val active = session
-                    if (active != null && active.isExpanded) {
-                        RaftMobileWebPanelSourceStrip(
-                            source = active.source,
-                            topSafeArea = 0.dp,
-                            onCollapse = { host.collapse(active.sessionId) },
-                        )
-                    } else if (active != null && active.isCollapsedKeptAlive) {
-                        RaftMobileWebPanelKeepOpenChip(
-                            label = active.keepOpenLabel,
-                            onClick = { host.reopen(active.sessionId) },
-                            elevated = true,
-                            modifier = Modifier.testTag(RAFT_WEB_PANEL_FLOATING_KEEP_OPEN_CHIP_TAG),
-                        )
-                    }
-                }
-            }
-        }
-
-        val appSession =
-            runOnIdle {
-                host.setPendingSource(RaftMobileWebPanelSource.Surface("Apps"))
-                host.openAppEntry(
-                    url = "https://tracker.example/views/1",
-                    appEntryToken = "tok-1",
-                    request =
-                        RaftAppEntryRequest(
-                            scopeOrigin = "https://tracker.example",
-                            appName = "Tracker",
-                            preferredServerId = "srv-1",
-                        ),
-                )
-                coordinator.session.value!!
-            }
-
-        onNodeWithText("Apps").assertIsDisplayed()
-        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).performClick()
-        onNodeWithTag(RAFT_WEB_PANEL_FLOATING_KEEP_OPEN_CHIP_TAG).assertIsDisplayed()
-        onNodeWithText("Tracker · Page still open").assertIsDisplayed().performClick()
-
-        runOnIdle {
-            assertEquals(appSession.sessionId, coordinator.session.value?.sessionId)
-            assertTrue(coordinator.session.value?.isExpanded == true)
-        }
-        onNodeWithText("Apps").assertIsDisplayed()
-    }
-
-    @Test
-    fun backdropOpaqueMasksUnderlyingHeaderInDefault88AndFullscreen() = runRobolectricComposeUiTest {
-        var fullscreen by mutableStateOf(false)
-        var collapses = 0
-        var expectedCanvas = Color.Unspecified
-
-        setContent {
-            RaftDesignSystemTheme {
-                expectedCanvas = RaftTheme.colors.layerCanvas
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Simulated underlying channel header with bright magenta fill; any translucency
-                    // in the backdrop lets this bleed through behind the source strip or top safe area.
-                    Box(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(96.dp)
-                                .background(Color.Magenta),
-                    )
-                    RaftMobileWebPanelBackdrop(
-                        slideProgress = 1f,
-                        fullscreen = fullscreen,
-                        source = RaftMobileWebPanelSource.Surface("Apps"),
-                        topSafeArea = 24.dp,
-                        onCollapse = { collapses += 1 },
-                    )
-                }
-            }
-        }
-        waitForIdle()
-
-        val sampleX = with(density) { 360.dp.toPx() }.toInt()
-        val safeAreaY = with(density) { 12.dp.toPx() }.toInt()
-        val stripRowY = with(density) { 44.dp.toPx() }.toInt()
-
-        // Default88: source strip is visible and backdrop completely masks the magenta header.
-        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).assertIsDisplayed()
-        val defaultPixels = onRoot().captureToImage().toPixelMap()
-        assertEquals(expectedCanvas, defaultPixels[sampleX, safeAreaY])
-        assertEquals(expectedCanvas, defaultPixels[sampleX, stripRowY])
-
-        // Tapping the backdrop collapses the panel.
-        onNodeWithTag(RAFT_WEB_PANEL_BACKDROP_TAG).performClick()
-        assertEquals(1, collapses)
-
-        // Fullscreen: source strip hides and backdrop still completely masks the top safe area.
-        runOnIdle { fullscreen = true }
-        waitForIdle()
-        onNodeWithTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG).assertDoesNotExist()
-        val fullscreenPixels = onRoot().captureToImage().toPixelMap()
-        assertEquals(expectedCanvas, fullscreenPixels[sampleX, safeAreaY])
-        assertEquals(expectedCanvas, fullscreenPixels[sampleX, stripRowY])
-    }
-
-    @Test
-    fun bottomBarBackAndForwardReflectHistoryAndInvokeCallbacks() = runRobolectricComposeUiTest {
+    fun bottomBarBackForwardReloadAndCloseReflectHistory() = runRobolectricComposeUiTest {
         val history = mutableListOf("https://deck.example/page-1")
         var index by mutableStateOf(0)
         val callbacks = mutableListOf<String>()
 
         setContent {
             RaftDesignSystemTheme {
-                val canGoBack = index > 0
-                val canGoForward = index < history.lastIndex
-                RaftMobileWebPanelBottomBar(
-                    isRaftApp = true,
-                    currentUrl = history[index],
-                    appName = "Deck",
-                    appLogoUrl = null,
-                    signedInAsName = "artin",
-                    canGoBack = canGoBack,
-                    canGoForward = canGoForward,
+                RaftAppBrowserBottomBar(
+                    canGoBack = index > 0,
+                    canGoForward = index < history.lastIndex,
                     onGoBack = {
                         callbacks += "back"
                         if (index > 0) index -= 1
@@ -331,77 +152,121 @@ class RaftMobileWebPanelUiTest {
                         callbacks += "forward"
                         if (index < history.lastIndex) index += 1
                     },
+                    onReload = { callbacks += "reload" },
                     onClose = { callbacks += "close" },
-                    onShare = {},
-                    onCopyLink = {},
-                    onOpenInBrowser = null,
                 )
             }
         }
 
-        // Initial page 1: both Back and Forward are visible and disabled; app identity remains visible.
-        onNodeWithTag(RAFT_WEB_PANEL_APP_NAME_TAG).assertIsDisplayed()
-        onNodeWithTag(RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG).assertIsDisplayed()
         onNodeWithTag(RAFT_WEB_PANEL_BACK_BUTTON_TAG).assertIsDisplayed()
         onNodeWithTag(RAFT_WEB_PANEL_FORWARD_BUTTON_TAG).assertIsDisplayed()
         onNodeWithContentDescription("Back").assertIsDisplayed().assertIsNotEnabled()
         onNodeWithContentDescription("Forward").assertIsDisplayed().assertIsNotEnabled()
-        onNodeWithContentDescription("Back").performClick()
-        onNodeWithContentDescription("Forward").performClick()
-        assertEquals(emptyList(), callbacks)
 
-        // Navigate from page 1 -> page 2: Back enabled, Forward disabled.
         runOnIdle {
             history += "https://deck.example/page-2"
             index = 1
         }
-        onNodeWithContentDescription("Back").assertIsEnabled()
-        onNodeWithContentDescription("Forward").assertIsNotEnabled()
-
-        // Tap Back -> returns to page 1; Back disabled, Forward enabled.
-        onNodeWithContentDescription("Back").performClick()
+        onNodeWithContentDescription("Back").assertIsEnabled().performClick()
         runOnIdle { assertEquals("https://deck.example/page-1", history[index]) }
-        onNodeWithContentDescription("Back").assertIsNotEnabled()
-        onNodeWithContentDescription("Forward").assertIsEnabled()
-
-        // Tap Forward -> returns to page 2; Back enabled, Forward disabled.
-        onNodeWithContentDescription("Forward").performClick()
+        onNodeWithContentDescription("Forward").assertIsEnabled().performClick()
         runOnIdle { assertEquals("https://deck.example/page-2", history[index]) }
-        onNodeWithContentDescription("Back").assertIsEnabled()
-        onNodeWithContentDescription("Forward").assertIsNotEnabled()
 
-        assertEquals(listOf("back", "forward"), callbacks)
+        onNodeWithTag(RAFT_APP_BROWSER_RELOAD_BUTTON_TAG).performClick()
+        onNodeWithTag(RAFT_WEB_PANEL_CLOSE_BUTTON_TAG).performClick()
+
+        assertEquals(listOf("back", "forward", "reload", "close"), callbacks)
     }
 
     @Test
-    fun overflowMenuExposesReloadAndForwardToRaftActions() = runRobolectricComposeUiTest {
-        val actions = mutableListOf<String>()
+    fun floatingPillSingleAndMultiPageAndSwitcherSheetActionsWork() = runRobolectricComposeUiTest {
+        val tab1 =
+            RaftAppBrowserTab(
+                tabId = 1L,
+                launchUrl = "https://stamp.build/pulls/1",
+                currentUrl = "https://stamp.build/pulls/1",
+                pageTitle = "PR #1",
+                appEntryToken = "tok-1",
+                scopeOrigin = "https://stamp.build",
+                appName = "Stamp",
+                isLive = true,
+                lastUsedSeq = 2L,
+            )
+        val tab2 =
+            RaftAppBrowserTab(
+                tabId = 2L,
+                launchUrl = "https://deck.example/board",
+                currentUrl = "https://deck.example/board",
+                pageTitle = "Sprint Board",
+                appEntryToken = "tok-2",
+                scopeOrigin = "https://deck.example",
+                appName = "Deck",
+                isLive = false,
+                lastUsedSeq = 1L,
+            )
+        var tabs by mutableStateOf(listOf(tab1))
+        var sheetOpen by mutableStateOf(false)
+        val events = mutableListOf<String>()
 
         setContent {
             RaftDesignSystemTheme {
-                RaftMobileWebPanelBottomBar(
-                    isRaftApp = true,
-                    currentUrl = "https://deck.example/views/19",
-                    appName = "Deck",
-                    appLogoUrl = null,
-                    signedInAsName = "artin",
-                    onClose = { actions += "close" },
-                    onShare = { actions += "share" },
-                    onCopyLink = { actions += "copy" },
-                    onOpenInBrowser = null,
-                    onReload = { actions += "reload" },
-                    onForwardToRaft = { actions += "forward_to_raft" },
-                )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    RaftFloatingBrowserTabPill(
+                        tabs = tabs,
+                        onClick = {
+                            if (tabs.size == 1) {
+                                events += "resume:${tabs.first().tabId}"
+                            } else {
+                                sheetOpen = true
+                            }
+                        },
+                    )
+                    if (sheetOpen) {
+                        RaftAppBrowserSwitcherSheet(
+                            tabs = tabs,
+                            activeTabId = null,
+                            onSelectTab = { selected ->
+                                events += "select:${selected.tabId}"
+                                sheetOpen = false
+                            },
+                            onCloseTab = { id ->
+                                events += "close:$id"
+                                tabs = tabs.filterNot { it.tabId == id }
+                            },
+                            onCloseAll = {
+                                events += "close_all"
+                                tabs = emptyList()
+                                sheetOpen = false
+                            },
+                            onDismiss = { sheetOpen = false },
+                        )
+                    }
+                }
             }
         }
 
-        onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
-        onNodeWithText("Reload").assertIsDisplayed().performClick()
+        // Single suspended page: no count badge, tap immediately resumes.
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_COUNT_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
+        assertEquals(listOf("resume:1"), events)
 
-        onNodeWithTag(RAFT_WEB_PANEL_MORE_BUTTON_TAG).performClick()
-        onNodeWithText("Forward to Raft").assertIsDisplayed().performClick()
+        // Two suspended pages: count badge [2] visible, tap opens multi-page switcher sheet.
+        runOnIdle { tabs = listOf(tab1, tab2) }
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_COUNT_TAG).assertIsDisplayed()
+        onNodeWithText("2").assertIsDisplayed()
+        onNodeWithTag(RAFT_FLOATING_TAB_PILL_TAG).performClick()
 
-        assertEquals(listOf("reload", "forward_to_raft"), actions)
+        onNodeWithTag(RAFT_APP_BROWSER_SWITCHER_SHEET_TAG).assertIsDisplayed()
+        onNodeWithText("PR #1").assertIsDisplayed()
+        onNodeWithText("Sprint Board").assertIsDisplayed()
+        onNodeWithText("Active").assertIsDisplayed()
+        onNodeWithText("Hibernated").assertIsDisplayed()
+
+        // Close individual page via per-row ×, then Close all.
+        onNodeWithTag(raftAppBrowserSwitcherCloseTag(2L)).performClick()
+        onNodeWithTag(RAFT_APP_BROWSER_SWITCHER_CLOSE_ALL_TAG).performClick()
+        assertEquals(listOf("resume:1", "close:2", "close_all"), events)
     }
 
     @Test

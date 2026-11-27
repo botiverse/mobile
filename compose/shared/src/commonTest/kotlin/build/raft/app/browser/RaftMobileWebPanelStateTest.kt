@@ -14,8 +14,8 @@ import kotlin.test.assertTrue
 
 class RaftMobileWebPanelStateTest {
     @Test
-    fun storagePartitionSelectsDefaultForRaftAppIsolatedForThirdPartyAndFailsClosedWithoutMultiProfile() {
-        // Layer 2 Raft App entry always uses Default (even on pre-119 Android without MULTI_PROFILE).
+    fun storagePartitionSelectsDefaultForRaftAppIsolatedForOutboundChildAndFailsClosedWithoutMultiProfile() {
+        // Installed Raft App always uses Default (even on pre-119 Android without MULTI_PROFILE).
         assertEquals(
             RaftMobileWebPanelLaunchResolution.OpenInPanel(
                 storagePartition = RaftWebViewStoragePartition.Default,
@@ -27,7 +27,7 @@ class RaftMobileWebPanelStateTest {
                 supportsIsolatedThirdPartyProfile = false,
             ),
         )
-        // Layer 3 third-party ordinary link uses IsolatedThirdParty when supported.
+        // Cross-origin outbound child page uses IsolatedThirdParty when supported.
         assertEquals(
             RaftMobileWebPanelLaunchResolution.OpenInPanel(
                 storagePartition = RaftWebViewStoragePartition.IsolatedThirdParty,
@@ -39,7 +39,7 @@ class RaftMobileWebPanelStateTest {
                 supportsIsolatedThirdPartyProfile = true,
             ),
         )
-        // Layer 3 third-party link fails closed to system browser when MULTI_PROFILE is unavailable (never Default).
+        // Fails closed to system browser when MULTI_PROFILE is unavailable (never Default).
         assertEquals(
             RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser,
             resolveRaftMobileWebPanelStorage(
@@ -95,17 +95,139 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
-    fun overflowMenuIncludesOpenInBrowserForBothLayers() {
-        val expected =
+    fun overflowMenuOffersOpenInBrowserForAllModesAndClosePageForInstalledApps() {
+        assertEquals(
             listOf(
                 RaftMobileWebPanelMenuAction.Reload,
                 RaftMobileWebPanelMenuAction.ForwardToRaft,
                 RaftMobileWebPanelMenuAction.Share,
                 RaftMobileWebPanelMenuAction.CopyLink,
                 RaftMobileWebPanelMenuAction.OpenInBrowser,
-            )
-        assertEquals(expected, raftMobileWebPanelMenuActions(isRaftApp = false))
-        assertEquals(expected, raftMobileWebPanelMenuActions(isRaftApp = true))
+                RaftMobileWebPanelMenuAction.ClosePage,
+            ),
+            raftMobileWebPanelMenuActions(isRaftApp = true, isOutboundChild = false),
+        )
+        assertEquals(
+            listOf(
+                RaftMobileWebPanelMenuAction.Reload,
+                RaftMobileWebPanelMenuAction.ForwardToRaft,
+                RaftMobileWebPanelMenuAction.Share,
+                RaftMobileWebPanelMenuAction.CopyLink,
+                RaftMobileWebPanelMenuAction.OpenInBrowser,
+            ),
+            raftMobileWebPanelMenuActions(isRaftApp = false, isOutboundChild = true),
+        )
+    }
+
+    @Test
+    fun crossOriginOutboundFromInstalledAppRoutesThirdPartyDomainsAndSkipsSameOriginAndRaftHosts() {
+        val appScope = "https://stamp.build"
+        val webBase = "https://app.raft.build"
+        val apiBase = "https://api.raft.build"
+
+        // Same-origin stays inside the authenticated Raft App WebView.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://stamp.build/s/raft/pull/42",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+            ),
+        )
+        // Cross-origin external link -> push unauthenticated domain-only child page.
+        assertTrue(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://github.com/botiverse/mobile/pull/42",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+            ),
+        )
+        // Raft own hosts and App Store restricted URLs stay handled by their dedicated guards.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://app.raft.build/s/hq/c/general",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+            ),
+        )
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://api.raft.build/api/oauth/authorize?client_id=x",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+            ),
+        )
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "https://checkout.stripe.com/c/pay/123",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = true,
+                appHosts = emptySet(),
+            ),
+        )
+        // Non-http(s) custom schemes stay handled by external app confirmation dialog.
+        assertFalse(
+            raftAppShouldRouteCrossOriginOutbound(
+                candidateUrl = "mailto:ops@example.com",
+                scopeOrigin = appScope,
+                activeWebBaseUrl = webBase,
+                activeApiBaseUrl = apiBase,
+                appStoreBillingRules = false,
+                appHosts = emptySet(),
+            ),
+        )
+    }
+
+    @Test
+    fun backActionResolvesWebHistoryOutboundPopAndAppSuspendToPill() {
+        assertEquals(
+            RaftAppBrowserBackAction.WebGoBack,
+            resolveRaftAppBrowserBackAction(canGoBack = true, isOutboundChild = false),
+        )
+        assertEquals(
+            RaftAppBrowserBackAction.WebGoBack,
+            resolveRaftAppBrowserBackAction(canGoBack = true, isOutboundChild = true),
+        )
+        assertEquals(
+            RaftAppBrowserBackAction.PopOutboundChild,
+            resolveRaftAppBrowserBackAction(canGoBack = false, isOutboundChild = true),
+        )
+        assertEquals(
+            RaftAppBrowserBackAction.SuspendAppToPill,
+            resolveRaftAppBrowserBackAction(canGoBack = false, isOutboundChild = false),
+        )
+    }
+
+    @Test
+    fun floatingPillVerticalBoundsClampWithinSafeAreaAndRoundTripFraction() {
+        val viewport = 844f
+        val pillHeight = 48f
+        val topBound = 112f
+        val bottomBound = 140f
+
+        val atTop = resolveRaftFloatingPillOffsetYPx(viewport, pillHeight, topBound, bottomBound, -0.5f)
+        val atBottom = resolveRaftFloatingPillOffsetYPx(viewport, pillHeight, topBound, bottomBound, 1.5f)
+        val atMid = resolveRaftFloatingPillOffsetYPx(viewport, pillHeight, topBound, bottomBound, 0.5f)
+
+        assertEquals(topBound, atTop)
+        assertEquals(viewport - bottomBound - pillHeight, atBottom)
+        assertEquals(topBound + (viewport - bottomBound - pillHeight - topBound) * 0.5f, atMid)
+        assertEquals(0f, clampRaftFloatingPillYFraction(0f, viewport, pillHeight, topBound, bottomBound))
+        assertEquals(1f, clampRaftFloatingPillYFraction(999f, viewport, pillHeight, topBound, bottomBound))
+        assertEquals(0.5f, clampRaftFloatingPillYFraction(atMid, viewport, pillHeight, topBound, bottomBound))
     }
 
     @Test
@@ -123,7 +245,6 @@ class RaftMobileWebPanelStateTest {
                 pageTitle = "  Push   Setup\nGuide  ",
             ),
         )
-        // Title equal to host or URL adds no extra line.
         assertEquals(
             "https://docs.example.com/push",
             formatWebPageForwardMessageBody(
@@ -163,7 +284,6 @@ class RaftMobileWebPanelStateTest {
         assertTrue(hiddenReq.isSettled)
         assertEquals(listOf<WebJsDialogResult>(WebJsDialogResult.Confirm(false)), hiddenResults)
 
-        // Become visible, present a prompt, then collapse panel -> auto-cancels with null once.
         state.onVisibilityChanged(true)
         val promptResults = mutableListOf<WebJsDialogResult>()
         val promptReq =
@@ -183,7 +303,6 @@ class RaftMobileWebPanelStateTest {
         state.confirmActive("too late")
         assertEquals(listOf<WebJsDialogResult>(WebJsDialogResult.Prompt(null)), promptResults)
 
-        // External platform cancellation (e.g. page navigation or renderer death) immediately clears activeRequest.
         state.onVisibilityChanged(true)
         val navCancelResults = mutableListOf<WebJsDialogResult>()
         val navCancelReq =
@@ -201,184 +320,184 @@ class RaftMobileWebPanelStateTest {
     }
 
     @Test
-    fun backActionGoesBackWithWebHistoryAndCollapsesKeepingAliveAtFirstEntry() {
-        assertEquals(
-            RaftMobileWebPanelBackAction.WebGoBack,
-            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Default88, canGoBack = true),
-        )
-        assertEquals(
-            RaftMobileWebPanelBackAction.WebGoBack,
-            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Fullscreen, canGoBack = true),
-        )
-        assertEquals(
-            RaftMobileWebPanelBackAction.CollapseKeepingAlive,
-            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Default88, canGoBack = false),
-        )
-        assertEquals(
-            RaftMobileWebPanelBackAction.CollapseKeepingAlive,
-            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Fullscreen, canGoBack = false),
-        )
-        assertEquals(
-            RaftMobileWebPanelBackAction.Ignore,
-            resolveRaftMobileWebPanelBackAction(RaftMobileWebPanelDetent.Collapsed, canGoBack = true),
-        )
-    }
-
-    @Test
-    fun backdropAlphaRemainsOpaqueWhenExpandedAndClampsSlideProgress() {
-        assertEquals(0f, resolveRaftMobileWebPanelBackdropAlpha(-0.25f))
-        assertEquals(0f, resolveRaftMobileWebPanelBackdropAlpha(0f))
-        assertEquals(0.5f, resolveRaftMobileWebPanelBackdropAlpha(0.5f))
-        assertEquals(1f, resolveRaftMobileWebPanelBackdropAlpha(1f))
-        assertEquals(1f, resolveRaftMobileWebPanelBackdropAlpha(1.25f))
-    }
-
-    @Test
-    fun dragTransitionsBetweenDefault88FullscreenAndCollapsed() {
-        assertEquals(
-            RaftMobileWebPanelDetent.Fullscreen,
-            resolveRaftMobileWebPanelDragTarget(
-                current = RaftMobileWebPanelDetent.Default88,
-                dragDeltaPx = -120f,
-                velocityYPxPerSec = 0f,
-                viewportHeightPx = 844f,
-            ),
-        )
-        assertEquals(
-            RaftMobileWebPanelDetent.Collapsed,
-            resolveRaftMobileWebPanelDragTarget(
-                current = RaftMobileWebPanelDetent.Default88,
-                dragDeltaPx = 120f,
-                velocityYPxPerSec = 0f,
-                viewportHeightPx = 844f,
-            ),
-        )
-        assertEquals(
-            RaftMobileWebPanelDetent.Default88,
-            resolveRaftMobileWebPanelDragTarget(
-                current = RaftMobileWebPanelDetent.Default88,
-                dragDeltaPx = 18f,
-                velocityYPxPerSec = 0f,
-                viewportHeightPx = 844f,
-            ),
-        )
-        // Dragging down from Fullscreen steps back to Default88 first.
-        assertEquals(
-            RaftMobileWebPanelDetent.Default88,
-            resolveRaftMobileWebPanelDragTarget(
-                current = RaftMobileWebPanelDetent.Fullscreen,
-                dragDeltaPx = 160f,
-                velocityYPxPerSec = 900f,
-                viewportHeightPx = 844f,
-            ),
-        )
-    }
-
-    @Test
-    fun coordinatorEnforcesSingleKeptAlivePageLifecycleTokenReleaseAndAccountSwitch() {
-        val releasedTokens = mutableListOf<Pair<String, String>>()
+    fun multiPageCoordinatorEnforcesFivePageCapTwoLiveLruHibernationAndSessionClear() {
+        val releasedTokens = mutableListOf<String>()
+        val evictedKeepAliveKeys = mutableListOf<String>()
         val coordinator =
             RaftMobileWebPanelCoordinator(
-                releaseEntryToken = { token, owner -> releasedTokens += token to owner },
-            )
-        val msgSource =
-            RaftMobileWebPanelSource.Message(
-                messageId = "msg-1",
-                authorName = "Xiaofan",
-                authorAvatarKind = RaftAvatarKind.Agent,
-                previewText = "Check iOS push setup",
-                timestampLabel = "10:04",
+                maxTabs = 5,
+                livePoolSize = 2,
+                releaseEntryToken = { token, _ -> releasedTokens += token },
+                evictKeepAlive = { key -> evictedKeepAliveKeys += key },
             )
 
-        // Open Layer 3 link -> Default88 detent, dynamic host label.
-        val first =
-            coordinator.open(
-                ownerHostId = "host-1",
-                launchUrl = "https://www.docs.example.com/push/ios-setup",
-                isRaftApp = false,
-                source = msgSource,
+        fun openApp(i: Int): RaftAppBrowserOpenResult =
+            coordinator.openOrActivateApp(
+                launchUrl = "https://app$i.example/home",
+                appEntryToken = "tok-$i",
+                request = RaftAppEntryRequest(scopeOrigin = "https://app$i.example", appName = "App $i", preferredServerId = "srv-1"),
                 accountId = "acct-1",
+                serverId = "srv-1",
                 environmentKey = "prod",
             )
-        assertEquals(RaftMobileWebPanelDetent.Default88, first.detent)
-        assertEquals("docs.example.com", first.keepOpenLabel)
 
-        // Dynamic navigation updates currentUrl and keepOpenLabel.
-        coordinator.updateCurrentUrl(first.sessionId, "https://accounts.example.com/login")
-        assertEquals("accounts.example.com", coordinator.session.value?.keepOpenLabel)
+        // Open tab 1 & navigate in-page: loadedBaseUrl stays launchUrl while live so warm resume won't reload.
+        val r1 = openApp(1)
+        assertEquals(1, coordinator.state.value.tabs.size)
+        assertEquals(r1.tab.tabId, coordinator.state.value.activeTabId)
+        assertFalse(coordinator.state.value.showFloatingPill)
+        coordinator.updateTabNavigation(r1.tab.tabId, "https://app1.example/pulls/99", "PR #99")
+        assertEquals("https://app1.example/home", coordinator.tabById(r1.tab.tabId)?.loadedBaseUrl)
+        assertEquals("https://app1.example/pulls/99", coordinator.tabById(r1.tab.tabId)?.currentUrl)
+        assertEquals("PR #99", coordinator.tabById(r1.tab.tabId)?.switcherPrimaryLabel)
 
-        // Collapse keeps page alive; reopen restores exact session.
-        assertTrue(coordinator.collapse(first.sessionId))
-        assertTrue(coordinator.session.value?.isCollapsedKeptAlive == true)
-        assertTrue(coordinator.expand(first.sessionId))
-        assertEquals(first.sessionId, coordinator.session.value?.sessionId)
-        assertEquals(RaftMobileWebPanelDetent.Default88, coordinator.session.value?.detent)
+        // Suspend tab 1 -> right-edge floating pill shows, tab 1 stays warm & keep-alive eligible.
+        assertTrue(coordinator.suspendTab(r1.tab.tabId))
+        assertTrue(coordinator.state.value.showFloatingPill)
+        assertTrue(coordinator.isKeepAliveEligible(r1.tab.keepAliveKey))
 
-        // Opening a Layer 2 Raft App replaces the previous kept page (strictly 1 kept page).
-        val appSession =
-            coordinator.open(
-                ownerHostId = "host-1",
-                launchUrl = "https://tracker.example/view/1",
-                appEntryToken = "tok-app-1",
-                appName = "Tracker",
-                isRaftApp = true,
-                source = msgSource,
+        // Open tab 2 -> both tab 1 and tab 2 stay live (2-live LRU pool).
+        val r2 = openApp(2)
+        assertEquals(2, coordinator.state.value.liveCount)
+        assertTrue(coordinator.tabById(r1.tab.tabId)?.isLive == true)
+        assertTrue(coordinator.tabById(r2.tab.tabId)?.isLive == true)
+        assertTrue(evictedKeepAliveKeys.isEmpty())
+
+        // Open tab 3 -> tab 1 (oldest LRU) hibernates, snapshots loadedBaseUrl=currentUrl, and evicts keep-alive WebView.
+        val r3 = openApp(3)
+        assertEquals(2, coordinator.state.value.liveCount)
+        assertEquals(listOf(r1.tab.tabId), r3.hibernatedTabs.map { it.tabId })
+        val hibernated1 = coordinator.tabById(r1.tab.tabId)
+        assertNotNull(hibernated1)
+        assertFalse(hibernated1.isLive)
+        assertFalse(coordinator.isKeepAliveEligible(hibernated1.keepAliveKey))
+        assertEquals("https://app1.example/pulls/99", hibernated1.loadedBaseUrl)
+        assertEquals(listOf(r1.tab.keepAliveKey), evictedKeepAliveKeys)
+
+        // Same-URL open deduplicates tab 1, reactivates it, releases redundant token, and hibernates tab 2.
+        val reused1 =
+            coordinator.openOrActivateApp(
+                launchUrl = "https://app1.example/pulls/99",
+                appEntryToken = "tok-dup",
+                request = RaftAppEntryRequest(scopeOrigin = "https://app1.example", appName = "App 1", preferredServerId = "srv-1"),
                 accountId = "acct-1",
+                serverId = "srv-1",
                 environmentKey = "prod",
             )
-        assertEquals("Tracker", appSession.keepOpenLabel)
-        assertTrue(releasedTokens.isEmpty())
+        assertTrue(reused1.reusedExisting)
+        assertEquals(r1.tab.tabId, reused1.tab.tabId)
+        assertTrue("tok-dup" in releasedTokens)
+        assertTrue(coordinator.tabById(r1.tab.tabId)?.isLive == true)
+        assertFalse(coordinator.tabById(r2.tab.tabId)?.isLive == true)
 
-        // Opening another link replaces the Raft App and immediately releases its entry token.
-        val third =
-            coordinator.open(
-                ownerHostId = "host-2",
-                launchUrl = "https://news.example.org/item",
-                appEntryToken = "tok-app-2",
-                appName = "News",
-                isRaftApp = true,
+        // Open tabs 4, 5 -> 5 open tabs max; opening tab 6 evicts oldest suspended tab (tab 2) and never active tab.
+        openApp(4)
+        val r5 = openApp(5)
+        assertEquals(5, coordinator.state.value.tabs.size)
+        val r6 = openApp(6)
+        assertEquals(5, coordinator.state.value.tabs.size)
+        assertEquals(r2.tab.tabId, r6.evictedTab?.tabId)
+        assertNull(coordinator.tabById(r2.tab.tabId))
+        assertTrue("tok-2" in releasedTokens)
+        assertTrue(r2.tab.keepAliveKey in evictedKeepAliveKeys)
+        assertEquals(r6.tab.tabId, coordinator.state.value.activeTabId)
+
+        // Memory pressure hibernates background live tab (r5) while protecting the active foreground tab (r6).
+        val pressureHibernated = coordinator.hibernateBackgroundTabs()
+        assertEquals(listOf(r5.tab.tabId), pressureHibernated.map { it.tabId })
+        assertTrue(coordinator.tabById(r6.tab.tabId)?.isLive == true)
+        assertFalse(coordinator.tabById(r5.tab.tabId)?.isLive == true)
+
+        // Closing one tab removes only that tab; server switch clears all remaining tabs.
+        assertTrue(coordinator.closeTab(r5.tab.tabId))
+        assertNull(coordinator.tabById(r5.tab.tabId))
+        assertEquals(4, coordinator.state.value.tabs.size)
+
+        coordinator.onSessionContextChanged(accountId = "acct-1", serverId = "srv-2", environmentKey = "prod")
+        assertTrue(coordinator.state.value.tabs.isEmpty())
+        assertNull(coordinator.state.value.activeTabId)
+        assertFalse(coordinator.state.value.showFloatingPill)
+    }
+
+    @Test
+    fun coordinatorClearsTabsOnLogoutAccountSwitchEnvironmentSwitchAndDroppedRailApp() {
+        val coordinator =
+            RaftMobileWebPanelCoordinator(
+                releaseEntryToken = { _, _ -> },
+                evictKeepAlive = {},
+            )
+
+        val stamp =
+            coordinator.openOrActivateApp(
+                launchUrl = "https://stamp.build/pulls/1",
+                appEntryToken = "tok-stamp",
+                request = RaftAppEntryRequest(scopeOrigin = "https://stamp.build", appName = "Stamp", preferredServerId = "srv-1"),
                 accountId = "acct-1",
+                serverId = "srv-1",
                 environmentKey = "prod",
+            ).tab
+        coordinator.openOrActivateApp(
+            launchUrl = "https://deck.example/board",
+            appEntryToken = "tok-deck",
+            request = RaftAppEntryRequest(scopeOrigin = "https://deck.example", appName = "Deck", preferredServerId = "srv-1"),
+            accountId = "acct-1",
+            serverId = "srv-1",
+            environmentKey = "prod",
+        )
+        assertEquals(2, coordinator.state.value.tabs.size)
+
+        // Dropped rail app removes only matching tab.
+        coordinator.closeByDroppedRailApp(origin = "https://stamp.build", appName = "Stamp")
+        assertNull(coordinator.tabById(stamp.tabId))
+        assertEquals(1, coordinator.state.value.tabs.size)
+
+        // Logout clears remaining tabs.
+        coordinator.onSessionContextChanged(accountId = null, serverId = null, environmentKey = "prod")
+        assertTrue(coordinator.state.value.tabs.isEmpty())
+
+        // Account switch clears tabs.
+        coordinator.openOrActivateApp(
+            launchUrl = "https://deck.example/board",
+            appEntryToken = "tok-deck-2",
+            request = RaftAppEntryRequest(scopeOrigin = "https://deck.example", appName = "Deck", preferredServerId = "srv-1"),
+            accountId = "acct-1",
+            serverId = "srv-1",
+            environmentKey = "prod",
+        )
+        coordinator.onSessionContextChanged(accountId = "acct-2", serverId = "srv-1", environmentKey = "prod")
+        assertTrue(coordinator.state.value.tabs.isEmpty())
+    }
+
+    @Test
+    fun onTabKeepAliveDroppedHibernatesSuspendedTabAndSnapshotsResumeUrl() {
+        val evictedKeepAliveKeys = mutableListOf<String>()
+        val coordinator =
+            RaftMobileWebPanelCoordinator(
+                releaseEntryToken = { _, _ -> },
+                evictKeepAlive = { evictedKeepAliveKeys += it },
             )
-        assertEquals(listOf("tok-app-1" to "host-1"), releasedTokens)
-        assertEquals(third.sessionId, coordinator.session.value?.sessionId)
-
-        // Low-memory clearCollapsed ignores expanded sessions, clears collapsed ones.
-        coordinator.clearCollapsed()
-        assertNotNull(coordinator.session.value)
-        coordinator.collapse(third.sessionId)
-        coordinator.clearCollapsed()
-        assertNull(coordinator.session.value)
-        assertEquals(listOf("tok-app-1" to "host-1", "tok-app-2" to "host-2"), releasedTokens)
-
-        // Account switch and sign-out destroy active/collapsed sessions and release tokens.
-        val fourth =
-            coordinator.open(
-                ownerHostId = "host-2",
-                launchUrl = "https://tracker.example/view/2",
-                appEntryToken = "tok-app-3",
-                appName = "Tracker",
-                isRaftApp = true,
+        val tab =
+            coordinator.openOrActivateApp(
+                launchUrl = "https://stamp.build/home",
+                appEntryToken = "tok-1",
+                request = RaftAppEntryRequest(scopeOrigin = "https://stamp.build", appName = "Stamp", preferredServerId = "srv-1"),
                 accountId = "acct-1",
+                serverId = "srv-1",
                 environmentKey = "prod",
-            )
-        coordinator.onAccountOrEnvironmentChanged(accountId = "acct-1", environmentKey = "prod")
-        assertNotNull(coordinator.session.value)
-        coordinator.onAccountOrEnvironmentChanged(accountId = "acct-2", environmentKey = "prod")
-        assertNull(coordinator.session.value)
-        assertEquals("tok-app-3" to "host-2", releasedTokens.last())
+            ).tab
+        coordinator.updateTabNavigation(tab.tabId, "https://stamp.build/pulls/42", "PR #42")
+        // Foreground tab ignores keep-alive drop signal.
+        coordinator.onTabKeepAliveDropped(tab.keepAliveKey)
+        assertTrue(coordinator.tabById(tab.tabId)?.isLive == true)
+        assertEquals("https://stamp.build/home", coordinator.tabById(tab.tabId)?.loadedBaseUrl)
 
-        // Explicit close on a stale sessionId is a no-op; on current sessionId destroys and releases.
-        assertFalse(coordinator.close(fourth.sessionId))
-        val fifth =
-            coordinator.open(
-                ownerHostId = "host-2",
-                launchUrl = "https://docs.example.com/a",
-                isRaftApp = false,
-                accountId = "acct-2",
-                environmentKey = "prod",
-            )
-        assertTrue(coordinator.close(fifth.sessionId))
-        assertNull(coordinator.session.value)
+        // Once suspended, platform drop (theme switch / parked renderer gone) marks Hibernated & snapshots resumeUrl.
+        assertTrue(coordinator.suspendTab(tab.tabId))
+        coordinator.onTabKeepAliveDropped(tab.keepAliveKey)
+        val afterDrop = coordinator.tabById(tab.tabId)
+        assertNotNull(afterDrop)
+        assertFalse(afterDrop.isLive)
+        assertEquals("https://stamp.build/pulls/42", afterDrop.loadedBaseUrl)
+        assertTrue(evictedKeepAliveKeys.isEmpty())
     }
 }

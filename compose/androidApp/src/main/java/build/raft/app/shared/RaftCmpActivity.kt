@@ -8529,6 +8529,7 @@ internal class RaftBridgeModule(
                 JSONObject()
                         .put("pageName", RaftPages.IN_APP_BROWSER)
                         .put("url", url)
+                        .put("outbound", true)
         return runCatching {
             RaftCmpActivity.start(activity ?: appContext, RaftPages.IN_APP_BROWSER, pageData)
         }.onFailure { throwable ->

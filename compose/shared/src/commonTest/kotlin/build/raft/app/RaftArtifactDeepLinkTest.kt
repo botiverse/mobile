@@ -100,7 +100,9 @@ class RaftArtifactDeepLinkTest {
     @Test
     fun anArtifactsWebPageOpensAsThePageNotTheViewer() {
         // A card's Open in New Page and the viewer's fallbacks open `artifactWebUrl` as a Raft web
-        // page: never the viewer, in the in-app or a real browser as the link setting says.
+        // page: never the viewer. With Phase 2's link routing split (retiring LinkOpenMode), when
+        // openRaftWebPageInApp is absent it opens via openRaftWebPageInBrowser regardless of any
+        // legacy LinkOpenMode.
         val opened = mutableListOf<String>()
         fun navigator(mode: LinkOpenMode) =
             RaftLinkNavigator(
@@ -117,13 +119,13 @@ class RaftArtifactDeepLinkTest {
             )
         val page = artifactWebUrl("", ArtifactLinkTarget("pt_abc123", 2))
         val stagingPage = artifactWebUrl(staging, ArtifactLinkTarget("pt_abc123"))
-        assertEquals(RaftLinkOpenTarget.InAppBrowser, navigator(LinkOpenMode.InAppBrowser).open(page, RaftLinkOpenIntent.RaftWebPage).target)
+        assertEquals(RaftLinkOpenTarget.ExternalBrowser, navigator(LinkOpenMode.InAppBrowser).open(page, RaftLinkOpenIntent.RaftWebPage).target)
         assertEquals(RaftLinkOpenTarget.ExternalBrowser, navigator(LinkOpenMode.SystemBrowser).open(page, RaftLinkOpenIntent.RaftWebPage).target)
         navigator(LinkOpenMode.InAppBrowser).open(stagingPage, RaftLinkOpenIntent.RaftWebPage)
         // The same address tapped as a link is the viewer's.
         assertEquals(RaftLinkOpenTarget.ArtifactViewer, navigator(LinkOpenMode.InAppBrowser).open(page).target)
         assertEquals(
-            listOf("in_app:$page", "browser:$page", "in_app:$stagingPage", "viewer:pt_abc123"),
+            listOf("browser:$page", "browser:$page", "browser:$stagingPage", "viewer:pt_abc123"),
             opened,
         )
     }

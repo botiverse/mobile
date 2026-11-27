@@ -47,6 +47,12 @@ internal expect fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String):
 /** Destroys every kept WebView (sign-out, an account or server switch, a 403/404). */
 internal expect fun raftWebViewKeepAliveClear()
 
+/** Destroys any parked WebView matching [key] (tab closed, evicted, or hibernated). */
+internal expect fun raftWebViewKeepAliveEvict(key: String)
+
+/** Hibernates background App WebViews and trims pooled instances under OS memory pressure. */
+internal expect fun raftWebViewKeepAliveOnMemoryPressure(critical: Boolean)
+
 /**
  * Origins whose persistent WebView storage holds Raft web auth tokens (the active environment's
  * web origin plus known Raft app hosts). Clearing only these origins preserves third-party site

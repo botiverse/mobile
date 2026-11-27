@@ -6891,6 +6891,14 @@
     <string name="in_app_browser_external_app_title">¿Abrir en otra app?</string>
     <string name="in_app_browser_external_app_message">Esta página quiere abrir "%1$s" en otra app.</string>
     <string name="in_app_browser_external_app_open">Abrir</string>
+    <string name="in_app_browser_close_page">Cerrar página</string>
+    <string name="in_app_browser_open_pages_title">Páginas abiertas (%1$d)</string>
+    <string name="in_app_browser_open_pages_a11y">%1$d páginas abiertas</string>
+    <string name="in_app_browser_close_all_pages">Cerrar todo</string>
+    <string name="in_app_browser_floating_pill_single_a11y">Reanudar %1$s</string>
+    <string name="in_app_browser_floating_pill_multi_a11y">%1$d páginas abiertas, toca para cambiar</string>
+    <string name="in_app_browser_tab_state_live">Activa</string>
+    <string name="in_app_browser_tab_state_hibernated">En reposo</string>
     <string name="server_panel_recently_used">Usados recientemente</string>
     <string name="mobile_nav_edit_reset">Restablecer</string>
     <string name="mobile_nav_edit_tab_bar">Barra de pestañas</string>

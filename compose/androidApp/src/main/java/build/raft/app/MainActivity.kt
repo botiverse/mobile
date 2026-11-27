@@ -949,6 +949,9 @@ private const val CustomTabsExtraSession = "android.support.customtabs.extra.SES
 private const val CustomTabsExtraTitleVisibility = "android.support.customtabs.extra.TITLE_VISIBILITY"
 private const val CustomTabsExtraShareState = "android.support.customtabs.extra.SHARE_STATE"
 private const val CustomTabsExtraInstantAppsEnabled = "android.support.customtabs.extra.INSTANT_APPS_ENABLED"
+private const val CustomTabsExtraColorScheme = "androidx.browser.customtabs.extra.COLOR_SCHEME"
+private const val CustomTabsColorSchemeLight = 1
+private const val CustomTabsColorSchemeDark = 2
 private const val AndroidResolverPackage = "android"
 
 internal fun shouldPreferDefaultCustomTabs(
@@ -1026,6 +1029,10 @@ internal fun androidDefaultCustomTabsIntent(
         putExtra(CustomTabsExtraTitleVisibility, 1)
         putExtra(CustomTabsExtraShareState, 1)
         putExtra(CustomTabsExtraInstantAppsEnabled, true)
+        putExtra(
+            CustomTabsExtraColorScheme,
+            if (build.raft.app.data.RaftAppAppearanceRuntime.isDark) CustomTabsColorSchemeDark else CustomTabsColorSchemeLight,
+        )
         if (addNewTaskFlag) {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }

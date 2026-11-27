@@ -8,6 +8,7 @@ import build.raft.webcontainer.WebContainerIosKeepAlive
 import build.raft.webcontainer.WebContainerIosSparePool
 import build.raft.webcontainer.WebIsolationScope
 import build.raft.webcontainer.parseWebContainerOrigin
+import build.raft.webcontainer.pool.WebMemoryTrimLevel
 import kotlin.coroutines.resume
 import kotlin.time.TimeSource
 import kotlinx.cinterop.useContents
@@ -38,9 +39,107 @@ import platform.WebKit.WKWebView
 import platform.WebKit.WKWebsiteDataRecord
 import platform.WebKit.WKWebsiteDataStore
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
-// Legacy RaftIosSandboxWebView has no document keep-alive (uses RaftIosWebViewSpare only);
-// `compose/web-container` backs multi-slot keep-alive on iOS via WebContainerIosKeepAlive.
+/**
+ * 2-slot LRU keep-alive pool for suspended iOS installed Raft App `WKWebView` containers
+ * (`keepAliveKey` prefixed with [RAFT_APP_BROWSER_KEEP_ALIVE_PREFIX]). Main thread only.
+ */
+internal object RaftIosAppBrowserWebViewPool {
+    private const val LOG_TAG = "SlockWebViewKeepAlive"
+    private val pool = LinkedHashMap<String, RaftIosSandboxWebViewContainer>()
+
+    fun take(key: String, events: RaftWebViewEvents): RaftIosSandboxWebViewContainer? {
+        if (!NSThread.isMainThread || !key.startsWith(RAFT_APP_BROWSER_KEEP_ALIVE_PREFIX)) return null
+        dropIfOtherThemeMode()
+        val container = pool.remove(key) ?: return null
+        if (!container.webViewHost.isHealthyForKeepAlive()) {
+            container.webViewHost.dispose()
+            return null
+        }
+        container.webViewHost.attachFromKeepAlive(events)
+        raftLogInfo(LOG_TAG, "ios_app_pool result=reused remaining=${pool.size}")
+        return container
+    }
+
+    fun park(container: RaftIosSandboxWebViewContainer): Boolean {
+        if (!NSThread.isMainThread) return false
+        val key = container.webViewHost.keepAliveKey ?: return false
+        if (!key.startsWith(RAFT_APP_BROWSER_KEEP_ALIVE_PREFIX)) return false
+        if (
+            !container.webViewHost.isHealthyForKeepAlive() ||
+            container.webViewHost.builtDark != RaftAppThemeState.isDark ||
+            !RaftMobileWebPanelCoordinator.process.isKeepAliveEligible(key)
+        ) {
+            if (pool[key] === container) pool.remove(key)
+            return false
+        }
+        dropIfOtherThemeMode()
+        pool.remove(key)?.takeIf { it !== container }?.webViewHost?.dispose()
+        while (pool.size >= RAFT_APP_BROWSER_LIVE_POOL_SIZE) {
+            val eldestKey = pool.keys.firstOrNull() ?: break
+            pool.remove(eldestKey)?.webViewHost?.dispose()
+        }
+        container.webViewHost.detachForKeepAlive()
+        pool[key] = container
+        raftLogInfo(LOG_TAG, "ios_app_pool result=parked size=${pool.size}")
+        return true
+    }
+
+    fun dropIfSame(container: RaftIosSandboxWebViewContainer, reason: String) {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { dropIfSame(container, reason) }
+            return
+        }
+        val key = pool.entries.firstOrNull { it.value === container }?.key ?: return
+        pool.remove(key)
+        container.webViewHost.dispose()
+        RaftMobileWebPanelCoordinator.process.onTabKeepAliveDropped(key)
+        raftLogInfo(LOG_TAG, "ios_app_pool result=dropped reason=$reason")
+    }
+
+    fun evict(key: String, reason: String = "evicted") {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { evict(key, reason) }
+            return
+        }
+        pool.remove(key)?.let { container ->
+            container.webViewHost.dispose()
+            raftLogInfo(LOG_TAG, "ios_app_pool result=dropped reason=$reason")
+        }
+    }
+
+    fun clearAll(reason: String) {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { clearAll(reason) }
+            return
+        }
+        if (pool.isEmpty()) return
+        val containers = pool.values.toList()
+        pool.clear()
+        containers.forEach { it.webViewHost.dispose() }
+        raftLogInfo(LOG_TAG, "ios_app_pool result=cleared count=${containers.size} reason=$reason")
+    }
+
+    private fun dropIfOtherThemeMode() {
+        val stale =
+            pool.entries
+                .filter { (_, container) ->
+                    container.webViewHost.builtDark != RaftAppThemeState.isDark ||
+                        !container.webViewHost.isHealthyForKeepAlive()
+                }
+                .map { it.key }
+        for (key in stale) {
+            pool.remove(key)?.webViewHost?.dispose()
+            RaftMobileWebPanelCoordinator.process.onTabKeepAliveDropped(key)
+        }
+    }
+}
+
+// Legacy RaftIosSandboxWebView parks up to 2 installed Raft App WebViews via
+// RaftIosAppBrowserWebViewPool; `compose/web-container` backs multi-slot keep-alive on iOS via
+// WebContainerIosKeepAlive.
 internal actual fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocument? =
     if (!NSThread.isMainThread) {
         null
@@ -71,6 +170,7 @@ internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, scrip
 }
 
 internal actual fun raftWebViewKeepAliveDrop(key: String) {
+    RaftIosAppBrowserWebViewPool.evict(key, "dropped")
     runCatching { WebContainerIosKeepAlive.dropAllThemes(key, WebIsolationScope.Default) }
 }
 
@@ -98,7 +198,25 @@ internal actual fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String):
     }
 
 internal actual fun raftWebViewKeepAliveClear() {
+    RaftIosAppBrowserWebViewPool.clearAll("cleared")
     runCatching { WebContainerIosKeepAlive.clearAll() }
+}
+
+internal actual fun raftWebViewKeepAliveEvict(key: String) {
+    val clean = key.trim()
+    if (clean.isEmpty()) return
+    RaftIosAppBrowserWebViewPool.evict(clean, "evicted")
+    runCatching { WebContainerIosKeepAlive.evictKey(clean) }
+}
+
+internal actual fun raftWebViewKeepAliveOnMemoryPressure(critical: Boolean) {
+    RaftMobileWebPanelCoordinator.process.hibernateBackgroundTabs()
+    RaftIosAppBrowserWebViewPool.clearAll("memory_warning")
+    runCatching {
+        WebContainerIosKeepAlive.onMemoryPressure(
+            if (critical) WebMemoryTrimLevel.CRITICAL else WebMemoryTrimLevel.MODERATE,
+        )
+    }
 }
 
 internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<String>) {
@@ -109,6 +227,7 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
             }
             .toSet()
     val runOnMain: suspend () -> Unit = {
+        runCatching { RaftIosAppBrowserWebViewPool.clearAll("logout") }
         runCatching { RaftIosWebViewSpare.drop("logout") }
         runCatching { WebContainerIosSparePool.drop("logout") }
         runCatching { WebContainerIosKeepAlive.clearAll() }
@@ -260,6 +379,7 @@ internal object RaftIosWebViewSpare {
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(UIApplicationDidReceiveMemoryWarningNotification, null, NSOperationQueue.mainQueue) { _ ->
             drop("memory_warning")
+            raftWebViewKeepAliveOnMemoryPressure(critical = true)
         }
         center.addObserverForName(UIApplicationDidBecomeActiveNotification, null, NSOperationQueue.mainQueue) { _ ->
             refillLater(WARM_DELAY_SECONDS)

@@ -726,8 +726,6 @@ internal fun StandaloneSettingsWebViewContent(
         }
     var documentReady by remember(webUrl, hostAuthBinding?.webViewGeneration) { mutableStateOf(false) }
 
-    val webPanelHost = LocalRaftMobileWebPanelHost.current
-    val appsSourceLabel = stringResource(Res.string.mobile_web_panel_apps_source)
     LaunchedEffect(pendingHostOpenExternal) {
         val decision = pendingHostOpenExternal ?: return@LaunchedEffect
         val clearScript = settingsWebViewHostOpenExternalTakenScript(webUrl, decision.previousHash)
@@ -736,9 +734,6 @@ internal fun StandaloneSettingsWebViewContent(
         }
         val target = decision.targetUrl
         if (target != null) {
-            if (spec.opensAppEntries) {
-                webPanelHost?.setPendingSource(RaftMobileWebPanelSource.Surface(appsSourceLabel))
-            }
             val loggedUrl =
                 if (spec.surface == SettingsWebViewSurface.WebPage) raftOwnWebUrlForLog(target) else raftWebViewUrlForLog(target)
             val result =

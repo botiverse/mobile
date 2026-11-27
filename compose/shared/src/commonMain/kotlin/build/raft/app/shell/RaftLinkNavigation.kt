@@ -19,13 +19,10 @@ import build.raft.app.base.BridgeModule
 import build.raft.app.base.Utils
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.data.ArtifactLinkTarget
-import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
-import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
-import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
@@ -187,6 +184,8 @@ internal fun raftInAppBrowserPageData(
     rawUrl: String,
     replaceCurrentPage: Boolean = false,
     appEntryToken: String? = null,
+    tabId: Long? = null,
+    outbound: Boolean = false,
 ): JSONObject? {
     val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.InAppBrowser)
     if (decision.target != RaftLinkOpenTarget.InAppBrowser) return null
@@ -195,6 +194,8 @@ internal fun raftInAppBrowserPageData(
         put(RAFT_IN_APP_BROWSER_URL_KEY, decision.url)
         if (replaceCurrentPage) put(build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE, true)
         appEntryToken?.trim()?.takeIf { it.isNotEmpty() }?.let { put(RAFT_IN_APP_BROWSER_APP_ENTRY_KEY, it) }
+        tabId?.takeIf { it > 0L }?.let { put(RAFT_IN_APP_BROWSER_TAB_ID_KEY, it.toString()) }
+        if (outbound) put(RAFT_IN_APP_BROWSER_OUTBOUND_KEY, true)
     }
 }
 
@@ -206,17 +207,27 @@ internal fun JSONObject.raftInAppBrowserUrlOrNull(): String? =
 internal fun JSONObject.raftInAppBrowserAppEntryTokenOrNull(): String? =
     optString(RAFT_IN_APP_BROWSER_APP_ENTRY_KEY).trim().takeIf { it.isNotEmpty() }
 
+internal fun JSONObject.raftInAppBrowserTabIdOrNull(): Long? =
+    optString(RAFT_IN_APP_BROWSER_TAB_ID_KEY).trim().toLongOrNull()?.takeIf { it > 0L }
+
+internal fun JSONObject.raftInAppBrowserIsOutbound(): Boolean =
+    optBoolean(RAFT_IN_APP_BROWSER_OUTBOUND_KEY, false)
+
 internal fun Pager.openRaftInAppBrowserPage(
     rawUrl: String,
     storeScopeOverride: RaftShellStoreScope? = null,
     replaceCurrentPage: Boolean = false,
     appEntryToken: String? = null,
+    tabId: Long? = null,
+    outbound: Boolean = false,
 ): Boolean {
     val pageData =
         raftInAppBrowserPageData(
             rawUrl = rawUrl,
             replaceCurrentPage = replaceCurrentPage,
             appEntryToken = appEntryToken,
+            tabId = tabId,
+            outbound = outbound,
         ) ?: return false
     return openRaftPage(
         pageName = RAFT_IN_APP_BROWSER_PAGE,
@@ -229,23 +240,74 @@ internal fun Pager.openUnscopedRaftInAppBrowserPage(
     rawUrl: String,
     replaceCurrentPage: Boolean = false,
     appEntryToken: String? = null,
+    tabId: Long? = null,
+    outbound: Boolean = false,
 ): Boolean {
     val pageData =
         raftInAppBrowserPageData(
             rawUrl = rawUrl,
             replaceCurrentPage = replaceCurrentPage,
             appEntryToken = appEntryToken,
+            tabId = tabId,
+            outbound = outbound,
         ) ?: return false
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
         .openPage(RAFT_IN_APP_BROWSER_PAGE, pageData)
     return true
 }
 
+/** Pushes a managed installed Raft App tab right-to-left onto [RaftMobileStackPages]. */
+internal fun Pager.openRaftInAppBrowserTab(
+    tab: RaftAppBrowserTab,
+    storeScopeOverride: RaftShellStoreScope? = null,
+    routeScope: RaftInAppBrowserRouteScope = RaftInAppBrowserRouteScope.InheritShell,
+): Boolean =
+    when (routeScope) {
+        RaftInAppBrowserRouteScope.InheritShell ->
+            openRaftInAppBrowserPage(
+                rawUrl = tab.loadedBaseUrl,
+                storeScopeOverride = storeScopeOverride,
+                appEntryToken = tab.appEntryToken,
+                tabId = tab.tabId,
+                outbound = false,
+            )
+        RaftInAppBrowserRouteScope.Unscoped ->
+            openUnscopedRaftInAppBrowserPage(
+                rawUrl = tab.loadedBaseUrl,
+                appEntryToken = tab.appEntryToken,
+                tabId = tab.tabId,
+                outbound = false,
+            )
+    }
+
+/** Pushes an unauthenticated cross-origin child page right-to-left over an open Raft App page. */
+internal fun Pager.openRaftInAppBrowserOutboundChild(
+    rawUrl: String,
+    storeScopeOverride: RaftShellStoreScope? = null,
+): Boolean =
+    if (storeScopeOverride != null) {
+        openRaftInAppBrowserPage(
+            rawUrl = rawUrl,
+            storeScopeOverride = storeScopeOverride,
+            outbound = true,
+        )
+    } else {
+        openUnscopedRaftInAppBrowserPage(
+            rawUrl = rawUrl,
+            outbound = true,
+        )
+    }
+
 internal class RaftLinkNavigator(
-    private val modeProvider: () -> LinkOpenMode,
+    private val modeProvider: () -> LinkOpenMode = { LinkOpenMode.SystemBrowser },
     private val openInAppBrowser: (String) -> Boolean,
     private val openExternalBrowser: (String) -> Unit,
     private val onRejected: (RaftLinkRejectReason) -> Unit,
+    /**
+     * System in-app browser for ordinary non-installed-App `http`/`https` external links
+     * (#proj-mobile:7420d9de: Android Chrome Custom Tabs / iOS `SFSafariViewController`).
+     */
+    private val openSystemInAppBrowser: (String) -> Unit = openExternalBrowser,
     /** [RaftLinkOpenIntent.RaftWebPage] in the default browser: a browser even for a Raft link. */
     private val openRaftWebPageInBrowser: (String) -> Unit = openExternalBrowser,
     /**
@@ -430,7 +492,10 @@ internal class RaftLinkNavigator(
         intent: RaftLinkOpenIntent = RaftLinkOpenIntent.Ordinary,
     ): RaftLinkOpenDecision {
         cancelPendingInstalledAppLookup()
-        val decision = resolveRaftLinkOpenDecision(rawUrl, modeProvider(), intent)
+        // #proj-mobile:7420d9de: only installed Raft Apps open in Raft's in-app browser; all
+        // ordinary external http(s) links route directly to the system in-app browser
+        // (Chrome Custom Tabs / SFSafariViewController) regardless of any legacy LinkOpenMode.
+        val decision = resolveRaftLinkOpenDecision(rawUrl, LinkOpenMode.SystemBrowser, intent)
         // App Store Guideline 3.1.1: intercept billing, /servers/*/upgrade, and Stripe URLs before
         // any in-app WebView or SFSafariViewController path can open them on iOS.
         if (decision.target != RaftLinkOpenTarget.Rejected && isAppStoreRestrictedPurchaseUrl(decision.url)) {
@@ -549,10 +614,16 @@ internal class RaftLinkNavigator(
             }
             RaftLinkOpenTarget.ExternalBrowser -> {
                 clearPendingWebPanelSource()
-                if (intent == RaftLinkOpenIntent.RaftWebPage || intent == RaftLinkOpenIntent.RaftWebPageInBrowser) {
-                    openRaftWebPageInBrowser(decision.url)
-                } else {
-                    openExternalBrowser(decision.url)
+                val isHttpUrl =
+                    decision.url.startsWith("https://", ignoreCase = true) ||
+                        decision.url.startsWith("http://", ignoreCase = true)
+                when {
+                    intent == RaftLinkOpenIntent.RaftWebPage || intent == RaftLinkOpenIntent.RaftWebPageInBrowser ->
+                        openRaftWebPageInBrowser(decision.url)
+                    intent == RaftLinkOpenIntent.Ordinary && isHttpUrl ->
+                        openSystemInAppBrowser(decision.url)
+                    else ->
+                        openExternalBrowser(decision.url)
                 }
                 decision
             }
@@ -626,23 +697,12 @@ internal fun rememberRaftLinkNavigator(
     bridge: BridgeModule,
     routeScope: RaftInAppBrowserRouteScope = RaftInAppBrowserRouteScope.InheritShell,
     artifactConversationId: String? = null,
-    useWebPanelHost: Boolean = true,
     installedAppServerId: String? = null,
 ): RaftLinkNavigator {
-    // Lazy: every page has a navigator (ProvideRaftLinkOpening), few of them open a link.
-    val preferenceRepository =
-        remember {
-            lazy {
-                PersistentLinkOpenPreferenceRepository(
-                    KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
-                )
-            }
-        }
     val rejectedMessage = stringResource(Res.string.in_app_browser_unable_to_open_link)
     // An app-shell tab's page has no scope of its own: the viewer opens with the tab's ([LocalRaftArtifactOpenStoreScope]).
     val artifactStoreScope = LocalRaftArtifactOpenStoreScope.current
     val artifactConversation = raftArtifactViewerHostConversationOrNull(artifactConversationId)
-    val webPanelHost = if (useWebPanelHost) LocalRaftMobileWebPanelHost.current else null
     val cleanInstalledAppServerId = installedAppServerId?.trim()?.takeIf { it.isNotEmpty() }
     val installedAppCoroutineScope = rememberCoroutineScope()
     val pendingInstalledAppGate =
@@ -656,12 +716,10 @@ internal fun rememberRaftLinkNavigator(
     return remember(
         pager,
         bridge,
-        preferenceRepository,
         routeScope,
         rejectedMessage,
         artifactStoreScope,
         artifactConversation,
-        webPanelHost,
         cleanInstalledAppServerId,
         installedAppCoroutineScope,
         pendingInstalledAppGate,
@@ -670,19 +728,51 @@ internal fun rememberRaftLinkNavigator(
             val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
             return "${env.webUrl}|${env.apiBaseUrl}"
         }
-        RaftLinkNavigator(
-            modeProvider = { effectiveLinkOpenMode(preferenceRepository.value.getLinkOpenModeSync()) },
-            openInAppBrowser = { url ->
-                if (webPanelHost != null) {
-                    webPanelHost.openLink(url = url, environmentKey = currentEnvironmentKey())
+        fun openManagedAppTab(
+            url: String,
+            appEntryToken: String,
+            request: RaftAppEntryRequest,
+        ): Boolean {
+            val sharedStores = RaftSharedStoreRegistry.get(bridge)
+            val session = runCatching { sharedStores.authStore.readCommittedSessionSnapshot() }.getOrNull()
+            val serverId =
+                request.preferredServerId?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: cleanInstalledAppServerId
+                    ?: session?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+            val result =
+                RaftMobileWebPanelCoordinator.process.openOrActivateApp(
+                    launchUrl = url,
+                    appEntryToken = appEntryToken,
+                    request = request,
+                    accountId = session?.user?.id,
+                    serverId = serverId,
+                    environmentKey = currentEnvironmentKey(),
+                )
+            val opened =
+                pager.openRaftInAppBrowserTab(
+                    tab = result.tab,
+                    storeScopeOverride = artifactStoreScope,
+                    routeScope = routeScope,
+                )
+            if (!opened) {
+                if (result.reusedExisting) {
+                    RaftMobileWebPanelCoordinator.process.suspendTab(result.tab.tabId)
                 } else {
-                    when (routeScope) {
-                        RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url)
-                        RaftInAppBrowserRouteScope.Unscoped -> pager.openUnscopedRaftInAppBrowserPage(url)
-                    }
+                    RaftMobileWebPanelCoordinator.process.closeTab(result.tab.tabId)
+                }
+            }
+            return opened
+        }
+        RaftLinkNavigator(
+            modeProvider = { LinkOpenMode.SystemBrowser },
+            openInAppBrowser = { url ->
+                when (routeScope) {
+                    RaftInAppBrowserRouteScope.InheritShell -> pager.openRaftInAppBrowserPage(url, outbound = true)
+                    RaftInAppBrowserRouteScope.Unscoped -> pager.openUnscopedRaftInAppBrowserPage(url, outbound = true)
                 }
             },
-            openExternalBrowser = { url -> bridge.openUrl(url) },
+            openExternalBrowser = { url -> bridge.openUrl(url, externalBrowser = true) },
+            openSystemInAppBrowser = { url -> bridge.openUrl(url, systemInAppBrowser = true) },
             onRejected = { reason ->
                 bridge.logWarn("link_open_rejected reason=${reason.name.lowercase()}")
                 bridge.toast(rejectedMessage)
@@ -748,19 +838,8 @@ internal fun rememberRaftLinkNavigator(
                         pager.openUnscopedRaftInAppBrowserPage(url, appEntryToken = appEntryToken)
                 }
             },
-            openInAppBrowserWithEntryRequest =
-                webPanelHost?.let { panelHost ->
-                    { url, appEntryToken, request ->
-                        panelHost.openAppEntry(
-                            url = url,
-                            appEntryToken = appEntryToken,
-                            request = request,
-                            environmentKey = currentEnvironmentKey(),
-                        )
-                    }
-                },
+            openInAppBrowserWithEntryRequest = ::openManagedAppTab,
             supportsIsolatedWebViewProfile = ::raftPlatformSupportsIsolatedWebViewProfile,
-            clearPendingWebPanelSource = { webPanelHost?.clearPendingSource() },
             raftHostsProvider = {
                 val env = RaftSharedStoreRegistry.get(bridge).apiEnvironmentStore.current()
                 raftBrowserRaftHosts(env.webUrl, env.apiBaseUrl)
@@ -798,9 +877,20 @@ internal fun rememberRaftLinkNavigator(
                         railPlacesMatch(cleanInstalledAppServerId) ?: cached
                     }
                 } else {
-                    val activeServerId = sharedStores.railPlacesStore.state.value.activeServerId
+                    val activeServerId =
+                        sharedStores.railPlacesStore.state.value.activeServerId
+                            ?: runCatching { sharedStores.authStore.readCommittedSessionSnapshot()?.currentServerId }
+                                .getOrNull()
+                                ?.trim()
+                                ?.takeIf { it.isNotEmpty() }
                     if (activeServerId != null) {
-                        railPlacesMatch(activeServerId) ?: RaftInstalledAppSyncLookup.KnownNotInstalled
+                        val scope = sharedStores.currentInstalledAppScopeSync(activeServerId)
+                        val cached = scope?.let { sharedStores.installedAppOriginsCache.lookupSync(it, candidateOrigin) }
+                        if (cached is RaftInstalledAppSyncLookup.Matched) {
+                            cached
+                        } else {
+                            railPlacesMatch(activeServerId) ?: RaftInstalledAppSyncLookup.KnownNotInstalled
+                        }
                     } else {
                         RaftInstalledAppSyncLookup.KnownNotInstalled
                     }
@@ -809,7 +899,6 @@ internal fun rememberRaftLinkNavigator(
             lookupInstalledAppAsync =
                 if (cleanInstalledAppServerId != null && pendingInstalledAppGate != null) {
                     { _, candidateOrigin, onMatched, onFallback ->
-                        val capturedSource = webPanelHost?.consumePendingSource()
                         pendingInstalledAppGate.launchLatest(
                             scope = installedAppCoroutineScope,
                             load = {
@@ -835,9 +924,6 @@ internal fun rememberRaftLinkNavigator(
                                 scope to matched
                             },
                             onComplete = { (scope, matched) ->
-                                if (capturedSource != null) {
-                                    webPanelHost?.setPendingSource(capturedSource)
-                                }
                                 if (scope != null && matched != null && matched.origin == candidateOrigin) {
                                     onMatched(matched, scope.serverId)
                                 } else {
@@ -935,51 +1021,42 @@ internal fun rememberRaftAppLinkCardLeavesRaft(
  * The one way a page opens a link (artin, Hands ff72869f): Compose's [LocalUriHandler] default starts its own
  * VIEW, so anything reading it opened differently from a message link. Every page sits under this (BasePager).
  *
- * On mobile (outside [ComposeRaftInAppBrowserPage] and embedded child pages that already inherit a
- * parent window's host), also installs the unified bottom-rising mobile web panel overlay
- * ([RaftMobileWebPanelOverlay]) so third-party links and Raft Apps open in-place over the page.
+ * On mobile (outside [ComposeRaftInAppBrowserPage] and embedded child pages whose parent already
+ * hosts the pill), also installs [RaftFloatingBrowserTabPillHost] so suspended installed Raft Apps
+ * remain one tap away via the right-edge magnetic floating pill across Home & Conversations.
  */
 @Composable
 internal fun ProvideRaftLinkOpening(pager: Pager, content: @Composable () -> Unit) {
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
-    val parentWebPanelHost = LocalRaftMobileWebPanelHost.current
-    val ownsWebPanelHost =
-        parentWebPanelHost == null &&
+    val parentHasPillHost = LocalRaftFloatingBrowserPillHostMounted.current
+    val ownsPillHost =
+        !parentHasPillHost &&
             raftPlatformSupportsInAppBrowser() &&
             pager !is ComposeRaftInAppBrowserPage
-    val ownedWebPanelHost =
-        if (ownsWebPanelHost) {
-            remember(pager.pagerId) { RaftMobileWebPanelHostController(hostId = pager.pagerId) }
-        } else {
-            null
+    val navigator = rememberRaftLinkNavigator(pager, bridge)
+    val uriHandler =
+        remember(navigator) {
+            object : UriHandler {
+                override fun openUri(uri: String) {
+                    navigator.open(uri)
+                }
+            }
         }
-    val effectiveWebPanelHost = ownedWebPanelHost ?: parentWebPanelHost
-    CompositionLocalProvider(LocalRaftMobileWebPanelHost provides effectiveWebPanelHost) {
-        val navigator = rememberRaftLinkNavigator(pager, bridge)
-        val uriHandler =
-            remember(navigator) {
-                object : UriHandler {
-                    override fun openUri(uri: String) {
-                        navigator.open(uri)
-                    }
-                }
-            }
-        CompositionLocalProvider(
-            LocalRaftLinkNavigator provides navigator,
-            LocalUriHandler provides uriHandler,
-        ) {
-            if (ownedWebPanelHost != null) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    content()
-                    RaftMobileWebPanelOverlay(
-                        pager = pager,
-                        bridge = bridge,
-                        host = ownedWebPanelHost,
-                    )
-                }
-            } else {
+    CompositionLocalProvider(
+        LocalRaftLinkNavigator provides navigator,
+        LocalUriHandler provides uriHandler,
+        LocalRaftFloatingBrowserPillHostMounted provides (parentHasPillHost || ownsPillHost),
+    ) {
+        if (ownsPillHost) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 content()
+                RaftFloatingBrowserTabPillHost(
+                    pager = pager,
+                    bridge = bridge,
+                )
             }
+        } else {
+            content()
         }
     }
 }
@@ -1029,10 +1106,12 @@ internal fun rememberRaftSystemBrowserOpener(): (String) -> Unit {
 }
 
 /**
- * The link mode in effect: the saved one where an in-app browser can show a page; the default
- * browser on desktop, which has no embedded web view yet (and no "Open web links" choice).
+ * Ordinary external `http`/`https` links always open in the system in-app browser
+ * (Android Chrome Custom Tabs / iOS `SFSafariViewController`), while installed Raft Apps open in
+ * Raft's in-app browser (#proj-mobile:7420d9de). Legacy stored `LinkOpenMode` values are ignored.
  */
+@Suppress("UNUSED_PARAMETER")
 internal fun effectiveLinkOpenMode(
     saved: LinkOpenMode,
     supportsInAppBrowser: Boolean = raftPlatformSupportsInAppBrowser(),
-): LinkOpenMode = if (supportsInAppBrowser) saved else LinkOpenMode.SystemBrowser
+): LinkOpenMode = LinkOpenMode.SystemBrowser

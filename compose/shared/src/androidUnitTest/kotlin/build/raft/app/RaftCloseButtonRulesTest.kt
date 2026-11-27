@@ -124,6 +124,7 @@ class RaftCloseButtonRulesTest {
                 "app/artifact/ArtifactsHomeScreen.kt" to Allowed(1, "Clear filters on a phone, $Clear"),
                 "app/artifact/RaftArtifactViewerPage.kt" to Allowed(1, TextButton),
                 "app/assistant/ThreadAssistantContext.kt" to Allowed(1, "a context chip's remove, $Remove"),
+                "app/browser/RaftMobileWebPanelBar.kt" to Allowed(1, "Close page, $MenuRow"),
                 "app/channel/ChannelAddMemberPanel.kt" to Allowed(1, "a picked member's remove, $Remove"),
                 "app/computers/ComputerRuntimeUsageChip.kt" to Allowed(1, "a usage card's ×, the web's CloseButton with a 16px × in the card"),
                 "app/computers/RaftComputerAgentsBulk.kt" to Allowed(2, "$TextButton; a failed row's status icon"),

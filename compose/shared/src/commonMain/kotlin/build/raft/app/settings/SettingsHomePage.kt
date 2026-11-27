@@ -5328,7 +5328,6 @@ private fun RaftAppShellReadyContent(
                 )
             }
         }
-    val mobileWebPanelHost = LocalRaftMobileWebPanelHost.current
     val baseRailItems =
         if (navRailActive) {
             appShellRailTabItems.orderedLikePhoneBar { it.key }.let { items ->
@@ -5387,7 +5386,7 @@ private fun RaftAppShellReadyContent(
                         log = { bridge.log(it) },
                         accountId = readySession?.user?.id,
                         recentlyUsedStore = sharedStores.mobileRecentlyUsedStore,
-                        onDroppedAfterOpen = { dropped -> appShellCloseDroppedRailAppPanel(mobileWebPanelHost, dropped) },
+                        onDroppedAfterOpen = { dropped -> appShellCloseDroppedRailAppPanel(dropped) },
                     )
                 }
             } else {

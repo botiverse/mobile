@@ -56,7 +56,7 @@ fun raftStackOpenRoute(
 
 internal const val RAFT_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 
-/** Batch 3: the chat, its pages, the file pages and Search (any pageData). */
+/** Batch 3: the chat, its pages, the file pages, in-app Raft Apps, and Search (any pageData). */
 internal val RaftStackChatFilesBrowsePages: List<String> =
     listOf(
         build.raft.app.THREAD_PAGE,
@@ -67,6 +67,7 @@ internal val RaftStackChatFilesBrowsePages: List<String> =
         build.raft.app.TASK_PENDING_CONVERSATION_PAGE,
         build.raft.app.RAFT_FILE_PREVIEW_PAGE,
         build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
+        build.raft.app.RAFT_IN_APP_BROWSER_PAGE,
         build.raft.app.HOME_SEARCH_PAGE,
     )
 
@@ -107,8 +108,8 @@ internal val RaftStackSettingsWebSurfaces: List<build.raft.app.SettingsWebViewSu
  * file page (preview or file detail of an attachment), the artifact viewer and Search. The
  * composer's picker and camera are `threadAttachmentUpload` (batch 2 routing); a notification,
  * share or deep link reaches the shell (new Intent) and the shell opens the chat on the stack.
- * Covered, the chat and the file pages keep the window size ([RaftStackCoveredKeepsSizePages]).
- * Still Activities: the in-app browser, message link pages, login / auth, onboarding web pages.
+ * Covered, the chat, file pages, and in-app Raft Apps keep the window size ([RaftStackCoveredKeepsSizePages]).
+ * Still Activities: message link pages, login / auth, onboarding web pages.
  *
  * Server panel pages (artin 2026-11-02): the phone server panel's Members and Settings
  * ([RaftStackServerPanelTabs], the shell's own tab content on a page of its own) slide in like
@@ -171,4 +172,5 @@ internal val RaftStackCoveredKeepsSizePages: Set<String> =
         build.raft.app.THREAD_PAGE,
         build.raft.app.RAFT_FILE_PREVIEW_PAGE,
         build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
+        build.raft.app.RAFT_IN_APP_BROWSER_PAGE,
     )

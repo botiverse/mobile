@@ -275,49 +275,59 @@ class RaftLinkNavigationTest {
     }
 
     @Test
-    fun thirdPartyInAppLinkFailsClosedToExternalBrowserWhenIsolatedProfileUnsupported() {
+    fun externalLinkRoutingSplitOpensOnlyInstalledAppsInRaftAndOthersInSystemInAppBrowser() {
         val opened = mutableListOf<String>()
-        val registry = RaftAppEntryRegistry(newToken = { "tok-pre119" })
-        fun makeNavigator(supportsIsolated: Boolean) =
+        val registry = RaftAppEntryRegistry(newToken = { "tok-split" })
+        val navigator =
             RaftLinkNavigator(
+                // Even if legacy stored preference was InAppBrowser, ordinary third-party http(s)
+                // links ALWAYS route directly to the system in-app browser (Chrome Custom Tabs /
+                // SFSafariViewController) with no settings toggle and no confirmation prompt.
                 modeProvider = { LinkOpenMode.InAppBrowser },
                 openInAppBrowser = { opened += "in_app:$it"; true },
                 openExternalBrowser = { opened += "external:$it" },
+                openSystemInAppBrowser = { opened += "system_in_app:$it" },
                 onRejected = { opened += "rejected:$it" },
                 openInAppBrowserWithEntry = { url, token ->
                     opened += "entry:$url|$token"
                     true
                 },
                 supportsInAppBrowser = { true },
-                supportsIsolatedWebViewProfile = { supportsIsolated },
+                supportsIsolatedWebViewProfile = { true },
                 raftHostsProvider = { setOf("app.raft.build", "api.raft.build") },
                 debugBuild = false,
                 appEntryRegistry = registry,
             )
 
-        // Pre-Chromium 119 Android (no MULTI_PROFILE): third-party link fails closed to system browser.
+        // Ordinary third-party http(s) link -> system in-app browser (never Raft WebView).
         assertEquals(
             RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, "https://docs.example.com/push"),
-            makeNavigator(supportsIsolated = false).open("https://docs.example.com/push"),
+            navigator.open("https://docs.example.com/push"),
         )
-        // Layer 2 Raft App entry uses Default profile and still opens in-app even without MULTI_PROFILE.
+        // Explicit ForceExternal ("Open in browser" / connect_account) -> external browser app.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, "https://accounts.example.com/oauth"),
+            navigator.open("https://accounts.example.com/oauth", RaftLinkOpenIntent.ForceExternal),
+        )
+        // Non-http(s) custom schemes (mailto/tel) -> external handler.
+        assertEquals(
+            RaftLinkOpenDecision(RaftLinkOpenTarget.ExternalBrowser, "mailto:team@example.test"),
+            navigator.open("mailto:team@example.test"),
+        )
+        // Installed Raft App entry -> Raft in-app browser stack page (even without MULTI_PROFILE).
         assertEquals(
             RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, "https://stamp.build/pulls/9"),
-            makeNavigator(supportsIsolated = false).openAppEntry(
+            navigator.openAppEntry(
                 "https://stamp.build/pulls/9",
                 RaftAppEntryRequest(scopeOrigin = "https://stamp.build", appName = "Stamp"),
             ),
         )
-        // Chromium 119+ Android / iOS: third-party link opens in the mobile web panel.
-        assertEquals(
-            RaftLinkOpenDecision(RaftLinkOpenTarget.InAppBrowser, "https://docs.example.com/push"),
-            makeNavigator(supportsIsolated = true).open("https://docs.example.com/push"),
-        )
         assertEquals(
             listOf(
-                "external:https://docs.example.com/push",
-                "entry:https://stamp.build/pulls/9|tok-pre119",
-                "in_app:https://docs.example.com/push",
+                "system_in_app:https://docs.example.com/push",
+                "external:https://accounts.example.com/oauth",
+                "external:mailto:team@example.test",
+                "entry:https://stamp.build/pulls/9|tok-split",
             ),
             opened,
         )
@@ -441,7 +451,7 @@ class RaftLinkNavigationTest {
                 "artifact:https://app.raft.build/artifacts/art-1",
                 "join:https://app.raft.build/join/tok-1",
                 "own:https://app.raft.build/s/hq/c/chan-1",
-                "in_app:https://app.raft.build/about",
+                "external:https://app.raft.build/about",
                 "external:mailto:hi@raft.build",
             ),
             opened,

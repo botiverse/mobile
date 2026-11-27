@@ -64,10 +64,16 @@ class RaftWidePanesTest {
     @Test
     fun theArtifactViewerOpensInTheArtifactColumnOnTheWideLayoutOnly() {
         assertEquals(RaftPaneRole.Artifact, RaftPageRegistry.paneRole(RAFT_ARTIFACT_VIEWER_PAGE))
-        assertEquals(listOf(RAFT_ARTIFACT_VIEWER_PAGE), RaftPageRegistry.pageNames.filter { RaftPageRegistry.paneRole(it) == RaftPaneRole.Artifact })
-        // A phone (or any compact layout) opens it as the page it always was.
+        assertEquals(RaftPaneRole.Artifact, RaftPageRegistry.paneRole(RAFT_IN_APP_BROWSER_PAGE))
+        assertEquals(
+            setOf(RAFT_ARTIFACT_VIEWER_PAGE, RAFT_IN_APP_BROWSER_PAGE),
+            RaftPageRegistry.pageNames.filter { RaftPageRegistry.paneRole(it) == RaftPaneRole.Artifact }.toSet(),
+        )
+        // A phone (or any compact layout) opens both on the stack as full-screen pages.
         assertEquals(RaftPaneRole.Window, raftPaneRoute(wide = false, pageName = RAFT_ARTIFACT_VIEWER_PAGE))
         assertEquals(RaftPaneRole.Artifact, raftPaneRoute(wide = true, pageName = RAFT_ARTIFACT_VIEWER_PAGE))
+        assertEquals(RaftPaneRole.Window, raftPaneRoute(wide = false, pageName = RAFT_IN_APP_BROWSER_PAGE))
+        assertEquals(RaftPaneRole.Artifact, raftPaneRoute(wide = true, pageName = RAFT_IN_APP_BROWSER_PAGE))
         // Opened from the profile column it goes to the Artifact column too, not into the profile's stack.
         assertEquals(RaftPaneRole.Artifact, raftProfileColumnRole(RAFT_ARTIFACT_VIEWER_PAGE))
         assertEquals(RaftPaneGridColumnBounds(id = "artifact", defaultWidthDp = 480f, minWidthDp = 480f), RaftPaneGridColumns.Artifact)

@@ -1,16 +1,10 @@
 package build.raft.app
 
-import build.raft.app.resources.*
-import build.raft.designsystem.components.RaftButton
-import build.raft.designsystem.components.RaftButtonVariant
-import build.raft.designsystem.components.RaftButtonSize
-import build.raft.designsystem.gesture.RaftBlockBackSwipe
-import build.raft.designsystem.theme.RaftTheme
-import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.components.RaftSlotIcon
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import build.raft.app.base.Utils
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,19 +15,39 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.unit.dp
-import build.raft.app.compat.pager.Page
+import build.raft.app.base.Utils
 import build.raft.app.compat.module.RouterModule
+import build.raft.app.compat.pager.LocalActivity
+import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.ui.raftImeBottomPx
+import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftClientConfigAppHosts
+import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.resources.*
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
+import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.theme.RaftTheme
 
 internal const val RAFT_IN_APP_BROWSER_PAGE = "compose_in_app_browser"
 internal const val RAFT_IN_APP_BROWSER_URL_KEY = "url"
+internal const val RAFT_IN_APP_BROWSER_TAB_ID_KEY = "tabId"
+internal const val RAFT_IN_APP_BROWSER_OUTBOUND_KEY = "outbound"
 
 /**
  * Whether [RaftInAppBrowserScreen] must block loading or navigating to [url] (iOS App Store
@@ -116,8 +130,11 @@ internal class ComposeRaftInAppBrowserPage : build.raft.app.base.BasePager() {
     }
 
     override fun pageWillDestroy() {
-        pageData.params.raftInAppBrowserAppEntryTokenOrNull()?.let { token ->
-            RaftAppEntryRegistry.process.release(token, pagerId)
+        val managedTabId = pageData.params.raftInAppBrowserTabIdOrNull()
+        if (managedTabId == null) {
+            pageData.params.raftInAppBrowserAppEntryTokenOrNull()?.let { token ->
+                RaftAppEntryRegistry.process.release(token, pagerId)
+            }
         }
         super.pageWillDestroy()
     }
@@ -128,50 +145,284 @@ private fun RaftInAppBrowserScreen() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
-    val launchUrl =
+    val coordinator = RaftMobileWebPanelCoordinator.process
+    val inColumn = LocalRaftArtifactViewerInColumn.current
+    val initialUrl =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.raftInAppBrowserUrlOrNull()
         }
-    val appEntryToken =
+    val initialAppEntryToken =
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.raftInAppBrowserAppEntryTokenOrNull()
         }
+    val initialTabId =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.raftInAppBrowserTabIdOrNull()
+        }
+    val isOutboundChild =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.raftInAppBrowserIsOutbound()
+        }
     val storeScope = remember(pager.pageData.params.toString()) { pager.pageData.params.raftShellStoreScopeOrNull() }
     val density = LocalDensity.current
-    val topSafeArea = raftPageWindowTopSafeAreaPadding()
-    val bottomSafeArea = raftBottomSafeAreaPadding()
+    val topSafeArea = if (inColumn) 0.dp else raftPageWindowTopSafeAreaPadding()
+    val bottomSafeArea = if (inColumn) 0.dp else raftBottomSafeAreaPadding()
     val imeBottomDp = with(density) { raftImeBottomPx(density).toDp() }
+
+    val tabsState by coordinator.state.collectAsState()
+    var currentTabId by remember(pager.pagerId, initialTabId) { mutableStateOf(initialTabId) }
+    var explicitlyClosed by remember(pager.pagerId) { mutableStateOf(false) }
+    var switcherOpen by remember(pager.pagerId) { mutableStateOf(false) }
+    var inColumnOutboundUrl by remember(pager.pagerId, currentTabId) { mutableStateOf<String?>(null) }
+
+    val activeTab =
+        if (!isOutboundChild && currentTabId != null) {
+            tabsState.tabs.firstOrNull { it.tabId == currentTabId }
+        } else {
+            null
+        }
 
     fun closePage() {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
     }
 
-    // Block iOS full-page back-swipe so left-edge swipe right performs native WKWebView web back.
-    RaftBlockBackSwipe(enabled = true)
+    // Keep coordinator activeTabId synced while this App stack page is mounted; if popped by iOS
+    // swipe-back or wide column replacement without explicit close, suspend cleanly to floating pill.
+    // Declared before the WebView body so onDispose runs after child onRelease: if the tab was
+    // explicitly closed or became ineligible for keep-alive, immediately evict any container parked
+    // by WebContainerPlatformHost on release.
+    val activeTabKeepAliveKey = activeTab?.keepAliveKey
+    DisposableEffect(isOutboundChild, currentTabId) {
+        val tabId = if (!isOutboundChild) currentTabId else null
+        val keepAliveKey = if (!isOutboundChild) activeTabKeepAliveKey else null
+        if (tabId != null) {
+            coordinator.activateTab(tabId)
+        }
+        onDispose {
+            if (tabId != null) {
+                if (!explicitlyClosed) {
+                    coordinator.suspendTab(tabId)
+                }
+                if (keepAliveKey != null && (explicitlyClosed || !coordinator.isKeepAliveEligible(keepAliveKey))) {
+                    raftWebViewKeepAliveEvict(keepAliveKey)
+                }
+            }
+        }
+    }
+
+    // If the managed tab was removed externally (e.g. logout, server switch, dropped rail app), close page.
+    LaunchedEffect(isOutboundChild, currentTabId, activeTab) {
+        if (!isOutboundChild && currentTabId != null && activeTab == null) {
+            explicitlyClosed = true
+            closePage()
+        }
+    }
+
+    val effectiveLaunchUrl =
+        when {
+            isOutboundChild -> initialUrl
+            activeTab != null -> activeTab.loadedBaseUrl
+            else -> initialUrl
+        }
+    val effectiveClaimUrl =
+        when {
+            isOutboundChild -> null
+            activeTab != null -> activeTab.launchUrl
+            else -> initialUrl
+        }
+    val effectiveEntryToken =
+        when {
+            isOutboundChild -> null
+            activeTab != null -> activeTab.appEntryToken
+            else -> initialAppEntryToken
+        }
+    val effectiveEntryOwnerId =
+        when {
+            isOutboundChild -> pager.pagerId
+            activeTab != null -> activeTab.entryOwnerId
+            else -> pager.pagerId
+        }
+    val effectiveSessionKey: Any =
+        when {
+            isOutboundChild -> "${pager.pagerId}:outbound"
+            activeTab != null -> "app-tab:${activeTab.tabId}"
+            else -> pager.pagerId
+        }
+
+    fun openOutboundChild(targetUrl: String) {
+        if (!raftPlatformSupportsIsolatedWebViewProfile()) {
+            bridge.openUrl(targetUrl, systemInAppBrowser = true)
+            return
+        }
+        if (inColumn) {
+            inColumnOutboundUrl = targetUrl
+        } else {
+            pager.openRaftInAppBrowserOutboundChild(
+                rawUrl = targetUrl,
+                storeScopeOverride = storeScope,
+            )
+        }
+    }
+
+    fun openAnotherInstalledApp(url: String, match: RaftInstalledAppOriginMatch, serverId: String) {
+        val sharedStores = RaftSharedStoreRegistry.get(bridge)
+        val env = sharedStores.apiEnvironmentStore.current()
+        val envKey = "${env.webUrl}|${env.apiBaseUrl}"
+        val accountId = runCatching { sharedStores.authStore.readCommittedSessionSnapshot()?.user?.id }.getOrNull()
+        val request =
+            RaftAppEntryRequest(
+                scopeOrigin = match.origin,
+                appName = match.appName,
+                preferredServerId = serverId,
+                appLogoUrl = match.logoUrl,
+            )
+        val token = RaftAppEntryRegistry.process.register(url, request)
+        val result =
+            coordinator.openOrActivateApp(
+                launchUrl = url,
+                appEntryToken = token,
+                request = request,
+                accountId = accountId,
+                serverId = serverId,
+                environmentKey = envKey,
+            )
+        inColumnOutboundUrl = null
+        currentTabId = result.tab.tabId
+    }
 
     RaftDesignSystemTheme {
-        Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
-            if (topSafeArea > 0.dp) {
-                Spacer(modifier = Modifier.fillMaxWidth().height(topSafeArea).background(RaftTheme.colors.layerCanvas))
+        Box(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+            Column(modifier = Modifier.fillMaxSize().background(RaftTheme.colors.layerCanvas)) {
+                if (topSafeArea > 0.dp) {
+                    Spacer(modifier = Modifier.fillMaxWidth().height(topSafeArea).background(RaftTheme.colors.layerCanvas))
+                }
+                key(effectiveSessionKey) {
+                    RaftMobileWebPanelBrowserBody(
+                        pager = pager,
+                        bridge = bridge,
+                        launchUrl = effectiveLaunchUrl,
+                        appEntryToken = effectiveEntryToken,
+                        entryClaimUrl = effectiveClaimUrl,
+                        fallbackAppName = activeTab?.appName,
+                        fallbackAppLogoUrl = activeTab?.appLogoUrl,
+                        storeScope = storeScope,
+                        sessionKey = effectiveSessionKey,
+                        entryOwnerId = effectiveEntryOwnerId,
+                        isOutboundChild = isOutboundChild,
+                        inColumn = inColumn,
+                        keepAliveKey = activeTab?.takeIf { !explicitlyClosed && it.isLive }?.keepAliveKey,
+                        openTabCount = if (isOutboundChild) 1 else tabsState.tabs.size,
+                        onOpenSwitcher =
+                            if (!isOutboundChild && tabsState.tabs.size >= 2) {
+                                { switcherOpen = true }
+                            } else {
+                                null
+                            },
+                        onPushOutboundChild = ::openOutboundChild,
+                        onOpenInstalledApp = ::openAnotherInstalledApp,
+                        onNavigationMetadataChanged = { url, title ->
+                            activeTab?.let { tab ->
+                                coordinator.updateTabNavigation(tab.tabId, currentUrl = url, pageTitle = title)
+                            }
+                        },
+                        onSuspend =
+                            if (!isOutboundChild) {
+                                {
+                                    activeTab?.let { coordinator.suspendTab(it.tabId) }
+                                    closePage()
+                                }
+                            } else {
+                                null
+                            },
+                        onClose = {
+                            explicitlyClosed = true
+                            activeTab?.let { coordinator.closeTab(it.tabId) }
+                            closePage()
+                        },
+                        onContentProcessGone = {
+                            activeTab?.let { coordinator.onTabContentProcessGone(it.tabId) }
+                        },
+                        bottomInsetDp = maxOf(imeBottomDp, bottomSafeArea),
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+                }
             }
-            RaftMobileWebPanelBrowserBody(
-                pager = pager,
-                bridge = bridge,
-                launchUrl = launchUrl,
-                appEntryToken = appEntryToken,
-                fallbackAppName = null,
-                fallbackAppLogoUrl = null,
-                storeScope = storeScope,
-                sessionKey = pager.pagerId,
-                entryOwnerId = pager.pagerId,
-                panelDetent = RaftMobileWebPanelDetent.Fullscreen,
-                onCurrentUrlChanged = {},
-                onCollapse = null,
-                onClose = ::closePage,
-                onDropCollapsedOnProcessGone = null,
-                bottomInsetDp = maxOf(imeBottomDp, bottomSafeArea),
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-            )
+
+            // Wide side-column outbound cross-origin child page: slides right-to-left over the live
+            // parent App inside the side column so the parent App stays mounted underneath.
+            val columnChildUrl = inColumnOutboundUrl
+            AnimatedVisibility(
+                visible = inColumn && !isOutboundChild && columnChildUrl != null,
+                enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+                exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                if (columnChildUrl != null) {
+                    key(columnChildUrl) {
+                        RaftMobileWebPanelBrowserBody(
+                            pager = pager,
+                            bridge = bridge,
+                            launchUrl = columnChildUrl,
+                            appEntryToken = null,
+                            fallbackAppName = null,
+                            fallbackAppLogoUrl = null,
+                            storeScope = storeScope,
+                            sessionKey = "${pager.pagerId}:column-outbound:$columnChildUrl",
+                            entryOwnerId = "${pager.pagerId}:column-outbound",
+                            isOutboundChild = true,
+                            inColumn = true,
+                            keepAliveKey = null,
+                            openTabCount = 1,
+                            onOpenSwitcher = null,
+                            onPushOutboundChild = { nestedUrl -> inColumnOutboundUrl = nestedUrl },
+                            onOpenInstalledApp = ::openAnotherInstalledApp,
+                            onNavigationMetadataChanged = { _, _ -> },
+                            onSuspend = { inColumnOutboundUrl = null },
+                            onClose = { inColumnOutboundUrl = null },
+                            onContentProcessGone = null,
+                            bottomInsetDp = 0.dp,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+            }
+
+            if (switcherOpen && !isOutboundChild && tabsState.tabs.isNotEmpty()) {
+                RaftAppBrowserSwitcherSheet(
+                    tabs = tabsState.tabs,
+                    activeTabId = currentTabId,
+                    onSelectTab = { selected ->
+                        switcherOpen = false
+                        if (selected.tabId != currentTabId) {
+                            inColumnOutboundUrl = null
+                            coordinator.activateTab(selected.tabId)
+                            currentTabId = selected.tabId
+                        }
+                    },
+                    onCloseTab = { tabId ->
+                        val closingCurrent = tabId == currentTabId
+                        coordinator.closeTab(tabId)
+                        if (closingCurrent) {
+                            val nextTab = coordinator.state.value.tabs.firstOrNull()
+                            if (nextTab != null) {
+                                coordinator.activateTab(nextTab.tabId)
+                                currentTabId = nextTab.tabId
+                            } else {
+                                switcherOpen = false
+                                explicitlyClosed = true
+                                closePage()
+                            }
+                        }
+                    },
+                    onCloseAll = {
+                        switcherOpen = false
+                        explicitlyClosed = true
+                        coordinator.closeAll()
+                        closePage()
+                    },
+                    onDismiss = { switcherOpen = false },
+                )
+            }
         }
     }
 }

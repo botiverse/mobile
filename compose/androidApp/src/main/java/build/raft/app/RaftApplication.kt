@@ -258,12 +258,14 @@ class RaftApplication : Application() {
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
         runCatching { WebContainerAndroidKeepAlive.onTrimMemory(level) }
+        runCatching { raftAndroidOnTrimMemory(level) }
     }
 
     @Deprecated("Deprecated in Java")
     override fun onLowMemory() {
         super.onLowMemory()
         runCatching { WebContainerAndroidKeepAlive.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE) }
+        runCatching { raftAndroidOnTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE) }
     }
 }
 

@@ -6891,6 +6891,14 @@
     <string name="in_app_browser_external_app_title">要開啟外部應用程式嗎？</string>
     <string name="in_app_browser_external_app_message">此頁面要求透過外部應用程式開啟「%1$s」。</string>
     <string name="in_app_browser_external_app_open">開啟</string>
+    <string name="in_app_browser_close_page">關閉頁面</string>
+    <string name="in_app_browser_open_pages_title">已開啟的頁面（%1$d）</string>
+    <string name="in_app_browser_open_pages_a11y">已開啟 %1$d 個頁面</string>
+    <string name="in_app_browser_close_all_pages">全部關閉</string>
+    <string name="in_app_browser_floating_pill_single_a11y">繼續瀏覽 %1$s</string>
+    <string name="in_app_browser_floating_pill_multi_a11y">已開啟 %1$d 個頁面，點選切換</string>
+    <string name="in_app_browser_tab_state_live">執行中</string>
+    <string name="in_app_browser_tab_state_hibernated">已休眠</string>
     <string name="server_panel_recently_used">最近使用</string>
     <string name="mobile_nav_edit_reset">重設</string>
     <string name="mobile_nav_edit_tab_bar">分頁列</string>
