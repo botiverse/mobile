@@ -431,7 +431,11 @@ internal fun RaftMobileWebPanelBrowserBody(
                         diagnosticsSurface = if (isOutboundChild) "in_app_browser_outbound" else "in_app_browser",
                         showsFormAccessoryBar = true,
                         allowJsDialogs = jsDialogsEnabled,
-                        allowNewWindows = raftPlatformName() == "android" && pageVisible,
+                        // Keep multi-window off on all platforms: Android WebView with
+                        // setSupportMultipleWindows(false) routes target="_blank" and user-gesture
+                        // window.open(url) straight through primary shouldOverrideUrlLoading
+                        // (same unified navigation/routing/OAuth fence, no hidden popup WebView).
+                        allowNewWindows = false,
                         keepAliveKey = if (storageResolution.isRaftApp && !isOutboundChild) keepAliveKey else null,
                         onJsDialog = { request -> jsDialogState.show(request) },
                         catchesMainFrameNavigation = { ask ->

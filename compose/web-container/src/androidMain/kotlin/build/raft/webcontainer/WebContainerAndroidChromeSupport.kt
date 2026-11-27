@@ -247,7 +247,6 @@ class WebContainerAndroidFullscreenController(
  */
 class WebContainerAndroidNewWindowTransport(
     private val timeoutMs: Long = DEFAULT_TIMEOUT_MS,
-    private val fallbackTimeoutMs: Long = DEFAULT_FALLBACK_TIMEOUT_MS,
     private val maxPending: Int = DEFAULT_MAX_PENDING,
     private val mainHandler: Handler = Handler(Looper.getMainLooper()),
     private val webViewFactory: (Context) -> WebView = { ctx -> WebView(ctx) },
@@ -308,7 +307,6 @@ class WebContainerAndroidNewWindowTransport(
         context: Context,
         resultMsg: Message?,
         profileName: String? = null,
-        fallbackUrl: String? = null,
         onUrlCaptured: (String) -> Unit,
     ): Boolean {
         val transport = resultMsg?.obj as? WebView.WebViewTransport ?: return false
@@ -354,7 +352,6 @@ class WebContainerAndroidNewWindowTransport(
                 mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             }
         }
-        val normalizedFallback = normalizeTransportFallbackUrl(fallbackUrl)
         val session =
             PendingTransport(
                 popupWebView = popupWebView,
@@ -367,7 +364,7 @@ class WebContainerAndroidNewWindowTransport(
                     view: WebView?,
                     detail: RenderProcessGoneDetail?,
                 ): Boolean {
-                    session.finish(capturedUrl = normalizedFallback, mainHandler = mainHandler)
+                    session.finish(capturedUrl = null, mainHandler = mainHandler)
                     return true
                 }
 
@@ -397,11 +394,6 @@ class WebContainerAndroidNewWindowTransport(
                     view: WebView?,
                     request: WebResourceRequest?,
                 ): WebResourceResponse {
-                    // On Chromium / OEM WebViews (e.g. Huawei WebView 114), initial popup loads
-                    // for `<a target="_blank" rel="noopener noreferrer">` frequently bypass
-                    // `shouldOverrideUrlLoading` and hit `shouldInterceptRequest` directly on the
-                    // IO thread. Capture the main-frame URL onto mainHandler while still blocking
-                    // all network I/O on the ephemeral transport view.
                     if (request?.isForMainFrame == true) {
                         val trimmed = request.url?.toString()?.trim().orEmpty()
                         if (trimmed.isNotEmpty() && !trimmed.equals(ABOUT_BLANK_URL, ignoreCase = true)) {
@@ -422,16 +414,10 @@ class WebContainerAndroidNewWindowTransport(
                     return true
                 }
             }
-        val effectiveTimeoutMs =
-            if (normalizedFallback != null) {
-                minOf(timeoutMs, fallbackTimeoutMs)
-            } else {
-                timeoutMs
-            }
-        val timeout = Runnable { session.finish(capturedUrl = normalizedFallback, mainHandler = mainHandler) }
+        val timeout = Runnable { session.finish(capturedUrl = null, mainHandler = mainHandler) }
         session.timeoutRunnable = timeout
         pendingTransports.addLast(session)
-        mainHandler.postDelayed(timeout, effectiveTimeoutMs)
+        mainHandler.postDelayed(timeout, timeoutMs)
 
         transport.webView = popupWebView
         val dispatched =
@@ -456,16 +442,8 @@ class WebContainerAndroidNewWindowTransport(
 
     companion object {
         internal const val DEFAULT_TIMEOUT_MS: Long = 2_000L
-        internal const val DEFAULT_FALLBACK_TIMEOUT_MS: Long = 350L
         internal const val DEFAULT_MAX_PENDING: Int = 4
         private const val ABOUT_BLANK_URL: String = "about:blank"
-
-        private fun normalizeTransportFallbackUrl(rawUrl: String?): String? {
-            val trimmed = rawUrl?.trim().orEmpty()
-            if (trimmed.isEmpty() || trimmed.equals(ABOUT_BLANK_URL, ignoreCase = true)) return null
-            if (trimmed.startsWith("javascript:", ignoreCase = true)) return null
-            return trimmed
-        }
 
         private fun emptyTransportBlockedResponse(): WebResourceResponse =
             WebResourceResponse("text/plain", "utf-8", ByteArrayInputStream(ByteArray(0)))
