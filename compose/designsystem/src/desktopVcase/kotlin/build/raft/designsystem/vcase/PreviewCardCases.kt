@@ -77,7 +77,7 @@ fun PreviewCardOpen() {
  * its id line, a title cut at 2 lines, the neutral state chip then "·"-separated details and a
  * warning line, and the ⋯ (Refresh, Open in Stamp ↗) before frameless Approve and the bordered
  * Merge at the end; then a card without actions whose link takes the row, and a disabled
- * action whose reason is a caption under the row.
+ * action whose reason shows in its tooltip on hover or a long press.
  */
 @VCase("ds.preview-card.item", settleFrames = 2, frameIntervalMs = 0)
 @Composable

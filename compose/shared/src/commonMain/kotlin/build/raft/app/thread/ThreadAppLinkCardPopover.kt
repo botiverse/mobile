@@ -310,6 +310,8 @@ internal fun ThreadAppLinkCardPopover(
             buttons = buttons(openLink),
             eyebrow = eyebrow,
             details = details,
+            onTitleClick = onOpenLink,
+            linkTakesEmptyRow = false,
         )
     }
 }

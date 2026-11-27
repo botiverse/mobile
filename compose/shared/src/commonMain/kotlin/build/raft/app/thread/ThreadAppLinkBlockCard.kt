@@ -89,7 +89,11 @@ internal fun ThreadAppLinkBlockCard(
                     if (host.isNotEmpty()) RaftAppLinkCardHost(host, Modifier.weight(1f, fill = false))
                 }
                 RaftAppLinkCardBody {
-                    RaftAppLinkCardTitle(block.title, onClick = { openUri(card.url) })
+                    RaftAppLinkCardTitle(
+                        block.title,
+                        onClick = { openUri(card.url) },
+                        onClickLabel = stringResource(Res.string.thread_link_preview_open_link),
+                    )
                     RaftAppLinkCardV2Body(block.card)
                 }
                 RaftAppLinkCardActions(buttons)
