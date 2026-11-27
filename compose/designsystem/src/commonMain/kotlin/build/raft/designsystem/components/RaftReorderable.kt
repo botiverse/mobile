@@ -74,8 +74,11 @@ object RaftReorderDefaults {
     /** A lifted row this close to the list's top or bottom (start or end) edge scrolls the list… */
     val EdgeScrollZone: Dp = 40.dp
 
-    /** …by this much a frame. */
+    /** Reference 60 Hz per-frame step; actual auto-scroll uses [EdgeScrollSpeed] scaled by frame `dt`. */
     val EdgeScrollStep: Dp = 8.dp
+
+    /** …at this speed in dp/second (frame-rate independent across 60/90/120 Hz; equals 8dp/frame at 60 Hz). */
+    val EdgeScrollSpeed: Dp = 480.dp
 }
 
 /**
@@ -348,6 +351,18 @@ private fun List<String>.swapped(a: Int, b: Int): List<String> =
         it[b] = t
     }
 
+private const val EdgeScrollMaxFrameDeltaSeconds: Float = 0.05f
+
+/**
+ * Computes the frame-rate-independent pixel step for edge auto-scroll from [speedPxPerSec] and the
+ * elapsed [frameDeltaNanos], clamping stalls to 50 ms so a janky frame never teleports the list.
+ */
+fun raftReorderAutoScrollStepPx(speedPxPerSec: Float, frameDeltaNanos: Long): Float {
+    if (!speedPxPerSec.isFinite() || speedPxPerSec <= 0f || frameDeltaNanos <= 0L) return 0f
+    val dtSeconds = (frameDeltaNanos / 1_000_000_000f).coerceIn(0f, EdgeScrollMaxFrameDeltaSeconds)
+    return speedPxPerSec * dtSeconds
+}
+
 /**
  * Which way a lifted row near the list's edge scrolls it: negative up, positive down, 0 none.
  * [fingerY], [top] and [bottom] are in the same coordinates.
@@ -394,13 +409,18 @@ fun rememberRaftReorderState(
 fun Modifier.raftReorderableViewport(state: RaftReorderState, scrollState: ScrollState): Modifier {
     val density = LocalDensity.current
     val zone = with(density) { RaftReorderDefaults.EdgeScrollZone.toPx() }
-    val step = with(density) { RaftReorderDefaults.EdgeScrollStep.toPx() }
+    val speedPxPerSec = with(density) { RaftReorderDefaults.EdgeScrollSpeed.toPx() }
     val horizontal = state.orientation == Orientation.Horizontal
     // A right-to-left Row scrolls forward to the left: the screen's left edge is its end.
     val mirrored = horizontal && LocalLayoutDirection.current == LayoutDirection.Rtl
     LaunchedEffect(state, state.liftedKey, mirrored) {
         if (state.liftedKey == null) return@LaunchedEffect
+        var previousFrameNanos = withFrameNanos { it }
         while (state.dragging) {
+            val currentFrameNanos = withFrameNanos { it }
+            if (!state.dragging) break
+            val step = raftReorderAutoScrollStepPx(speedPxPerSec, currentFrameNanos - previousFrameNanos)
+            previousFrameNanos = currentFrameNanos
             val screenDelta =
                 raftReorderAutoScrollDelta(
                     fingerY = state.fingerY,
@@ -417,7 +437,6 @@ fun Modifier.raftReorderableViewport(state: RaftReorderState, scrollState: Scrol
                 // The rows moved under a finger that stayed: the lifted row follows the finger.
                 if (consumed != 0f) state.dragBy(consumed)
             }
-            withFrameNanos { }
         }
     }
     return onGloballyPositioned {
