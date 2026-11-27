@@ -35,6 +35,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import build.raft.designsystem.theme.LocalRaftComponentTokens
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
@@ -535,14 +539,19 @@ fun RaftDropdownMenu(
         with(density) {
             RaftPopupMargins(RaftPopupInsets.Horizontal.roundToPx(), RaftPopupInsets.Top.roundToPx(), RaftPopupInsets.Bottom.roundToPx())
         }
+    val gap = with(density) { offset.roundToPx() }
+    val minListHeight = with(density) { LocalRaftComponentTokens.current.popupListMinHeight.roundToPx() }
+    val room = remember(gap, minListHeight) { RaftListPopupRoom(gap, minListHeight) }
+    val scroll = rememberScrollState()
     val provider =
-        remember(density, offset, area, alignEnd) {
+        remember(density, offset, area, alignEnd, room) {
             RaftMenuPositionProvider(
-                gap = with(density) { offset.roundToPx() },
+                gap = gap,
                 windowMargin = windowMargin,
                 insets = insets,
                 safeArea = area,
                 alignEnd = alignEnd,
+                room = room,
             )
         }
     val dismiss by rememberUpdatedState(onDismissRequest)
@@ -587,7 +596,7 @@ fun RaftDropdownMenu(
         // The shadow's room is part of the popup window; a tap there is outside the menu.
         Box(
             Modifier
-                .raftMenuViewportCap(windowMargin, insets, area)
+                .raftMenuViewportCap(windowMargin, insets, area, room, scroll)
                 .raftObserveFocusInteractions(
                     coordinator = autofocusGuard.coordinator,
                     observeWindowFocus = false,
@@ -624,7 +633,7 @@ fun RaftDropdownMenu(
                     minWidth = minWidth,
                     width = width,
                     header = header,
-                    scroll = rememberScrollState(),
+                    scroll = scroll,
                     content = content,
                 )
             }
@@ -823,6 +832,13 @@ internal data class RaftPopupMargins(val horizontal: Int, val top: Int, val bott
  * [alignEnd], Base UI `align="end"`), [gap] below it, or above when it doesn't fit below and
  * there is more room above; then moved to stay [windowMargin] inside the window's [safeArea]
  * (clear of the bars and the keyboard). [insets] is the room the popup keeps round its surface.
+ *
+ * A list popup (a menu, a select or combobox list) passes the [side] [raftListPopupPlacement]
+ * picked for it instead (raft-ui 0.106.2): below or above as picked, its surface already shrunk
+ * to the room there, or [RaftListPopupSide.Beside] its anchor, at the anchor's end side (start
+ * side without room there) with its top level with the anchor's. Beside where it fits on neither
+ * side across, it takes the side with more room and is moved into the window, over its anchor,
+ * as before. Without a [side] (the preview card, raft-ui leaves it unchanged) the simple flip.
  */
 internal fun raftMenuPosition(
     anchor: IntRect,
@@ -834,21 +850,95 @@ internal fun raftMenuPosition(
     rtl: Boolean = false,
     safeArea: RaftSafeArea = RaftSafeArea(),
     alignEnd: Boolean = false,
+    side: RaftListPopupSide? = null,
 ): IntOffset {
     val surfaceWidth = popup.width - insets.horizontal * 2
     val surfaceHeight = popup.height - insets.top - insets.bottom
     val minX = safeArea.left + windowMargin
     val maxX = window.width - safeArea.right - windowMargin
     val (minY, maxY) = raftMenuVerticalBounds(window.height, windowMargin, insets, safeArea)
-    // The end edge is the right one left to right, the left one right to left.
-    var left = if (rtl != alignEnd) anchor.right - surfaceWidth else anchor.left
-    left = left.coerceAtMost(maxX - surfaceWidth).coerceAtLeast(minX)
     val below = anchor.bottom + gap
     val roomBelow = maxY - below
     val roomAbove = anchor.top - gap - minY
-    var top = if (surfaceHeight > roomBelow && roomAbove > roomBelow) anchor.top - gap - surfaceHeight else below
+    if (side == RaftListPopupSide.Beside) {
+        // Base UI `side="inline-end"`, flipped to the start side, `align="start"`.
+        val endSide = if (rtl) anchor.left - gap - surfaceWidth else anchor.right + gap
+        val startSide = if (rtl) anchor.right + gap else anchor.left - gap - surfaceWidth
+        val fits = { x: Int -> x >= minX && x + surfaceWidth <= maxX }
+        val x = if (fits(endSide)) endSide else if (fits(startSide)) startSide else null
+        if (x != null) {
+            val top = anchor.top.coerceAtMost(maxY - surfaceHeight).coerceAtLeast(minY)
+            return IntOffset(x - insets.horizontal, top - insets.top)
+        }
+    }
+    // The end edge is the right one left to right, the left one right to left.
+    var left = if (rtl != alignEnd) anchor.right - surfaceWidth else anchor.left
+    left = left.coerceAtMost(maxX - surfaceWidth).coerceAtLeast(minX)
+    val above =
+        when (side) {
+            RaftListPopupSide.Below -> false
+            RaftListPopupSide.Above -> true
+            else -> surfaceHeight > roomBelow && roomAbove > roomBelow
+        }
+    var top = if (above) anchor.top - gap - surfaceHeight else below
     top = top.coerceAtMost(maxY - surfaceHeight).coerceAtLeast(minY)
     return IntOffset(left - insets.horizontal, top - insets.top)
+}
+
+/** The side of its anchor a list popup opens on ([raftListPopupPlacement]). */
+internal enum class RaftListPopupSide { Below, Above, Beside }
+
+/** Where a list popup opens ([side]) and the tallest its surface may be there, in px. */
+internal data class RaftListPopupPlacement(val side: RaftListPopupSide, val maxSurfaceHeight: Int)
+
+/**
+ * raft-ui 0.106.2 list popup placement (`LIST_POPUP_COLLISION_AVOIDANCE` + `max-h-popup-list`;
+ * a menu, a select or combobox list): it stays below its anchor and shrinks to the room there,
+ * scrolling its rows, as long as that room holds [minListHeight] (`--popup-list-min-height`, five
+ * rows and the 4dp inset: 188dp by touch, 178dp with a mouse) or the whole [contentHeight] (the
+ * surface's natural height, px); otherwise it flips above under the same rule; only when neither
+ * side holds it does it open beside the anchor, as tall as the window band [minY]..[maxY].
+ * [anchorTop] / [anchorBottom] are the anchor's edges and [gap] the popup's distance from it.
+ */
+internal fun raftListPopupPlacement(
+    anchorTop: Int,
+    anchorBottom: Int,
+    gap: Int,
+    minY: Int,
+    maxY: Int,
+    contentHeight: Int,
+    minListHeight: Int,
+): RaftListPopupPlacement {
+    val roomBelow = (maxY - (anchorBottom + gap)).coerceAtLeast(0)
+    val roomAbove = (anchorTop - gap - minY).coerceAtLeast(0)
+    // flip() measures the popup capped at five rows on the pass that picks the side.
+    val needs = minOf(contentHeight, minListHeight)
+    return when {
+        roomBelow >= needs -> RaftListPopupPlacement(RaftListPopupSide.Below, roomBelow)
+        roomAbove >= needs -> RaftListPopupPlacement(RaftListPopupSide.Above, roomAbove)
+        else -> RaftListPopupPlacement(RaftListPopupSide.Beside, (maxY - minY).coerceAtLeast(0))
+    }
+}
+
+/**
+ * What an open list popup's cap and its position share ([raftMenuViewportCap],
+ * `RaftMenuPositionProvider`): the [anchor]'s bounds the positioner last got and the surface's
+ * natural height ([contentHeight], its measured height plus what its rows scroll; 0 until
+ * measured). Both pick the side with [raftListPopupPlacement] from these, so the popup is
+ * capped to the room on the side it is then placed on. The positioner learns the anchor after
+ * the first measure: the first frame is capped to the window, the next to the side.
+ */
+@Stable
+internal class RaftListPopupRoom(val gap: Int, val minListHeight: Int) {
+    var anchor by mutableStateOf<IntRect?>(null)
+    var contentHeight by mutableIntStateOf(0)
+
+    fun placement(windowHeight: Int, windowMargin: Int, insets: RaftPopupMargins, safeArea: RaftSafeArea, fallbackContentHeight: Int): RaftListPopupPlacement? {
+        val at = anchor ?: return null
+        val (minY, maxY) = raftMenuVerticalBounds(windowHeight, windowMargin, insets, safeArea)
+        val content = contentHeight.takeIf { it > 0 } ?: fallbackContentHeight
+        return raftListPopupPlacement(at.top, at.bottom, gap, minY, maxY, content, minListHeight)
+    }
 }
 
 /**
@@ -902,7 +992,13 @@ internal fun raftMenuMaxSurfaceHeight(windowHeight: Int, windowMargin: Int, inse
  * menu capped too short or placed too low. Check on an Android and an iOS device before
  * changing the math (README, TODO "Device check: popup insets").
  */
-internal fun Modifier.raftMenuViewportCap(windowMargin: Int, insets: RaftPopupMargins, safeArea: RaftSafeArea): Modifier =
+internal fun Modifier.raftMenuViewportCap(
+    windowMargin: Int,
+    insets: RaftPopupMargins,
+    safeArea: RaftSafeArea,
+    room: RaftListPopupRoom? = null,
+    scroll: ScrollState? = null,
+): Modifier =
     layout { measurable, constraints ->
         val maxWidth =
             if (constraints.hasBoundedWidth) {
@@ -913,12 +1009,21 @@ internal fun Modifier.raftMenuViewportCap(windowMargin: Int, insets: RaftPopupMa
             }
         val maxHeight =
             if (constraints.hasBoundedHeight) {
-                val surface = raftMenuMaxSurfaceHeight(constraints.maxHeight, windowMargin, insets, safeArea)
+                val band = raftMenuMaxSurfaceHeight(constraints.maxHeight, windowMargin, insets, safeArea)
+                // raft-ui 0.106.2: a list popup takes the room on the side it opens on.
+                val side = room?.placement(constraints.maxHeight, windowMargin, insets, safeArea, fallbackContentHeight = Int.MAX_VALUE)
+                val surface = side?.maxSurfaceHeight?.coerceAtMost(band) ?: band
                 (surface + insets.top + insets.bottom).coerceIn(constraints.minHeight, constraints.maxHeight)
             } else {
                 constraints.maxHeight
             }
         val placeable = measurable.measure(constraints.copy(maxWidth = maxWidth, maxHeight = maxHeight))
+        if (room != null) {
+            // The rows' scroller has just measured: what it scrolls is what the cap cut off.
+            val scrolled = scroll?.let { Snapshot.withoutReadObservation { it.maxValue } }?.takeIf { it in 0 until Int.MAX_VALUE } ?: 0
+            val natural = placeable.height - insets.top - insets.bottom + scrolled
+            if (natural > 0 && natural != Snapshot.withoutReadObservation { room.contentHeight }) room.contentHeight = natural
+        }
         layout(placeable.width, placeable.height) { placeable.place(0, 0) }
     }
 
@@ -928,13 +1033,20 @@ private class RaftMenuPositionProvider(
     private val insets: RaftPopupMargins,
     private val safeArea: RaftSafeArea,
     private val alignEnd: Boolean = false,
+    private val room: RaftListPopupRoom,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
         windowSize: IntSize,
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
-    ): IntOffset = raftMenuPosition(anchorBounds, windowSize, popupContentSize, gap, windowMargin, insets, layoutDirection == LayoutDirection.Rtl, safeArea, alignEnd)
+    ): IntOffset {
+        // Read back by the cap on the next measure: the popup shrinks to its side's room.
+        if (Snapshot.withoutReadObservation { room.anchor } != anchorBounds) room.anchor = anchorBounds
+        val surfaceHeight = popupContentSize.height - insets.top - insets.bottom
+        val side = Snapshot.withoutReadObservation { room.placement(windowSize.height, windowMargin, insets, safeArea, fallbackContentHeight = surfaceHeight) }?.side
+        return raftMenuPosition(anchorBounds, windowSize, popupContentSize, gap, windowMargin, insets, layoutDirection == LayoutDirection.Rtl, safeArea, alignEnd, side)
+    }
 }
 
 

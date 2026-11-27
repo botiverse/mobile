@@ -671,6 +671,19 @@
       }
     },
     {
+      "id": "ds.menu-popup.long",
+      "kind": "component",
+      "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/MenuPlacementCases.kt:27",
+      "fixture": null,
+      "axes": {},
+      "parity": [],
+      "divergences": [],
+      "capture": {
+        "settleFrames": 4,
+        "frameIntervalMs": 0
+      }
+    },
+    {
       "id": "ds.menu.gallery",
       "kind": "component",
       "source": "compose/designsystem/src/desktopVcase/kotlin/build/raft/designsystem/vcase/InteractiveComponentCases.kt:808",
