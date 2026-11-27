@@ -478,6 +478,24 @@ class RaftWebContainerAdapterTest {
         assertTrue(poolAnomalyLine.contains("action=ios_spare_zombie_rebuilt"))
         assertTrue(poolAnomalyLine.contains("engine=ios_wkwebview"))
 
+        val (navFlowWarn, navFlowLine) =
+            formatWebContainerTelemetryLog(
+                WebContainerTelemetryEvent.MainFrameNavigation(
+                    surfaceId = "in_app_browser",
+                    action = "post_submit",
+                    sanitizedUrl = "https://stamp.build/settings/github/full/connect",
+                    method = "POST",
+                    isRedirect = false,
+                    carriesHeader = false,
+                ),
+            )
+        assertFalse(navFlowWarn)
+        assertTrue(navFlowLine.contains("web_container_nav"))
+        assertTrue(navFlowLine.contains("surface=in_app_browser"))
+        assertTrue(navFlowLine.contains("action=post_submit"))
+        assertTrue(navFlowLine.contains("method=POST"))
+        assertTrue(navFlowLine.contains("url=https://stamp.build/settings/github/full/connect"))
+
         val (jsbWarn, jsbLine) =
             formatWebContainerTelemetryLog(
                 WebContainerTelemetryEvent.JsbCallCompleted("settings", "raft.host.emit", success = false, errorCode = "ORIGIN_DENIED", durationMs = 4L),

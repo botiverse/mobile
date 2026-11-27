@@ -571,6 +571,7 @@ internal actual fun WebContainerPlatformHost(
 private const val ABOUT_BLANK_URL = "about:blank"
 private const val WATCHDOG_TICK_MS = 500L
 private const val HOST_CANCELLED_WINDOW_MS = 1_500L
+private const val SPECULATIVE_LOADING_TIMEOUT_MS = 15_000L
 private val SubframeSecFetchDestinations = setOf("iframe", "frame", "fencedframe")
 private val SubresourceSafeBuiltInSchemes = setOf("data", "blob", "about")
 
@@ -618,6 +619,7 @@ internal class WebContainerAndroidView(
     private var currentProgress: Int = 0
     private var currentLoading: Boolean = false
     private var speculativeLinkLoading: Boolean = false
+    @Volatile private var mainFrameNavigationEpoch: Int = 0
     private var loadGeneration: Int = 0
     private data class HostCancellation(val url: String, val atMs: Long)
 
@@ -686,6 +688,15 @@ internal class WebContainerAndroidView(
                 val action = watchdog.onEvent(WebContainerWatchdogEvent.Tick, nowMs())
                 handleWatchdogAction(action)
                 scheduleWatchdogTickIfNeeded()
+            }
+        }
+
+    private val speculativeLoadingTimeoutRunnable =
+        Runnable {
+            if (!destroyed && speculativeLinkLoading) {
+                speculativeLinkLoading = false
+                currentLoading = false
+                notifyNavigationState()
             }
         }
 
@@ -942,7 +953,8 @@ internal class WebContainerAndroidView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
-        speculativeLinkLoading = false
+        advanceMainFrameNavigationEpoch()
+        clearSpeculativeMainFrameLoading(stopLoadingState = false)
         audioPermissionController.cancelAll()
         clearHostCancellationState()
         boundController?.unbindDispatcher(this)
@@ -998,7 +1010,8 @@ internal class WebContainerAndroidView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
-        speculativeLinkLoading = false
+        advanceMainFrameNavigationEpoch()
+        clearSpeculativeMainFrameLoading(stopLoadingState = false)
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
@@ -1091,6 +1104,8 @@ internal class WebContainerAndroidView(
         loadedSrc = ""
         lastSuccessfulUrl = ""
         committedDocumentUrl = ""
+        advanceMainFrameNavigationEpoch()
+        clearSpeculativeMainFrameLoading(stopLoadingState = false)
         clearHostCancellationState()
         mainFrameLoadFailed = false
         currentTitle = ""
@@ -1166,7 +1181,7 @@ internal class WebContainerAndroidView(
                     super.onProgressChanged(view, newProgress)
                     currentProgress = newProgress.coerceIn(0, 100)
                     if (speculativeLinkLoading && currentProgress >= 100) {
-                        speculativeLinkLoading = false
+                        clearSpeculativeMainFrameLoading(stopLoadingState = false)
                         currentLoading = false
                     }
                     currentUrl = view?.url.orEmpty().ifBlank { currentUrl }
@@ -1411,7 +1426,8 @@ internal class WebContainerAndroidView(
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed) return
                     super.onPageStarted(view, url, favicon)
-                    speculativeLinkLoading = false
+                    advanceMainFrameNavigationEpoch()
+                    clearSpeculativeMainFrameLoading(stopLoadingState = false)
                     val target = url.orEmpty()
                     if (target.equals(ABOUT_BLANK_URL, ignoreCase = true) && loadedSrc.isBlank()) {
                         currentLoading = false
@@ -1456,6 +1472,7 @@ internal class WebContainerAndroidView(
                                 return
                             }
                             is WebNavigationDecision.InterceptedByHost -> {
+                                emitInAppBrowserNavTelemetry(action = "page_started_intercept", rawUrl = fence.url)
                                 markHostCancelledNavigation(view = view, targetUrl = fence.url, stopLoading = true)
                                 return
                             }
@@ -1464,6 +1481,7 @@ internal class WebContainerAndroidView(
                     }
                     if (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) {
                         chainState.recordHop(target)
+                        emitInAppBrowserNavTelemetry(action = "page_started", rawUrl = target)
                     }
                     hostCancelledLoadGeneration = -1
                     hostCancelledIntermediateUrl = ""
@@ -1485,7 +1503,8 @@ internal class WebContainerAndroidView(
                 override fun onPageCommitVisible(view: WebView?, url: String?) {
                     if (destroyed) return
                     super.onPageCommitVisible(view, url)
-                    speculativeLinkLoading = false
+                    advanceMainFrameNavigationEpoch()
+                    clearSpeculativeMainFrameLoading(stopLoadingState = false)
                     val target = url.orEmpty()
                     if (target.equals(ABOUT_BLANK_URL, ignoreCase = true) && loadedSrc.isBlank()) {
                         currentLoading = false
@@ -1501,6 +1520,7 @@ internal class WebContainerAndroidView(
                     events.onUrlChange(currentUrl)
                     if (!mainFrameLoadFailed) {
                         committedDocumentUrl = currentUrl
+                        emitInAppBrowserNavTelemetry(action = "page_commit", rawUrl = currentUrl)
                         markPagePainted()
                         chainState.markCommitted()
                         watchdog.onEvent(
@@ -1515,7 +1535,8 @@ internal class WebContainerAndroidView(
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (destroyed) return
                     super.onPageFinished(view, url)
-                    speculativeLinkLoading = false
+                    advanceMainFrameNavigationEpoch()
+                    clearSpeculativeMainFrameLoading(stopLoadingState = false)
                     val target = url.orEmpty()
                     if (target.equals(ABOUT_BLANK_URL, ignoreCase = true) && loadedSrc.isBlank()) {
                         currentLoading = false
@@ -1626,12 +1647,13 @@ internal class WebContainerAndroidView(
                         if (isRecentlyHostCancelled(url)) {
                             return emptyBlockedResponse()
                         }
+                        val method = request.method ?: "GET"
                         val decision =
                             evaluateMainFrameNavigation(
                                 targetUrl = url,
                                 initialUrl = cfg.url,
                                 policy = cfg.navigationPolicy,
-                                method = request.method ?: "GET",
+                                method = method,
                                 requestCarriesScopedHeader = false,
                                 chainState = null,
                             )
@@ -1640,6 +1662,22 @@ internal class WebContainerAndroidView(
                                 if (!destroyed) notifyNavigationBlocked(decision.url, decision.reason)
                             }
                             return emptyBlockedResponse()
+                        }
+                        // Android WebView skips shouldOverrideUrlLoading for <form method="post">
+                        // submissions; start immediate speculative loading guarded by epoch so fast
+                        // responses that already fired onPageStarted/onPageFinished never stick.
+                        if (
+                            !method.equals("GET", ignoreCase = true) &&
+                            !method.equals("HEAD", ignoreCase = true) &&
+                            (url.startsWith("http://", ignoreCase = true) || url.startsWith("https://", ignoreCase = true))
+                        ) {
+                            val capturedEpoch = mainFrameNavigationEpoch
+                            mainHandler.post {
+                                if (!destroyed && !parkedForKeepAlive && mainFrameNavigationEpoch == capturedEpoch) {
+                                    emitInAppBrowserNavTelemetry(action = "post_submit", rawUrl = url, method = method)
+                                    startSpeculativeMainFrameLoading()
+                                }
+                            }
                         }
                     } else {
                         val dest =
@@ -1691,7 +1729,8 @@ internal class WebContainerAndroidView(
                     if (destroyed) return
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
-                        speculativeLinkLoading = false
+                        advanceMainFrameNavigationEpoch()
+                        clearSpeculativeMainFrameLoading(stopLoadingState = false)
                         if (isCurrentLoadHostCancelled(request.url?.toString().orEmpty())) {
                             currentLoading = false
                             notifyNavigationState()
@@ -1725,7 +1764,8 @@ internal class WebContainerAndroidView(
                 ) {
                     handler?.cancel()
                     if (destroyed) return
-                    speculativeLinkLoading = false
+                    advanceMainFrameNavigationEpoch()
+                    clearSpeculativeMainFrameLoading(stopLoadingState = false)
                     mainFrameLoadFailed = true
                     lastSuccessfulUrl = ""
                     currentLoading = false
@@ -1765,10 +1805,9 @@ internal class WebContainerAndroidView(
         webView.setDownloadListener(
             DownloadListener { url, _, contentDisposition, mimeType, _ ->
                 if (destroyed) return@DownloadListener
+                advanceMainFrameNavigationEpoch()
                 if (speculativeLinkLoading) {
-                    speculativeLinkLoading = false
-                    currentLoading = false
-                    notifyNavigationState()
+                    clearSpeculativeMainFrameLoading(stopLoadingState = true)
                 }
                 if (events.onDownloadRequested == null) {
                     notifyNavigationBlocked(url.orEmpty(), "download_unhandled")
@@ -1776,6 +1815,51 @@ internal class WebContainerAndroidView(
                 }
                 startPageDownload(url.orEmpty(), contentDisposition, mimeType)
             },
+        )
+    }
+
+    private fun advanceMainFrameNavigationEpoch() {
+        mainFrameNavigationEpoch += 1
+        mainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+    }
+
+    private fun startSpeculativeMainFrameLoading() {
+        if (destroyed || parkedForKeepAlive || currentLoading) return
+        mainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+        speculativeLinkLoading = true
+        currentProgress = 0
+        currentLoading = true
+        mainHandler.postDelayed(speculativeLoadingTimeoutRunnable, SPECULATIVE_LOADING_TIMEOUT_MS)
+        notifyNavigationState()
+    }
+
+    private fun clearSpeculativeMainFrameLoading(stopLoadingState: Boolean) {
+        mainHandler.removeCallbacks(speculativeLoadingTimeoutRunnable)
+        val wasSpeculative = speculativeLinkLoading
+        speculativeLinkLoading = false
+        if (stopLoadingState && wasSpeculative) {
+            currentLoading = false
+            notifyNavigationState()
+        }
+    }
+
+    private fun emitInAppBrowserNavTelemetry(
+        action: String,
+        rawUrl: String,
+        method: String = "GET",
+        isRedirect: Boolean = false,
+        carriesHeader: Boolean = false,
+    ) {
+        if (!config.surfaceId.startsWith("in_app_browser")) return
+        telemetrySink?.onEvent(
+            WebContainerTelemetryEvent.MainFrameNavigation(
+                surfaceId = config.surfaceId,
+                action = action,
+                sanitizedUrl = sanitizeUrlForTelemetry(rawUrl),
+                method = method,
+                isRedirect = isRedirect,
+                carriesHeader = carriesHeader,
+            ),
         )
     }
 
@@ -1808,6 +1892,7 @@ internal class WebContainerAndroidView(
         stopLoading: Boolean,
     ) {
         val wasSpeculative = speculativeLinkLoading
+        advanceMainFrameNavigationEpoch()
         speculativeLinkLoading = false
         if (stopLoading) view?.stopLoading()
         lastHostCancellation = HostCancellation(url = targetUrl, atMs = nowMs())
@@ -1862,30 +1947,59 @@ internal class WebContainerAndroidView(
             )
         return when (decision) {
             WebNavigationDecision.Allow -> {
+                if (isRedirect) {
+                    emitInAppBrowserNavTelemetry(
+                        action = "override_redirect",
+                        rawUrl = target,
+                        method = method,
+                        isRedirect = true,
+                        carriesHeader = carriesHeader,
+                    )
+                }
                 if (
-                    isUserGesture &&
-                    !isRedirect &&
+                    (isUserGesture || isRedirect) &&
                     !currentLoading &&
                     (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) &&
                     !isSameDocumentIgnoringFragment(currentUrl, target) &&
                     !isRecentlyHostCancelled(target)
                 ) {
-                    speculativeLinkLoading = true
-                    currentProgress = 0
-                    currentLoading = true
-                    notifyNavigationState()
+                    startSpeculativeMainFrameLoading()
                 }
                 false
             }
             is WebNavigationDecision.InterceptedByHost -> {
+                emitInAppBrowserNavTelemetry(
+                    action = "override_intercept",
+                    rawUrl = decision.url,
+                    method = method,
+                    isRedirect = isRedirect,
+                )
                 markHostCancelledNavigation(view = view, targetUrl = decision.url, stopLoading = false)
                 true
             }
             is WebNavigationDecision.Block -> {
+                advanceMainFrameNavigationEpoch()
+                if (speculativeLinkLoading) {
+                    clearSpeculativeMainFrameLoading(stopLoadingState = true)
+                }
                 notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = isUserGesture)
                 true
             }
             is WebNavigationDecision.ReissueWithHeader -> {
+                emitInAppBrowserNavTelemetry(
+                    action = "override_reissue_header",
+                    rawUrl = decision.url,
+                    method = method,
+                    isRedirect = isRedirect,
+                    carriesHeader = true,
+                )
+                if (
+                    !currentLoading &&
+                    (decision.url.startsWith("http://", ignoreCase = true) || decision.url.startsWith("https://", ignoreCase = true)) &&
+                    !isSameDocumentIgnoringFragment(currentUrl, decision.url)
+                ) {
+                    startSpeculativeMainFrameLoading()
+                }
                 view?.loadUrl(
                     decision.url,
                     buildReissueWithHeaderHeaders(decision.headerName, decision.headerValue, requestHeaders),
@@ -1893,6 +2007,19 @@ internal class WebContainerAndroidView(
                 true
             }
             is WebNavigationDecision.ReissueWithoutHeader -> {
+                emitInAppBrowserNavTelemetry(
+                    action = "override_strip_header",
+                    rawUrl = decision.url,
+                    method = method,
+                    isRedirect = isRedirect,
+                )
+                if (
+                    !currentLoading &&
+                    (decision.url.startsWith("http://", ignoreCase = true) || decision.url.startsWith("https://", ignoreCase = true)) &&
+                    !isSameDocumentIgnoringFragment(currentUrl, decision.url)
+                ) {
+                    startSpeculativeMainFrameLoading()
+                }
                 view?.loadUrl(decision.url)
                 true
             }
@@ -2402,6 +2529,8 @@ internal class WebContainerAndroidView(
             is WebNavigationDecision.ReissueWithHeader -> {
                 loadedSrc = target
                 committedDocumentUrl = ""
+                advanceMainFrameNavigationEpoch()
+                clearSpeculativeMainFrameLoading(stopLoadingState = false)
                 clearHostCancellationState()
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                 chainState.startChain(
@@ -2410,11 +2539,14 @@ internal class WebContainerAndroidView(
                     starter = WebNavigationStarter.Launch,
                     initialHop = target,
                 )
+                emitInAppBrowserNavTelemetry(action = "launch", rawUrl = target, carriesHeader = true)
                 webView.loadUrl(target, mapOf(decision.headerName to decision.headerValue))
             }
             else -> {
                 loadedSrc = target
                 committedDocumentUrl = ""
+                advanceMainFrameNavigationEpoch()
+                clearSpeculativeMainFrameLoading(stopLoadingState = false)
                 clearHostCancellationState()
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                 chainState.startChain(
@@ -2423,6 +2555,7 @@ internal class WebContainerAndroidView(
                     starter = WebNavigationStarter.Launch,
                     initialHop = target,
                 )
+                emitInAppBrowserNavTelemetry(action = "launch", rawUrl = target, carriesHeader = false)
                 webView.loadUrl(target)
             }
         }
@@ -2437,6 +2570,7 @@ internal class WebContainerAndroidView(
                     hostCancelledIntermediateUrl = ""
                     val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                     chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
+                    emitInAppBrowserNavTelemetry(action = "cmd_go_back", rawUrl = currentUrl)
                     webView.goBack()
                 }
             WebContainerCommand.GoForward ->
@@ -2445,6 +2579,7 @@ internal class WebContainerAndroidView(
                     hostCancelledIntermediateUrl = ""
                     val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                     chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
+                    emitInAppBrowserNavTelemetry(action = "cmd_go_forward", rawUrl = currentUrl)
                     webView.goForward()
                 }
             WebContainerCommand.Reload -> {
@@ -2453,11 +2588,14 @@ internal class WebContainerAndroidView(
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                 chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Reload)
                 mainFrameLoadFailed = false
+                emitInAppBrowserNavTelemetry(action = "cmd_reload", rawUrl = currentUrl)
+                startSpeculativeMainFrameLoading()
                 webView.reload()
             }
             WebContainerCommand.Stop -> {
                 webView.stopLoading()
-                speculativeLinkLoading = false
+                advanceMainFrameNavigationEpoch()
+                clearSpeculativeMainFrameLoading(stopLoadingState = false)
                 currentLoading = false
                 notifyNavigationState()
             }
@@ -2488,12 +2626,46 @@ internal class WebContainerAndroidView(
                         routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
                     )
                 when (decision) {
-                    WebNavigationDecision.Allow -> webView.loadUrl(target)
-                    is WebNavigationDecision.ReissueWithHeader ->
+                    WebNavigationDecision.Allow -> {
+                        emitInAppBrowserNavTelemetry(action = "cmd_load_url", rawUrl = target)
+                        if (
+                            !currentLoading &&
+                            (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) &&
+                            !isSameDocumentIgnoringFragment(currentUrl, target)
+                        ) {
+                            startSpeculativeMainFrameLoading()
+                        }
+                        webView.loadUrl(target)
+                    }
+                    is WebNavigationDecision.ReissueWithHeader -> {
+                        emitInAppBrowserNavTelemetry(action = "cmd_load_url", rawUrl = decision.url, carriesHeader = true)
+                        if (
+                            !currentLoading &&
+                            (decision.url.startsWith("http://", ignoreCase = true) || decision.url.startsWith("https://", ignoreCase = true)) &&
+                            !isSameDocumentIgnoringFragment(currentUrl, decision.url)
+                        ) {
+                            startSpeculativeMainFrameLoading()
+                        }
                         webView.loadUrl(decision.url, mapOf(decision.headerName to decision.headerValue))
-                    is WebNavigationDecision.ReissueWithoutHeader -> webView.loadUrl(decision.url)
-                    is WebNavigationDecision.Block ->
+                    }
+                    is WebNavigationDecision.ReissueWithoutHeader -> {
+                        emitInAppBrowserNavTelemetry(action = "cmd_load_url", rawUrl = decision.url)
+                        if (
+                            !currentLoading &&
+                            (decision.url.startsWith("http://", ignoreCase = true) || decision.url.startsWith("https://", ignoreCase = true)) &&
+                            !isSameDocumentIgnoringFragment(currentUrl, decision.url)
+                        ) {
+                            startSpeculativeMainFrameLoading()
+                        }
+                        webView.loadUrl(decision.url)
+                    }
+                    is WebNavigationDecision.Block -> {
+                        advanceMainFrameNavigationEpoch()
+                        if (speculativeLinkLoading) {
+                            clearSpeculativeMainFrameLoading(stopLoadingState = true)
+                        }
                         notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = false)
+                    }
                     is WebNavigationDecision.InterceptedByHost ->
                         markHostCancelledNavigation(view = webView, targetUrl = decision.url, stopLoading = false)
                 }
