@@ -618,4 +618,95 @@ class RaftSandboxWebViewNavigationFenceIosTest {
             ),
         )
     }
+
+    @Test
+    fun contextAwareRoutePredicateAllowsCrossOriginOAuthRedirectAndRoutesDirectLinkClicks() {
+        val observedAsks = mutableListOf<RaftWebViewMainFrameRouteAsk>()
+        val blockedUrls = mutableListOf<String>()
+        val appOrigin = "https://stamp.build"
+        val localEvents =
+            RaftWebViewEvents().apply {
+                routesMainFrameNavigationWithContext = { ask ->
+                    observedAsks += ask
+                    if (ask.isRedirect) {
+                        false
+                    } else {
+                        raftAppEntryOriginOf(ask.committedUrl) == appOrigin &&
+                            raftAppEntryOriginOf(ask.url) != appOrigin
+                    }
+                }
+                onNavigationBlocked = { blockedUrls += it }
+            }
+        val container = UIView(frame = CGRectMake(0.0, 0.0, 320.0, 480.0))
+        val host = RaftIosSandboxWebView(container, localEvents)
+        hosts += host
+        host.applyConfig(
+            RaftWebViewConfig(
+                url = "$appOrigin/settings",
+                allowScripts = true,
+                allowNavigation = true,
+                domStorageEnabled = true,
+                useWideViewPort = false,
+                cacheEnabled = false,
+                ephemeral = false,
+                injectedJavaScript = "",
+                allowedNavigationSchemes = setOf("http", "https"),
+                hostEventsEnabled = false,
+                raftHost = RaftHostHeader(origin = appOrigin, value = "ios"),
+            ),
+        )
+        val webView = container.subviews.single() as WKWebView
+
+        // Commit initial settings page so committedDocumentUrl is on stamp.build.
+        assertEquals(
+            RaftIosMainFramePolicyOutcome.Allow,
+            host.decideMainFramePolicy(
+                source = webView,
+                targetURL = NSURL.URLWithString("$appOrigin/settings"),
+                rawNavigationType = WK_NAVIGATION_TYPE_OTHER,
+                requestCarriesHeader = true,
+            ),
+        )
+        host.didCommit(webView)
+
+        // Link tap to same-origin /auth/github/start starts in-flight navigation.
+        assertEquals(
+            RaftIosMainFramePolicyOutcome.Allow,
+            host.decideMainFramePolicy(
+                source = webView,
+                targetURL = NSURL.URLWithString("$appOrigin/auth/github/start"),
+                rawNavigationType = WK_NAVIGATION_TYPE_LINK_ACTIVATED,
+                requestCarriesHeader = true,
+            ),
+        )
+
+        // Server 302 redirect (WKNavigationTypeOther while navInFlight) to github.com stays in WebView & strips Raft-Host.
+        val oauthUrl = "https://github.com/login/oauth/authorize?client_id=stamp&state=abc"
+        assertEquals(
+            RaftIosMainFramePolicyOutcome.ReissueWithoutHeader(oauthUrl),
+            host.decideMainFramePolicy(
+                source = webView,
+                targetURL = NSURL.URLWithString(oauthUrl),
+                rawNavigationType = WK_NAVIGATION_TYPE_OTHER,
+                requestCarriesHeader = true,
+            ),
+        )
+        assertTrue(observedAsks.last().isRedirect)
+        assertEquals(emptyList<String>(), blockedUrls)
+
+        // After committing back on stamp.build, a direct cross-origin link click IS routed out.
+        host.didCommit(webView)
+        val externalRepo = "https://github.com/botiverse/mobile/pull/5955"
+        assertEquals(
+            RaftIosMainFramePolicyOutcome.Cancel,
+            host.decideMainFramePolicy(
+                source = webView,
+                targetURL = NSURL.URLWithString(externalRepo),
+                rawNavigationType = WK_NAVIGATION_TYPE_LINK_ACTIVATED,
+                requestCarriesHeader = false,
+            ),
+        )
+        assertFalse(observedAsks.last().isRedirect)
+        assertEquals(listOf(externalRepo), blockedUrls)
+    }
 }

@@ -260,6 +260,8 @@ internal fun RaftSandboxWebView(
     onDownloadRequested: ((RaftWebViewDownload) -> Unit)? = null,
     /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    /** Context-aware variant of [routesMainFrameNavigation] (see [RaftWebViewEvents.routesMainFrameNavigationWithContext]). */
+    routesMainFrameNavigationWithContext: ((RaftWebViewMainFrameRouteAsk) -> Boolean)? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
     /** [RaftWebViewConfig.showsFormAccessoryBar]. */
@@ -332,6 +334,7 @@ internal fun RaftSandboxWebView(
     val events = remember { RaftWebViewEvents() }
     events.catchesMainFrameNavigation = catchesMainFrameNavigation
     events.routesMainFrameNavigation = routesMainFrameNavigation
+    events.routesMainFrameNavigationWithContext = routesMainFrameNavigationWithContext
     events.onLoadCommit = onLoadCommit
     events.onLoadSuccess = {
         loadWatchdog?.onLoadFinished()
@@ -527,6 +530,8 @@ internal fun RaftWebView(
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
     /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    /** Context-aware variant of [routesMainFrameNavigation] (see [RaftWebViewEvents.routesMainFrameNavigationWithContext]). */
+    routesMainFrameNavigationWithContext: ((RaftWebViewMainFrameRouteAsk) -> Boolean)? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
     /** [RaftWebViewConfig.showsFormAccessoryBar]. */
@@ -581,6 +586,7 @@ internal fun RaftWebView(
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
         routesMainFrameNavigation = routesMainFrameNavigation,
+        routesMainFrameNavigationWithContext = routesMainFrameNavigationWithContext,
         diagnosticsSurface = diagnosticsSurface,
         showsFormAccessoryBar = showsFormAccessoryBar,
         storagePartition = storagePartition,

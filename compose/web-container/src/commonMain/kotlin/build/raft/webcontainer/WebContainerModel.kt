@@ -343,6 +343,14 @@ data class WebMainFrameInterceptContext(
     val priorHops: List<String> = emptyList(),
 )
 
+/** Context passed to host-side main-frame external routing hooks. */
+data class WebMainFrameRouteContext(
+    val url: String,
+    val isRedirect: Boolean = false,
+    val isUserGesture: Boolean = false,
+    val committedDocumentUrl: String = "",
+)
+
 /** Result of an in-container download handoff. */
 sealed interface WebDownloadResult {
     data class Bytes(

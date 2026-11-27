@@ -6892,6 +6892,7 @@
     <string name="in_app_browser_external_app_message">Эта страница хочет открыть «%1$s» в другом приложении.</string>
     <string name="in_app_browser_external_app_open">Открыть</string>
     <string name="in_app_browser_close_page">Закрыть страницу</string>
+    <string name="in_app_browser_minimize_to_float">Плавающее окно</string>
     <string name="in_app_browser_open_pages_title">Открытые страницы (%1$d)</string>
     <string name="in_app_browser_open_pages_a11y">Открыто страниц: %1$d</string>
     <string name="in_app_browser_close_all_pages">Закрыть все</string>

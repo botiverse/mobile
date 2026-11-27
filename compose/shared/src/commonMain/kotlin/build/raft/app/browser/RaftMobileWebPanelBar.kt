@@ -53,12 +53,12 @@ import build.raft.designsystem.tokens.RaftStroke
 /*
  * Top bar for the right-to-left pushed in-app browser (#proj-mobile:#398, #proj-workspace:#412 /
  * raft-design #1417), aligned with Feishu/WeChat mini-app navigation (no redundant bottom toolbar):
- * - Installed Raft App page: leading ← steps back through WebView history first and suspends to
- *   the right-edge floating pill at root (a compact × appears beside ← once web history exists so
- *   deep pages can return to Raft in one tap; in wide side column, ← appears when canGoBack and
- *   trailing × always exits the column). Center shows App icon + name + "Signed in as"; trailing
- *   shows [N] multi-page switcher trigger when ≥2 pages are open and ⋮ overflow menu (Reload,
- *   Forward to Raft, Share, Copy link, Open in browser ↗, Close page).
+ * - Installed Raft App page: leading ← steps back through WebView history first and closes cleanly
+ *   at root (a compact × appears beside ← once web history exists so deep pages can close in one
+ *   tap; in wide side column, ← appears when canGoBack and trailing × always exits the column).
+ *   Center shows App icon + name + "Signed in as"; trailing shows [N] multi-page switcher trigger
+ *   when ≥2 pages are open and ⋮ overflow menu (Reload, Float window, Forward to Raft, Share,
+ *   Copy link, Open in browser ↗, Close page).
  * - Cross-origin outbound child page: leading ← steps back through WebView history then returns to
  *   parent App (with compact × quick-return beside ← when deep in history), center displays ONLY
  *   the start-truncated LTR domain (no App branding or Raft sign-in status), trailing shows ⋮ menu.
@@ -148,13 +148,17 @@ internal fun RaftAppBrowserTopBar(
     inColumn: Boolean = false,
     canGoBack: Boolean = false,
     onExitToHost: (() -> Unit)? = null,
+    onMinimizeToFloat: (() -> Unit)? = null,
     openTabCount: Int = 1,
     onOpenSwitcher: (() -> Unit)? = null,
     onForwardToRaft: (() -> Unit)? = null,
+    isOnAppOrigin: Boolean = true,
 ) {
     val colors = RaftTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
-    val showAppIdentity = isRaftApp && !isOutboundChild
+    val isManagedAppTab = isRaftApp && !isOutboundChild
+    val showAppIdentity = isManagedAppTab && isOnAppOrigin
+    val canMinimizeToFloat = isManagedAppTab && !inColumn && onMinimizeToFloat != null
     val showLeadingBack = !inColumn || isOutboundChild || canGoBack
     val showLeadingQuickExit = (!inColumn || isOutboundChild) && canGoBack && onExitToHost != null
     val displayHost = remember(currentUrl) { raftMobileWebPanelDisplayHost(currentUrl) }
@@ -162,8 +166,12 @@ internal fun RaftAppBrowserTopBar(
     val displayAppName = cleanAppName ?: displayHost
     val isFallbackHost = cleanAppName == null && displayHost.isNotBlank()
     val menuActions =
-        remember(showAppIdentity, isOutboundChild) {
-            raftMobileWebPanelMenuActions(isRaftApp = showAppIdentity, isOutboundChild = isOutboundChild)
+        remember(isManagedAppTab, isOutboundChild, canMinimizeToFloat) {
+            raftMobileWebPanelMenuActions(
+                isRaftApp = isManagedAppTab,
+                isOutboundChild = isOutboundChild,
+                canMinimizeToFloat = canMinimizeToFloat,
+            )
         }
 
     Column(
@@ -235,7 +243,7 @@ internal fun RaftAppBrowserTopBar(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (showAppIdentity && openTabCount >= 2 && onOpenSwitcher != null) {
+                if (isManagedAppTab && openTabCount >= 2 && onOpenSwitcher != null) {
                     RaftAppBrowserTabCountButton(
                         count = openTabCount,
                         onClick = onOpenSwitcher,
@@ -267,6 +275,18 @@ internal fun RaftAppBrowserTopBar(
                                             onReload()
                                         },
                                     )
+                                RaftMobileWebPanelMenuAction.MinimizeToFloat -> {
+                                    if (onMinimizeToFloat != null) {
+                                        RaftMenuItem(
+                                            text = stringResource(Res.string.in_app_browser_minimize_to_float),
+                                            leadingIcon = { RaftSlotIcon(RaftLucideIconName.Minimize2) },
+                                            onClick = {
+                                                menuExpanded = false
+                                                onMinimizeToFloat()
+                                            },
+                                        )
+                                    }
+                                }
                                 RaftMobileWebPanelMenuAction.ForwardToRaft -> {
                                     if (onForwardToRaft != null) {
                                         RaftMenuItem(

@@ -750,8 +750,17 @@ internal fun RaftWebContainerAdaptedHost(
     val hasJsDialogHandler = events.onJsDialog != null
     val hasCatchHandler = events.catchesMainFrameNavigation != null
     val hasRouteHandler = events.routesMainFrameNavigation != null
+    val hasRouteWithContextHandler = events.routesMainFrameNavigationWithContext != null
     val containerEvents =
-        remember(events, committedTracker, hasDownloadHandler, hasJsDialogHandler, hasCatchHandler, hasRouteHandler) {
+        remember(
+            events,
+            committedTracker,
+            hasDownloadHandler,
+            hasJsDialogHandler,
+            hasCatchHandler,
+            hasRouteHandler,
+            hasRouteWithContextHandler,
+        ) {
             WebContainerEvents(
                 onNavigationStateChange = { state ->
                     if (state.url.isNotBlank()) committedTracker.onUrlObserved(state.url)
@@ -830,6 +839,21 @@ internal fun RaftWebContainerAdaptedHost(
                 routesMainFrameNavigation =
                     if (hasRouteHandler) {
                         { candidateUrl -> events.routesMainFrameNavigation?.invoke(candidateUrl) == true }
+                    } else {
+                        null
+                    },
+                routesMainFrameNavigationWithContext =
+                    if (hasRouteWithContextHandler) {
+                        { ctx ->
+                            events.routesMainFrameNavigationWithContext?.invoke(
+                                RaftWebViewMainFrameRouteAsk(
+                                    url = ctx.url,
+                                    isRedirect = ctx.isRedirect,
+                                    isUserGesture = ctx.isUserGesture,
+                                    committedUrl = ctx.committedDocumentUrl,
+                                ),
+                            ) == true
+                        }
                     } else {
                         null
                     },

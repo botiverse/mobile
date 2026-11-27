@@ -1044,7 +1044,26 @@ internal class RaftIosSandboxWebView(
             handleBlockedMainFrameNavigation(targetString, isUserGesture = isUserGesture)
             return RaftIosMainFramePolicyOutcome.Cancel
         }
-        if (!isPendingHostLoad && events.routesMainFrameNavigation?.invoke(targetString) == true) {
+        val isRedirect = navKind == RaftHostNavigationKind.Redirect
+        val routedByHost =
+            if (!isPendingHostLoad) {
+                val withContext = events.routesMainFrameNavigationWithContext
+                if (withContext != null) {
+                    withContext(
+                        RaftWebViewMainFrameRouteAsk(
+                            url = targetString,
+                            isRedirect = isRedirect,
+                            isUserGesture = isUserGesture,
+                            committedUrl = committedDocumentUrl,
+                        ),
+                    )
+                } else {
+                    events.routesMainFrameNavigation?.invoke(targetString) == true
+                }
+            } else {
+                false
+            }
+        if (routedByHost) {
             navInFlight = false
             diagnosticsInfo("navigation_routed_as_link url=${formatUrlForLog(targetString)}")
             handleBlockedMainFrameNavigation(targetString, isUserGesture = isUserGesture)

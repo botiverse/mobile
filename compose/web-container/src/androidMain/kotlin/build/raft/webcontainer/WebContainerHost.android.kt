@@ -617,6 +617,7 @@ internal class WebContainerAndroidView(
     private var currentTitle: String = ""
     private var currentProgress: Int = 0
     private var currentLoading: Boolean = false
+    private var speculativeLinkLoading: Boolean = false
     private var loadGeneration: Int = 0
     private data class HostCancellation(val url: String, val atMs: Long)
 
@@ -912,6 +913,7 @@ internal class WebContainerAndroidView(
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
+        speculativeLinkLoading = false
         clearHostCancellationState()
         boundController?.unbindDispatcher(this)
         boundController = null
@@ -966,6 +968,7 @@ internal class WebContainerAndroidView(
         if (destroyed) return
         destroyed = true
         parkedForKeepAlive = false
+        speculativeLinkLoading = false
         jsDialogTracker.cancelActive()
         fullscreenController.hide()
         newWindowTransport.cancelAll()
@@ -1130,6 +1133,10 @@ internal class WebContainerAndroidView(
                     if (destroyed) return
                     super.onProgressChanged(view, newProgress)
                     currentProgress = newProgress.coerceIn(0, 100)
+                    if (speculativeLinkLoading && currentProgress >= 100) {
+                        speculativeLinkLoading = false
+                        currentLoading = false
+                    }
                     currentUrl = view?.url.orEmpty().ifBlank { currentUrl }
                     notifyNavigationState()
                 }
@@ -1364,6 +1371,7 @@ internal class WebContainerAndroidView(
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                     if (destroyed) return
                     super.onPageStarted(view, url, favicon)
+                    speculativeLinkLoading = false
                     val target = url.orEmpty()
                     if (target.equals(ABOUT_BLANK_URL, ignoreCase = true) && loadedSrc.isBlank()) {
                         currentLoading = false
@@ -1389,9 +1397,13 @@ internal class WebContainerAndroidView(
                                 method = "GET",
                                 requestCarriesScopedHeader = chainState.carriesScopedHeader,
                                 chainState = chainState,
+                                isRedirect = true,
+                                committedDocumentUrl = committedDocumentUrl,
                                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                                 routesMainFrameNavigation =
                                     events.routesMainFrameNavigation.takeUnless { isConfiguredInitialDocument },
+                                routesMainFrameNavigationWithContext =
+                                    events.routesMainFrameNavigationWithContext.takeUnless { isConfiguredInitialDocument },
                                 mutateChainState = false,
                             )
                         when (fence) {
@@ -1432,6 +1444,7 @@ internal class WebContainerAndroidView(
                 override fun onPageCommitVisible(view: WebView?, url: String?) {
                     if (destroyed) return
                     super.onPageCommitVisible(view, url)
+                    speculativeLinkLoading = false
                     val target = url.orEmpty()
                     if (target.equals(ABOUT_BLANK_URL, ignoreCase = true) && loadedSrc.isBlank()) {
                         currentLoading = false
@@ -1461,6 +1474,7 @@ internal class WebContainerAndroidView(
                 override fun onPageFinished(view: WebView?, url: String?) {
                     if (destroyed) return
                     super.onPageFinished(view, url)
+                    speculativeLinkLoading = false
                     val target = url.orEmpty()
                     if (target.equals(ABOUT_BLANK_URL, ignoreCase = true) && loadedSrc.isBlank()) {
                         currentLoading = false
@@ -1635,6 +1649,7 @@ internal class WebContainerAndroidView(
                     if (destroyed) return
                     super.onReceivedError(view, request, error)
                     if (request?.isForMainFrame == true) {
+                        speculativeLinkLoading = false
                         if (isCurrentLoadHostCancelled(request.url?.toString().orEmpty())) {
                             currentLoading = false
                             notifyNavigationState()
@@ -1668,6 +1683,7 @@ internal class WebContainerAndroidView(
                 ) {
                     handler?.cancel()
                     if (destroyed) return
+                    speculativeLinkLoading = false
                     mainFrameLoadFailed = true
                     lastSuccessfulUrl = ""
                     currentLoading = false
@@ -1707,6 +1723,11 @@ internal class WebContainerAndroidView(
         webView.setDownloadListener(
             DownloadListener { url, _, contentDisposition, mimeType, _ ->
                 if (destroyed) return@DownloadListener
+                if (speculativeLinkLoading) {
+                    speculativeLinkLoading = false
+                    currentLoading = false
+                    notifyNavigationState()
+                }
                 if (events.onDownloadRequested == null) {
                     notifyNavigationBlocked(url.orEmpty(), "download_unhandled")
                     return@DownloadListener
@@ -1744,9 +1765,11 @@ internal class WebContainerAndroidView(
         targetUrl: String,
         stopLoading: Boolean,
     ) {
+        val wasSpeculative = speculativeLinkLoading
+        speculativeLinkLoading = false
         if (stopLoading) view?.stopLoading()
         lastHostCancellation = HostCancellation(url = targetUrl, atMs = nowMs())
-        if (currentLoading && loadGeneration > 0) {
+        if (currentLoading && !wasSpeculative && loadGeneration > 0) {
             hostCancelledLoadGeneration = loadGeneration
             hostCancelledIntermediateUrl = currentUrl.takeUnless { it == committedDocumentUrl }.orEmpty()
             watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), nowMs())
@@ -1789,11 +1812,28 @@ internal class WebContainerAndroidView(
                 chainState = chainState,
                 isUserGesture = isUserGesture,
                 isRedirect = isRedirect,
+                committedDocumentUrl = committedDocumentUrl,
                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                 routesMainFrameNavigation = events.routesMainFrameNavigation,
+                routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
             )
         return when (decision) {
-            WebNavigationDecision.Allow -> false
+            WebNavigationDecision.Allow -> {
+                if (
+                    isUserGesture &&
+                    !isRedirect &&
+                    !currentLoading &&
+                    (target.startsWith("http://", ignoreCase = true) || target.startsWith("https://", ignoreCase = true)) &&
+                    !isSameDocumentIgnoringFragment(currentUrl, target) &&
+                    !isRecentlyHostCancelled(target)
+                ) {
+                    speculativeLinkLoading = true
+                    currentProgress = 0
+                    currentLoading = true
+                    notifyNavigationState()
+                }
+                false
+            }
             is WebNavigationDecision.InterceptedByHost -> {
                 markHostCancelledNavigation(view = view, targetUrl = decision.url, stopLoading = false)
                 true
@@ -1850,8 +1890,10 @@ internal class WebContainerAndroidView(
                 chainState = chainState,
                 isUserGesture = true,
                 isRedirect = false,
+                committedDocumentUrl = committedDocumentUrl,
                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                 routesMainFrameNavigation = events.routesMainFrameNavigation,
+                routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
             )
         when (decision) {
             WebNavigationDecision.Allow -> configuredWebView.loadUrl(target)
@@ -2369,6 +2411,7 @@ internal class WebContainerAndroidView(
             }
             WebContainerCommand.Stop -> {
                 webView.stopLoading()
+                speculativeLinkLoading = false
                 currentLoading = false
                 notifyNavigationState()
             }
@@ -2376,8 +2419,16 @@ internal class WebContainerAndroidView(
                 val target = command.url.trim()
                 if (target.isEmpty()) return
                 clearHostCancellationState()
+                mainFrameLoadFailed = false
                 val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Page)
+                val starter =
+                    if (chainState.hasCommittedDocument) WebNavigationStarter.Page else WebNavigationStarter.Launch
+                chainState.startChain(
+                    carriesHeader = false,
+                    reissueBudget = budget,
+                    starter = starter,
+                    initialHop = target,
+                )
                 val decision =
                     evaluateMainFrameNavigation(
                         targetUrl = target,
@@ -2385,8 +2436,10 @@ internal class WebContainerAndroidView(
                         policy = config.navigationPolicy,
                         method = "GET",
                         chainState = chainState,
+                        committedDocumentUrl = committedDocumentUrl,
                         catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                         routesMainFrameNavigation = events.routesMainFrameNavigation,
+                        routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
                     )
                 when (decision) {
                     WebNavigationDecision.Allow -> webView.loadUrl(target)

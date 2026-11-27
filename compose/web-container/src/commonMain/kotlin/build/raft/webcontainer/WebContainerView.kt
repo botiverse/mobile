@@ -154,6 +154,8 @@ data class WebContainerEvents(
     val onJsDialog: ((WebJsDialogRequest) -> Unit)? = null,
     val catchesMainFrameNavigation: ((WebMainFrameInterceptContext) -> Boolean)? = null,
     val routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    /** Optional richer variant of [routesMainFrameNavigation] carrying redirect and committed-document context. */
+    val routesMainFrameNavigationWithContext: ((WebMainFrameRouteContext) -> Boolean)? = null,
 )
 
 /**

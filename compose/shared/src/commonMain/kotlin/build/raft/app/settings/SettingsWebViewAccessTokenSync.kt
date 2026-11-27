@@ -47,6 +47,7 @@ internal data class SettingsWebViewAuthSnapshot(
     val session: StoredAuthSession? = null,
     val event: AuthSessionEvent? = null,
     val sessionGeneration: Long = 0L,
+    val hydrated: Boolean = false,
 )
 
 internal class SettingsWebViewAuthSnapshotReducer(
@@ -87,6 +88,7 @@ internal class SettingsWebViewAuthSnapshotReducer(
             session = latestSession,
             event = event,
             sessionGeneration = sessionGeneration,
+            hydrated = true,
         ).also { reduced = it }
     }
 }
