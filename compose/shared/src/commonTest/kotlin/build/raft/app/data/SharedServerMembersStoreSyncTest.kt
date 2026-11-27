@@ -2,7 +2,6 @@ package build.raft.app.data
 
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ChannelId
-import build.raft.app.model.ChannelMemberSnapshot
 import build.raft.app.SharedThreadStoreTestFakes.FakeMemberRepository
 import build.raft.app.members.currentMemberAvatarWireValue
 import build.raft.app.model.MemberId
