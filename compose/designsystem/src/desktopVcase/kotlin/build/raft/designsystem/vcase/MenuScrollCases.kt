@@ -21,9 +21,10 @@ import dev.vcase.VCase
  * raft-ui 0.106.0 "Long menus scroll inside the room they have": a menu taller than its cap
  * scrolls its rows, with the 4dp padding on the scrolled rows and the cut edges faded over up to
  * 24dp. At the top only the bottom edge fades; scrolled, both do. A menu that fits
- * (`ds.menu.gallery`) draws as before.
+ * (`ds.menu.gallery`) draws as before. Three frames: whether the rows overflow is known after
+ * the first layout, and the fade follows on the next.
  */
-@VCase("ds.menu.long-scroll")
+@VCase("ds.menu.long-scroll", settleFrames = 3, frameIntervalMs = 0)
 @Composable
 fun MenuLongScrollGallery() {
     val rows = listOf("General", "Design", "Engineering", "Launch", "Marketing", "Mobile", "Research", "Support", "Visual Testing", "Web")
