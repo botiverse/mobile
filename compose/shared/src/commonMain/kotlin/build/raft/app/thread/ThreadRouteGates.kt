@@ -1,6 +1,13 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.nav.LocalRaftStackPageInMotion
+import build.raft.app.nonBlank
+import build.raft.app.normalizedThreadChannelKind
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.threadPayloadOwnerScopeId
+import build.raft.app.typedReplyParentConversationKindOrNull
 import build.raft.app.data.ScreenError
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.DataResult
@@ -9,6 +16,8 @@ import build.raft.app.data.realtime.RealtimeRoutePolicy
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.tasksIdentityFilterId
+import build.raft.app.get
+import build.raft.app.messages
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
@@ -21,6 +30,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.semantics.role
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.ThreadComposerDropAttachmentsAction
+import build.raft.app.ThreadComposerReorderAttachmentsAction
+import build.raft.app.ThreadComposerSuggestionDemand
+import build.raft.app.ThreadRouteIdentity
+import build.raft.app.action
 import kotlinx.coroutines.flow.map
 
 private const val ThreadPerformanceSlowThresholdMs = 4L

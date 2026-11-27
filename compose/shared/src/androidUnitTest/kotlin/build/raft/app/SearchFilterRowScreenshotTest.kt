@@ -19,6 +19,7 @@ import build.raft.app.data.SearchTimeRange
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.icon
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test

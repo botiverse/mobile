@@ -13,6 +13,7 @@ import build.raft.app.data.SendExternalInvitesResult
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.failureTraceIdOrNull
 import build.raft.app.model.ChannelId
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

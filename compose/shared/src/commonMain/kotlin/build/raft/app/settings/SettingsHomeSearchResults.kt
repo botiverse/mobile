@@ -8,6 +8,8 @@ import build.raft.designsystem.components.raftScrollIntoViewWhen
 import build.raft.designsystem.components.rememberRaftScrollIntoViewGroup
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
+import build.raft.app.thread.delegatedPreviewSender
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -11,6 +11,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import build.raft.app.AgentMigrationComputer
+import build.raft.app.AgentMigrationPreflightComputerToken
+import build.raft.app.AgentMigrationPreflightRuntimeToken
+import build.raft.app.AgentMigrationSectionInputs
+import build.raft.app.AgentMigrationStartDialog
 import build.raft.app.components.RaftProUpgradeDialog
 import build.raft.app.components.raftProMigrationGateCopy
 import build.raft.app.data.AgentBlockedState
@@ -39,10 +44,13 @@ import build.raft.app.data.isAgentMigrateAction
 import build.raft.app.data.raftProGateDecision
 import build.raft.app.data.serverRoleCanMigrateAgents
 import build.raft.app.data.toAgentDetailSummary
+import build.raft.app.formatAgentMigrationPreflightUnverified
+import build.raft.app.get
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.resources.*
+import build.raft.app.settingsBillingOffersUpgrade
 import kotlinx.coroutines.flow.flowOf
 
 /** Open state of the native migration dialog launched from an `agent:migrate` action card (#proj-mobile:#356). */

@@ -17,6 +17,7 @@ import build.raft.app.data.InviteeRefusal
 import build.raft.app.data.NewServerConnectResult
 import build.raft.app.data.PendingConnectRequest
 import build.raft.app.data.ServerConnectOutcome
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent

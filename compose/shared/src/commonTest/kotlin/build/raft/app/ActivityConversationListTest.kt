@@ -30,6 +30,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.key
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftScale
 import kotlin.test.Test

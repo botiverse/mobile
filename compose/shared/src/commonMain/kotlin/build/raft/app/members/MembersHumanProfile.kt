@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.localizedLabel
 import androidx.compose.runtime.setValue
 import build.raft.app.components.raftControlSurface
 import build.raft.designsystem.components.RaftBanner
@@ -25,6 +26,7 @@ import build.raft.app.data.isEdgeBlockedMarker
 import build.raft.app.data.profileDescriptionComparable
 import build.raft.app.data.profileDescriptionLength
 import build.raft.app.data.profileDescriptionTooLong
+import build.raft.app.localizedLabel
 import build.raft.app.model.AgentProfile
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence

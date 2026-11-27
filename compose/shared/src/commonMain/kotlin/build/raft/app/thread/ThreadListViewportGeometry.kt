@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 internal fun ThreadListViewport.isThreadItemVisible(index: Int): Boolean {
     if (index < 0) return false

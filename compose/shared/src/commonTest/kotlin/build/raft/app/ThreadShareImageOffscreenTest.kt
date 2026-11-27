@@ -1,5 +1,17 @@
 package build.raft.app
 
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadShareImageCustomMaxWidthDp
+import build.raft.app.thread.ThreadShareImageCustomMinWidthDp
+import build.raft.app.thread.ThreadShareImageMaxSidePx
+import build.raft.app.thread.ThreadShareImagePixelBudget
+import build.raft.app.thread.ThreadShareImageWidth
+import build.raft.app.thread.ThreadShareImageWidthChoice
+import build.raft.app.thread.threadShareImageFilePath
+import build.raft.app.thread.threadShareImageRasterBands
+import build.raft.app.thread.threadShareImageRendersOffscreen
+import build.raft.app.thread.threadShareImageScale
+import build.raft.app.thread.threadShareImageSuppressesAuthor
 import kotlin.math.ceil
 import kotlin.test.Test
 import kotlin.test.assertContentEquals

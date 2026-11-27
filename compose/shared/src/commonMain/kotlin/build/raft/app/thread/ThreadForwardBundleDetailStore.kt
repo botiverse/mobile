@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.ConversationRepository
 import build.raft.app.data.AuthenticatedRouteAuthorityGateway
@@ -12,14 +12,18 @@ import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.candidateCacheScopeId
 import build.raft.app.data.stripQuoteReplyRefsForPreview
+import build.raft.app.get
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.model.ForwardMessageItem
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.optString
+import build.raft.app.resolve
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.markdown.normalizeThreadMarkdownBody
+import build.raft.app.messages
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException

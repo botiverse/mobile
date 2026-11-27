@@ -10,6 +10,10 @@ import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ConversationArtifact
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.RaftThreadFileItem
+import build.raft.app.thread.RaftThreadFilesPayload
+import build.raft.app.thread.ThreadFilesArtifactsState
+import build.raft.app.thread.ThreadFilesContent
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

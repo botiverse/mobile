@@ -2,7 +2,7 @@ package build.raft.app.markdown
 
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.links.ParsedRaftPermalink
-import build.raft.app.raftMarkdownUrlOpen
+import build.raft.app.thread.raftMarkdownUrlOpen
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

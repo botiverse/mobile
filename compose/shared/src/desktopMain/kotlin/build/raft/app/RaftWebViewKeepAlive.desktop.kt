@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import build.raft.app.data.RaftDesktopPaths
+import build.raft.app.thread.key
 import build.raft.webcontainer.MacOsNativeWebEngine
 import build.raft.webcontainer.WebIsolationScope
 import java.io.File

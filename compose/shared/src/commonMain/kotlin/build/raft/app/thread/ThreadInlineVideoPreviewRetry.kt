@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadAttachmentOpenTarget

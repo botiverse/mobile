@@ -30,6 +30,7 @@ import androidx.compose.ui.platform.PlatformTextInputSession
 import androidx.compose.ui.platform.SoftwareKeyboardController
 import build.raft.app.data.SharedAdaptiveWorkspaceSession
 import build.raft.app.data.visibleSideThread
+import build.raft.app.thread.key
 import build.raft.designsystem.focus.LocalRaftAutofocusGuard
 import build.raft.designsystem.focus.LocalRaftFocusInteractionObserverInstalled
 import build.raft.designsystem.focus.LocalRaftFocusModalToken

@@ -5,6 +5,9 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.ThreadConversationPinTarget
+import build.raft.app.thread.key
+import build.raft.app.thread.toUiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -103,6 +103,7 @@ import build.raft.app.resources.tab_settings
 import build.raft.app.resources.tab_tasks
 import build.raft.app.resources.thread_members_heading
 import build.raft.app.resources.thread_reply_title
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

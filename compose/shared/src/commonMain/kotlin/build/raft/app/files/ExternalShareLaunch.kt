@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.ExternalShareIntent
 import build.raft.app.data.ExternalShareServerOption
 import build.raft.app.data.externalShareOpaqueTokenOrNull
+import build.raft.app.thread.dispatch
 import build.raft.app.compat.json.JSONObject
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized

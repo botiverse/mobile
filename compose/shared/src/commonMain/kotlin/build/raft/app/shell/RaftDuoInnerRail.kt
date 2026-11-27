@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.components.raftAppRailMetricsFor
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box

@@ -1,12 +1,12 @@
 package build.raft.app.network.sync
 
 import build.raft.app.toRaftAvatarLabel
-import build.raft.app.withoutRetractedContent
-import build.raft.app.RaftThreadAttachmentItem
-import build.raft.app.RaftThreadMessageItem
-import build.raft.app.RaftThreadReactionItem
+import build.raft.app.thread.withoutRetractedContent
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadReactionItem
 import build.raft.app.MemberKindWireContract
-import build.raft.app.ThreadMessageDeliverySent
+import build.raft.app.thread.ThreadMessageDeliverySent
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.WireExternalAuthor
 import build.raft.app.data.externalSenderIdOrSyntheticKey

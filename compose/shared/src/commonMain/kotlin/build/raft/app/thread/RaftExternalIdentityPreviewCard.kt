@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Spacer
@@ -7,6 +7,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppAvatarSticker
+import build.raft.app.RaftAvatarKind
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.providerLabel
 import build.raft.designsystem.components.RaftAvatarSize

@@ -6,6 +6,9 @@ import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadComposerDirectUploadDecision
 import build.raft.app.data.resolveThreadComposerDirectUpload
+import build.raft.app.thread.ThreadUserFacingErrorReason
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.threadUserFacingErrorCodeReason
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi

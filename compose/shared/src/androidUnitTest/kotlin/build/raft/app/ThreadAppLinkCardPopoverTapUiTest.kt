@@ -32,6 +32,9 @@ import build.raft.app.resources.stringResource
 import build.raft.app.resources.thread_link_preview_connect_action
 import build.raft.app.resources.thread_link_preview_connect_title
 import build.raft.app.resources.thread_link_preview_open_link
+import build.raft.app.thread.RaftAppLinkCardView
+import build.raft.app.thread.ThreadAppLinkCardPopover
+import build.raft.app.thread.raftAppLinkOpenLinkButton
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals

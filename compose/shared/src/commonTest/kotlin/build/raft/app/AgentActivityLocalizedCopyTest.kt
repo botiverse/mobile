@@ -1,9 +1,11 @@
 package build.raft.app
 
 import build.raft.app.data.SharedServerMemberStatus
+import build.raft.app.messageRes
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import build.raft.app.resources.*
+import build.raft.app.thread.messageRes
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

@@ -7,6 +7,11 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.thread.RaftThreadMemberItem
+import build.raft.app.thread.displayName
+import build.raft.app.thread.mentionActionDeliveredNotice
+import build.raft.app.thread.resolveThreadMarkdownTagDisplayLabel
+import build.raft.app.thread.threadMarkdownMentionDisplayLabels
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

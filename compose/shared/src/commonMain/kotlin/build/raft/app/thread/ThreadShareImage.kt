@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.origin
+import build.raft.app.raftMonoFamilyForWeight
 import kotlin.math.roundToInt
 
 /*

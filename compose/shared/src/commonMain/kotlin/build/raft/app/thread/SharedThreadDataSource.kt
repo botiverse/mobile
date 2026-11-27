@@ -1,5 +1,13 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ReplyCacheProducerContext
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.ReplyResolutionScope
+import build.raft.app.SharedCreateAgentDialogSubmit
+import build.raft.app.SharedThreadFreshnessGeneration
+import build.raft.app.SharedThreadReplyCountFact
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.data.AttachmentUploadCapabilities
 import build.raft.app.data.AttachmentUploadCapabilitiesCache
 import build.raft.app.data.DataResult
@@ -55,6 +63,7 @@ import build.raft.app.data.RawMessagePage
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.ThreadPendingSendJournal
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
+import build.raft.app.get
 import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.ThreadSendMessageMention
@@ -65,6 +74,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.markdown.RaftMarkdownMessageRef
+import build.raft.app.messages
 import build.raft.app.model.MessageId
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
@@ -89,6 +99,13 @@ import build.raft.app.network.sync.ThreadDurableEnteredPage
 import build.raft.app.network.sync.ThreadDurableRequestStamp
 import build.raft.app.network.sync.ThreadRepliesAcceptedProjection
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
+import build.raft.app.projectionRejectingDiagnosticsLogger
+import build.raft.app.resolve
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.staleReplyCacheProvenanceResult
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.threadPayloadOwnerScopeId
+import build.raft.app.traceId
 import build.raft.app.network.sync.RaftCachedThreadReplyWindow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher

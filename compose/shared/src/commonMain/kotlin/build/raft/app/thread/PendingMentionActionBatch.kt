@@ -1,7 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftPendingMentionActionItem
 import build.raft.app.data.PendingMentionActionExecuteResult
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.get
+import build.raft.app.supportsMentionAction
 
 internal data class PendingMentionActionBatchOutcome(
     val requestedIds: List<String>,

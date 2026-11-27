@@ -7,6 +7,7 @@ import build.raft.app.data.InboxItem
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

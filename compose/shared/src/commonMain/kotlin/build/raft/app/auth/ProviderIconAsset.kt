@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.RaftBundledFiles
+import build.raft.app.thread.key
 
 /**
  * OAuth provider icons ship as Compose resources files (`composeResources/files/icons`) and are

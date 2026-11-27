@@ -42,6 +42,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.key
 import build.raft.app.model.ThreadId
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftAppearance

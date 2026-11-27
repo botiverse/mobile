@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.resources.*
+import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftCloseButton
 import build.raft.designsystem.components.RaftIconToggleButton
 import build.raft.designsystem.focus.RaftFocusRegion

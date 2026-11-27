@@ -1,8 +1,12 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.data.DataResult
 import build.raft.app.data.MviStaleToken
 import build.raft.app.model.ChannelId
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
 import kotlinx.coroutines.CancellationException
 
 /**

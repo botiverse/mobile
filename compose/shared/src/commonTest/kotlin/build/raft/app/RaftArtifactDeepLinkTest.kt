@@ -4,6 +4,10 @@ import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.artifactWebUrl
+import build.raft.app.thread.RaftArtifactLinkInbox
+import build.raft.app.thread.RaftMessageLinkInbox
+import build.raft.app.thread.RaftMessageLinkIngress
+import build.raft.app.thread.parseRaftArtifactDeepLink
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

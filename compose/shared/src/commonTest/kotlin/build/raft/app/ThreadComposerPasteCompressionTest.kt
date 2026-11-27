@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.PlatformFile
+import build.raft.app.thread.threadComposerCompressPastedImages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest

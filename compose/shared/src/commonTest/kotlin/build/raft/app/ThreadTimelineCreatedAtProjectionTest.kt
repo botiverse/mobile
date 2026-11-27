@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.WireMessage
 import build.raft.app.data.buildSharedThreadPayloadFromMessagesPage
+import build.raft.app.thread.RaftThreadScreenPayload
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

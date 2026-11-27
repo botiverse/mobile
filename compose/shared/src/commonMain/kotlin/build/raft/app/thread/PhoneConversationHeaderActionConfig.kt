@@ -1,12 +1,14 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.app.RaftNativeNavBarAction
 import build.raft.app.data.MOBILE_PHONE_HEADER_ACTION_FEATURE_FLAG_KEY
 import build.raft.app.data.ServerFeatureFlagSnapshot
 import build.raft.app.data.SharedServerFeatureFlags
+import build.raft.app.get
 import build.raft.app.model.ServerId
 
 /**

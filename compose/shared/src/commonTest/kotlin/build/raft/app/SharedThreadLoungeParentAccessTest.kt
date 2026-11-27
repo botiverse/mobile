@@ -11,6 +11,11 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.ReplyParentAuthorityStatus
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadState
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.isUndeterminedReplyParentAuthority
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

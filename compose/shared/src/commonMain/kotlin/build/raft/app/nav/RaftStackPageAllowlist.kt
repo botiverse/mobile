@@ -59,11 +59,11 @@ internal const val RAFT_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 /** Batch 3: the chat, its pages, the file pages, in-app Raft Apps, and Search (any pageData). */
 internal val RaftStackChatFilesBrowsePages: List<String> =
     listOf(
-        build.raft.app.THREAD_PAGE,
-        build.raft.app.THREAD_MEMBERS_PAGE,
+        build.raft.app.thread.THREAD_PAGE,
+        build.raft.app.thread.THREAD_MEMBERS_PAGE,
         build.raft.app.CHANNEL_SETTINGS_PAGE,
-        build.raft.app.THREAD_SETTINGS_PAGE,
-        build.raft.app.THREAD_FORWARD_BUNDLE_PAGE,
+        build.raft.app.thread.THREAD_SETTINGS_PAGE,
+        build.raft.app.thread.THREAD_FORWARD_BUNDLE_PAGE,
         build.raft.app.TASK_PENDING_CONVERSATION_PAGE,
         build.raft.app.RAFT_FILE_PREVIEW_PAGE,
         build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
@@ -169,7 +169,7 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
  */
 internal val RaftStackCoveredKeepsSizePages: Set<String> =
     setOf(
-        build.raft.app.THREAD_PAGE,
+        build.raft.app.thread.THREAD_PAGE,
         build.raft.app.RAFT_FILE_PREVIEW_PAGE,
         build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE,
         build.raft.app.RAFT_IN_APP_BROWSER_PAGE,

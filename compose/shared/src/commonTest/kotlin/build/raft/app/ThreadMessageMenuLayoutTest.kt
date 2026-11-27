@@ -2,6 +2,14 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import build.raft.app.thread.ThreadMessageMenuReactionGap
+import build.raft.app.thread.ThreadMessageMenuViewportGap
+import build.raft.app.thread.ThreadNewMessageMenuColumnHorizontalPadding
+import build.raft.app.thread.ThreadNewMessageMenuReactionButtonSize
+import build.raft.app.thread.ThreadNewMessageMenuReactionHorizontalPadding
+import build.raft.app.thread.ThreadNewMessageMenuWidth
+import build.raft.app.thread.ThreadQuickReactionEmojis
+import build.raft.app.thread.threadMessageMenuWidthDp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

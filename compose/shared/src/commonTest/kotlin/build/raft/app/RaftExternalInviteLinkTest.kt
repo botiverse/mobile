@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.thread.RaftExternalInviteLinkInbox
+import build.raft.app.thread.RaftMessageLinkInbox
+import build.raft.app.thread.parseRaftExternalInviteLink
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

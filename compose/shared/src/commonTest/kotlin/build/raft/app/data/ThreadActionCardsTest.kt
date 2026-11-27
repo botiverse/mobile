@@ -179,9 +179,9 @@ class ThreadActionCardsTest {
 
     @Test
     fun genericLabelsRemainReadable() {
-        assertEquals("Return URL", build.raft.app.humanizeActionCardMetadataKey("returnURL"))
-        assertEquals("Unsafe demo URL override", build.raft.app.humanizeActionCardMetadataKey("unsafeDemoUrlOverride"))
-        assertEquals("Recover app owner", build.raft.app.humanizeActionCardType("integration:recover_app_owner"))
+        assertEquals("Return URL", build.raft.app.thread.humanizeActionCardMetadataKey("returnURL"))
+        assertEquals("Unsafe demo URL override", build.raft.app.thread.humanizeActionCardMetadataKey("unsafeDemoUrlOverride"))
+        assertEquals("Recover app owner", build.raft.app.thread.humanizeActionCardType("integration:recover_app_owner"))
     }
 
     @Test

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.dispatch
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -7,11 +7,22 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import build.raft.app.HomeMessageOpenRequest
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftChildPage
+import build.raft.app.RaftForegroundBannerHandoff
+import build.raft.app.RaftForegroundMessageBannerView
+import build.raft.app.TaskConversationHeadRoute
+import build.raft.app.TaskHeadEdits
+import build.raft.app.TaskHeadPlacement
+import build.raft.app.TaskHeadScrollState
 import build.raft.app.assistant.ThreadAssistantOtter
 import build.raft.app.assistant.ThreadAssistantPanelConversationMissing
 import build.raft.app.assistant.ThreadAssistantPanelSheet
 import build.raft.app.assistant.assistantOtterDmOpenRequest
 import build.raft.app.base.BridgeModule
+import build.raft.app.buildAppShellThreadPayload
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SharedConversationDirectoryState
 import build.raft.app.data.SharedConversationIdentityProvider
@@ -24,11 +35,18 @@ import build.raft.app.data.TaskConversationHeaderViewModel
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.taskHeadSourceMessageId
 import build.raft.app.data.valueOrNull
+import build.raft.app.foregroundBannerMemberServerId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.TaskSummary
+import build.raft.app.taskEarlierDiscussionOpenRequest
+import build.raft.app.taskHeadAmend
+import build.raft.app.taskHeadDelete
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeCapabilities
+import build.raft.app.withRaftShellStoreScope
 
 // Subtrees of the banner host's content lambda in `SharedThreadRouteContentContent`, moved verbatim
 // (dedent only) and called where they were: the route reads like a list of its parts, and its

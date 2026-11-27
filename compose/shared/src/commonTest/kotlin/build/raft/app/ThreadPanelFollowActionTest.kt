@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.thread.FOLLOW_THREAD_ACTION
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.UNFOLLOW_THREAD_ACTION
+import build.raft.app.thread.threadPanelFollowAction
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

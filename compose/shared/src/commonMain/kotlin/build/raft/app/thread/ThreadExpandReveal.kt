@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.runtime.Composable

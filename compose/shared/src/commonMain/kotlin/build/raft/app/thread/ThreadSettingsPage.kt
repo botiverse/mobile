@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +25,14 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.AuthenticatedProductPager
+import build.raft.app.AuthenticatedProductRoute
+import build.raft.app.ChannelSettingsCloseLanding
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftInputFocusDismissHost
+import build.raft.app.RaftTopPageHeader
+import build.raft.app.RaftUnifiedSideDrawer
+import build.raft.app.ThreadChannelSettingsPanel
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
@@ -37,8 +45,14 @@ import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeIntent
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedServerChannelMembersSlice
+import build.raft.app.get
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import build.raft.app.optString
+import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.raftWindowWide
+import build.raft.app.raftWindowWidth
+import build.raft.app.rememberThreadChannelSettingsPanel
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.LocalRaftSurfaceColor

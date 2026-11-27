@@ -14,6 +14,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftLongMessageCollapseConversationSetting
+import build.raft.app.thread.ThreadActivityMuteUiState
+import build.raft.app.thread.ThreadConversationPinTarget
+import build.raft.app.thread.ThreadConversationPinUiState
+import build.raft.app.thread.toUiState
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftSelect
 import build.raft.designsystem.components.RaftSelectAction

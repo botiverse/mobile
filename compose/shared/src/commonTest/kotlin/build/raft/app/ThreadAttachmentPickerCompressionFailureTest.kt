@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.thread.threadAttachmentPickerCompressionFailureFileRefs
+import build.raft.app.thread.threadAttachmentPickerHasCompressionFailure
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

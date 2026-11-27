@@ -1,4 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.accepts
+import build.raft.app.thread.accepts
 
 /**
  * Pure, surface-owned viewport policy. Each lazy surface owns one state instance;

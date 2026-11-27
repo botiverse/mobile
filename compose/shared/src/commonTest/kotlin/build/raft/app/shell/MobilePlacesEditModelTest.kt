@@ -5,6 +5,7 @@ import androidx.compose.ui.geometry.Rect
 import build.raft.app.data.RaftMobileBuiltInPlaceIds
 import build.raft.app.data.RaftRailPlace
 import build.raft.app.data.RaftRailPlaceApp
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

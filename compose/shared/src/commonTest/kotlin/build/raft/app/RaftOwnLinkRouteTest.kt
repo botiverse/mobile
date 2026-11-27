@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.links.raftMessageBareLinks
 import build.raft.app.model.ConversationKind
+import build.raft.app.thread.RaftMarkdownUrlOpen
+import build.raft.app.thread.RaftMessageLink
+import build.raft.app.thread.opensOnThisPage
+import build.raft.app.thread.raftMarkdownUrlOpen
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

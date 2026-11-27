@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import build.raft.app.nav.RaftStackPageActivity
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -25,6 +25,13 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.ThreadListViewport
+import build.raft.app.thread.ThreadReadingAnchorOwner
+import build.raft.app.thread.ThreadUserScrollEffect
+import build.raft.app.thread.ThreadViewportOwnerTag
+import build.raft.app.thread.key
+import build.raft.app.thread.reversedThreadListIndex
+import build.raft.app.thread.threadReadingAnchorOwns
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.junit.Rule

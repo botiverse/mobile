@@ -8,6 +8,10 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.threadAuthorRowDescription
+import build.raft.app.thread.threadAuthorRowShowsGuest
+import build.raft.app.thread.toRaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

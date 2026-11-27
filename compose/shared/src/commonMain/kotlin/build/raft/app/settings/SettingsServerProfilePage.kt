@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.designsystem.components.RaftReadOnlyField
 import build.raft.designsystem.components.RaftAvatar

@@ -11,6 +11,7 @@ import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
+import build.raft.app.localizedLabel
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.localizedLabel
 
 private const val TasksPanelChineseLocalizationFixture = "zh-cn-localization"
 

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -12,7 +12,15 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextStyle
+import build.raft.app.AgentContextViewOverlay
+import build.raft.app.AgentContextViewRequest
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftUpgradeGate
+import build.raft.app.SecondFactorStepUpDialog
+import build.raft.app.SharedThreadComposerDraftViewModel
 import build.raft.app.compat.pager.Pager
+import build.raft.app.currentRaftDateTimeContext
+import build.raft.app.currentRaftTimeContextProvider
 import build.raft.app.data.DataResult
 import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.isPreparedRequestAction
@@ -24,6 +32,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.secondFactorStepUpWebUrl
+import build.raft.app.get
 import build.raft.app.data.secondFactorStepUpWebServerSlug
 import build.raft.app.data.SharedCreateAgentFormStore
 import build.raft.app.data.SharedHomeContentState
@@ -32,7 +41,14 @@ import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
+import build.raft.app.openRaftUpgradeDialog
+import build.raft.app.openSettingsBillingPage
+import build.raft.app.openSettingsComputersPage
+import build.raft.app.raftLocalizedShortDateTime
+import build.raft.app.rememberCreatedAgent
 import build.raft.app.resources.*
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.toRaftTimeCapabilities
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 

@@ -8,6 +8,8 @@ import build.raft.app.SharedThreadStoreTest.FakeThreadApi
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RaftFreshnessEvent
 import build.raft.app.data.RaftFreshnessTrigger
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.ExperimentalCoroutinesApi

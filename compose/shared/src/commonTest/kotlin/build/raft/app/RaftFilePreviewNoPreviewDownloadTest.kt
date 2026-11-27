@@ -7,6 +7,7 @@ import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.RaftThreadApiClient
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadAttachmentItem
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

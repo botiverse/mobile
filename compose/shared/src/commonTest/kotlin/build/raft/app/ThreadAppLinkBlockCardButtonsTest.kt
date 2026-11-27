@@ -6,6 +6,7 @@ import build.raft.app.data.RaftAppLinkCardV2
 import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardV2Element
+import build.raft.app.thread.blockCardButtons
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardButtonKind
 import build.raft.designsystem.components.raftAppLinkCardButtonLayout

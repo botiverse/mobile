@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.isImageAttachment
 import build.raft.app.base.BridgeAttachmentDownloadProgress
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size

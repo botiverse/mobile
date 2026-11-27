@@ -1,6 +1,10 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.messages
+import build.raft.app.origin
+import build.raft.app.raftNativeDispatchCapture
+import build.raft.app.rememberRaftMessageTimeFormat
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -20,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import build.raft.app.currentRaftDateTimeContext
 
 /** Over the messages, under the typing line, the find bar (at the list's top) and the jump pills. */
 private const val ThreadMessageListEndFadeZIndex = 1f

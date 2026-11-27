@@ -5,6 +5,8 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
+import build.raft.app.thread.threadAddMemberJoinedKeys
+import build.raft.app.thread.toRaftThreadMemberItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

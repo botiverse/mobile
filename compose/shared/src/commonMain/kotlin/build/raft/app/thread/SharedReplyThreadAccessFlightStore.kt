@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError

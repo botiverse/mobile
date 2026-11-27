@@ -23,6 +23,10 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.ThreadArchivedChannelNotice
+import build.raft.app.thread.ThreadArchivedChannelTestTags
+import build.raft.app.thread.ThreadFooterNoticeDock
+import build.raft.app.thread.ThreadJoinFooter
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

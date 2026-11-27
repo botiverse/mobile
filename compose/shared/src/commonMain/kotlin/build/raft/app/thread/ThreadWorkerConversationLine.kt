@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,6 +60,20 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftAvatarWithStatus
+import build.raft.app.RaftColor
+import build.raft.app.RaftFloatingVerticalPlacement
+import build.raft.app.RaftLiveRootAnchorRef
+import build.raft.app.RaftMemberAvatar
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftModalAnchoredPopover
+import build.raft.app.RaftPopoverAnchor
+import build.raft.app.RaftPopoverAnchorResolver
+import build.raft.app.RaftPopoverLocalPoint
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftWorkingFaces
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.CONVERSATION_WORKER_LINE_TICK_MS
 import build.raft.app.data.HeldConversationWorkerState
@@ -76,6 +90,7 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.heldStatesFor
 import build.raft.app.data.workerConversationTargetForTask
 import build.raft.app.data.workerConversationTargetForThread
+import build.raft.app.fill
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.ConversationWorkerStateKind
 import build.raft.app.model.MemberKind
@@ -83,7 +98,10 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.raftCaptureLiveRootAnchor
+import build.raft.app.resolveCurrentPlacement
 import build.raft.app.resources.*
+import build.raft.app.toRaftAvatarLabel
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon

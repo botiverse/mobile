@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.ThreadSenderMenuItem
+import build.raft.app.thread.threadSenderMenuItems
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

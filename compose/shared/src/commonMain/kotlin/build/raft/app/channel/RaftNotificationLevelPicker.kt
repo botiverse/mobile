@@ -22,7 +22,9 @@ import build.raft.app.data.RaftNotificationLevelStore
 import build.raft.app.data.RaftServerNotificationLevels
 import build.raft.app.data.inheritedNotificationLevel
 import build.raft.app.data.resolveEffectiveNotificationLevel
+import build.raft.app.localizedLabel
 import build.raft.app.resources.*
+import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.RaftSelect
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.StringResource

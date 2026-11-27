@@ -9,6 +9,13 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.canOpenThreadAuthorProfile
+import build.raft.app.thread.resolvedThreadAvatarWireValue
+import build.raft.app.thread.threadAuthorBadgeLabel
+import build.raft.app.thread.threadMentionHandle
+import build.raft.app.thread.toMessage
+import build.raft.app.thread.toRaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

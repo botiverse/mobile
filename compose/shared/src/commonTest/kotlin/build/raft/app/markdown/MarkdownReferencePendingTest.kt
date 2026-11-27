@@ -1,6 +1,6 @@
 package build.raft.app.markdown
 
-import build.raft.app.ThreadMarkdownReferencePendingState
+import build.raft.app.thread.ThreadMarkdownReferencePendingState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

@@ -8,6 +8,7 @@ import build.raft.app.data.MembersAgentMachineGroupNoMachineKey
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

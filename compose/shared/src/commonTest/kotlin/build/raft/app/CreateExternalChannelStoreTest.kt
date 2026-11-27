@@ -15,6 +15,7 @@ import build.raft.app.data.SentExternalInvite
 import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope

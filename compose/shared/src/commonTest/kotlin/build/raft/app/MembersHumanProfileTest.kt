@@ -3,12 +3,17 @@ package build.raft.app
 import build.raft.app.data.SharedAgentDetailState
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
+import build.raft.app.memberDetailIdentity
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.thread.toThreadMemberDetailPageData
 import build.raft.designsystem.components.RaftBadgeVariant
 import kotlin.test.Test
 import kotlin.test.assertEquals

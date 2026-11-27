@@ -9,6 +9,8 @@ import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.resources.Res
 import build.raft.app.resources.thread_action_card_plan_trial_mobile_line
+import build.raft.app.thread.actionCardMobileLine
+import build.raft.app.thread.actionCardSpecToRender
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.ResolvedTextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
 import build.raft.designsystem.components.RaftSearchRowDefaults

@@ -21,6 +21,7 @@ import build.raft.app.data.SharedAccountLoginSecurityIntent
 import build.raft.app.data.SharedAccountLoginSecurityState
 import build.raft.app.data.SharedAccountLoginSecurityStore
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

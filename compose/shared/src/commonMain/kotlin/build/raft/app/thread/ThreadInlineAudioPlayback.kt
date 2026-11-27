@@ -1,5 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftFilePreviewVideoSeekRequest
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
 

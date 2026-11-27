@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Box
@@ -30,12 +30,15 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.available
 import build.raft.app.data.RaftLongMessageCollapseConversationPreference
 import build.raft.app.data.RaftLongMessageCollapseDetailKind
 import build.raft.app.data.raftLongMessageCollapseDetailKind
 import build.raft.app.data.RaftLongMessageCollapsePreferenceRevision
 import build.raft.app.data.RaftLongMessageCollapsePreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.get
 import build.raft.app.data.RaftMessageDisplayPrefsResult
 import build.raft.app.data.RaftMessageDisplayPrefsStore
 import build.raft.app.data.SharedHomeContentState

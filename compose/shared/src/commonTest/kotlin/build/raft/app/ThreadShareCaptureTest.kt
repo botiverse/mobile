@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.thread.LazyViewportAnchorTarget
+import build.raft.app.thread.ThreadShareCaptureSlice
+import build.raft.app.thread.threadShareCaptureAnchorTarget
+import build.raft.app.thread.threadShareCaptureSlice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

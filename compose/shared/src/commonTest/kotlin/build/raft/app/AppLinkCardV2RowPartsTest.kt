@@ -10,6 +10,9 @@ import build.raft.app.data.RaftLinkCardButtonAction
 import build.raft.app.data.RaftLinkCardButtonVariant
 import build.raft.app.data.RaftLinkCardTextTone
 import build.raft.app.data.RaftLinkCardV2Element
+import build.raft.app.thread.AppLinkCardV2RowPart
+import build.raft.app.thread.appLinkCardV2Draws
+import build.raft.app.thread.appLinkCardV2RowParts
 import build.raft.designsystem.components.RaftPreviewCardDetail
 import build.raft.designsystem.components.raftPreviewCardDetailSeparators
 import kotlin.test.Test

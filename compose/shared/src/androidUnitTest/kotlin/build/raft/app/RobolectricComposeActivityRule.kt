@@ -3,6 +3,7 @@ package build.raft.app
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.AndroidUiDispatcher
+import build.raft.app.thread.dispatch
 import build.raft.designsystem.theme.RaftScale
 import org.junit.rules.ExternalResource
 import org.robolectric.Robolectric

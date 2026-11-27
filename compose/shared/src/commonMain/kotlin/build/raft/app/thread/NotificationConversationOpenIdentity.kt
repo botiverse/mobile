@@ -1,6 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.AppShellNotificationThreadLaunchRequest
+import build.raft.app.ConversationOpenSource
+import build.raft.app.ConversationOpenSourceMessageIdentity
 import build.raft.app.model.ConversationKind
+import build.raft.app.thread.toConversationOpenSourceMessageIdentity
+import build.raft.app.toConversationOpenSourceMessageIdentity
 
 internal fun AppShellNotificationThreadLaunchRequest.toConversationOpenSourceMessageIdentity(): ConversationOpenSourceMessageIdentity =
     taskConversation?.let { target ->

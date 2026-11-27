@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -39,6 +39,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import build.raft.app.get
+import build.raft.app.settle
 import com.tencent.kuiklybase.markdown.compose.LocalRaftMarkdownFitWidth
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException

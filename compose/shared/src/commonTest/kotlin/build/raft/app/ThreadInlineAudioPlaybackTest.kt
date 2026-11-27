@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.compat.ui.VideoPlayControl
+import build.raft.app.thread.ThreadInlineAudioPlayback
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

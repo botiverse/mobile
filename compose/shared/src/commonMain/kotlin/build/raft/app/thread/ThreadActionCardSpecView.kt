@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.settingsBillingOffersUpgrade
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,7 +23,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftCardTree
+import build.raft.app.RaftCardTreeContext
+import build.raft.app.RaftTraceIdNote
+import build.raft.app.actionCardMsgPlain
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.currentRaftDateTimeContext
+import build.raft.app.currentRaftTimeContextProvider
 import build.raft.app.data.ActionCardSpecAction
 import build.raft.app.data.ActionCardSpecButton
 import build.raft.app.data.ActionCardSpecCard
@@ -39,6 +46,8 @@ import build.raft.app.data.RAFT_APP_ACTION_CARD_CAPABILITIES
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.PRO_AGENT_SEAT_BLOCK_SIZE
 import build.raft.app.data.jointInviteRateLimitMinutes
+import build.raft.app.fill
+import build.raft.app.localized
 import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.SeatsAddPurpose
@@ -52,6 +61,7 @@ import build.raft.app.data.isPreparedRequestAction
 import build.raft.app.data.isInviteExternalAction
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.rememberActionCardDisplayLocale
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

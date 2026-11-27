@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.map
 import build.raft.app.data.SharedConversationIdentityProvider
@@ -17,11 +17,25 @@ import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
+import build.raft.app.mentionVisibleLabel
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.TaskSummary
+import build.raft.app.nonBlank
+import build.raft.app.origin
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.resolveTaskOpenConversationChannelId
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.taskOpenSurface
+import build.raft.app.taskOpenTarget
+import build.raft.app.thread.resolveThreadRouteIdentity
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import androidx.compose.runtime.key
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.TaskOpenTarget
+import build.raft.app.buildStandaloneTaskThreadLaunchPayload
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import kotlinx.coroutines.flow.map

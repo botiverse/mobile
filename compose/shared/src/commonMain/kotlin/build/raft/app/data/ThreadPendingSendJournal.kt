@@ -1,15 +1,15 @@
 package build.raft.app.data
 
-import build.raft.app.RaftThreadMessageItem
-import build.raft.app.RaftThreadPendingSendContext
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadPendingSendContext
 import build.raft.app.ReplyCacheProvenance
-import build.raft.app.ThreadMessageDeliveryFailed
-import build.raft.app.ThreadMessageDeliverySending
+import build.raft.app.thread.ThreadMessageDeliveryFailed
+import build.raft.app.thread.ThreadMessageDeliverySending
 import build.raft.app.ThreadRouteIdentity
-import build.raft.app.ThreadTransientLocalSendIdPrefix
+import build.raft.app.thread.ThreadTransientLocalSendIdPrefix
 import build.raft.app.isPendingSendEquivalentTo
 import build.raft.app.isValidPendingSendRoute
-import build.raft.app.isTransientLocalSendingMessage
+import build.raft.app.thread.isTransientLocalSendingMessage
 import build.raft.app.threadPendingSendOwnerScopeId
 import build.raft.app.model.ConversationKind
 import build.raft.app.shared.data.local.ThreadPendingSendEntity

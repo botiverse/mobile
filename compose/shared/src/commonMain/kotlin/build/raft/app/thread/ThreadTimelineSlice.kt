@@ -1,12 +1,20 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.get
 import build.raft.app.markdown.ThreadMarkdownTag
+import build.raft.app.messages
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.ForwardMessageAttachment
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskSummary
+import build.raft.app.normalizedThreadChannelKind
+import build.raft.app.origin
+import build.raft.app.projectedMemberKindOrNull
+import build.raft.app.toRaftAvatarLabel
 
 internal data class ThreadReplyMetadata(
     val parentMessageId: String,

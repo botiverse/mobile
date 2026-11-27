@@ -4,6 +4,9 @@ import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.raftSlot
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftConnectedAppLogo
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection

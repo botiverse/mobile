@@ -20,6 +20,10 @@ import build.raft.app.markdown.RaftMarkdownRenderConfig
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.model.TaskStatus
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageCard
+import build.raft.app.thread.raftMessageBodyTextStyle
+import build.raft.app.thread.shouldSuppressCompactThreadAuthor
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

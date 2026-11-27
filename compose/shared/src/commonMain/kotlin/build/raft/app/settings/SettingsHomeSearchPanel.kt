@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.label
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftButtonSize
@@ -84,6 +86,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import build.raft.app.data.map
+import build.raft.app.label
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.raftClickable
 

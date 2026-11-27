@@ -23,6 +23,9 @@ import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ServerId
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadMessageStore
+import build.raft.app.thread.SharedThreadPayloadStore
 import build.raft.app.network.sync.ThreadDurablePageExtender
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope

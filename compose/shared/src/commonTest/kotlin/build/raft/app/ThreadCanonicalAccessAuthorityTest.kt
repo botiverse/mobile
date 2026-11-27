@@ -3,6 +3,10 @@ package build.raft.app
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.toConversationAccessCandidate
+import build.raft.app.thread.withInitialHomeConversationAccessFallbackUnlessCanonical
+import build.raft.app.toConversationAccessCandidate
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

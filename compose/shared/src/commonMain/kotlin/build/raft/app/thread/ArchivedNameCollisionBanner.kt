@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -9,9 +9,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import build.raft.app.ThreadLaunchConversationIdentity
+import build.raft.app.buildThreadLaunchConversationIdentity
 import build.raft.app.data.ArchivedNameCollision
 import build.raft.app.model.ConversationKind
 import build.raft.app.resources.*
+import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toThreadLaunchConversationIdentity
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.ThreadSnapshot
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId

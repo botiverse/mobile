@@ -22,6 +22,7 @@ import build.raft.app.data.AgentActivitySubagentGroup
 import build.raft.app.data.AgentActivitySubagentState
 import build.raft.app.data.groupAgentActivitySubagents
 import build.raft.app.model.AgentActivitySubagentLineage
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import org.junit.Rule

@@ -1,11 +1,18 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.data.InboxItem
 import build.raft.app.model.InboxItemKind
 import build.raft.app.data.SharedActivityState
+import build.raft.app.messages
 import build.raft.app.model.MemberKind
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.network.sync.ReplyPreview
+import build.raft.app.resolve
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.toRaftAvatarLabel
 
 /**
  * What the Activity list already knows, read by the thread page when it opens (artin 10-23: "Activity

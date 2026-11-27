@@ -1,10 +1,13 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.base.putIfAbsent
 import build.raft.app.compat.ui.DrawableResource
 import build.raft.app.compat.ui.InternalResourceApi
+import build.raft.app.label
+import build.raft.app.resolve
 import build.raft.app.resources.RaftBundledFile
 import build.raft.app.resources.RaftBundledFiles
+import build.raft.app.thread.label
 
 internal data class ThreadReactionAtlasResource(
     val image: RaftBundledFile,

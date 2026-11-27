@@ -20,6 +20,7 @@ import build.raft.app.data.RaftLongMessageCollapseConversationPreference
 import build.raft.app.data.SharedServerChannelMembersSlice
 import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftLongMessageCollapseConversationSetting
 import build.raft.app.model.ChannelId
 import build.raft.app.data.JointChannelConnections
 import build.raft.app.data.JointChannelRole

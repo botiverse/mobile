@@ -50,6 +50,15 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.ArtifactCardMenuTags
+import build.raft.app.thread.ArtifactDeletedCard
+import build.raft.app.thread.ArtifactMessageCard
+import build.raft.app.thread.LocalThreadMessageChildContextMenus
+import build.raft.app.thread.LocalThreadMessageChildLongPress
+import build.raft.app.thread.ThreadMessageChildContextMenus
+import build.raft.app.thread.ThreadMessageChildLongPressHandler
+import build.raft.app.thread.rememberThreadMessageLongPressGestureOwner
+import build.raft.app.thread.threadMessageLongPressActions
 import build.raft.designsystem.text.RaftText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest

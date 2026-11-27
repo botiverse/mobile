@@ -1,6 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.ThreadRouteIdentity
+import build.raft.app.messages
 import build.raft.app.model.PerReceiverReadStateScope
+import build.raft.app.observe
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
 
 /** Read pushes lower reply badges even when this page has not loaded the replies.
  * Kept by the visible store, bound to its existing account/environment owner and route.

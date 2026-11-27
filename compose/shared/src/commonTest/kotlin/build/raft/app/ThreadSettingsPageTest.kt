@@ -1,6 +1,9 @@
 package build.raft.app
 
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.ThreadSettingsPageLink
+import build.raft.app.thread.ThreadSettingsPageLinks
+import build.raft.app.thread.threadSettingsOpensAsPage
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertNull

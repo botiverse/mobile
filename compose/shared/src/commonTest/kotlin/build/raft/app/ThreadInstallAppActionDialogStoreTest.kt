@@ -4,6 +4,11 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardInstallText
+import build.raft.app.thread.ThreadInstallAppActionDialogStore
+import build.raft.app.thread.ThreadInstallAppActionIntent
+import build.raft.app.thread.ThreadInstallAppStaleCode
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.threadAppPromptTextLines
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

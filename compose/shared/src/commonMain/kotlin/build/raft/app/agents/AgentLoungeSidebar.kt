@@ -7,6 +7,7 @@ import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.agentLoungeSidebarEntry
 import build.raft.app.data.loungeAgentDisplayName
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.thread.key
 
 /*
  * Agent Lounge v0: a Lounge's own row in the Home sidebar (web slock #13875 / #13876 / #13880:

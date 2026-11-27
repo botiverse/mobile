@@ -13,6 +13,17 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageId
 import build.raft.app.model.Presence
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.thread.RaftThreadMemberItem
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.WorkerLineParts
+import build.raft.app.thread.WorkerLineScope
+import build.raft.app.thread.WorkerLineStrings
+import build.raft.app.thread.WorkerLineTone
+import build.raft.app.thread.buildThreadWorkerConversationUi
+import build.raft.app.thread.combineWorkerLines
+import build.raft.app.thread.formatConversationWorkerLine
+import build.raft.app.thread.formatWorkerSpan
+import build.raft.app.thread.workerConversationTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

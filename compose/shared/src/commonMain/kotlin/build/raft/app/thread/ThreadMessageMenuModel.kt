@@ -1,12 +1,18 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import build.raft.app.components.RaftMetrics
 import build.raft.app.data.AgentContextViewMenuEntryState
 import build.raft.app.model.TaskStatus
+import build.raft.app.normalizedThreadChannelKind
+import build.raft.app.origin
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTaskConversationChannelKind
+import build.raft.app.RaftThreadSurfaceKind
 import kotlinx.coroutines.channels.Channel
 
 internal enum class ThreadMessageMenuVariant {

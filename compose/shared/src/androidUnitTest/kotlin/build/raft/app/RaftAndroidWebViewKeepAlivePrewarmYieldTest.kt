@@ -4,6 +4,7 @@ import android.os.Looper
 import android.webkit.WebView
 import build.raft.app.data.RaftWebSpanRecord
 import build.raft.app.network.RaftTraceIds
+import build.raft.app.thread.key
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebContainerConfig
 import build.raft.webcontainer.WebIsolationScope

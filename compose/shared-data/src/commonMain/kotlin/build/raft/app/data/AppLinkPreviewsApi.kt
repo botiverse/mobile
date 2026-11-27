@@ -82,7 +82,7 @@ private data class WireAppLinkPreviewList(
  * not reviewed (only sent to a client that declares `unreviewed_app.v1`); absent (null) otherwise,
  * official Apps included. The read item's field present with any other value also reads `false`
  * (fail-safe: confirm first). Every `execute` button of an App with `reviewed == false` goes through
- * Raft's confirmation first ([build.raft.app.ThreadAppLinkCardPress]).
+ * Raft's confirmation first ([build.raft.app.thread.ThreadAppLinkCardPress]).
  */
 data class AppLinkApp(val name: String, val icon: String?, val reviewed: Boolean? = null) {
     /** `app.reviewed: false`: the App's acting buttons confirm first, undo-window ones too. */

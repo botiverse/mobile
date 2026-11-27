@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -6,6 +6,7 @@ import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.SharedConversationDirectoryProjection
 import build.raft.app.data.StoredAuthSession

@@ -1,15 +1,15 @@
 package build.raft.app.image
 
 import build.raft.app.RaftPendingAttachmentItem
-import build.raft.app.RaftThreadAttachmentItem
-import build.raft.app.RaftThreadMessageItem
-import build.raft.app.RaftThreadPendingSendContext
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadPendingSendContext
 import build.raft.app.SharedThreadComposerAttachment
-import build.raft.app.ThreadMessageDeliverySending
-import build.raft.app.ThreadMessageDeliverySent
-import build.raft.app.absorbingCanonicalSendEchoes
-import build.raft.app.threadInlineImageSourcePlan
-import build.raft.app.threadSentAttachmentLocalImageSources
+import build.raft.app.thread.ThreadMessageDeliverySending
+import build.raft.app.thread.ThreadMessageDeliverySent
+import build.raft.app.thread.absorbingCanonicalSendEchoes
+import build.raft.app.thread.threadInlineImageSourcePlan
+import build.raft.app.thread.threadSentAttachmentLocalImageSources
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi

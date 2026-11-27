@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import kotlinx.coroutines.delay
 

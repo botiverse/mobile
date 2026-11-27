@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.isConversationUnavailableErrorCode
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

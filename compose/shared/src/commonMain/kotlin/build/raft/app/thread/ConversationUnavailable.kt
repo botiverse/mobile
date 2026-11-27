@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.background
@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import build.raft.app.DualPaneMinimumWidthDp
+import build.raft.app.RaftBackHandler
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize

@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.raftMessageBodyTextStyle
 import build.raft.designsystem.theme.RaftScale
 import kotlin.test.AfterTest
 import kotlin.test.Test

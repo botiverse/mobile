@@ -21,8 +21,8 @@ import build.raft.app.ChannelSettingsResourceSpec
 import build.raft.app.KeyValuePixelAvatarStore
 import build.raft.app.ProcessAttachmentAuthScopes
 import build.raft.app.ReplyCacheProvenance
-import build.raft.app.SharedThreadMessageStore
-import build.raft.app.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadMessageStore
+import build.raft.app.thread.SharedThreadPayloadStore
 import build.raft.app.sharedThreadTimelineOwnerScopeId
 import build.raft.app.RaftPixelAvatarRuntime
 import build.raft.app.RaftPlatformLogHint
@@ -695,10 +695,10 @@ internal class RaftSharedStoreProvider private constructor(
     internal fun threadInstalledAppOriginResolver(
         accountId: String,
         serverId: String,
-    ): build.raft.app.ThreadInstalledAppOriginResolver {
+    ): build.raft.app.thread.ThreadInstalledAppOriginResolver {
         val cleanAccountId = accountId.trim()
         val cleanServerId = serverId.trim()
-        return build.raft.app.ThreadInstalledAppOriginResolver(
+        return build.raft.app.thread.ThreadInstalledAppOriginResolver(
             lookupSync = { origin ->
                 val scope =
                     build.raft.app.RaftInstalledAppScope(
@@ -843,8 +843,8 @@ internal class RaftSharedStoreProvider private constructor(
      * In-memory LRU cache of resolved quoted message permalinks (#proj-mobile:#383), scoped by
      * `(accountUserId, serverId, channelId, messageId)` and cleared on sign-out / server-access loss.
      */
-    internal val quotedPermalinkCache: build.raft.app.ThreadQuotedPermalinkCache =
-        build.raft.app.ThreadQuotedPermalinkCache()
+    internal val quotedPermalinkCache: build.raft.app.thread.ThreadQuotedPermalinkCache =
+        build.raft.app.thread.ThreadQuotedPermalinkCache()
 
     /** Joint channel Connected-servers pages (data-layer plan step 5): memory + durable. */
     internal val jointConnectionsCache: build.raft.app.RaftJointConnectionsCache by lazy {

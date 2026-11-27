@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary

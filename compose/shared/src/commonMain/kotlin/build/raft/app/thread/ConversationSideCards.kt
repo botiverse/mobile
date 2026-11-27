@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -24,6 +24,18 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.DualPaneMinimumWidthDp
+import build.raft.app.RAFT_PANE_GRID_MAIN_MIN_WIDTH_DP
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftColor
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftIncomingNavigationSignal
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftPaneGridCard
+import build.raft.app.RaftPaneGridCell
+import build.raft.app.RaftPaneGridColumn
+import build.raft.app.RaftPaneGridColumns
+import build.raft.app.RaftPanelBackHeader
 import build.raft.app.resources.*
 import build.raft.designsystem.components.LocalRaftPaneGridHeadTabs
 import build.raft.designsystem.components.RaftTab
@@ -36,6 +48,7 @@ import build.raft.designsystem.gesture.rememberRaftBackSwipeDismiss
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.get
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

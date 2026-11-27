@@ -1,8 +1,9 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import build.raft.app.RaftLucideIconName
 import build.raft.app.base.Utils
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager

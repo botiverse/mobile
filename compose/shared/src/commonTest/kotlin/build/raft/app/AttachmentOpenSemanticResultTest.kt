@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.ThreadAttachmentOpenUiState
+import build.raft.app.thread.raftThreadAttachmentOpenStatus
+import build.raft.app.thread.threadAttachmentIsOpening
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

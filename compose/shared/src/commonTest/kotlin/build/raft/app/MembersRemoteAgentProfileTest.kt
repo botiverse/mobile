@@ -1,10 +1,13 @@
 package build.raft.app
 
 import build.raft.app.data.ResolvedActor
+import build.raft.app.memberDetailIdentity
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.thread.withJointAuthorHomeServer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

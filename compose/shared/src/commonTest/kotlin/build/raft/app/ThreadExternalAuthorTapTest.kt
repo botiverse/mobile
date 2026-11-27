@@ -2,6 +2,12 @@ package build.raft.app
 
 import build.raft.app.data.parseSharedChannelMessages
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadAuthorTapAction
+import build.raft.app.thread.canOpenThreadAuthorProfile
+import build.raft.app.thread.externalAuthorHintText
+import build.raft.app.thread.threadAuthorTapAction
+import build.raft.app.thread.toRaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

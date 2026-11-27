@@ -12,6 +12,12 @@ import build.raft.app.network.sync.DurablePartitionKey
 import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SyncScopeId
 import build.raft.app.network.sync.ThreadDurableAccessEvictor
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest

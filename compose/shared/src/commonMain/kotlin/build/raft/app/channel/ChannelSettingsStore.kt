@@ -49,6 +49,11 @@ import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.toHomeChannelRow
 import build.raft.app.data.typedPinnedOrLegacy
 import build.raft.app.model.ChannelId
+import build.raft.app.thread.ChannelProfileUpdateStatus
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
+import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toThreadLaunchConversationIdentity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart

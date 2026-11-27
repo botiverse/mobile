@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.format.RaftFormatLocale
+import build.raft.app.localizedLabel
 import build.raft.app.data.AgentUsageFigures
 import build.raft.app.data.AgentUsageRange
 import build.raft.app.data.AgentUsageResponse
@@ -71,6 +72,8 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.model.getModelLabel
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus

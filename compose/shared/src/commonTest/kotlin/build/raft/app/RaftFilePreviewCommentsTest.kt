@@ -1,6 +1,14 @@
 package build.raft.app
 
 import build.raft.app.data.ThreadAttachmentCommentItem
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadAttachmentCommentsDialogState
+import build.raft.app.thread.ThreadUserFacingErrorLabels
+import build.raft.app.thread.ThreadUserFacingErrorReason
+import build.raft.app.thread.attachmentCommentsVisibleErrorMessage
+import build.raft.app.thread.supportsThreadAttachmentComments
+import build.raft.app.thread.withAttachmentCommentDraftProjection
+import build.raft.app.thread.withQuotedAttachmentComment
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlin.test.Test

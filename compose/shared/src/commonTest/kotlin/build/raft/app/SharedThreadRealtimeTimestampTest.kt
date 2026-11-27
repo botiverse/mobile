@@ -11,6 +11,9 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.MessageUpdated
 import build.raft.app.model.Presence
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import build.raft.app.thread.key
 
 /**
  * The composer's keyboard across a trip to the image editor (dm #119).

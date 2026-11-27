@@ -18,7 +18,7 @@ import build.raft.app.emailVerificationToken
 import build.raft.app.isAndroidExternalShareIntent
 import build.raft.app.isAppLoginCallbackIntent
 import build.raft.app.isRaftMobileOAuthCallback
-import build.raft.app.RaftMessageLinkIngress
+import build.raft.app.thread.RaftMessageLinkIngress
 import build.raft.app.postLoginAppShellPageData
 import build.raft.app.resolveMainActivityOnCreateShareAction
 import build.raft.app.resolveMainActivityShellPageData

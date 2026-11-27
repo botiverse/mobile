@@ -59,6 +59,7 @@ import build.raft.app.data.buildArtifactsHomeGroups
 import build.raft.app.data.isArtifactDimmed
 import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButton

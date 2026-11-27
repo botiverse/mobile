@@ -5,6 +5,7 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.agentAvatarFallbackWireValue
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

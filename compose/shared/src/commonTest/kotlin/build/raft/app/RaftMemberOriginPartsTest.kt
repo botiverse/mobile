@@ -6,6 +6,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
+import build.raft.app.thread.toRaftComposerMemberItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

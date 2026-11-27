@@ -9,6 +9,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.CompositionLocalProvider
 import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.app.components.RaftIconSpinner
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue

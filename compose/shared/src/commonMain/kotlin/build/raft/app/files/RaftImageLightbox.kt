@@ -4,6 +4,11 @@ import build.raft.designsystem.components.LocalRaftBarButtons
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
 import build.raft.app.resources.*
+import build.raft.app.shownAuthorName
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.isRetracted
+import build.raft.app.thread.shownAuthorName
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement

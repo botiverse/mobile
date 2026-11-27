@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.*
+import build.raft.app.thread.key
 import kotlin.test.*
 
 class AdaptiveDetailNavigationTest {

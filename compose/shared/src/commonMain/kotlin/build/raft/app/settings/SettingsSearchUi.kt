@@ -37,6 +37,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

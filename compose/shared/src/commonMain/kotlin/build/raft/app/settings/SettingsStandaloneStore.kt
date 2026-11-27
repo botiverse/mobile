@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.BridgeRaftAvatarNativeCache

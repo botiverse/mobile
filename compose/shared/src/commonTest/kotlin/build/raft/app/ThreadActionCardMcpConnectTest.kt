@@ -51,6 +51,15 @@ import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.data.withExecutedMcpConnection
 import build.raft.app.model.ServerId
+import build.raft.app.thread.ACTION_CARD_MCP_LOGIN_REQUIRED_NOTICE_KEY
+import build.raft.app.thread.RealThreadMcpConnectCardHost
+import build.raft.app.thread.ThreadActionCardSpecIntent
+import build.raft.app.thread.ThreadActionCardSpecStore
+import build.raft.app.thread.ThreadMcpConnectFinishOutcome
+import build.raft.app.thread.actionCardSpecToRender
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
+import build.raft.app.thread.withoutMcpConnectLoginNotice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

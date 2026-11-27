@@ -11,6 +11,7 @@ import build.raft.app.data.boundTo
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.network.MultipartFile
+import build.raft.app.thread.RaftThreadAttachmentItem
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

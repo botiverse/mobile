@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationSpec
@@ -42,9 +42,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import build.raft.app.ActivitySwipeDragDecision
+import build.raft.app.ActivitySwipeDragPolicy
+import build.raft.app.ActivitySwipeMaxClaimDistance
+import build.raft.app.ActivitySwipeMinClaimDistance
+import build.raft.app.ActivitySwipeMinEdgeInset
+import build.raft.app.RaftColor
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftType
+import build.raft.app.activitySwipeClaimThresholdPx
+import build.raft.app.activitySwipeEdgeZonesPx
+import build.raft.app.activitySwipeStartsInEdgeZone
+import build.raft.app.get
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.settle
 import build.raft.designsystem.gesture.LocalRaftHorizontalDragKeepers
 import build.raft.designsystem.gesture.RaftNestedHorizontalDrags
 import build.raft.designsystem.gesture.raftKeepsHorizontalDrags

@@ -26,6 +26,11 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.thread.LocalThreadInPlaceTextSelectionHost
+import build.raft.app.thread.ThreadInPlaceSelectableBody
+import build.raft.app.thread.ThreadInPlaceSelectionController
+import build.raft.app.thread.ThreadInPlaceTextSelectionHost
+import build.raft.app.thread.rememberThreadInPlaceSelectionController
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

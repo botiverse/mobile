@@ -15,6 +15,7 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.ServerId
+import build.raft.app.thread.SharedThreadDataSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

@@ -18,6 +18,14 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.compat.ui.PlayState
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.thread.LocalThreadInlineAudioPlayer
+import build.raft.app.thread.LocalThreadInlineAudioPreviewHost
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadInlineAudioAttachmentCard
+import build.raft.app.thread.ThreadInlineAudioPlayer
+import build.raft.app.thread.ThreadInlineAudioPreviewHost
+import build.raft.app.thread.ThreadInlineAudioPreviewStatus
+import build.raft.app.thread.ThreadInlineAudioPreviewUiState
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

@@ -1,6 +1,13 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageDeliverySent
+import build.raft.app.thread.ThreadMessageMenuAction
+import build.raft.app.thread.icon
+import build.raft.app.thread.threadMessageMenuActions
+import build.raft.app.thread.threadMessageMenuDownloadVideoAttachmentId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

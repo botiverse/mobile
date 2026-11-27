@@ -53,8 +53,6 @@ function build.raft.app.RaftIosVlcVideoPlayer.seekTo
 callable build.raft.app.RaftIosVlcVideoPlayer.Companion.*
 function build.raft.app.RaftIosVlcVideoPlayerFactory.createPlayer
 callable build.raft.app.RaftIosVlcVideoPlayerFactory.Companion.*
-callable build.raft.app.RaftMessageLinkIngress.*
-callable build.raft.app.RaftMessageLinkIngress.Companion.*
 callable build.raft.app.RaftNativeNavBarBridge.*
 callable build.raft.app.RaftNativeNavBarBridge.Companion.*
 callable build.raft.app.RaftNativeNavBarFont.*
@@ -364,6 +362,8 @@ callable build.raft.app.network.RaftDownloadFileNames.Companion.*
 callable build.raft.app.resources.StringDesc.Companion.*
 callable build.raft.app.resources.StringDesc.LocaleType.*
 callable build.raft.app.resources.StringDesc.LocaleType.Companion.*
+callable build.raft.app.thread.RaftMessageLinkIngress.*
+callable build.raft.app.thread.RaftMessageLinkIngress.Companion.*
 callable build.raft.app.transfer.RaftTransferPhase.*
 callable build.raft.app.transfer.RaftTransferPhase.Companion.*
 callable build.raft.app.transfer.RaftTransferProgress.*
@@ -434,7 +434,6 @@ callable build.raft.app.raftComposerPasteProbeViewController
 callable build.raft.app.raftIosClipboardHoldsOnlyImages
 callable build.raft.app.raftIosPasteMaxImages
 callable build.raft.app.raftPrefillNativeNavBar
-callable build.raft.app.raftSystemNotificationTargetsVisibleConversation
 callable build.raft.app.releaseRaftShellStoreScope
 callable build.raft.app.setRaftEnvironmentIndicatorHiddenForCapture
 callable build.raft.app.data.checkRaftIosColdStartSignedOut
@@ -445,3 +444,4 @@ callable build.raft.app.data.raftIosRenderPixelAvatarRgba
 callable build.raft.app.data.updateRaftHostVisibility
 callable build.raft.app.nav.raftIosNativeNavLaunchDecision
 callable build.raft.app.network.updateRaftProcessNetworkVisibility
+callable build.raft.app.thread.raftSystemNotificationTargetsVisibleConversation

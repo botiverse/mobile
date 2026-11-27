@@ -1,6 +1,9 @@
-package build.raft.app
+package build.raft.app.thread
 
-import build.raft.app.ThreadRealtimeFolding.InFlightRealtimeFold
+import build.raft.app.thread.ThreadRealtimeFolding.InFlightRealtimeFold
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.threadPayloadOwnerScopeId
+import build.raft.app.traceId
 import build.raft.app.data.ConversationReadOnSight
 import build.raft.app.data.raftConversationReadOnSight
 import build.raft.app.data.DataResult
@@ -25,6 +28,10 @@ import build.raft.app.data.ThreadPendingSendJournalDrainStore
 import build.raft.app.data.ThreadMessagesPage
 import build.raft.app.data.map
 import build.raft.app.data.realtime.RealtimeVisibleStreamGapRequest
+import build.raft.app.get
+import build.raft.app.isConversationAccessLost
+import build.raft.app.isPendingSendEquivalentTo
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId
 import build.raft.app.model.RealtimeEvent
@@ -40,8 +47,17 @@ import build.raft.app.network.sync.ThreadRepliesAuthoritativeSnapshot
 import build.raft.app.network.sync.ThreadRepliesPageIdentity
 import build.raft.app.network.sync.ThreadRepliesScopeIdentity
 import build.raft.app.network.sync.ThreadRepliesSyncHost
+import build.raft.app.resolve
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.strictProjectionDiagnosticsLogger
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ReplyCacheProducerContext
+import build.raft.app.ReplyCacheProvenance
+import build.raft.app.ReplyCacheProvenanceStaleCode
+import build.raft.app.ThreadRouteIdentity
+import build.raft.app.canRetainThreadPageFor
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException

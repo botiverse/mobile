@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadAttachmentFileDetailKind
+import build.raft.app.thread.RaftThreadAttachmentItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

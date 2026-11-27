@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftConnectedAppLogo
+import build.raft.app.thread.icon
+import build.raft.app.thread.reduce
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -53,6 +56,7 @@ import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
+import build.raft.app.reduce
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.designsystem.components.raftClickable

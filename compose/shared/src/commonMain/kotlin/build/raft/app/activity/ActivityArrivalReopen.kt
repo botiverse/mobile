@@ -11,6 +11,7 @@ import build.raft.app.data.SettingsServerSidebarPinnedItem
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.isTaskConversation
 import build.raft.app.data.showsUnread
+import build.raft.app.thread.key
 
 /*
  * Wide Activity (list and detail side by side) reopens, on arrival, the conversation opened last time

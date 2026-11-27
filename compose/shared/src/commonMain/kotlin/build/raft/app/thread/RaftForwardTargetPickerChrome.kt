@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.designsystem.components.RaftTextFieldClearAction
 import build.raft.app.resources.*
+import build.raft.app.thread.iconName
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppBotBadge
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftChannelKindIcon
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberAvatar
+import build.raft.app.RaftMemberAvatarIdentity
+import build.raft.app.RaftTopPageHeader
+import build.raft.app.currentRaftChannelKinds
+import build.raft.app.fill
+import build.raft.app.get
+import build.raft.app.iconName
+import build.raft.app.raftArgbHex
+import build.raft.app.rememberRaftMemberAppBot
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftBadge

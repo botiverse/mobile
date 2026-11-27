@@ -5,6 +5,10 @@ import build.raft.app.resources.common_close
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
 import build.raft.app.resources.localized
+import build.raft.app.shownAuthorName
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.thread.shownAuthorName
+import build.raft.app.thread.threadChannelHeaderIcon
 import build.raft.app.resources.RawStringDesc
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.foreground_banner_new_message
@@ -43,6 +47,7 @@ import build.raft.app.model.ThreadId
 import build.raft.app.model.avatarWireValueForRenderedAvatar
 import build.raft.app.model.conversationSafeDisplayTitleOrNull
 import build.raft.app.model.threadIdentity
+import build.raft.app.resolveThreadRouteIdentity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable

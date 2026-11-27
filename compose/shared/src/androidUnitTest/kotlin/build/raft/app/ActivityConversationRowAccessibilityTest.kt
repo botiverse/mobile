@@ -19,6 +19,7 @@ import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
+import build.raft.app.thread.key
 import build.raft.designsystem.theme.RaftScale
 import build.raft.designsystem.theme.RaftTheme
 import java.time.Duration

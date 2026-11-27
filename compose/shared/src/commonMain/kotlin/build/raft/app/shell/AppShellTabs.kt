@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.isAppUpdateHomeNotificationId
 import build.raft.app.data.raftComputerAttentionPairs
 import build.raft.app.data.raftComputerAttentionUnseen
+import build.raft.app.thread.key
 
 /**
  * The phone bar's icon for [key]: its destination's compact icon ([RaftAppDestination]); Activity

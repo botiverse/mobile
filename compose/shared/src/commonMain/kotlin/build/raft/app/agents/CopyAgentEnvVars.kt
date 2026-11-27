@@ -5,6 +5,7 @@ import build.raft.app.model.RUNTIME_CONFIG_VERSION
 import build.raft.app.model.isControlledRuntimeEnvKey
 import build.raft.app.model.isExternalAgentRuntime
 import build.raft.app.model.stripControlledRuntimeEnvVars
+import build.raft.app.thread.key
 
 /**
  * Mirrors web `copyAgentEnvVars.ts` & `runtimeEnvVarsCopyContext.ts` (botiverse/slock #16606,

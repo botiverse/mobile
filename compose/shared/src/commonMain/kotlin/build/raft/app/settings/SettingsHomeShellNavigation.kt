@@ -18,6 +18,7 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.thread.dispatch
 import androidx.compose.runtime.key
 import androidx.compose.foundation.layout.size
 import build.raft.app.compat.json.JSONObject

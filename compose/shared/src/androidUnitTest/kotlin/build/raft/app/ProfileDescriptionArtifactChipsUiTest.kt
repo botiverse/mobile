@@ -44,6 +44,9 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.LocalThreadShareCaptureActive
+import build.raft.app.thread.ThreadMessageAuthorSubtitle
+import build.raft.app.thread.key
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

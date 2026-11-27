@@ -56,6 +56,7 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.thread.dispatch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.foundation.background

@@ -1,6 +1,13 @@
 package build.raft.app
 
 import build.raft.app.data.ThreadApiResult
+import build.raft.app.thread.ThreadUserFacingErrorLabels
+import build.raft.app.thread.ThreadUserFacingErrorReason
+import build.raft.app.thread.threadFailureDiagnosticDetail
+import build.raft.app.thread.threadSendFailureNeedsAttachmentReupload
+import build.raft.app.thread.threadSendFailureSummary
+import build.raft.app.thread.threadUserFacingErrorCodeReason
+import build.raft.app.thread.toThreadDataError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

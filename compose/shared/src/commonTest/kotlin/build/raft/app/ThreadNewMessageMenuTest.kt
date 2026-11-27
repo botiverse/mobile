@@ -3,6 +3,13 @@ package build.raft.app
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.putBoolean
+import build.raft.app.thread.ThreadMessageMenuVariant
+import build.raft.app.thread.ThreadNewMessageMenuActionAvailability
+import build.raft.app.thread.ThreadNewMessageMenuTool
+import build.raft.app.thread.ThreadNewMessageMenuToolCallbacks
+import build.raft.app.thread.ThreadNewMessageMenuToolOrder
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.threadMessageMenuVariant
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals

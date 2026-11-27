@@ -6,6 +6,12 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskId
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.thread.ThreadLinkedTasksProjection
+import build.raft.app.thread.assignUpdateIntent
+import build.raft.app.thread.taskAssigneeIdentityOptions
+import build.raft.app.thread.threadEventRequiresWriteAccess
+import build.raft.app.thread.threadTaskAssigneeRows
+import build.raft.app.thread.threadTaskDetailPanelUseLegacy
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
+import build.raft.app.JointChannelKindWireValue
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.RaftType
 import build.raft.app.data.PeerReadReceiptIntent
 import build.raft.app.data.PeerReadReceiptOwner
 import build.raft.app.data.PeerReadReceiptScope
@@ -32,12 +38,14 @@ import build.raft.app.data.SharedPeerReadReceiptStore
 import build.raft.app.data.projectAgentReadReceipt
 import build.raft.app.data.projectPeerReadReceipt
 import build.raft.app.markdown.RaftMarkdownMentionReadStates
+import build.raft.app.messages
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.MessageMention
 import build.raft.app.model.ScopeReadUpdated
 import build.raft.app.model.ServerId
+import build.raft.app.raftArgbHex
 
 /**
  * Read receipts (`read_receipts_v0`) as the web shows them (botiverse/slock staging dac70954,

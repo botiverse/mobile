@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.links.ParsedRaftPermalink
 import build.raft.app.links.toParsedRaftPermalink
+import build.raft.app.thread.parseRaftMessageLink
 import build.raft.app.data.RaftClientConfigAppHosts
 import kotlin.test.AfterTest
 import kotlin.test.Test

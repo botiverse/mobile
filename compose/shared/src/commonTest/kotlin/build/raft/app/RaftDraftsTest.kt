@@ -14,6 +14,8 @@ import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.model.ThreadId
 import build.raft.app.model.topLevelThreadId
+import build.raft.app.thread.appendThreadQuoteToComposer
+import build.raft.app.thread.key
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

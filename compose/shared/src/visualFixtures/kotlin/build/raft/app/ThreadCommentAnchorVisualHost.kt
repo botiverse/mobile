@@ -11,6 +11,9 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentViewer
 import build.raft.app.data.ThreadAttachmentCommentsPage
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadAttachmentCommentsDialogState
+import build.raft.app.thread.withAttachmentCommentEditorValue
 
 @Page("compose_thread_comment_anchor_visual", supportInLocal = true)
 internal class ComposeThreadCommentAnchorVisualPage : build.raft.app.base.BasePager() {

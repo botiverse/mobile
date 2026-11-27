@@ -1,16 +1,21 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedTasksDataStoreStatus
 import build.raft.app.data.SharedTasksProjectionSlice
 import build.raft.app.data.SharedTasksRouteIntent
 import build.raft.app.data.TasksUiState
+import build.raft.app.get
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.taskCardReplyCount
 import build.raft.app.markdown.raftMarkdownTaskRefStatusKey
+import build.raft.app.memberKindWireValue
+import build.raft.app.messages
 
 internal data class ThreadLinkedTasksProjection(
     val authoritative: Boolean,

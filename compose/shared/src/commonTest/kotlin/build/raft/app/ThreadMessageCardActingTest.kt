@@ -11,6 +11,13 @@ import build.raft.app.data.messageCardReadBody
 import build.raft.app.data.parseMessageCardReadAnswer
 import build.raft.app.data.readMessageCardFromMetadata
 import build.raft.app.data.toMessageItemMetadata
+import build.raft.app.thread.RaftMessageCardActingNote
+import build.raft.app.thread.RaftMessageCardActingState
+import build.raft.app.thread.forCard
+import build.raft.app.thread.key
+import build.raft.app.thread.messageCardActingNote
+import build.raft.app.thread.messageCardActingState
+import build.raft.app.thread.messageCardPressCard
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals

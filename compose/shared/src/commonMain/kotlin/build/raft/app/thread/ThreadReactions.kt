@@ -1,11 +1,18 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.withRaftFontWeight
 import build.raft.designsystem.components.RaftMenuSurface
 import build.raft.designsystem.components.RaftMenuSeparator
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftUiMenuSurface
 import build.raft.app.components.raftMenuWidth
+import build.raft.app.localized
+import build.raft.app.raftCaptureLiveRootAnchor
+import build.raft.app.raftFloatingContentClickTarget
+import build.raft.app.raftGesturePointerInput
+import build.raft.app.rememberRaftGestureOwner
+import build.raft.app.resolve
 import build.raft.app.components.RaftMetrics
 import build.raft.app.base.Utils
 import androidx.compose.runtime.Composable
@@ -57,6 +64,19 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toIntSize
+import build.raft.app.Modal
+import build.raft.app.RaftAnchoredPopover
+import build.raft.app.RaftColor
+import build.raft.app.RaftFloatingHorizontalPlacement
+import build.raft.app.RaftFloatingVerticalPlacement
+import build.raft.app.RaftGestureSession
+import build.raft.app.RaftLiveRootAnchorRef
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftPanelAction
+import build.raft.app.RaftPopoverAnchor
+import build.raft.app.RaftPopoverLocalPoint
+import build.raft.app.RaftType
 
 private object ThreadReactionGlyphDiagnostics {
     private val loggedKeys = mutableSetOf<String>()

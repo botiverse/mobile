@@ -57,6 +57,8 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

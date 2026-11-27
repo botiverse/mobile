@@ -1,6 +1,8 @@
 package build.raft.app
 
+import build.raft.app.accepts
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.thread.accepts
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals

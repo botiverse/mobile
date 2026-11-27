@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.shownAuthorName
+import build.raft.app.thread.shownAuthorName
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.theme.LocalRaftContentColor
@@ -9,6 +11,13 @@ import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.map
 import build.raft.app.data.messageMetadataHasActionCard
+import build.raft.app.fill
+import build.raft.app.get
+import build.raft.app.messages
+import build.raft.app.raftArgbHex
+import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.raftCaptureLiveRootAnchor
+import build.raft.app.resolve
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -34,6 +43,16 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftCachedImage
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftFloatingVerticalPlacement
+import build.raft.app.RaftLiveRootAnchorRef
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftModalActionButton
+import build.raft.app.RaftPopoverAnchor
+import build.raft.app.RaftPopoverLocalPoint
+import build.raft.app.RaftUnifiedDialog
 import kotlinx.coroutines.flow.map
 import kotlin.math.roundToInt
 

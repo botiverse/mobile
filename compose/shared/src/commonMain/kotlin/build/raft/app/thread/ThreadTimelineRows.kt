@@ -1,7 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.links.ParsedRaftPermalink
+import build.raft.app.localized
+import build.raft.app.localizedLabel
 import build.raft.app.resources.*
+import build.raft.app.thread.iconName
+import build.raft.app.thread.localizedLabel
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
@@ -14,7 +18,12 @@ import build.raft.app.model.delegatedGroupKey
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.data.WORKER_ENDED_RECORD_SUBTYPE
 import build.raft.app.data.channelAnnouncementNoticeOf
+import build.raft.app.fill
+import build.raft.app.get
+import build.raft.app.iconName
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.origin
+import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.model.RaftTimeContext
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -51,6 +60,27 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.EmptyRaftAgentStatusResolver
+import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.EmptyRaftMemberModelLabelResolver
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftColor
+import build.raft.app.RaftLiveRootAnchorRef
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.RaftMonoFamily
+import build.raft.app.RaftPopoverAnchor
+import build.raft.app.RaftProfileDescriptionText
+import build.raft.app.RaftRelativeTimestampText
+import build.raft.app.RaftTimestampDisplayGroup
+import build.raft.app.RaftTimestampDisplayMode
+import build.raft.app.RaftType
+import build.raft.app.channelAnnouncementNoticeLine
 import kotlinx.coroutines.delay
 import build.raft.designsystem.components.raftClickable
 

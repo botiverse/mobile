@@ -1,8 +1,8 @@
 package build.raft.app.markdown
 
-import build.raft.app.isKnownThreadMarkdownTag
-import build.raft.app.threadEventAllowed
-import build.raft.app.threadEventRequiresWriteAccess
+import build.raft.app.thread.isKnownThreadMarkdownTag
+import build.raft.app.thread.threadEventAllowed
+import build.raft.app.thread.threadEventRequiresWriteAccess
 import com.tencent.kuiklybase.markdown.model.parseMarkdownInlineSyntax
 import kotlin.test.Test
 import kotlin.test.assertEquals

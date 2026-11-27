@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.text.RaftText

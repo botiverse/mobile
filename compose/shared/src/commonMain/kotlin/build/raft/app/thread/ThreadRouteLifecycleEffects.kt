@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -9,6 +9,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import build.raft.app.appLifecycleEventTargetsShell
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftAgentLounge
@@ -18,6 +19,9 @@ import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.isRaftHostVisible
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
+import build.raft.app.observe
+import build.raft.app.optLong
+import build.raft.app.optString
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch

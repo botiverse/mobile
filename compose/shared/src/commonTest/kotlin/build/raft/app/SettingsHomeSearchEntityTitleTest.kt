@@ -15,6 +15,8 @@ import build.raft.app.model.ServerSummary
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

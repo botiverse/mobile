@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftEmbeddedControls
 import build.raft.designsystem.components.RaftMenuItem

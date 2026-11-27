@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -22,9 +22,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.state.ToggleableState
+import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.data.RaftDefaultFavoriteReaction
 import build.raft.app.data.RaftReactionFavoriteStore
 import build.raft.app.data.RaftReactionFavorites
+import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftMessageItemToolbarButton
 import build.raft.designsystem.components.RaftMessageItemToolbarDefaults

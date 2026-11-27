@@ -1,6 +1,18 @@
 package build.raft.app
 
+import build.raft.app.label
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageDeliverySent
+import build.raft.app.thread.ThreadMessageLinkMenuAction
+import build.raft.app.thread.ThreadNewMessageMenuActionAvailability
+import build.raft.app.thread.ThreadNewMessageMenuTool
+import build.raft.app.thread.compactLabelResource
+import build.raft.app.thread.icon
+import build.raft.app.thread.label
+import build.raft.app.thread.threadMessageLinkIsRaft
+import build.raft.app.thread.threadMessageLinkMenuActions
+import build.raft.app.thread.threadMessageMenuActions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

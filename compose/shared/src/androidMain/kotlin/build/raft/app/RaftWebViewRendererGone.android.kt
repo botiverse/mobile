@@ -8,6 +8,8 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import build.raft.app.label
+import build.raft.app.thread.label
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**

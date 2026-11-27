@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.thread.canShowComposerVoiceDictation
+import build.raft.app.thread.threadViewerIsGuest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,6 +1,18 @@
 package build.raft.app
 
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.thread.ConversationSideCard
+import build.raft.app.thread.ConversationSideCardsState
+import build.raft.app.thread.ConversationSideCardsStore
+import build.raft.app.thread.RaftThreadTab
+import build.raft.app.thread.ThreadTransientBackTarget
+import build.raft.app.thread.conversationSideCard
+import build.raft.app.thread.conversationSideCardsEnabled
+import build.raft.app.thread.decodeConversationSideCardsOpen
+import build.raft.app.thread.encodeOpenCards
+import build.raft.app.thread.key
+import build.raft.app.thread.threadTransientBackTarget
+import build.raft.app.thread.toThreadTab
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

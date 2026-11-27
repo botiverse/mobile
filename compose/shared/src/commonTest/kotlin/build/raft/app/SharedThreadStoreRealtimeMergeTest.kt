@@ -36,6 +36,15 @@ import build.raft.app.model.MessageUpdated
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.ThreadReplyPageTitle
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
+import build.raft.app.thread.threadHeaderDisplayTitle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

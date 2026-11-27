@@ -62,6 +62,8 @@ import build.raft.app.data.ArtifactExcerptBlock
 import build.raft.app.data.ArtifactExcerptListItem
 import build.raft.app.data.ArtifactExcerptSpan
 import build.raft.app.resources.*
+import build.raft.app.thread.ArtifactCardScreenshotMaxHeight
+import build.raft.app.thread.icon
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.text.forCjkLineBox
 import build.raft.designsystem.theme.RaftTheme

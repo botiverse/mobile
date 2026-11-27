@@ -5,6 +5,8 @@ import build.raft.app.data.parseSharedSettingsAgentsAsMembers
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
+import build.raft.app.thread.ThreadHeaderDisplayModel
+import build.raft.app.thread.composerDmAgentPeerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

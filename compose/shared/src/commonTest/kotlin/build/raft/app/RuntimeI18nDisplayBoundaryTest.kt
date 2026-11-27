@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.ThreadReplyPageTitle
+import build.raft.app.thread.localizedThreadHeaderTitle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

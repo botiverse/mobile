@@ -1,7 +1,12 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.memberDetailIdentity
+import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toThreadLaunchConversationIdentity
 import build.raft.app.markdown.markdownToPreviewText
+import build.raft.app.memberDetailIdentity
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import build.raft.app.data.SharedComputersState

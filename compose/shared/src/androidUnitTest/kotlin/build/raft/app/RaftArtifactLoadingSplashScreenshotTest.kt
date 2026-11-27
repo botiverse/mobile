@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.runtime.Composable
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.thread.icon
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

@@ -1,5 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.isTerminalState
 import build.raft.app.data.ThreadCandidateProofGate
@@ -8,6 +10,7 @@ import build.raft.app.data.ThreadRouteId
 import build.raft.app.data.map
 import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadRouteId
+import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.Message
@@ -25,6 +28,8 @@ import build.raft.app.network.sync.InlineThreadReplyPreviewLimit
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadDurableReplyParent
 import build.raft.app.network.sync.initialThreadRepliesReadModel
+import build.raft.app.origin
+import build.raft.app.resolve
 import build.raft.app.network.sync.applyReplyFrame
 import build.raft.app.network.sync.ThreadRepliesSyncWindowProducer
 import kotlinx.coroutines.flow.filter

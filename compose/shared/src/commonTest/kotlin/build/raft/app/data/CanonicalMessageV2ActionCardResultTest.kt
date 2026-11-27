@@ -15,9 +15,9 @@ import build.raft.app.network.sync.decodeCanonicalMessageWire
 import build.raft.app.network.sync.encodeCanonicalMessageV2
 import build.raft.app.network.sync.toCanonicalMessageV2Conversion
 import build.raft.app.network.sync.toThreadMessageItem
-import build.raft.app.actionCardSpecToRender
-import build.raft.app.showsFeedbackTicket
-import build.raft.app.threadActionCard
+import build.raft.app.thread.actionCardSpecToRender
+import build.raft.app.thread.showsFeedbackTicket
+import build.raft.app.thread.threadActionCard
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

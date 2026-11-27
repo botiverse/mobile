@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.data.SettingsServerSidebarCustomSection
 import build.raft.app.data.SettingsServerSidebarSectionPlacement
+import build.raft.app.thread.icon
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

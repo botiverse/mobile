@@ -1,7 +1,17 @@
 package build.raft.app
 
+import build.raft.app.messageRes
 import build.raft.app.model.ForwardMessageBundle
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadForwardFailure
+import build.raft.app.thread.ThreadForwardFailureCodePartial
+import build.raft.app.thread.ThreadForwardFailureCodeSourceUnavailable
+import build.raft.app.thread.ThreadForwardFailureCodeTargetUnavailable
+import build.raft.app.thread.ThreadForwardFailureCodeUnavailable
+import build.raft.app.thread.messageRes
+import build.raft.app.thread.threadForwardFailure
+import build.raft.app.thread.threadForwardMessageSelection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

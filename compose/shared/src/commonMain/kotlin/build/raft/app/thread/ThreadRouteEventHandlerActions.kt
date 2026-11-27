@@ -1,6 +1,19 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.TaskCreateSourceMessage
+import build.raft.app.buildAppShellThreadPayload
+import build.raft.app.canRetainThreadPageFor
+import build.raft.app.currentRevisionForReplyCacheOwner
 import build.raft.app.resources.*
+import build.raft.app.shownAuthorName
+import build.raft.app.stillInChannelPersonName
+import build.raft.app.taskCreateSourceText
+import build.raft.app.thread.resolveThreadRouteIdentity
+import build.raft.app.thread.shownAuthorName
+import build.raft.app.thread.toRaftTimeCapabilities
+import build.raft.app.thread.toThreadLaunchConversationIdentity
+import build.raft.app.toRaftTimeCapabilities
+import build.raft.app.toThreadLaunchConversationIdentity
 import build.raft.app.data.DataRequestPriority
 import build.raft.app.data.DataResult
 import build.raft.app.data.EmptyReason
@@ -25,6 +38,10 @@ import build.raft.app.markdown.parseRaftMarkdownMessageRefLabel
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.model.MessageId
 import build.raft.app.model.TaskStatus
+import build.raft.app.openSettingsFeedbackCardPage
+import build.raft.app.postChannelMemberRemovedToast
+import build.raft.app.raftFeedbackCardEntryOrNull
+import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch

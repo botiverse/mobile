@@ -13,6 +13,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.thread.ThreadDirectMessageSettingsDrawer
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.fail

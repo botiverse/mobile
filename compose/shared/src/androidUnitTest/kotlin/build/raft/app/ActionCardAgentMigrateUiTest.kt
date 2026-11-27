@@ -25,6 +25,15 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.MemberId
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.AgentMigrateCardAccess
+import build.raft.app.thread.LocalThreadActionCardSpecHost
+import build.raft.app.thread.ThreadActionCardSpecHost
+import build.raft.app.thread.ThreadActionCardSpecView
+import build.raft.app.thread.ThreadMigrateAgentActionDialogContent
+import build.raft.app.thread.ThreadMigrateAgentActionDialogState
+import build.raft.app.thread.ThreadMigrateAgentActionTarget
+import build.raft.app.thread.actionCardSpecToRender
+import build.raft.app.thread.dispatch
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

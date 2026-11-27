@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.Composable
@@ -19,9 +19,15 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftEditorKeyboardIntent
+import build.raft.app.RaftInputFocusOwnerRegistry
+import build.raft.app.ThreadComposerEditorOwner
+import build.raft.app.ThreadComposerQuoteController
+import build.raft.app.ThreadComposerSuggestionSelectionDispatcher
 import build.raft.app.data.VoiceDictationTextRange
 import build.raft.app.data.VoiceDictationV2State
 import build.raft.app.data.trimVoiceDictationProvisionalRange
+import build.raft.app.get
 import build.raft.designsystem.focus.RaftFocusCoordinator
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRequestSource

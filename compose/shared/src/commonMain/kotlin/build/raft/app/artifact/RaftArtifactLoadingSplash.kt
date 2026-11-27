@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.ArtifactKind
+import build.raft.app.thread.icon
 import build.raft.designsystem.motion.rememberRaftReducedMotion
 import kotlin.math.floor
 import kotlin.time.TimeMark

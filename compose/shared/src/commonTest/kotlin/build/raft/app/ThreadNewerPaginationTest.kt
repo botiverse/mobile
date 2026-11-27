@@ -3,6 +3,9 @@ package build.raft.app
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.input.pointer.PointerEventType
+import build.raft.app.thread.ThreadNewerAutoLoadVisibleItemThreshold
+import build.raft.app.thread.ThreadNewerGestureDemandTracker
+import build.raft.app.thread.shouldThreadAutoLoadNewerMessages
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

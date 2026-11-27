@@ -7,6 +7,8 @@ import build.raft.app.data.ThreadFollowerUndo
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.threadFollowerProfileIdentity
+import build.raft.app.thread.threadFollowerRemoveEnabled
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

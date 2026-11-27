@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
+import build.raft.app.thread.key
+import build.raft.app.thread.threadMembersRosterSubtitle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

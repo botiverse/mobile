@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.app.data.InMemoryRaftKeyValueStore
+import build.raft.app.thread.ThreadComposerImageEventBatchAccumulator
+import build.raft.app.thread.ThreadComposerImageEventBatchItem
+import build.raft.app.thread.ThreadComposerImageEventBatchKey
+import build.raft.app.thread.ThreadComposerImageEventBatchOffer
+import build.raft.app.thread.key
 import build.raft.app.compat.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals

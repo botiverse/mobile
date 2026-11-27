@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.ui.input.key.Key
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

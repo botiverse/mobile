@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +21,14 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.TaskConversationHeadRow
+import build.raft.app.TaskConversationHeadRowContent
+import build.raft.app.currentRaftTimeContextProvider
 import build.raft.app.data.HiddenHistory
 import build.raft.app.data.RaftMessageAction
 import build.raft.app.data.RaftMessageActionSurface
@@ -28,8 +36,13 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStore
 import build.raft.app.data.TaskHandoffTimeline
+import build.raft.app.localizedLabel
 import build.raft.app.markdown.ThreadMarkdownTag
+import build.raft.app.messages
+import build.raft.app.origin
+import build.raft.app.rememberRaftMessageTimeFormat
 import build.raft.app.resources.*
+import build.raft.app.thread.localizedLabel
 import kotlin.time.TimeSource
 
 /**

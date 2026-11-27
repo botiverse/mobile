@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import build.raft.app.badgeVariant
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.model.AGENT_READINESS_KNOWN_CODES
@@ -29,6 +30,7 @@ import build.raft.app.model.light
 import build.raft.app.model.resolvedModel
 import build.raft.app.model.resolvedRuntimeId
 import build.raft.app.resources.*
+import build.raft.app.thread.badgeVariant
 import build.raft.designsystem.components.RaftBadgeVariant
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant

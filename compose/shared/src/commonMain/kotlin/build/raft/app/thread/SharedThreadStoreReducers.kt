@@ -1,13 +1,19 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.data.RaftAgentLounge
 import build.raft.app.data.RaftAgentLounges
 import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
+import build.raft.app.messages
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.present
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.resolveThreadRouteIdentity
 
 // Pure payload/value transforms used by [SharedThreadStore]: no store state, no logging, no effects.
 

@@ -30,6 +30,11 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.resources.RaftBundledFiles
 import build.raft.app.resources.Res
+import build.raft.app.thread.LocalThreadReactionAtlasImage
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadMessageCard
+import build.raft.app.thread.ThreadMessageQuickReactionBarPopover
+import build.raft.app.thread.raftMessageBodyTextStyle
 import kotlinx.coroutines.runBlocking
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest

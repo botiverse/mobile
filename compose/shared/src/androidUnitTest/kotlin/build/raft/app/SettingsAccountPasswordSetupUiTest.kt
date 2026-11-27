@@ -25,6 +25,7 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.dispatch
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test

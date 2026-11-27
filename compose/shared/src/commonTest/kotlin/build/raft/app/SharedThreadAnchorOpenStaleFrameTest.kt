@@ -16,6 +16,11 @@ import build.raft.app.data.DataResult
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.ScreenError
 import build.raft.app.model.ConversationKind
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.dispatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

@@ -38,6 +38,7 @@ import build.raft.app.data.stringDescLocaleType
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.resources.StringDesc
+import build.raft.app.thread.LocalArtifactScreenshotReader
 import build.raft.designsystem.theme.RaftTheme
 import coil3.annotation.ExperimentalCoilApi
 import coil3.compose.LocalAsyncImagePreviewHandler

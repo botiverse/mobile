@@ -16,6 +16,12 @@ import build.raft.app.data.RawMessagePage
 import build.raft.app.data.RawMessagePageWitness
 import build.raft.app.data.ScreenError
 import build.raft.app.network.sync.CanonicalMessageV2EnterBaseline
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadGapCatchUpPageLimit
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadPaging
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadLatestJumpOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsApiEnvironmentOption
+import build.raft.app.thread.key
 
 /*
  * The `raft-computer` terminal commands of the computer detail page: a port of the web's

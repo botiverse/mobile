@@ -1,6 +1,20 @@
 package build.raft.app
 
 import build.raft.app.model.MemberKind
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.ThreadNewMessageMenuTool
+import build.raft.app.thread.ThreadTimelineSlice
+import build.raft.app.thread.threadDmMainTimelineLabHidesReplyStart
+import build.raft.app.thread.threadInPlaceSelectionMenuAvailability
+import build.raft.app.thread.threadInlineReplyPresentationForMessage
+import build.raft.app.thread.threadMessageHoverToolbarActions
+import build.raft.app.thread.threadMessageMenuCapabilities
+import build.raft.app.thread.threadMessageMenuShowsReplyInThread
+import build.raft.app.thread.threadMessageTapOpensThread
+import build.raft.app.thread.threadRepliesBadgeSpec
+import build.raft.app.thread.toThreadNewMessageMenuActionAvailability
+import build.raft.app.thread.toThreadReplyMetadata
+import build.raft.app.thread.withThreadViewerMessageActions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

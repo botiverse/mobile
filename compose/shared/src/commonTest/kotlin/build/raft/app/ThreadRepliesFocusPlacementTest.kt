@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.thread.LazyViewportAnchorPlacement
+import build.raft.app.thread.threadFocusedAnchorBasePlacement
+import build.raft.app.thread.threadRepliesFocusedItemScrollOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

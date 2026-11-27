@@ -19,8 +19,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.TaskBacklogReasonMaxLength
 import build.raft.app.data.TaskCreateStatuses
+import build.raft.app.localizedLabel
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.*
+import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

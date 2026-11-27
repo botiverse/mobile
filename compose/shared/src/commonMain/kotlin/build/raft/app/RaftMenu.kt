@@ -57,6 +57,10 @@ import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
+import build.raft.app.thread.resolveThreadMemberAgentStatusIndicatorState
+import build.raft.app.thread.threadMemberListHeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp

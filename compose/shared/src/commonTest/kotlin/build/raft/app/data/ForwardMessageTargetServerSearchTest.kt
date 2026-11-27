@@ -4,8 +4,8 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId
-import build.raft.app.raftForwardPickerProgressiveSearch
-import build.raft.app.threadForwardSelectionKey
+import build.raft.app.thread.raftForwardPickerProgressiveSearch
+import build.raft.app.thread.threadForwardSelectionKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

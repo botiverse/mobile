@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.model.ConversationKind
+import build.raft.app.thread.RaftMessageLink
+import build.raft.app.thread.RaftMessageLinkInbox
+import build.raft.app.thread.RaftPendingMessageLink
+import build.raft.app.thread.raftMessageLinkShouldTake
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull

@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.thread.appendThreadQuoteToComposer
+import build.raft.app.thread.formatThreadMessageQuote
+import build.raft.app.thread.toRaftThreadWebLinkTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

@@ -2,6 +2,20 @@ package build.raft.app
 
 import androidx.compose.ui.input.pointer.PointerType
 import build.raft.app.data.RaftDefaultFavoriteReaction
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadReactionItem
+import build.raft.app.thread.ThreadHoverToolbarQuickReactionLabelKind
+import build.raft.app.thread.ThreadHoverToolbarReactionActivation
+import build.raft.app.thread.ThreadTimelineSlice
+import build.raft.app.thread.shouldScheduleHoverToolbarReactionOpen
+import build.raft.app.thread.threadHoverToolbarQuickReactionLabelKind
+import build.raft.app.thread.threadHoverToolbarReactionActivation
+import build.raft.app.thread.threadMessageHasViewerReaction
+import build.raft.app.thread.threadMessageHoverToolbarActions
+import build.raft.app.thread.threadMessageMenuCapabilities
+import build.raft.app.thread.threadReactionPendingKey
+import build.raft.app.thread.toPendingReactionVisual
+import build.raft.app.thread.toThreadReplyMetadata
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

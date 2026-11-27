@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.dispatch
 import androidx.compose.runtime.setValue
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities

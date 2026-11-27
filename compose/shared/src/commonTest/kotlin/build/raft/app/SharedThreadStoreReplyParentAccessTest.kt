@@ -25,6 +25,14 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadAccessResolution
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.isThreadPrimaryFooterReady
+import build.raft.app.thread.resolvedTaskLookupChannelId
+import build.raft.app.thread.shouldRenderThreadAccessRetry
+import build.raft.app.thread.shouldShowThreadComposerForReadyContent
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

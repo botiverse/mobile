@@ -281,6 +281,12 @@ import build.raft.app.compat.pager.IPagerEventObserver
 import build.raft.app.compat.pager.Pager
 import build.raft.app.resources.localized
 import build.raft.app.resources.stringResource
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMemberItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadReactionItem
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.RaftThreadTaskItem
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.desc
 import androidx.lifecycle.viewmodel.compose.viewModel

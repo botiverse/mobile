@@ -5,6 +5,7 @@ import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.data.toExternalMemberMentionSuggestions
 import build.raft.app.model.ChannelExternalMemberProfile
 import build.raft.app.model.MemberKind
+import build.raft.app.thread.dispatch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

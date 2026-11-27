@@ -6,6 +6,9 @@ import build.raft.app.data.ActionCardSpecEntityKind
 import build.raft.app.data.ActionCardSpecEntityRef
 import build.raft.app.data.ActionCardSpecMsg
 import build.raft.app.data.ActionCardSpecMsgParam
+import build.raft.app.thread.RaftActionCardFrameState
+import build.raft.app.thread.RaftActionCardStatus
+import build.raft.app.thread.actionCardFrameButtonState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

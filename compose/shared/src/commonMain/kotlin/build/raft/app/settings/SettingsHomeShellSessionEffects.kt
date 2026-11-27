@@ -1,6 +1,11 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftVisibleConversationRegistry
+import build.raft.app.thread.RaftVisibleConversationSnapshot
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.toConversationOpenSourceMessageIdentity
+import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftReadToggleNotice
 import build.raft.app.data.foldSideThreadIntoDetail

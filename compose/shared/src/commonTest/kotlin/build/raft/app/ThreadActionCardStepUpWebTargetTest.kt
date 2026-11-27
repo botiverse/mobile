@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.SecondFactorStepUpWebTarget
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.actionCardStepUpWebTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.key
+
 /*
  * Settings search (raft-design design/products/raft-chat/settings.md#searching-settings): the
  * app's own index (artin, #proj-raft-ui:#204, option A) and its matching, pure.

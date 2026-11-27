@@ -25,6 +25,8 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.key
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi

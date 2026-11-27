@@ -11,6 +11,9 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import build.raft.app.reduce
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.reduce
 import kotlin.time.TimeSource
 import kotlinx.coroutines.delay
 

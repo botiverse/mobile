@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.thread.resolveThreadComposerAttachmentRemoval
 import kotlin.test.Test
 import kotlin.test.assertNull
 import kotlin.test.assertTrue

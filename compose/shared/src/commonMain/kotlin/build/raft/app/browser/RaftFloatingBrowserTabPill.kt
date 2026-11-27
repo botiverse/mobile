@@ -56,6 +56,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

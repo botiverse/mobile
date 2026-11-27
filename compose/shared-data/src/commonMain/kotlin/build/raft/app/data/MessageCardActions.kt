@@ -27,7 +27,7 @@ import kotlinx.serialization.json.JsonObject
  * to the App's fallback page with the `disabledReason` Raft writes ("Update Raft to use this
  * button"), which an older client draws disabled. This client draws it from `actions` instead and
  * asks the batched read, declaring `card.execute.v1`, for this viewer's handles. Everything after
- * the handle is RFC 076 ([build.raft.app.ThreadAppLinkCardPress]).
+ * the handle is RFC 076 ([build.raft.app.thread.ThreadAppLinkCardPress]).
  */
 
 /** The capability a client declares on the batched read when it draws a card message's acting buttons (RFC 086 §4.4). */

@@ -2,11 +2,12 @@ package build.raft.app.data
 
 import app.cash.sqldelight.db.QueryResult
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import build.raft.app.RaftThreadMessageItem
-import build.raft.app.RaftThreadPendingSendContext
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadPendingSendContext
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.ReplyCacheProvenance
-import build.raft.app.ThreadMessageDeliverySending
+import build.raft.app.thread.ThreadMessageDeliverySending
+import build.raft.app.thread.resolveThreadRouteIdentity
 import build.raft.app.ThreadRouteIdentity
 import build.raft.app.resolveThreadRouteIdentity
 import build.raft.app.shared.data.local.RaftDatabase

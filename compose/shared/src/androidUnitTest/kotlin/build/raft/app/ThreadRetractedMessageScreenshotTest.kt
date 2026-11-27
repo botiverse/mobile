@@ -14,6 +14,12 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.model.MessageDelegatedBy
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadReactionItem
+import build.raft.app.thread.ThreadMessageCard
+import build.raft.app.thread.raftMessageBodyTextStyle
+import build.raft.app.thread.shouldSuppressCompactThreadAuthor
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

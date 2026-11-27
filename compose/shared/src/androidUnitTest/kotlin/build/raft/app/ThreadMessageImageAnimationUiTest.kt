@@ -34,6 +34,8 @@ import build.raft.app.image.RaftAnimateImageKey
 import build.raft.app.image.RaftSentAttachmentLocalImages
 import build.raft.app.image.RaftSentAttachmentLocalSource
 import build.raft.app.image.raftSentAttachmentModel
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.ThreadMessageAttachments
 import coil3.annotation.ExperimentalCoilApi
 import coil3.asImage
 import coil3.compose.AsyncImagePainter

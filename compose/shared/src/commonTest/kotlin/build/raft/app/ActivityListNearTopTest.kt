@@ -5,6 +5,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals

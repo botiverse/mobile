@@ -11,7 +11,7 @@ import build.raft.app.data.normalizePushDeliveryId
 import build.raft.app.data.parseRaftFcmNotificationRetract
 import build.raft.app.data.parseRaftPushBadge
 import build.raft.app.network.raftProcessIsForeground
-import build.raft.app.raftSystemNotificationTargetsVisibleConversation
+import build.raft.app.thread.raftSystemNotificationTargetsVisibleConversation
 import build.raft.app.shared.AndroidUnreadNotificationPoster
 import build.raft.app.shared.RaftNotificationAlertsPreference
 import com.google.firebase.messaging.FirebaseMessagingService

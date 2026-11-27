@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.compat.ui.raftImeBottomPx
 import androidx.compose.ui.platform.LocalDensity
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.label
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +30,7 @@ import build.raft.app.data.ScreenError
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeSearchSavedIntent
 import build.raft.app.data.SharedHomeState
+import build.raft.app.label
 import build.raft.app.components.SharedHomeSearchInput
 import build.raft.designsystem.components.RaftSearchPanel
 import build.raft.designsystem.components.RaftSearchPanelFooter

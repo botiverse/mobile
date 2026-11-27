@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.RaftEventBus
+import build.raft.app.thread.key
 import build.raft.app.compat.json.JSONObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject

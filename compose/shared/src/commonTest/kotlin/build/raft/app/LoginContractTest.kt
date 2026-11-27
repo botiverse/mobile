@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.reduce
+import build.raft.app.thread.reduce
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

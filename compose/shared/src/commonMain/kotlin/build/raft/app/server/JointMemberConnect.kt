@@ -10,6 +10,7 @@ import build.raft.app.data.ServerConnectOutcome
 import build.raft.app.data.ServerRefusalInput
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.resolveServerRefusal
+import build.raft.app.thread.key
 
 /**
  * Connect your servers (#wg-rbac:#36, web `packages/web/src/components/channel/memberConnect.ts`,

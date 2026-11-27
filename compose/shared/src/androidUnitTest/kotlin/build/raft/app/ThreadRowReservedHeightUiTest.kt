@@ -23,6 +23,9 @@ import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactScreenshot
 import build.raft.app.data.ArtifactScreenshotReader
 import build.raft.app.data.ArtifactSummary
+import build.raft.app.thread.ArtifactMessageCard
+import build.raft.app.thread.LocalArtifactScreenshotReader
+import build.raft.app.thread.ThreadMessageTranslationPendingFrame
 import build.raft.designsystem.text.RaftText
 import kotlin.test.Test
 import kotlin.test.assertEquals

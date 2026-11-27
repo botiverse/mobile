@@ -21,6 +21,9 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.network.RaftAppIdentityRegistry
 import build.raft.app.resources.raftCurrentUiLocaleTag
+import build.raft.app.thread.LocalThreadVoiceDictationHost
+import build.raft.app.thread.feedbackTicketIdOrNull
+import build.raft.app.thread.rememberComposerVoiceDictationHost
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

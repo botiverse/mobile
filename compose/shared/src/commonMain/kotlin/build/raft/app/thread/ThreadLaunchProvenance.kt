@@ -1,11 +1,19 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.JointChannelKindWireValue
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.data.ThreadRouteId
+import build.raft.app.get
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.threadIdentity
 import build.raft.app.model.topLevelThreadId
+import build.raft.app.normalizedThreadChannelKind
+import build.raft.app.parseConversationKindOrNull
+import build.raft.app.threadParentSurfaceKindOrNull
 
 /**
  * Typed reply-stream input at the launch-construction boundary.

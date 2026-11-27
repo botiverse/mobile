@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.thread.ThreadComposerRestingHeight
+import build.raft.app.thread.isThreadComposerAtRest
+import build.raft.app.thread.key
+import build.raft.app.thread.threadComposerRestingHeightKey
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

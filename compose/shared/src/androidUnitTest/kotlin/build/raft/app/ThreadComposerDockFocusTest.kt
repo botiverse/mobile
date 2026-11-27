@@ -14,6 +14,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
+import build.raft.app.thread.ThreadComposerDock
 import java.time.Duration
 import kotlin.test.Test
 import kotlin.test.assertFalse

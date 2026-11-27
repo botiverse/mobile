@@ -9,6 +9,12 @@ import build.raft.app.network.sync.SYNC_CORE_MESSAGES_V2_DURABLE_CONSUMER_ID
 import build.raft.app.network.sync.SyncScopeId
 import build.raft.app.network.sync.ThreadDurableLastKnownReader
 import build.raft.app.network.sync.ThreadEnteredScopeSnapshotLoader
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadMessageStore
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadStore
 import build.raft.app.network.sync.ThreadDurableEnterTicket
 import build.raft.app.network.sync.ThreadDurableRequestStamp
 import build.raft.app.network.sync.ThreadDurableEnteredPage

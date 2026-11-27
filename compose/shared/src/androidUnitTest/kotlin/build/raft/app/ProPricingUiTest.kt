@@ -37,6 +37,8 @@ import build.raft.app.resources.action_card_seats_add_title_other
 import build.raft.app.resources.format
 import build.raft.app.resources.resolve
 import build.raft.app.resources.upgrade_dialog_seat_note_seat
+import build.raft.app.thread.ThreadActionCardSpecSeatRequestSheet
+import build.raft.app.thread.ThreadActionCardSpecSeatRequestState
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

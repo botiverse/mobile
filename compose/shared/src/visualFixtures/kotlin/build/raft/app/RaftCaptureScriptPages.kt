@@ -4,6 +4,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.network.RaftCaptureFakeData
 import build.raft.app.network.RaftCaptureFakeServer
+import build.raft.app.thread.threadLaunchPageData
 
 /**
  * PROTOTYPE capture script: the pageData the app's own navigation builds for a target, so the

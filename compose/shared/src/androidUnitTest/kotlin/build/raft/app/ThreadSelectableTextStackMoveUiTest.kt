@@ -28,6 +28,14 @@ import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.nav.RaftMobilePageStackDisplay
 import build.raft.app.nav.RaftPageStack
+import build.raft.app.thread.LocalThreadInPlaceTextSelectionHost
+import build.raft.app.thread.RaftLongMessageCollapseController
+import build.raft.app.thread.RaftLongMessageCollapsibleBody
+import build.raft.app.thread.ThreadInPlaceSelectableBody
+import build.raft.app.thread.ThreadInPlaceSelectionController
+import build.raft.app.thread.ThreadInPlaceTextSelectionHost
+import build.raft.app.thread.raftLongMessageCollapseViewport
+import build.raft.app.thread.rememberThreadInPlaceSelectionController
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

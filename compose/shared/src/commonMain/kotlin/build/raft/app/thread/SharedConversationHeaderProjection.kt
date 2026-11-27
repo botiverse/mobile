@@ -1,10 +1,22 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftChannelKindGlyph
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.accepts
 import build.raft.app.data.SharedConversationDirectoryProjection
+import build.raft.app.get
+import build.raft.app.messages
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ConversationPermissions
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftSlackSyncProblem
+import build.raft.app.parsedThreadParentSurfaceKindOrNull
+import build.raft.app.raftChannelKindGlyph
+import build.raft.app.raftChannelRecordKindGlyph
+import build.raft.app.resolveThreadRouteIdentity
+import build.raft.app.thread.accepts
+import build.raft.app.thread.resolveThreadRouteIdentity
 
 internal data class ConversationAccessCandidate(
     val ids: Set<String>,

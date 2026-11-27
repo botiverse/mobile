@@ -1,12 +1,14 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.withRaftFontWeight
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.components.RaftFormSection
 import build.raft.designsystem.components.RaftSeparator
 import build.raft.designsystem.components.RaftSwitch
 import build.raft.app.data.map
+import build.raft.app.get
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -27,6 +29,23 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.ChannelSectionMove
+import build.raft.app.ChannelSectionPlacement
+import build.raft.app.ChannelSectionSelectRow
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftAppThemeState
+import build.raft.app.RaftColor
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftModalActionButton
+import build.raft.app.RaftNotificationLevelSelect
+import build.raft.app.RaftType
+import build.raft.app.RaftUnifiedDialog
+import build.raft.app.ThreadChannelSettingsPanel
+import build.raft.app.available
 import kotlinx.coroutines.flow.map
 
 // Legacy pure-black icon strings on themed surfaces: unchanged in light, foreground ink in dark.

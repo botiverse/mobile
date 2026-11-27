@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.ThreadHeaderDisplayModel
+import build.raft.app.thread.dmAgentActivityMemberId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

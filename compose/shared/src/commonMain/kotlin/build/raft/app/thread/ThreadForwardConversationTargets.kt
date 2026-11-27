@@ -1,5 +1,6 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.model.ChannelId

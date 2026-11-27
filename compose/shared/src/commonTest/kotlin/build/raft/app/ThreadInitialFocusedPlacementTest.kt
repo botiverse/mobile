@@ -2,6 +2,13 @@ package build.raft.app
 
 import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
+import build.raft.app.thread.LazyViewportAnchorPlacement
+import build.raft.app.thread.ThreadInitialFocusedPlacementDecision
+import build.raft.app.thread.key
+import build.raft.app.thread.resolveThreadInitialFocusedPlacement
+import build.raft.app.thread.reversedThreadListItemOffset
+import build.raft.app.thread.shouldArmThreadInitialFocusedPlacement
+import build.raft.app.thread.threadInitialFirstVisibleItemIndex
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

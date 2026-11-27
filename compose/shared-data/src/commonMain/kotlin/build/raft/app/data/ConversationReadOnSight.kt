@@ -7,7 +7,7 @@ import kotlinx.atomicfu.locks.synchronized
 
 /**
  * The conversations a page is reading on sight right now: shown, at its live tail, and sending
- * its visible reads ([build.raft.app.SharedThreadStore]'s visible read). A live message there is
+ * its visible reads ([build.raft.app.thread.SharedThreadStore]'s visible read). A live message there is
  * read on arrival (web `liveActivityUnread` `readOnArrival`); anywhere else it counts, as the
  * server counts it.
  *

@@ -40,11 +40,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
-import build.raft.app.LocalThreadInPlaceTextSelectionHost
+import build.raft.app.thread.LocalThreadInPlaceTextSelectionHost
 import build.raft.app.RAFT_APP_SHELL_PAGE
 import build.raft.app.RobolectricComposeActivityRule
-import build.raft.app.ThreadInPlaceSelectableBody
-import build.raft.app.ThreadInPlaceTextSelectionHost
+import build.raft.app.thread.ThreadInPlaceSelectableBody
+import build.raft.app.thread.ThreadInPlaceTextSelectionHost
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -54,7 +54,7 @@ import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.compat.ui.collectAsStateWhileStarted
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
-import build.raft.app.rememberThreadInPlaceSelectionController
+import build.raft.app.thread.rememberThreadInPlaceSelectionController
 import build.raft.app.runRobolectricComposeUiTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

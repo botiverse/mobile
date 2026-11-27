@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import build.raft.app.thread.key
 import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals

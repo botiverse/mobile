@@ -5,6 +5,9 @@ import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.data.ThreadSendMessageRequestBody
 import build.raft.app.data.buildSharedThreadSendMessageBody
 import build.raft.app.model.MemberKind
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.threadAuthorStructuredMention
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

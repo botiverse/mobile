@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.designsystem.components.RaftHoverTier
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftMenuSearchField
 import build.raft.app.components.RaftMetrics
 import build.raft.app.components.RaftLookSeparator

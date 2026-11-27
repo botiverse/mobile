@@ -7,6 +7,7 @@ import build.raft.app.data.ServerPublicVisibilityReadback
 import build.raft.app.data.ServerPublicVisibilityRepository
 import build.raft.app.data.ServerPublicVisibilityUpdate
 import build.raft.app.model.ServerId
+import build.raft.app.thread.dispatch
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

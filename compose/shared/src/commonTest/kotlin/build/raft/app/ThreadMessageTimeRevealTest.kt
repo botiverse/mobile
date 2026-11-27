@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat12Hour
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.formatThreadTimeRevealLabel
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -4,6 +4,7 @@ import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.network.sync.CanonicalActionCardActionV2
 import build.raft.app.network.sync.CanonicalActionMetadataV2
+import build.raft.app.thread.key
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject

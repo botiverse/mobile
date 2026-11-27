@@ -5,6 +5,7 @@ import build.raft.app.resources.StringDesc
 import build.raft.app.resources.common_cancel
 import build.raft.app.resources.desc
 import build.raft.app.resources.resolve
+import build.raft.app.thread.key
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

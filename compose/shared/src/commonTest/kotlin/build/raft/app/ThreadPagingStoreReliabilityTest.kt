@@ -8,6 +8,9 @@ import build.raft.app.data.FakeConversationNetworkClient
 import build.raft.app.data.InMemoryRaftAuthSessionStore
 import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.conversationRepositoryTestSessionStore
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.ThreadNewerPageLoadOutcome
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

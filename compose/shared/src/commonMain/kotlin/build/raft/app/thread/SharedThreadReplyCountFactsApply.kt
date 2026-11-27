@@ -1,4 +1,9 @@
-package build.raft.app
+package build.raft.app.thread
+
+import build.raft.app.SharedThreadFreshnessLedger
+import build.raft.app.SharedThreadPayloadCacheKey
+import build.raft.app.SharedThreadReplyCountFact
+import build.raft.app.messages
 
 /**
  * The payload side of [SharedThreadFreshnessLedger]'s accepted reply counts: applies them to a

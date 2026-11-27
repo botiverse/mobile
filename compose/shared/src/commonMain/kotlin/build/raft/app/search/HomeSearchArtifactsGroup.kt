@@ -27,6 +27,8 @@ import build.raft.app.data.SearchArtifactsStatus
 import build.raft.app.data.SharedSearchArtifactsStore
 import build.raft.app.markdown.lucideIcon
 import build.raft.app.resources.*
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import build.raft.app.data.ArtifactHome
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

@@ -74,6 +74,7 @@ import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftTelemetryPrivacy
 import build.raft.app.data.settingsFeedbackSendAllowed
+import build.raft.app.iconName
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackTicketsState
 import build.raft.app.data.SettingsFeedbackTicketsStore
@@ -87,6 +88,14 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.floorDiv
 import build.raft.app.resources.*
+import build.raft.app.thread.LocalThreadVoiceDictationHost
+import build.raft.app.thread.currentServerSlug
+import build.raft.app.thread.feedbackTicketIdOrNull
+import build.raft.app.thread.icon
+import build.raft.app.thread.iconName
+import build.raft.app.thread.isRaftLinkIdentifier
+import build.raft.app.thread.key
+import build.raft.app.thread.rememberComposerVoiceDictationHost
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant

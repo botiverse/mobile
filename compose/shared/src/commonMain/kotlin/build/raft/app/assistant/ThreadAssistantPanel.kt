@@ -53,12 +53,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import build.raft.app.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.raftWindowWide
 import build.raft.app.raftWindowWidth
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.resources.*
-import build.raft.app.threadActionCard
+import build.raft.app.thread.threadActionCard
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.designsystem.components.RaftBadge

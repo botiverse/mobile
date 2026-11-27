@@ -10,6 +10,7 @@ import build.raft.app.data.withOpenedDetail
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
+import build.raft.app.thread.key
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

@@ -20,6 +20,8 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.RaftHostImeInsets
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.thread.ThreadComposerDock
+import build.raft.app.thread.raftThreadComposerLiveKeyboardPadding
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test

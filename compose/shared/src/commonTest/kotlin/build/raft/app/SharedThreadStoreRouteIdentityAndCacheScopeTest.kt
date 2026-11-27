@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.SharedThreadStoreTest.Companion.basePayload
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.applyReplyCountFacts
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Duration.Companion.seconds

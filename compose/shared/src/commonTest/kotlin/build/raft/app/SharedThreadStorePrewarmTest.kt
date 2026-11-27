@@ -25,6 +25,11 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
 import build.raft.app.model.ThreadConversation
+import build.raft.app.thread.RaftThreadScreenPayload
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadMessageStore
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

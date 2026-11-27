@@ -1,7 +1,8 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.data.HomeFollowedThreadUnread
 import build.raft.app.data.InboxItem
+import build.raft.app.messages
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 
 /*

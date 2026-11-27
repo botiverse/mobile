@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.rememberRaftDesignSystemEditor
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftEmojiPickerDialog
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

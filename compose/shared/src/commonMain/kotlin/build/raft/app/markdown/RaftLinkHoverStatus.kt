@@ -46,7 +46,7 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
 import build.raft.app.raftArgbHex
-import build.raft.app.raftMarkdownUrlOpen
+import build.raft.app.thread.raftMarkdownUrlOpen
 import build.raft.app.raftOwnLinkRoute
 import build.raft.designsystem.components.raftPointerHoverPosition
 import build.raft.designsystem.text.RaftText

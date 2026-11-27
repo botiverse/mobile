@@ -1,5 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
+import build.raft.app.JointChannelKindWireValue
+import build.raft.app.get
 import build.raft.app.model.ChannelExternalMemberProfile
 
 /*

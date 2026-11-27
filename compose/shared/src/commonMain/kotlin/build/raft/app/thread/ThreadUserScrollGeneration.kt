@@ -1,10 +1,11 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
+import build.raft.app.get
 
 /**
  * How many times the reader has scrolled one thread list by hand. Every programmatic scroll of the

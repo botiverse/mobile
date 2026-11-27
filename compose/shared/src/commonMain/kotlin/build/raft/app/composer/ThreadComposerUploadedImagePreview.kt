@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.PlatformFile
+import build.raft.app.thread.threadComposerImageAnnotationPayload
+import build.raft.app.thread.toComposerImageGalleryImage
 
 /**
  * Reopening an uploaded composer tile still edits a process-local file. The remote row ids are

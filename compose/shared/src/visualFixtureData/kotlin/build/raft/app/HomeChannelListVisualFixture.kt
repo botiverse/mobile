@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.model.AgentStatus
+import build.raft.app.thread.key
 import kotlinx.coroutines.flow.flowOf
 
 // The rows of `screens.home.channel-list` mapped from the generated VisualFixtureData onto the

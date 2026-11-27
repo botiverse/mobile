@@ -17,6 +17,7 @@ import build.raft.app.data.readMessageCardFromMetadata
 import build.raft.app.data.toMessageItemMetadata
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.raftEpochDayForDate
+import build.raft.app.thread.RaftMessageCardView
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
 import kotlinx.serialization.json.Json

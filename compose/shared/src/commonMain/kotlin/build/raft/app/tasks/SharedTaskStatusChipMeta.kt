@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.model.TaskStatus
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp

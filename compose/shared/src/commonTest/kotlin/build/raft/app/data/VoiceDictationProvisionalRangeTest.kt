@@ -1,9 +1,9 @@
 package build.raft.app.data
 
-import build.raft.app.VoiceDictationTextLayoutMetrics
-import build.raft.app.VoiceDictationUnderlineSegment
-import build.raft.app.computeVoiceDictationUnderlineSegments
-import build.raft.app.resolveActiveVoiceDictationProvisionalRange
+import build.raft.app.thread.VoiceDictationTextLayoutMetrics
+import build.raft.app.thread.VoiceDictationUnderlineSegment
+import build.raft.app.thread.computeVoiceDictationUnderlineSegments
+import build.raft.app.thread.resolveActiveVoiceDictationProvisionalRange
 import build.raft.realtime.socket.RaftWebSocketFrame
 import build.raft.realtime.socket.RaftWebSocketSession
 import kotlin.test.Test

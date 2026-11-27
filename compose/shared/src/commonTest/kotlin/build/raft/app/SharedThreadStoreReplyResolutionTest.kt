@@ -31,6 +31,12 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ThreadConversation
 import build.raft.app.model.ThreadId
+import build.raft.app.thread.SharedThreadDataSource
+import build.raft.app.thread.SharedThreadIntent
+import build.raft.app.thread.SharedThreadMessageStore
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadStore
+import build.raft.app.thread.threadHeaderDisplayTitle
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

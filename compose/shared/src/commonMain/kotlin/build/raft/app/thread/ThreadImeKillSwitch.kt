@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 /**
  * task #990 — emergency mitigation: on stop-loss platforms, no programmatic

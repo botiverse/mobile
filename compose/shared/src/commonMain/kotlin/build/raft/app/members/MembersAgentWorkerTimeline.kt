@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftTimelineItem
+import build.raft.app.thread.icon
+import build.raft.app.thread.key
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi

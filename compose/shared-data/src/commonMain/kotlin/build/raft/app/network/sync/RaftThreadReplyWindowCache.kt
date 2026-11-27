@@ -48,7 +48,7 @@ private data class RaftStoredThreadReplyWindow(
  * persisted per replies page ([ThreadRepliesPageIdentity]: server + principal + parent scope).
  *
  * Before this cache the windows lived only in the per-screen [ThreadRepliesSyncHost] and the
- * in-memory thread payload cache ([build.raft.app.RaftThreadMessageItem.inlineReplies] is
+ * in-memory thread payload cache ([build.raft.app.thread.RaftThreadMessageItem.inlineReplies] is
  * `@Transient`), so after a cold start every channel rendered its messages from the durable V2
  * frame with no replies block, and the block popped in only after the network page AND the
  * secondary summary fetch (Hands dd79da45). The store now seeds the sync host from here when a

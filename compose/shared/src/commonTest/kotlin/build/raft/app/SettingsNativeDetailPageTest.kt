@@ -7,6 +7,7 @@ import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerNotificationPreferencesChanged
+import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

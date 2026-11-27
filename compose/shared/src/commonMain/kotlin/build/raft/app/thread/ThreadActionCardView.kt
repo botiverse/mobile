@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.thread.actionCardIconName
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.components.RaftButton
 import build.raft.app.components.RaftSlotIcon
@@ -8,6 +9,8 @@ import build.raft.app.data.map
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.runsInApp
+import build.raft.app.raftArgbHex
+import build.raft.app.rememberActionCardDisplayLocale
 import build.raft.app.data.isInstallMarketplaceAppAction
 import build.raft.app.data.InstallMarketplaceAppActionCardType
 import build.raft.app.data.ActionCardSpecEntityRef
@@ -25,6 +28,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Text
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
+import build.raft.app.RaftCardTreeContext
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.actionCardIconName
+import build.raft.app.actionCardMsgPlain
 import org.jetbrains.compose.resources.StringResource
 import build.raft.designsystem.components.RaftMessageActionCard
 import build.raft.designsystem.components.RaftMessageActionCardActions

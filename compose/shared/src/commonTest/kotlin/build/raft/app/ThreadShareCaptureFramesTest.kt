@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.runtime.MonotonicFrameClock
+import build.raft.app.thread.awaitThreadShareCaptureFrames
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import kotlin.test.Test

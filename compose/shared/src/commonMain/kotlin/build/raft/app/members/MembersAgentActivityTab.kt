@@ -1,6 +1,10 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.thread.RaftTimelineItem
+import build.raft.app.thread.icon
+import build.raft.app.thread.messageRes
+import build.raft.app.thread.raftTimelineMonoTitleStyle
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.agentToolLogLabel
@@ -28,6 +32,7 @@ import build.raft.app.data.isAgentBackgroundOomActivityTitle
 import build.raft.app.data.parseAgentBackgroundOomActivityText
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.messageRes
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.data.AgentActivityDetailKindClaudeRootPrivileges

@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.markdown.ThreadMarkdownTag
 import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
+import build.raft.app.thread.RaftThreadMemberItem
+import build.raft.app.thread.resolveThreadMarkdownTagDisplayLabel
+import build.raft.app.thread.threadMarkdownMentionDisplayLabels
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

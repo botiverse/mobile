@@ -3,6 +3,9 @@ package build.raft.app
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.messageBodyFontSizeOwnerKey
 import build.raft.app.model.ConversationKind
+import build.raft.app.reduce
+import build.raft.app.thread.key
+import build.raft.app.thread.reduce
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

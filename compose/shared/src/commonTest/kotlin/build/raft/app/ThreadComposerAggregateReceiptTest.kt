@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.thread.dispatch
+import build.raft.app.thread.threadComposerAggregateReceiptIsValid
 import build.raft.app.transfer.testUploadTransfer
 import kotlin.test.Test
 import kotlin.test.assertEquals

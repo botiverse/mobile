@@ -35,6 +35,7 @@ import build.raft.app.model.RuntimeAuthLoginOutcome
 import build.raft.app.model.RuntimeAuthLoginResultPushed
 import build.raft.app.model.RuntimeAuthLoginStep
 import build.raft.app.model.RuntimeAuthUpdated
+import build.raft.app.thread.key
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.isActive

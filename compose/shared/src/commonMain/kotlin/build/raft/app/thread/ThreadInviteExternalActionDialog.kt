@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -12,6 +12,17 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import build.raft.app.ChannelSettingsRoute
+import build.raft.app.ExternalInviteSheet
+import build.raft.app.ExternalInvitesIntent
+import build.raft.app.ExternalInvitesState
+import build.raft.app.ExternalInvitesStore
+import build.raft.app.JointChannelConnectionsIntent
+import build.raft.app.JointChannelConnectionsState
+import build.raft.app.JointMemberConnectSheet
+import build.raft.app.PublicChannelConnect
+import build.raft.app.RaftUpgradeGate
+import build.raft.app.RealExternalInvitesDataSource
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.JointChannelConnections
@@ -24,10 +35,18 @@ import build.raft.app.data.SharedHomeState
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.isInviteExternalAction
+import build.raft.app.externalSlotUpgradeContext
+import build.raft.app.get
+import build.raft.app.memberConnectAccount
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
+import build.raft.app.openRaftUpgradeDialog
+import build.raft.app.openSettingsBillingPage
+import build.raft.app.postExternalInviteToasts
+import build.raft.app.rememberJointConnectedServers
 import build.raft.app.resources.*
+import build.raft.app.settingsBillingOffersUpgrade
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

@@ -1,10 +1,10 @@
 package build.raft.app.data
 
-import build.raft.app.RaftThreadScreenPayload
+import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.SharedThreadFreshnessLedger
-import build.raft.app.SharedThreadPayloadStore
-import build.raft.app.SharedThreadPrewarmJoinOutcome
+import build.raft.app.thread.SharedThreadPayloadStore
+import build.raft.app.thread.SharedThreadPrewarmJoinOutcome
 import build.raft.app.model.ChannelId
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.MessageId

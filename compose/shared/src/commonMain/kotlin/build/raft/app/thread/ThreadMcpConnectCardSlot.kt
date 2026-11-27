@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.thread
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.data.ActionCardSpecDisplayElement
 import build.raft.app.data.ActionCardSpecTree
 import build.raft.app.data.DataResult
@@ -47,8 +48,10 @@ import build.raft.app.data.mcpCardAccountChoices
 import build.raft.app.data.mcpCardChoiceUsable
 import build.raft.app.data.mcpOAuthProviderError
 import build.raft.app.data.resolvedMcpServerId
+import build.raft.app.get
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.traceId
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
