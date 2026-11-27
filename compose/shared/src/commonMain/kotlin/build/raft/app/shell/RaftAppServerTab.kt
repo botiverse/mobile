@@ -285,6 +285,7 @@ internal fun RaftAppServerMenuOverlay(
                                     mobilePlaces = activeMobilePlaces.mobilePlaces,
                                     artifactsEnabled = activeMobilePlaces.artifactsEnabled,
                                     isGuest = activeMobilePlaces.isGuest,
+                                    maxTabBarCount = appShellPhoneMaxPlaceTabs(),
                                 )
                             }
                         RaftMobilePlacesEditPopoverBody(
@@ -381,7 +382,12 @@ internal fun RaftAppServerMenuOverlay(
                                 RaftMobilePlacesMoreHeader(onEditClick = { editMode = true })
                             }
                             RaftMobileNavServerPopoverDestinations(
-                                columns = if (activeMobilePlaces != null) AppShellPhoneMaxPlaceTabs else null,
+                                columns =
+                                    if (activeMobilePlaces != null) {
+                                        entries.size.coerceIn(1, AppShellPhoneMoreGridColumns)
+                                    } else {
+                                        null
+                                    },
                             ) {
                                 entries.forEach { entry ->
                                     val canLongPressToEdit =

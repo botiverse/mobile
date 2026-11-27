@@ -574,6 +574,31 @@ class RaftMobileRailPlacesTest {
         assertEquals("artifacts", AppShellTabHistory().backTarget(current = "computers", roots = roots, primaryTab = "artifacts"))
         assertNull(AppShellTabHistory().backTarget(current = "artifacts", roots = roots, primaryTab = "artifacts"))
 
+        // Android 5+1=6 vs iOS 4+1=5 platform tab caps share the same flat mobilePlaces list.
+        assertEquals(5, build.raft.app.appShellPhoneMaxPlaceTabs(isAndroid = true))
+        assertEquals(4, build.raft.app.appShellPhoneMaxPlaceTabs(isAndroid = false))
+        val androidSixTabKeys =
+            appShellDynamicPhoneTabKeys(
+                enabled = true,
+                mobilePlaces = ordered,
+                artifactsEnabled = true,
+                isGuest = false,
+                maxPlaceTabs = build.raft.app.AppShellAndroidPhoneMaxPlaceTabs,
+            )
+        assertEquals(
+            listOf("artifacts", "computers", "members", "apps", "home", AppShellServerTabKey),
+            androidSixTabKeys,
+        )
+        assertEquals(
+            listOf(
+                RaftServerMenuEntry.Activity,
+                RaftServerMenuEntry.Tasks,
+                RaftServerMenuEntry.Search,
+                RaftServerMenuEntry.Settings,
+            ),
+            appShellMobileServerMenuEntries(ordered, androidSixTabKeys, wide = false, guest = false, artifacts = true),
+        )
+
         // Unfolding foldable while on a promoted phone page hands off to the wide rail's inline page.
         assertEquals(AppShellRailArtifactsKey, appShellPromotedPhoneTabMovesToRailInline("artifacts", navRailActive = true))
         assertEquals(AppShellRailComputersKey, appShellPromotedPhoneTabMovesToRailInline("computers", navRailActive = true))

@@ -6894,8 +6894,6 @@
     <string name="server_panel_recently_used">Usados recentemente</string>
     <string name="mobile_nav_edit_reset">Redefinir</string>
     <string name="mobile_nav_edit_tab_bar">Barra de abas</string>
-    <string name="mobile_nav_edit_tab_bar_hint">Até 4 · seu servidor fica por último</string>
-    <string name="mobile_nav_edit_more_hint">Nesta ordem · Configurações fica por último</string>
     <string name="mobile_nav_edit_helper">Arraste para reordenar a barra de abas ou Mais, ou para mover um lugar entre as duas.</string>
     <string name="mobile_nav_edit_remove_place">Remover %1$s da barra de abas</string>
     <string name="mobile_nav_edit_add_place">Adicionar %1$s à barra de abas</string>

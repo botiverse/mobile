@@ -242,7 +242,7 @@ internal fun RaftFloatingOverlayHost(
 internal fun Modifier.raftFloatingContentClickTarget(): Modifier =
     raftFloatingContentPointerBarrier()
         // raw-click: tap sink, keeps taps on its blank space from reaching what is under it; not a control
-        .clickable(onClick = {})
+        .clickable(interactionSource = null, indication = null, onClick = {})
 
 private fun Modifier.raftFloatingContentPointerBarrier(): Modifier =
     raftNativeDispatchCapture()
