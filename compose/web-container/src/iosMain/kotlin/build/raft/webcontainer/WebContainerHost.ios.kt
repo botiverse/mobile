@@ -1190,15 +1190,14 @@ internal class WebContainerIosHost(
         url: NSURL,
         cacheEnabled: Boolean,
         header: Pair<String, String>?,
-    ): NSMutableURLRequest {
-        val cachePolicy =
-            if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
-        val request = NSMutableURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0)
-        if (header != null) {
-            request.setValue(header.second, forHTTPHeaderField = header.first)
-        }
-        return request
-    }
+        referer: String? = null,
+    ): NSMutableURLRequest =
+        buildWebContainerIosRequest(
+            url = url,
+            cacheEnabled = cacheEnabled,
+            header = header,
+            referer = referer,
+        )
 
     private fun executeCommand(command: WebContainerCommand) {
         if (disposed) return
@@ -1539,7 +1538,14 @@ internal class WebContainerIosHost(
                 chainState.recordHop(targetUrl)
                 provisionalNavInFlight = true
                 action.request.URL?.let { nsUrl ->
-                    val reissued = buildRequest(nsUrl, cfg.cacheEnabled, decision.headerName to decision.headerValue)
+                    val originalReferer = action.request.valueForHTTPHeaderField("Referer")
+                    val reissued =
+                        buildRequest(
+                            url = nsUrl,
+                            cacheEnabled = cfg.cacheEnabled,
+                            header = decision.headerName to decision.headerValue,
+                            referer = originalReferer,
+                        )
                     pendingHostLoadUrl = targetUrl
                     pendingHostLoadIsReissue = true
                     dispatch_async(dispatch_get_main_queue()) {
@@ -2429,3 +2435,28 @@ private fun iosNavigationTypeRaw(action: WKNavigationAction): Long =
         is CEnum -> (navType.value as? Number)?.toLong() ?: -1L
         else -> -1L
     }
+
+internal fun buildWebContainerIosRequest(
+    url: NSURL,
+    cacheEnabled: Boolean,
+    header: Pair<String, String>?,
+    referer: String? = null,
+): NSMutableURLRequest {
+    val cachePolicy =
+        if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
+    val request = NSMutableURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0)
+    val sanitizedReferer =
+        referer
+            ?.takeIf { value ->
+                value.isNotBlank() &&
+                    value.none { ch -> ch == '\r' || ch == '\n' } &&
+                    header?.first?.equals("Referer", ignoreCase = true) != true
+            }
+    if (sanitizedReferer != null) {
+        request.setValue(sanitizedReferer, forHTTPHeaderField = "Referer")
+    }
+    if (header != null) {
+        request.setValue(header.second, forHTTPHeaderField = header.first)
+    }
+    return request
+}
