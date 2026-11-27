@@ -100,6 +100,28 @@ class RuntimePickerOptionsTest {
         assertEquals(setOf("claude", "codex", "builtin", "pi", "qwen"), catalog.creatableRuntimeIds())
     }
 
+    @Test
+    fun offlineComputerCatalogFallbackOmitsNotInstalledSuffixOnCurrentRuntimeOnly() {
+        val picker =
+            runtimePickerRows(
+                catalog = catalog,
+                machineRuntimeIds = emptyList(),
+                selectedRuntimeId = "copilot",
+                showAll = true,
+                currentRuntimeId = "copilot",
+                isMachineOffline = true
+            )
+        val current = picker.rows.single { it.id == "copilot" }
+        assertEquals(RuntimePickerGroup.Current, current.group)
+        assertTrue(current.enabled)
+        assertTrue(current.deprecated)
+        assertEquals(RuntimePickerSuffix.None, current.suffix)
+        val pi = picker.rows.single { it.id == "pi" }
+        assertEquals(RuntimePickerGroup.NotInstalled, pi.group)
+        assertFalse(pi.enabled)
+        assertEquals(RuntimePickerSuffix.NotInstalled, pi.suffix)
+    }
+
     private fun entry(
         id: String,
         name: String,

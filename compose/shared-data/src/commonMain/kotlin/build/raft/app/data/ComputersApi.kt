@@ -2338,13 +2338,21 @@ private fun ComputerRuntimeSelectionOptionDto.toDomain(): SharedCreateAgentRunti
     ) {
         return null
     }
-    // slock runtimeAdmissionService `projectRuntimeOption`: installed, and offered for new use or the
-    // agent's own grandfathered runtime. A new-agent row is never current, so there it is
-    // "available and available_for_new"; an existing agent's current row is selectable too.
+    // slock runtimeAdmissionService `projectRuntimeOption` (slock #16973): an existing agent's
+    // current runtime stays selectable even while its Computer is offline or missing the CLI
+    // (`canSelectInThisContext = true` with `capabilityStatus != "available"`); pre-1.32.0 servers
+    // sent `false` there, so both are accepted for `current && !available`. Non-current rows remain
+    // strictly `available && availableForNew`.
     val grandfathered = admissionStatus == "grandfathered_current"
     if ((admissionReason == null) == grandfathered || availableForNew == grandfathered) return null
-    val expectedSelectable = capabilityStatus == "available" && (availableForNew || (current && grandfathered))
-    if (canSelectInThisContext != expectedSelectable) return null
+    val available = capabilityStatus == "available"
+    val selectableValid =
+        if (current) {
+            canSelectInThisContext || !available
+        } else {
+            canSelectInThisContext == (available && availableForNew)
+        }
+    if (!selectableValid) return null
     return SharedCreateAgentRuntimeOption(
         runtimeId = cleanRuntimeId,
         capabilityStatus = capabilityStatus,

@@ -60,7 +60,7 @@ class ServerRuntimeCatalogApiTest {
                   }
                 },
                 {
-                  "id": "cursor", "displayName": "Cursor CLI", "supported": true,
+                  "id": "cursor", "displayName": "Cursor", "supported": true,
                   "forms": [{ "kind": "v2" }],
                   "raftCapabilities": { "midTurnSteering": true }
                 }

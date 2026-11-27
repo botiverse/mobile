@@ -107,6 +107,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
     machineName: String? = null,
     /** Optional override for tests/fixtures so the copy menu stays store-free when injected. */
     envVarsCopyOverride: RuntimeEnvVarsCopySource? = null,
+    /** True when the agent's Computer is offline or unknown (slock #16973: omit "(not installed)" on current runtime). */
+    isMachineOffline: Boolean = false,
     /**
      * [newSession]: the change runs on a new session (a runtime switch, or a Codex model change),
      * so Restart now resets the session (web AgentProfileInfo `newSession`, botiverse/slock #13372).
@@ -264,7 +266,8 @@ internal fun MembersAgentRuntimeFormV2Dialog(
                         // This server's catalog read in this process, else bundled until it lands.
                         catalog = RaftRuntimeCatalogNames.observeCatalog(access.serverId.value) ?: BundledRuntimeCatalog,
                         currentRuntimeId = runtimeId,
-                        options = membersRuntimeSwitchRows(agentRuntimeOptions, machineId)
+                        options = membersRuntimeSwitchRows(agentRuntimeOptions, machineId),
+                        isMachineOffline = isMachineOffline
                     ) {
                         if (load == MembersRuntimeFormV2EditLoad.Loading) {
                             Text(

@@ -38,6 +38,8 @@ class AgentRuntimeConfigTest {
         assertEquals(setOf("kimi", "gemini", "copilot"), RUNTIMES.filter { it.deprecated }.map { it.id }.toSet())
         assertEquals(setOf("antigravity", "qwen", "qoder", "dsh"), RUNTIMES.filter { it.experimental }.map { it.id }.toSet())
         assertEquals("DeepSeek Harness", getRuntimeDisplayName("dsh"))
+        assertEquals("Cursor", getRuntimeDisplayName("cursor"))
+        assertEquals("Cursor", RUNTIMES.single { it.id == "cursor" }.displayName)
         // DeepSeek Harness: effort per model, only the levels the Computer lists for it (slock #15549).
         assertTrue(supportsRuntimeReasoningEffort("dsh"))
         assertFalse(runtimeOffersUndeclaredReasoningEfforts("dsh"))
