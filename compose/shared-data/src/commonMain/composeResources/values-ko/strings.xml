@@ -6891,6 +6891,14 @@
     <string name="in_app_browser_external_app_title">다른 앱에서 여시겠습니까?</string>
     <string name="in_app_browser_external_app_message">이 페이지가 다른 앱에서 "%1$s"을(를) 열려고 합니다.</string>
     <string name="in_app_browser_external_app_open">열기</string>
+    <string name="in_app_browser_close_page">페이지 닫기</string>
+    <string name="in_app_browser_open_pages_title">열린 페이지 (%1$d)</string>
+    <string name="in_app_browser_open_pages_a11y">열린 페이지 %1$d개</string>
+    <string name="in_app_browser_close_all_pages">모두 닫기</string>
+    <string name="in_app_browser_floating_pill_single_a11y">%1$s 다시 열기</string>
+    <string name="in_app_browser_floating_pill_multi_a11y">열린 페이지 %1$d개, 탭하여 전환</string>
+    <string name="in_app_browser_tab_state_live">활성</string>
+    <string name="in_app_browser_tab_state_hibernated">절전</string>
     <string name="server_panel_recently_used">최근 사용</string>
     <string name="mobile_nav_edit_reset">초기화</string>
     <string name="mobile_nav_edit_tab_bar">탭 바</string>

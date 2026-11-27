@@ -1,6 +1,6 @@
 package build.raft.app
 
-import build.raft.app.data.RaftAvatarCacheSubject
+import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.markdown.raftAppLinkAsciiHost
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
@@ -9,11 +9,29 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /*
- * Unified bottom-rising mobile web panel state, pure rules, and process-wide single kept-alive page
- * coordinator (#proj-workspace:#397, Option A per Kirby's mobile web panel spec).
+ * Mobile In-App Browser Phase 2 state, pure routing/layout rules, and process-wide Option B
+ * multi-page Raft App tab pool coordinator (#proj-mobile:#398, #proj-workspace:#412).
+ *
+ * Invariants:
+ * - Only installed Raft Apps open in Raft's authenticated in-app browser stack page; ordinary
+ *   external http(s) links route directly to Chrome Custom Tabs / SFSafariViewController.
+ * - Up to [RAFT_APP_BROWSER_MAX_TABS] (5) Raft App pages may remain open simultaneously; opening
+ *   a 6th evicts the oldest suspended tab (never the currently visible foreground tab).
+ * - Up to [RAFT_APP_BROWSER_LIVE_POOL_SIZE] (2) live WebViews stay warm in LRU across suspend and
+ *   resume; older suspended tabs hibernate (retaining URL, title, and App metadata) and reload
+ *   cleanly on resume.
+ * - Logout, account switch, server switch, or environment switch immediately clears all tabs and
+ *   evicts every warm WebView. Memory pressure hibernates background live tabs while preserving
+ *   the active foreground page.
  */
 
-/** Which storage partition a mobile web panel / in-app browser launch uses (#proj-workspace:#397). */
+internal const val RAFT_APP_BROWSER_MAX_TABS: Int = 5
+internal const val RAFT_APP_BROWSER_LIVE_POOL_SIZE: Int = 2
+internal const val RAFT_APP_BROWSER_KEEP_ALIVE_PREFIX: String = "raft-app-tab:"
+internal const val RAFT_APP_BROWSER_ENTRY_OWNER_PREFIX: String = "raft-app-tab-owner:"
+internal const val RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION: Float = 0.52f
+
+/** Which storage partition a mobile browser launch uses (#proj-workspace:#397 / #412). */
 internal sealed interface RaftMobileWebPanelLaunchResolution {
     data class OpenInPanel(
         val storagePartition: RaftWebViewStoragePartition,
@@ -30,9 +48,9 @@ internal sealed interface RaftMobileWebPanelLaunchResolution {
 /**
  * Resolves the WebView storage partition for a launch:
  * - Own-host ephemeral (`useEphemeralStore == true`) -> [RaftWebViewStoragePartition.Ephemeral].
- * - Layer 2 Raft App entry (`isRaftAppEntry == true`) -> [RaftWebViewStoragePartition.Default].
- * - Layer 3 third-party ordinary link -> [RaftWebViewStoragePartition.IsolatedThirdParty] when
- *   [supportsIsolatedThirdPartyProfile] is true, else [RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser].
+ * - Installed Raft App (`isRaftAppEntry == true`) -> [RaftWebViewStoragePartition.Default].
+ * - Cross-origin outbound child page or third-party fallback -> [RaftWebViewStoragePartition.IsolatedThirdParty]
+ *   when [supportsIsolatedThirdPartyProfile] is true, else [RaftMobileWebPanelLaunchResolution.FailClosedToSystemBrowser].
  */
 internal fun resolveRaftMobileWebPanelStorage(
     isRaftAppEntry: Boolean,
@@ -59,7 +77,7 @@ internal fun resolveRaftMobileWebPanelStorage(
     }
 
 /**
- * Formats the Layer 3 third-party host label for the minimal bottom bar and keep-open chip:
+ * Formats a site's domain for domain-only outbound child pages, switcher rows, and fallback titles:
  * - Full host minus a single leading `www.` (only when another label follows it).
  * - Internationalized domain names rendered in ASCII punycode (`xn--`) via [raftAppLinkAsciiHost].
  * - Preserves non-default ports (drops `:80` for `http` and `:443` for `https`).
@@ -111,319 +129,646 @@ internal fun raftMobileWebPanelDisplayHost(rawUrl: String): String {
     return if (showPort) "$withoutWww:$portPart" else withoutWww
 }
 
-/** Actions offered in the bottom bar's `⋮` overflow menu. */
+/** Actions offered in the in-app browser's `⋮` overflow menu. */
 internal enum class RaftMobileWebPanelMenuAction {
     Reload,
     ForwardToRaft,
     Share,
     CopyLink,
     OpenInBrowser,
+    ClosePage,
 }
 
 /**
- * Overflow menu items by layer (#proj-mobile:#409: both Layer 2 Raft Apps and Layer 3 third-party
- * pages offer Open in browser so users can always hand off to their system browser).
+ * Overflow menu items by page mode:
+ * - Installed Raft App page: Reload, Forward to Raft, Share, Copy link, Open in browser, Close page.
+ * - Cross-origin unauthenticated child page: Reload, Forward to Raft, Share, Copy link, Open in browser.
  */
-internal fun raftMobileWebPanelMenuActions(isRaftApp: Boolean): List<RaftMobileWebPanelMenuAction> =
-    listOf(
-        RaftMobileWebPanelMenuAction.Reload,
-        RaftMobileWebPanelMenuAction.ForwardToRaft,
-        RaftMobileWebPanelMenuAction.Share,
-        RaftMobileWebPanelMenuAction.CopyLink,
-        RaftMobileWebPanelMenuAction.OpenInBrowser,
-    )
-
-/** The panel's vertical detents (Option A: 88% default, 100% fullscreen, or collapsed keeping page alive). */
-internal enum class RaftMobileWebPanelDetent {
-    Default88,
-    Fullscreen,
-    Collapsed,
-}
-
-internal const val RAFT_MOBILE_WEB_PANEL_DEFAULT_HEIGHT_FRACTION: Float = 0.88f
+internal fun raftMobileWebPanelMenuActions(
+    isRaftApp: Boolean,
+    isOutboundChild: Boolean = false,
+): List<RaftMobileWebPanelMenuAction> =
+    buildList {
+        add(RaftMobileWebPanelMenuAction.Reload)
+        add(RaftMobileWebPanelMenuAction.ForwardToRaft)
+        add(RaftMobileWebPanelMenuAction.Share)
+        add(RaftMobileWebPanelMenuAction.CopyLink)
+        add(RaftMobileWebPanelMenuAction.OpenInBrowser)
+        if (isRaftApp && !isOutboundChild) {
+            add(RaftMobileWebPanelMenuAction.ClosePage)
+        }
+    }
 
 /**
- * Computes the backdrop scrim alpha for the mobile web panel overlay.
+ * Whether an `http`/`https` navigation inside an open installed Raft App crosses outside
+ * [scopeOrigin] and must be pushed as a clean unauthenticated domain-only child page (or switched
+ * to another installed Raft App if the target origin is itself installed), rather than loading
+ * inside the App's authenticated `Default`-partition WebView (`raft-design #1417` Row 12).
  *
- * Tracks [slideProgress] cleanly from `0f` (hidden) to `1f` (fully expanded at both Default88 and
- * Fullscreen detents) so the opaque canvas backdrop completely masks the underlying conversation
- * header behind the 1-line source strip and top safe area.
+ * Returns `false` for same-origin navigations, non-http(s) schemes (handled by external scheme
+ * confirmation), App Store 3.1.1 restricted purchase URLs (handled by billing blocker), and Raft's
+ * own hosts (handled by OAuth sign-in catch / Raft host router).
  */
-internal fun resolveRaftMobileWebPanelBackdropAlpha(slideProgress: Float): Float =
-    slideProgress.coerceIn(0f, 1f)
-
-/** Target detent after releasing a vertical drag on the panel handle/bar. */
-internal fun resolveRaftMobileWebPanelDragTarget(
-    current: RaftMobileWebPanelDetent,
-    dragDeltaPx: Float,
-    velocityYPxPerSec: Float,
-    viewportHeightPx: Float,
-): RaftMobileWebPanelDetent {
-    val safeHeight = viewportHeightPx.coerceAtLeast(1f)
-    val stepThresholdPx = (safeHeight * 0.08f).coerceIn(48f, 120f)
-    val flingVelocityThreshold = 600f
-    return when (current) {
-        RaftMobileWebPanelDetent.Default88 ->
-            when {
-                dragDeltaPx <= -stepThresholdPx || velocityYPxPerSec <= -flingVelocityThreshold ->
-                    RaftMobileWebPanelDetent.Fullscreen
-                dragDeltaPx >= stepThresholdPx || velocityYPxPerSec >= flingVelocityThreshold ->
-                    RaftMobileWebPanelDetent.Collapsed
-                else -> RaftMobileWebPanelDetent.Default88
-            }
-        RaftMobileWebPanelDetent.Fullscreen ->
-            if (dragDeltaPx >= stepThresholdPx || velocityYPxPerSec >= flingVelocityThreshold) {
-                RaftMobileWebPanelDetent.Default88
-            } else {
-                RaftMobileWebPanelDetent.Fullscreen
-            }
-        RaftMobileWebPanelDetent.Collapsed -> RaftMobileWebPanelDetent.Collapsed
+internal fun raftAppShouldRouteCrossOriginOutbound(
+    candidateUrl: String,
+    scopeOrigin: String?,
+    activeWebBaseUrl: String?,
+    activeApiBaseUrl: String? = null,
+    appStoreBillingRules: Boolean = raftPlatformFollowsAppStoreBillingRules(),
+    appHosts: Set<String> = RaftClientConfigAppHosts.current,
+): Boolean {
+    val cleanScope = scopeOrigin?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val trimmed = candidateUrl.trim()
+    if (trimmed.isEmpty()) return false
+    val candidateOrigin = raftAppEntryOriginOf(trimmed) ?: return false
+    if (candidateOrigin == cleanScope) return false
+    if (raftInAppBrowserShouldBlockUrl(trimmed, activeWebBaseUrl, appStoreBillingRules = appStoreBillingRules, appHosts = appHosts)) {
+        return false
     }
+    if (raftInAppBrowserIsRaftHost(trimmed, activeWebBaseUrl, activeApiBaseUrl, appHosts)) {
+        return false
+    }
+    return true
 }
 
-/** Android system Back / edge-swipe resolution while the mobile web panel is hosted. */
-internal enum class RaftMobileWebPanelBackAction {
+/** System Back / edge-swipe resolution while an in-app browser page is visible. */
+internal enum class RaftAppBrowserBackAction {
     WebGoBack,
-    CollapseKeepingAlive,
-    Ignore,
+    PopOutboundChild,
+    SuspendAppToPill,
 }
 
 /**
- * Resolves Android system Back / edge swipe for the mobile web panel:
- * - While expanded and the page has web history (`canGoBack == true`): go back in WebView.
- * - While expanded at the first history entry (`canGoBack == false`): collapse back to the
- *   conversation keeping the WebView alive.
- * - While collapsed: do not intercept Back.
+ * Resolves system Back inside an in-app browser stack page:
+ * - When the WebView has back history (`canGoBack == true`): go back within WebView history.
+ * - On an outbound cross-origin child page at its first history entry: pop back to the parent App.
+ * - On an installed Raft App page at its first history entry: suspend into the right-edge floating
+ *   pill (keeping warm WebView intact) and pop back to the underlying screen.
  */
-internal fun resolveRaftMobileWebPanelBackAction(
-    detent: RaftMobileWebPanelDetent,
+internal fun resolveRaftAppBrowserBackAction(
     canGoBack: Boolean,
-): RaftMobileWebPanelBackAction =
-    when (detent) {
-        RaftMobileWebPanelDetent.Collapsed -> RaftMobileWebPanelBackAction.Ignore
-        RaftMobileWebPanelDetent.Default88,
-        RaftMobileWebPanelDetent.Fullscreen ->
-            if (canGoBack) {
-                RaftMobileWebPanelBackAction.WebGoBack
-            } else {
-                RaftMobileWebPanelBackAction.CollapseKeepingAlive
-            }
+    isOutboundChild: Boolean,
+): RaftAppBrowserBackAction =
+    when {
+        canGoBack -> RaftAppBrowserBackAction.WebGoBack
+        isOutboundChild -> RaftAppBrowserBackAction.PopOutboundChild
+        else -> RaftAppBrowserBackAction.SuspendAppToPill
     }
 
-/** Where the panel was opened from, rendered in the dimmed 1-line top strip at the 88% detent. */
-internal sealed interface RaftMobileWebPanelSource {
-    data class Message(
-        val messageId: String,
-        val authorName: String,
-        val authorAvatarKind: RaftAvatarKind,
-        val authorAvatarWireValue: String? = null,
-        val authorCacheSubject: RaftAvatarCacheSubject? = null,
-        val previewText: String,
-        val timestampLabel: String,
-    ) : RaftMobileWebPanelSource
-
-    data class Surface(
-        val label: String,
-    ) : RaftMobileWebPanelSource
+/**
+ * Resolves the clamped vertical top offset (in px) for the right-edge floating tab pill within
+ * safe viewport bounds `[topBoundPx, max(topBoundPx, viewportHeightPx - bottomBoundPx - pillHeightPx)]`.
+ */
+internal fun resolveRaftFloatingPillOffsetYPx(
+    viewportHeightPx: Float,
+    pillHeightPx: Float,
+    topBoundPx: Float,
+    bottomBoundPx: Float,
+    yFraction: Float,
+): Float {
+    val safeTop = topBoundPx.coerceAtLeast(0f)
+    val safeMax = (viewportHeightPx - bottomBoundPx.coerceAtLeast(0f) - pillHeightPx.coerceAtLeast(0f)).coerceAtLeast(safeTop)
+    val span = (safeMax - safeTop).coerceAtLeast(0f)
+    return safeTop + span * yFraction.coerceIn(0f, 1f)
 }
 
-/** The single active or collapsed kept-alive mobile web panel session across the process. */
-internal data class RaftMobileWebPanelSession(
-    val sessionId: Long,
-    val ownerHostId: String,
+/** Converts a dragged vertical offset [offsetYPx] back into a clamped `[0f, 1f]` fraction. */
+internal fun clampRaftFloatingPillYFraction(
+    offsetYPx: Float,
+    viewportHeightPx: Float,
+    pillHeightPx: Float,
+    topBoundPx: Float,
+    bottomBoundPx: Float,
+): Float {
+    val safeTop = topBoundPx.coerceAtLeast(0f)
+    val safeMax = (viewportHeightPx - bottomBoundPx.coerceAtLeast(0f) - pillHeightPx.coerceAtLeast(0f)).coerceAtLeast(safeTop)
+    val span = safeMax - safeTop
+    if (span <= 1f) return RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION
+    return ((offsetYPx - safeTop) / span).coerceIn(0f, 1f)
+}
+
+/** One open installed Raft App page tracked in the Option B multi-page pool. */
+internal data class RaftAppBrowserTab(
+    val tabId: Long,
     val launchUrl: String,
-    val currentUrl: String,
-    val appEntryToken: String?,
-    val appName: String?,
-    val appLogoUrl: String?,
-    val isRaftApp: Boolean,
-    val source: RaftMobileWebPanelSource?,
-    val detent: RaftMobileWebPanelDetent,
+    /**
+     * URL configured as the WebView's initial `src`: stays stable while [isLive] is true so
+     * re-attaching a parked warm WebView never triggers a reload, and snapshots [currentUrl] upon
+     * hibernation so resuming a hibernated tab reloads right where the user left off.
+     */
+    val loadedBaseUrl: String = launchUrl,
+    val currentUrl: String = launchUrl,
+    val pageTitle: String? = null,
+    val appEntryToken: String,
+    val scopeOrigin: String,
+    val appName: String? = null,
+    val appLogoUrl: String? = null,
+    val preferredServerId: String? = null,
     val accountId: String? = null,
+    val serverId: String? = null,
     val environmentKey: String? = null,
+    val isLive: Boolean = true,
+    val lastUsedSeq: Long = 0L,
 ) {
-    val isExpanded: Boolean
-        get() = detent != RaftMobileWebPanelDetent.Collapsed
+    /** Native WebView keep-alive key (shared by Android & iOS 2-slot LRU keep-alive pools). */
+    val keepAliveKey: String
+        get() = "$RAFT_APP_BROWSER_KEEP_ALIVE_PREFIX$tabId"
 
-    val isCollapsedKeptAlive: Boolean
-        get() = detent == RaftMobileWebPanelDetent.Collapsed
+    /** Stable [RaftAppEntryRegistry] owner key held across suspend/resume and hibernation reloads. */
+    val entryOwnerId: String
+        get() = "$RAFT_APP_BROWSER_ENTRY_OWNER_PREFIX$tabId"
 
-    /** Label shown in the keep-open chip: App name for Layer 2, or dynamic formatted host for Layer 3. */
-    val keepOpenLabel: String
+    /** Current best URL to reload if the tab resumes after hibernation. */
+    val resumeUrl: String
+        get() = currentUrl.trim().ifBlank { launchUrl }
+
+    /** Formatted ASCII host (`www.` stripped, IDN punycode). */
+    val displayHost: String
+        get() = raftMobileWebPanelDisplayHost(resumeUrl)
+
+    /** App display name (falls back to formatted host). */
+    val displayName: String
+        get() = appName?.trim()?.takeIf { it.isNotEmpty() } ?: displayHost
+
+    /** Page title for switcher rows when meaningful, otherwise [displayName]. */
+    val switcherPrimaryLabel: String
         get() =
-            if (isRaftApp && !appName.isNullOrBlank()) {
-                appName
-            } else {
-                raftMobileWebPanelDisplayHost(currentUrl.ifBlank { launchUrl })
-            }
+            pageTitle
+                ?.trim()
+                ?.takeIf { title ->
+                    title.isNotEmpty() &&
+                        !title.equals(resumeUrl, ignoreCase = true) &&
+                        !title.startsWith("http://", ignoreCase = true) &&
+                        !title.startsWith("https://", ignoreCase = true)
+                }
+                ?: displayName
 }
+
+/** Immutable snapshot of the Option B multi-page floating tab pill state. */
+internal data class RaftAppBrowserTabsState(
+    /** Open Raft App tabs ordered most-recently-used first (capped at [RAFT_APP_BROWSER_MAX_TABS]). */
+    val tabs: List<RaftAppBrowserTab> = emptyList(),
+    /** Currently visible foreground App tab id, or `null` when all open tabs are suspended. */
+    val activeTabId: Long? = null,
+    /** Persisted vertical dock fraction `[0f, 1f]` of the right-edge floating tab pill. */
+    val pillYFraction: Float = RAFT_FLOATING_PILL_DEFAULT_Y_FRACTION,
+) {
+    val activeTab: RaftAppBrowserTab?
+        get() = activeTabId?.let { id -> tabs.firstOrNull { it.tabId == id } }
+
+    val suspendedTabs: List<RaftAppBrowserTab>
+        get() = if (activeTabId == null) tabs else tabs.filter { it.tabId != activeTabId }
+
+    /** The right-edge floating pill shows across Home & Chat whenever ≥1 tab is open and none is foreground. */
+    val showFloatingPill: Boolean
+        get() = activeTabId == null && tabs.isNotEmpty()
+
+    val liveCount: Int
+        get() = tabs.count { it.isLive }
+}
+
+/** Result returned when opening or activating an installed Raft App tab. */
+internal data class RaftAppBrowserOpenResult(
+    val tab: RaftAppBrowserTab,
+    val reusedExisting: Boolean,
+    val evictedTab: RaftAppBrowserTab? = null,
+    val hibernatedTabs: List<RaftAppBrowserTab> = emptyList(),
+)
 
 /**
- * Process-wide single kept-alive web panel coordinator (#proj-workspace:#397).
+ * Process-wide Option B multi-page Raft App tab coordinator (#proj-mobile:#398 / #proj-workspace:#412).
  *
  * Uses [MutableStateFlow] (never top-level Compose snapshot state) so background threads such as
- * sign-out storage clearing can safely clear it without touching a Compose snapshot.
- *
- * Invariants:
- * - Strictly at most 1 kept-alive page exists at any time; opening any new link replaces the
- *   previous session and immediately releases any previous [RaftAppEntryRegistry] token.
- * - Collapsing keeps the session (and its live WebView) alive and surfaces the keep-open chip.
- * - Closing (`×`), replacing, account/environment switches, sign-out, or low-memory reclamation
- *   destroys the session, releases its entry token, and removes the keep-open chip.
+ * sign-out storage clearing or Android/iOS memory trim hooks can safely update or clear it.
  */
 internal class RaftMobileWebPanelCoordinator(
+    private val maxTabs: Int = RAFT_APP_BROWSER_MAX_TABS,
+    private val livePoolSize: Int = RAFT_APP_BROWSER_LIVE_POOL_SIZE,
     private val releaseEntryToken: (token: String, owner: String) -> Unit = { token, owner ->
         RaftAppEntryRegistry.process.release(token, owner)
     },
+    private val evictKeepAlive: (keepAliveKey: String) -> Unit = ::raftWebViewKeepAliveEvict,
 ) {
+    init {
+        require(maxTabs >= 1) { "maxTabs must be >= 1" }
+        require(livePoolSize in 1..maxTabs) { "livePoolSize must be in 1..maxTabs" }
+    }
+
     private val lock = SynchronizedObject()
-    private var nextSessionId = 0L
-    private val _session = MutableStateFlow<RaftMobileWebPanelSession?>(null)
-    val session: StateFlow<RaftMobileWebPanelSession?> = _session.asStateFlow()
+    private var nextTabId = 0L
+    private var lruSeq = 0L
+    private val _state = MutableStateFlow(RaftAppBrowserTabsState())
+    val state: StateFlow<RaftAppBrowserTabsState> = _state.asStateFlow()
 
-    fun open(
-        ownerHostId: String,
+    /**
+     * Opens an installed Raft App page (or activates an existing tab with the exact same URL &
+     * scope origin), enforcing the [maxTabs] cap (evicting oldest suspended tab) and the
+     * [livePoolSize] LRU warm WebView cap (hibernating oldest non-active live tabs).
+     */
+    fun openOrActivateApp(
         launchUrl: String,
-        appEntryToken: String? = null,
-        appName: String? = null,
-        appLogoUrl: String? = null,
-        isRaftApp: Boolean = appEntryToken != null,
-        source: RaftMobileWebPanelSource? = null,
+        appEntryToken: String,
+        request: RaftAppEntryRequest,
         accountId: String? = null,
+        serverId: String? = null,
         environmentKey: String? = null,
-    ): RaftMobileWebPanelSession {
-        var previous: RaftMobileWebPanelSession? = null
-        val created =
+    ): RaftAppBrowserOpenResult {
+        val cleanUrl = launchUrl.trim()
+        val cleanServerId = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: request.preferredServerId?.trim()?.takeIf { it.isNotEmpty() }
+        var redundantToken: String? = null
+        var evicted: RaftAppBrowserTab? = null
+        var hibernated: List<RaftAppBrowserTab> = emptyList()
+        val result: RaftAppBrowserOpenResult =
             synchronized(lock) {
-                previous = _session.value
-                nextSessionId += 1L
-                val next =
-                    RaftMobileWebPanelSession(
-                        sessionId = nextSessionId,
-                        ownerHostId = ownerHostId,
-                        launchUrl = launchUrl,
-                        currentUrl = launchUrl,
-                        appEntryToken = appEntryToken,
-                        appName = appName?.trim()?.takeIf { it.isNotEmpty() },
-                        appLogoUrl = appLogoUrl?.trim()?.takeIf { it.isNotEmpty() },
-                        isRaftApp = isRaftApp,
-                        source = source,
-                        detent = RaftMobileWebPanelDetent.Default88,
-                        accountId = accountId,
-                        environmentKey = environmentKey,
+                val current = _state.value
+                val existing =
+                    current.tabs.firstOrNull { tab ->
+                        tab.scopeOrigin == request.scopeOrigin &&
+                            (tab.currentUrl == cleanUrl || tab.launchUrl == cleanUrl)
+                    }
+                lruSeq += 1L
+                val nowSeq = lruSeq
+                if (existing != null) {
+                    if (appEntryToken != existing.appEntryToken) {
+                        redundantToken = appEntryToken
+                    }
+                    val promoted =
+                        existing.copy(
+                            appName = request.appName?.trim()?.takeIf { it.isNotEmpty() } ?: existing.appName,
+                            appLogoUrl = request.appLogoUrl?.trim()?.takeIf { it.isNotEmpty() } ?: existing.appLogoUrl,
+                            preferredServerId = existing.preferredServerId ?: cleanServerId,
+                            accountId = existing.accountId ?: accountId,
+                            serverId = existing.serverId ?: cleanServerId,
+                            environmentKey = existing.environmentKey ?: environmentKey,
+                            isLive = true,
+                            lastUsedSeq = nowSeq,
+                        )
+                    val remaining = current.tabs.filterNot { it.tabId == existing.tabId }
+                    val (rebalanced, newlyHibernated) = rebalanceLiveLru(listOf(promoted) + remaining, activeTabId = promoted.tabId)
+                    hibernated = newlyHibernated
+                    _state.value = current.copy(tabs = rebalanced, activeTabId = promoted.tabId)
+                    val finalTab = rebalanced.first { it.tabId == promoted.tabId }
+                    RaftAppBrowserOpenResult(
+                        tab = finalTab,
+                        reusedExisting = true,
+                        evictedTab = null,
+                        hibernatedTabs = newlyHibernated,
                     )
-                _session.value = next
-                next
+                } else {
+                    val working = current.tabs.toMutableList()
+                    if (working.size >= maxTabs) {
+                        val candidateToEvict =
+                            working
+                                .filter { it.tabId != current.activeTabId }
+                                .minByOrNull { it.lastUsedSeq }
+                                ?: working.minByOrNull { it.lastUsedSeq }
+                        if (candidateToEvict != null) {
+                            working.removeAll { it.tabId == candidateToEvict.tabId }
+                            evicted = candidateToEvict
+                        }
+                    }
+                    nextTabId += 1L
+                    val created =
+                        RaftAppBrowserTab(
+                            tabId = nextTabId,
+                            launchUrl = cleanUrl,
+                            currentUrl = cleanUrl,
+                            pageTitle = null,
+                            appEntryToken = appEntryToken,
+                            scopeOrigin = request.scopeOrigin,
+                            appName = request.appName?.trim()?.takeIf { it.isNotEmpty() },
+                            appLogoUrl = request.appLogoUrl?.trim()?.takeIf { it.isNotEmpty() },
+                            preferredServerId = cleanServerId,
+                            accountId = accountId,
+                            serverId = cleanServerId,
+                            environmentKey = environmentKey,
+                            isLive = true,
+                            lastUsedSeq = nowSeq,
+                        )
+                    val (rebalanced, newlyHibernated) = rebalanceLiveLru(listOf(created) + working, activeTabId = created.tabId)
+                    hibernated = newlyHibernated
+                    _state.value = current.copy(tabs = rebalanced, activeTabId = created.tabId)
+                    val finalTab = rebalanced.first { it.tabId == created.tabId }
+                    RaftAppBrowserOpenResult(
+                        tab = finalTab,
+                        reusedExisting = false,
+                        evictedTab = evicted,
+                        hibernatedTabs = newlyHibernated,
+                    )
+                }
             }
-        previous?.let(::releaseTokenIfPresent)
-        return created
+        redundantToken?.let { token -> releaseEntryToken(token, "") }
+        evicted?.let(::releaseTabResources)
+        hibernated.forEach { tab -> evictKeepAlive(tab.keepAliveKey) }
+        return result
     }
 
-    fun collapse(sessionId: Long): Boolean = setDetent(sessionId, RaftMobileWebPanelDetent.Collapsed)
-
-    fun expand(
-        sessionId: Long,
-        detent: RaftMobileWebPanelDetent = RaftMobileWebPanelDetent.Default88,
-    ): Boolean {
-        val target = if (detent == RaftMobileWebPanelDetent.Collapsed) RaftMobileWebPanelDetent.Default88 else detent
-        return setDetent(sessionId, target)
+    /** Activates an existing open tab (resuming from floating pill or switching via `[N]` sheet). */
+    fun activateTab(tabId: Long): RaftAppBrowserTab? {
+        var hibernated: List<RaftAppBrowserTab> = emptyList()
+        val activated =
+            synchronized(lock) {
+                val current = _state.value
+                val target = current.tabs.firstOrNull { it.tabId == tabId } ?: return@synchronized null
+                lruSeq += 1L
+                val promoted = target.copy(isLive = true, lastUsedSeq = lruSeq)
+                val remaining = current.tabs.filterNot { it.tabId == tabId }
+                val (rebalanced, newlyHibernated) = rebalanceLiveLru(listOf(promoted) + remaining, activeTabId = tabId)
+                hibernated = newlyHibernated
+                _state.value = current.copy(tabs = rebalanced, activeTabId = tabId)
+                rebalanced.first { it.tabId == tabId }
+            }
+        hibernated.forEach { tab -> evictKeepAlive(tab.keepAliveKey) }
+        return activated
     }
 
-    fun setDetent(sessionId: Long, detent: RaftMobileWebPanelDetent): Boolean {
-        return synchronized(lock) {
-            val current = _session.value ?: return@synchronized false
-            if (current.sessionId != sessionId) return@synchronized false
-            if (current.detent == detent) return@synchronized true
-            _session.value = current.copy(detent = detent)
+    /** Suspends [tabId] into the right-edge floating pill without destroying its live WebView. */
+    fun suspendTab(tabId: Long): Boolean =
+        synchronized(lock) {
+            val current = _state.value
+            if (current.activeTabId != tabId) return@synchronized false
+            _state.value = current.copy(activeTabId = null)
             true
         }
-    }
 
-    fun updateCurrentUrl(sessionId: Long, url: String) {
-        val clean = url.trim()
-        if (clean.isEmpty()) return
+    /** Suspends whichever tab is currently in the foreground into the right-edge floating pill. */
+    fun suspendActive(): Boolean =
         synchronized(lock) {
-            val current = _session.value ?: return@synchronized
-            if (current.sessionId != sessionId || current.currentUrl == clean) return@synchronized
-            _session.value = current.copy(currentUrl = clean)
+            val current = _state.value
+            if (current.activeTabId == null) return@synchronized false
+            _state.value = current.copy(activeTabId = null)
+            true
+        }
+
+    fun tabById(tabId: Long): RaftAppBrowserTab? =
+        synchronized(lock) {
+            _state.value.tabs.firstOrNull { it.tabId == tabId }
+        }
+
+    /**
+     * Returns `true` iff [keepAliveKey] belongs to an open tab that is still in the live LRU pool.
+     * Used by Android/iOS `onRelease` hooks so explicitly closed or hibernated tabs are destroyed
+     * immediately instead of being re-parked.
+     */
+    fun isKeepAliveEligible(keepAliveKey: String): Boolean =
+        synchronized(lock) {
+            _state.value.tabs.any { it.keepAliveKey == keepAliveKey && it.isLive }
+        }
+
+    fun updateTabNavigation(
+        tabId: Long,
+        currentUrl: String,
+        pageTitle: String? = null,
+    ) {
+        val cleanUrl = currentUrl.trim()
+        val cleanTitle = pageTitle?.trim()?.takeIf { it.isNotEmpty() }
+        if (cleanUrl.isEmpty() && cleanTitle == null) return
+        synchronized(lock) {
+            val current = _state.value
+            val index = current.tabs.indexOfFirst { it.tabId == tabId }
+            if (index < 0) return@synchronized
+            val tab = current.tabs[index]
+            val nextUrl = cleanUrl.ifEmpty { tab.currentUrl }
+            val nextTitle = cleanTitle ?: tab.pageTitle
+            if (tab.currentUrl == nextUrl && tab.pageTitle == nextTitle) return@synchronized
+            val updated = current.tabs.toMutableList()
+            updated[index] = tab.copy(currentUrl = nextUrl, pageTitle = nextTitle)
+            _state.value = current.copy(tabs = updated)
         }
     }
 
-    fun close(sessionId: Long): Boolean {
+    /** Closes [tabId], destroying its keep-alive WebView and releasing its entry token. */
+    fun closeTab(tabId: Long): Boolean {
         val removed =
             synchronized(lock) {
-                val current = _session.value ?: return@synchronized null
-                if (current.sessionId != sessionId) return@synchronized null
-                _session.value = null
-                current
-            }
-        removed?.let(::releaseTokenIfPresent)
-        return removed != null
+                val current = _state.value
+                val target = current.tabs.firstOrNull { it.tabId == tabId } ?: return@synchronized null
+                val nextTabs = current.tabs.filterNot { it.tabId == tabId }
+                val nextActive = if (current.activeTabId == tabId) null else current.activeTabId
+                _state.value = current.copy(tabs = nextTabs, activeTabId = nextActive)
+                target
+            } ?: return false
+        releaseTabResources(removed)
+        return true
     }
 
-    fun onAccountOrEnvironmentChanged(accountId: String?, environmentKey: String?) {
+    /** Closes all open tabs, evicting all parked WebViews and releasing all entry tokens. */
+    fun closeAll() {
         val removed =
             synchronized(lock) {
-                val current = _session.value ?: return@synchronized null
-                val accountChanged = current.accountId != null && current.accountId != accountId
-                val signedOut = current.accountId != null && accountId == null
-                val envChanged =
-                    current.environmentKey != null &&
-                        environmentKey != null &&
-                        current.environmentKey != environmentKey
-                if (accountChanged || signedOut || envChanged) {
-                    _session.value = null
-                    return@synchronized current
+                val current = _state.value
+                if (current.tabs.isEmpty() && current.activeTabId == null) return@synchronized emptyList()
+                _state.value = current.copy(tabs = emptyList(), activeTabId = null)
+                current.tabs
+            }
+        removed.forEach(::releaseTabResources)
+    }
+
+    /** Alias of [closeAll] used by logout / storage-clear cleanup hooks. */
+    fun clearAll() = closeAll()
+
+    /**
+     * Hibernates all background (suspended) live tabs on OS memory pressure (`onTrimMemory` /
+     * `UIApplicationDidReceiveMemoryWarningNotification`) while keeping the currently visible
+     * foreground tab untouched. Hibernated tabs keep their URL/title/App metadata and reload on resume.
+     */
+    fun hibernateBackgroundTabs(): List<RaftAppBrowserTab> {
+        val hibernated =
+            synchronized(lock) {
+                val current = _state.value
+                val toHibernate = current.tabs.filter { it.isLive && it.tabId != current.activeTabId }
+                if (toHibernate.isEmpty()) return@synchronized emptyList()
+                val hibernateIds = toHibernate.mapTo(HashSet()) { it.tabId }
+                val nextTabs =
+                    current.tabs.map { tab ->
+                        if (tab.tabId in hibernateIds) {
+                            tab.copy(isLive = false, loadedBaseUrl = tab.resumeUrl)
+                        } else {
+                            tab
+                        }
+                    }
+                _state.value = current.copy(tabs = nextTabs)
+                toHibernate
+            }
+        hibernated.forEach { tab -> evictKeepAlive(tab.keepAliveKey) }
+        return hibernated
+    }
+
+    /** Marks a non-foreground tab hibernated if its WebView renderer died while parked. */
+    fun onTabContentProcessGone(tabId: Long) {
+        val hibernated =
+            synchronized(lock) {
+                val current = _state.value
+                if (current.activeTabId == tabId) return@synchronized null
+                val target = current.tabs.firstOrNull { it.tabId == tabId && it.isLive } ?: return@synchronized null
+                _state.value =
+                    current.copy(
+                        tabs =
+                            current.tabs.map { tab ->
+                                if (tab.tabId == tabId) {
+                                    tab.copy(isLive = false, loadedBaseUrl = tab.resumeUrl)
+                                } else {
+                                    tab
+                                }
+                            },
+                    )
+                target
+            }
+        hibernated?.let { evictKeepAlive(it.keepAliveKey) }
+    }
+
+    /**
+     * Synchronizes coordinator state when the platform WebView pool drops a parked tab (e.g.
+     * renderer process gone, load error while parked, or light/dark theme switch), so the switcher
+     * marks it Hibernated and its next resume loads [RaftAppBrowserTab.resumeUrl].
+     */
+    fun onTabKeepAliveDropped(keepAliveKey: String) {
+        val cleanKey = keepAliveKey.trim()
+        if (cleanKey.isEmpty()) return
+        synchronized(lock) {
+            val current = _state.value
+            val target =
+                current.tabs.firstOrNull { it.keepAliveKey == cleanKey && it.tabId != current.activeTabId && it.isLive }
+                    ?: return@synchronized
+            _state.value =
+                current.copy(
+                    tabs =
+                        current.tabs.map { tab ->
+                            if (tab.tabId == target.tabId) {
+                                tab.copy(isLive = false, loadedBaseUrl = tab.resumeUrl)
+                            } else {
+                                tab
+                            }
+                        },
+                )
+        }
+    }
+
+    /**
+     * Clears every open tab on sign-out, account switch, server switch, or environment switch
+     * so no App session or floating pill ever crosses account/server boundaries.
+     */
+    fun onSessionContextChanged(
+        accountId: String?,
+        serverId: String?,
+        environmentKey: String?,
+    ) {
+        val cleanAccount = accountId?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanServer = serverId?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanEnv = environmentKey?.trim()?.takeIf { it.isNotEmpty() }
+        val removed =
+            synchronized(lock) {
+                val current = _state.value
+                if (current.tabs.isEmpty()) return@synchronized emptyList()
+                val shouldClear =
+                    current.tabs.any { tab ->
+                        val accountMismatch = tab.accountId != null && tab.accountId != cleanAccount
+                        val signedOut = tab.accountId != null && cleanAccount == null
+                        val serverMismatch =
+                            tab.serverId != null &&
+                                cleanServer != null &&
+                                tab.serverId != cleanServer
+                        val envMismatch =
+                            tab.environmentKey != null &&
+                                cleanEnv != null &&
+                                tab.environmentKey != cleanEnv
+                        accountMismatch || signedOut || serverMismatch || envMismatch
+                    }
+                if (shouldClear) {
+                    _state.value = current.copy(tabs = emptyList(), activeTabId = null)
+                    return@synchronized current.tabs
                 }
-                if ((current.accountId == null && accountId != null) ||
-                    (current.environmentKey == null && environmentKey != null)
-                ) {
-                    _session.value =
+                val needsBackfill =
+                    current.tabs.any { tab ->
+                        (tab.accountId == null && cleanAccount != null) ||
+                            (tab.serverId == null && cleanServer != null) ||
+                            (tab.environmentKey == null && cleanEnv != null)
+                    }
+                if (needsBackfill) {
+                    _state.value =
                         current.copy(
-                            accountId = current.accountId ?: accountId,
-                            environmentKey = current.environmentKey ?: environmentKey,
+                            tabs =
+                                current.tabs.map { tab ->
+                                    tab.copy(
+                                        accountId = tab.accountId ?: cleanAccount,
+                                        serverId = tab.serverId ?: cleanServer,
+                                        environmentKey = tab.environmentKey ?: cleanEnv,
+                                    )
+                                },
                         )
                 }
-                null
+                emptyList()
             }
-        removed?.let(::releaseTokenIfPresent)
+        removed.forEach(::releaseTabResources)
     }
 
-    fun onHostDisposed(ownerHostId: String) {
+    /** Closes any open App tab whose origin or App name was dropped from rail places (#16960). */
+    fun closeByDroppedRailApp(origin: String?, appName: String?) {
+        val cleanOrigin = origin?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanName = appName?.trim()?.takeIf { it.isNotEmpty() }
+        if (cleanOrigin == null && cleanName == null) return
         val removed =
             synchronized(lock) {
-                val current = _session.value ?: return@synchronized null
-                if (current.ownerHostId != ownerHostId) return@synchronized null
-                _session.value = null
-                current
+                val current = _state.value
+                val matching =
+                    current.tabs.filter { tab ->
+                        (cleanOrigin != null && tab.scopeOrigin == cleanOrigin) ||
+                            (cleanName != null && tab.appName == cleanName)
+                    }
+                if (matching.isEmpty()) return@synchronized emptyList()
+                val removeIds = matching.mapTo(HashSet()) { it.tabId }
+                val nextTabs = current.tabs.filterNot { it.tabId in removeIds }
+                val nextActive = current.activeTabId?.takeUnless { it in removeIds }
+                _state.value = current.copy(tabs = nextTabs, activeTabId = nextActive)
+                matching
             }
-        removed?.let(::releaseTokenIfPresent)
+        removed.forEach(::releaseTabResources)
     }
 
-    fun clearCollapsed() {
-        val removed =
-            synchronized(lock) {
-                val current = _session.value ?: return@synchronized null
-                if (!current.isCollapsedKeptAlive) return@synchronized null
-                _session.value = null
-                current
-            }
-        removed?.let(::releaseTokenIfPresent)
+    /** Persists the user's vertical dock fraction for the right-edge magnetic floating pill. */
+    fun setPillYFraction(yFraction: Float) {
+        val clamped = yFraction.coerceIn(0f, 1f)
+        synchronized(lock) {
+            val current = _state.value
+            if (current.pillYFraction == clamped) return@synchronized
+            _state.value = current.copy(pillYFraction = clamped)
+        }
     }
 
-    fun clearAll() {
-        val removed =
-            synchronized(lock) {
-                val current = _session.value
-                _session.value = null
-                current
+    private fun rebalanceLiveLru(
+        orderedTabs: List<RaftAppBrowserTab>,
+        activeTabId: Long?,
+    ): Pair<List<RaftAppBrowserTab>, List<RaftAppBrowserTab>> {
+        val mruSorted = orderedTabs.sortedByDescending { it.lastUsedSeq }
+        val keepLiveIds = LinkedHashSet<Long>(livePoolSize)
+        if (activeTabId != null && mruSorted.any { it.tabId == activeTabId }) {
+            keepLiveIds += activeTabId
+        }
+        for (tab in mruSorted) {
+            if (keepLiveIds.size >= livePoolSize) break
+            if (tab.isLive) keepLiveIds += tab.tabId
+        }
+        val newlyHibernated = mutableListOf<RaftAppBrowserTab>()
+        val updated =
+            mruSorted.map { tab ->
+                val shouldStayLive = tab.tabId in keepLiveIds
+                if (tab.isLive && !shouldStayLive) {
+                    val hibernatedTab = tab.copy(isLive = false, loadedBaseUrl = tab.resumeUrl)
+                    newlyHibernated += hibernatedTab
+                    hibernatedTab
+                } else if (!tab.isLive && shouldStayLive) {
+                    tab.copy(isLive = true)
+                } else {
+                    tab
+                }
             }
-        removed?.let(::releaseTokenIfPresent)
+        return updated to newlyHibernated
     }
 
-    private fun releaseTokenIfPresent(session: RaftMobileWebPanelSession) {
-        val token = session.appEntryToken ?: return
-        releaseEntryToken(token, session.ownerHostId)
+    private fun releaseTabResources(tab: RaftAppBrowserTab) {
+        releaseEntryToken(tab.appEntryToken, tab.entryOwnerId)
+        releaseEntryToken(tab.appEntryToken, "")
+        evictKeepAlive(tab.keepAliveKey)
     }
 
     companion object {

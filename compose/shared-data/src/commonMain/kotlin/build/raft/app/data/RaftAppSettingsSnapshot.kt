@@ -24,7 +24,7 @@ import kotlinx.coroutines.launch
 
 @RaftCoreInternalApi fun currentRaftAppSettingsPlatform(): RaftAppSettingsPlatform =
     RaftAppSettingsPlatform(
-        linkOpenMode = raftPlatformSupportsInAppBrowser(),
+        linkOpenMode = false,
         iosNativeNav = RaftIosNativeNavFlag.hostSupported,
         multiShellHost = raftPlatformSupportsMultiShellHost(),
     )

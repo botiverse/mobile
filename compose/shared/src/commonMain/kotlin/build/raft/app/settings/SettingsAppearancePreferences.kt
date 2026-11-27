@@ -22,11 +22,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.SegmentedControl
 import build.raft.app.components.SegmentedControlOption
-import build.raft.app.data.LinkOpenMode
 import build.raft.app.data.MOBILE_ACTION_COMPACT_MESSAGES
 import build.raft.app.data.MOBILE_ACTION_COMPOSER_SEND_KEY
 import build.raft.app.data.MOBILE_ACTION_DESKTOP_MODE
-import build.raft.app.data.MOBILE_ACTION_LINK_OPEN_MODE
 import build.raft.app.data.MOBILE_ACTION_LONG_MESSAGE_COLLAPSE
 import build.raft.app.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import build.raft.app.data.MOBILE_ACTION_MULTI_SHELL_HOST
@@ -130,7 +128,10 @@ internal fun settingsAppPreferenceVisibility(
 ): SettingsAppPreferenceVisibility {
     val hasHardwareKeyboard = finePointer || hardwareKeyboardConnected || isiOSAppOnMac
     return SettingsAppPreferenceVisibility(
-        linkOpenMode = supportsInAppBrowser,
+        // Ordinary external http(s) links always open in the system in-app browser
+        // (Chrome Custom Tabs / SFSafariViewController), while installed Raft Apps always
+        // open in Raft's in-app browser (#proj-mobile:7420d9de). No settings toggle is offered.
+        linkOpenMode = false,
         multiShellHost = supportsMultiShellHost,
         keyboardSendKey = hasHardwareKeyboard,
         iosNativeNav = supportsIosNativeNav,
@@ -157,31 +158,6 @@ internal fun SettingsAppearanceAppRows(
     actions: SettingsAppPreferenceActions,
     visibility: SettingsAppPreferenceVisibility,
 ) {
-    if (visibility.linkOpenMode) {
-        val linkOpenMode = snapshot.linkOpenMode
-        SettingsAppearanceSegmentedRow(
-            title = stringResource(Res.string.settings_mobile_link_open_mode_title),
-            divider = true,
-            error = actionState.errorFor(MOBILE_ACTION_LINK_OPEN_MODE),
-        ) {
-            SegmentedControl(
-                selectedValue = linkOpenMode.selectedKey.ifBlank { LinkOpenMode.Default.storageKey },
-                options =
-                    listOf(
-                        SegmentedControlOption(
-                            LinkOpenMode.SystemBrowser.storageKey,
-                            stringResource(Res.string.settings_mobile_link_open_mode_system_browser),
-                        ),
-                        SegmentedControlOption(
-                            LinkOpenMode.InAppBrowser.storageKey,
-                            stringResource(Res.string.settings_mobile_link_open_mode_in_app_browser),
-                        ),
-                    ),
-                onValueSelected = actions.onLinkOpenModeChange,
-                enabled = linkOpenMode.available && !actionState.busyWith(MOBILE_ACTION_LINK_OPEN_MODE),
-            )
-        }
-    }
     val alignment = snapshot.messageAlignmentPreference
     SettingsAppearanceSegmentedRow(
         title = stringResource(Res.string.settings_message_alignment_title),

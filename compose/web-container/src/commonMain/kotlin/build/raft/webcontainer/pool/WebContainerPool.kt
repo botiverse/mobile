@@ -255,6 +255,20 @@ class WebContainerKeepAlivePool<T : WebPooledContainer>(
         return inFlightKeys.size
     }
 
+    /** Evicts and destroys all pooled instances whose [WebContainerPoolKey.keepAliveKey] matches [keepAliveKey]. */
+    fun evictKey(keepAliveKey: String): Int {
+        val clean = keepAliveKey.trim()
+        if (clean.isEmpty()) return 0
+        val matchingKeys = entries.keys.filter { it.keepAliveKey == clean }
+        for (key in matchingKeys) {
+            entries.remove(key)?.let { removed ->
+                removed.container.destroy()
+                emitPoolEvent("evict_key", key.keepAliveKey)
+            }
+        }
+        return matchingKeys.size
+    }
+
     /** Evicts and destroys all pooled instances bound to [scope]. Returns the number destroyed. */
     fun evictScope(scope: WebIsolationScope): Int {
         val matchingKeys = entries.keys.filter { it.isolationScope == scope }

@@ -73,14 +73,24 @@ internal actual fun RaftSandboxWebViewHost(
     modifier: Modifier,
 ) {
     UIKitView(
-        factory = { RaftIosSandboxWebViewContainer(events).also { it.webViewHost.applyInitialBackground(config.backgroundArgb) } },
+        factory = {
+            val partition = config.effectiveStoragePartition
+            val effectiveKey =
+                if (partition == RaftWebViewStoragePartition.Default) config.keepAliveKey else null
+            val kept = effectiveKey?.let { key -> RaftIosAppBrowserWebViewPool.take(key, events) }
+            kept ?: RaftIosSandboxWebViewContainer(events).also { it.webViewHost.applyInitialBackground(config.backgroundArgb) }
+        },
         modifier = modifier,
         update = { view ->
             view.webViewHost.events = events
             view.webViewHost.applyConfig(config)
             view.webViewHost.bindController(controller)
         },
-        onRelease = { view -> view.webViewHost.dispose() },
+        onRelease = { view ->
+            if (!RaftIosAppBrowserWebViewPool.park(view)) {
+                view.webViewHost.dispose()
+            }
+        },
     )
 }
 
@@ -219,6 +229,13 @@ internal class RaftIosSandboxWebView(
     /** Prior URLs visited by the current navigation chain before the active candidate. */
     private val navChainHops = mutableListOf<String>()
     private var diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT
+    internal var keepAliveKey: String? = null
+        private set
+    internal var builtDark: Boolean = RaftAppThemeState.isDark
+        private set
+    internal var mainFrameLoadFailed: Boolean = false
+        private set
+    private var parkedForKeepAlive: Boolean = false
     private var allowJsDialogs: Boolean = false
     private val jsDialogTracker = WebJsDialogTracker()
     private var windowAttached: Boolean = container.window != null
@@ -312,6 +329,7 @@ internal class RaftIosSandboxWebView(
         raftHost = config.raftHost
         allowPinchZoom = config.allowPinchZoom
         diagnosticsSurface = config.diagnosticsSurface
+        keepAliveKey = config.keepAliveKey
         allowJsDialogs = config.allowJsDialogs
         if (!allowJsDialogs) {
             jsDialogTracker.cancelActive()
@@ -353,6 +371,34 @@ internal class RaftIosSandboxWebView(
 
     fun layout() {
         webView?.setFrame(container.bounds)
+    }
+
+    internal fun isHealthyForKeepAlive(): Boolean =
+        !disposed &&
+            webView != null &&
+            !mainFrameLoadFailed &&
+            lastSuccessfulURL.isNotBlank() &&
+            storagePartition == RaftWebViewStoragePartition.Default
+
+    internal fun detachForKeepAlive() {
+        jsDialogTracker.cancelActive()
+        webView?.let(::stopObserving)
+        boundController?.unbindCommandDispatcher(this)
+        boundController = null
+        events = RaftWebViewEvents()
+        parkedForKeepAlive = true
+        container.removeFromSuperview()
+    }
+
+    internal fun attachFromKeepAlive(nextEvents: RaftWebViewEvents) {
+        parkedForKeepAlive = false
+        events = nextEvents
+        navigationStateRelay.reset()
+        webView?.let(::onObservedChange)
+        notifyNavigationState(force = true)
+        if (!mainFrameLoadFailed && lastSuccessfulURL.isNotBlank()) {
+            events.onLoadSuccess()
+        }
     }
 
     fun dispose() {
@@ -1058,6 +1104,7 @@ internal class RaftIosSandboxWebView(
         currentLoading = true
         // The new load's own signal: WebKit's progress need not pass through 0 between two loads.
         loadGeneration += 1
+        mainFrameLoadFailed = false
         lastSuccessfulURL = ""
         lastLoadFailureKey = ""
         notifyNavigationState(force = false)
@@ -1112,6 +1159,7 @@ internal class RaftIosSandboxWebView(
         currentTitle = source.title ?: ""
         currentProgress = 100
         currentLoading = false
+        mainFrameLoadFailed = false
         diagnosticsInfo("page_finished url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         events.onUrlChange(currentURL)
         notifyNavigationState(force = false)
@@ -1170,9 +1218,15 @@ internal class RaftIosSandboxWebView(
         }
         currentURL = source.URL?.absoluteString ?: currentURL
         currentLoading = false
+        mainFrameLoadFailed = true
         diagnosticsWarn("page_error code=${error.code} url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
         notifyNavigationState(force = false)
         notifyLoadFailure(error.localizedDescription)
+        if (parkedForKeepAlive) {
+            (container as? RaftIosSandboxWebViewContainer)?.let {
+                RaftIosAppBrowserWebViewPool.dropIfSame(it, "load_error")
+            }
+        }
     }
 
     /**
@@ -1182,6 +1236,12 @@ internal class RaftIosSandboxWebView(
     internal fun contentProcessDidTerminate(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         jsDialogTracker.cancelActive()
+        if (parkedForKeepAlive) {
+            (container as? RaftIosSandboxWebViewContainer)?.let {
+                RaftIosAppBrowserWebViewPool.dropIfSame(it, "content_process_gone")
+            }
+            return
+        }
         events.onContentProcessGone("web_content_process_terminated")
         if (disposed) return
         lastSuccessfulURL = ""

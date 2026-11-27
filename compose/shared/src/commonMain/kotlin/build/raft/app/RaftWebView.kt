@@ -551,6 +551,8 @@ internal fun RaftWebView(
     persistBackgroundAfterPaint: Boolean = false,
     /** [RaftWebViewConfig.androidInsetMode]. */
     androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
+    /** [RaftWebViewConfig.keepAliveKey]. */
+    keepAliveKey: String? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -573,6 +575,7 @@ internal fun RaftWebView(
         allowedNavigationSchemes = allowedNavigationSchemes,
         mainFrameOrigin = mainFrameOrigin,
         frameHosts = frameHosts,
+        keepAliveKey = keepAliveKey,
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
         routesMainFrameNavigation = routesMainFrameNavigation,

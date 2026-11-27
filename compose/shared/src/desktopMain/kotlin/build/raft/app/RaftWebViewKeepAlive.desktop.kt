@@ -24,6 +24,10 @@ internal actual fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String):
 
 internal actual fun raftWebViewKeepAliveClear() = Unit
 
+internal actual fun raftWebViewKeepAliveEvict(key: String) = Unit
+
+internal actual fun raftWebViewKeepAliveOnMemoryPressure(critical: Boolean) = Unit
+
 /**
  * Persists a tiny marker file whenever the macOS native `WKWebView` opens a [WebIsolationScope.Default]
  * page, so a cold-restarted desktop process signing out before opening any WebView still knows to

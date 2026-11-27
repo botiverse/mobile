@@ -2,7 +2,6 @@ package build.raft.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,26 +9,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,11 +29,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
+import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBackButtonDefaults
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCloseButton
@@ -57,22 +49,23 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 
 /*
- * Visual chrome for the unified mobile web panel (#proj-workspace:#397, Option A per
- * kirby-link-sheet-v2.html):
- * - Dimmed 1-line source strip (visible in the 88% default detent; tapping collapses keeping page alive).
- * - Top drag handle lip.
- * - Bottom bar: leading RaftCloseButton (×), center identity (Layer 3 host OR Layer 2 App icon +
- *   name + "Signed in as"), trailing history Back/Forward buttons (`<` / `>`) and `⋮` menu (Share,
- *   Copy link, and Layer 3 only Open in browser ↗).
- * - Keep-open chip shown under the source message (or floating when scrolled off-screen / non-message).
+ * Top bar and compact bottom navigation strip for the right-to-left pushed in-app browser
+ * (#proj-mobile:#398, #proj-workspace:#412 / raft-design #1417):
+ * - Installed Raft App page: leading ← suspends to the right-edge floating pill (× in wide side
+ *   column), center shows App icon + name + "Signed in as", trailing shows [N] multi-page switcher
+ *   trigger when ≥2 pages are open and ⋮ overflow menu (Reload, Forward to Raft, Share, Copy link,
+ *   Open in browser ↗, Close page).
+ * - Cross-origin outbound child page: leading ← returns to parent App, center displays ONLY the
+ *   start-truncated LTR domain (no App branding or Raft sign-in status), trailing shows ⋮ menu.
+ * - Compact bottom bar: ‹ WebView Back, › WebView Forward, ↻ Reload, and explicit × Close.
  */
 
-internal const val RAFT_WEB_PANEL_SOURCE_STRIP_TAG = "raft_web_panel_source_strip"
-internal const val RAFT_WEB_PANEL_DRAG_HANDLE_TAG = "raft_web_panel_drag_handle"
+internal const val RAFT_APP_BROWSER_TOP_BAR_TAG = "raft_app_browser_top_bar"
+internal const val RAFT_APP_BROWSER_BACK_NAV_TAG = "raft_app_browser_back_nav"
+internal const val RAFT_APP_BROWSER_SWITCHER_BUTTON_TAG = "raft_app_browser_switcher_button"
+internal const val RAFT_APP_BROWSER_RELOAD_BUTTON_TAG = "raft_app_browser_reload_button"
 internal const val RAFT_WEB_PANEL_BOTTOM_BAR_TAG = "raft_web_panel_bottom_bar"
 internal const val RAFT_WEB_PANEL_CLOSE_BUTTON_TAG = "raft_web_panel_close_button"
 internal const val RAFT_WEB_PANEL_BACK_BUTTON_TAG = "raft_web_panel_back_button"
@@ -81,155 +74,7 @@ internal const val RAFT_WEB_PANEL_MORE_BUTTON_TAG = "raft_web_panel_more_button"
 internal const val RAFT_WEB_PANEL_HOST_LABEL_TAG = "raft_web_panel_host_label"
 internal const val RAFT_WEB_PANEL_APP_NAME_TAG = "raft_web_panel_app_name"
 internal const val RAFT_WEB_PANEL_SIGNED_IN_LABEL_TAG = "raft_web_panel_signed_in_label"
-internal const val RAFT_WEB_PANEL_KEEP_OPEN_CHIP_TAG = "raft_web_panel_keep_open_chip"
-internal const val RAFT_WEB_PANEL_FLOATING_KEEP_OPEN_CHIP_TAG = "raft_web_panel_floating_keep_open_chip"
 
-/** Top grabber lip of the bottom-rising panel; dragging vertically moves between detents. */
-@Composable
-internal fun RaftMobileWebPanelDragLip(
-    onDragDelta: (Float) -> Unit,
-    onDragEnd: (velocityY: Float) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = RaftTheme.colors
-    var lastDelta by remember { mutableStateOf(0f) }
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .height(22.dp)
-                .testTag(RAFT_WEB_PANEL_DRAG_HANDLE_TAG)
-                .pointerInput(onDragDelta, onDragEnd) {
-                    detectVerticalDragGestures(
-                        onDragStart = { lastDelta = 0f },
-                        onVerticalDrag = { change, dragAmount ->
-                            change.consume()
-                            lastDelta = dragAmount
-                            onDragDelta(dragAmount)
-                        },
-                        onDragEnd = { onDragEnd(lastDelta * 45f) },
-                        onDragCancel = { onDragEnd(0f) },
-                    )
-                },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .width(36.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(colors.foregroundHint.copy(alpha = 0.35f)),
-        )
-    }
-}
-
-/**
- * Dimmed 1-line source context strip shown in the top ~12% above the 88% panel.
- * Tapping anywhere on it collapses the panel back to the conversation keeping the WebView alive.
- */
-@Composable
-internal fun RaftMobileWebPanelSourceStrip(
-    source: RaftMobileWebPanelSource?,
-    topSafeArea: Dp,
-    onCollapse: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = RaftTheme.colors
-    val a11yLabel =
-        if (source is RaftMobileWebPanelSource.Message) {
-            stringResource(Res.string.mobile_web_panel_return_to_conversation)
-        } else {
-            stringResource(Res.string.mobile_web_panel_return_to_page)
-        }
-    Box(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(top = topSafeArea)
-                .testTag(RAFT_WEB_PANEL_SOURCE_STRIP_TAG)
-                .semantics { contentDescription = a11yLabel }
-                .raftClickable(onClick = onCollapse, tier = RaftHoverTier.Subtle)
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        when (source) {
-            is RaftMobileWebPanelSource.Message -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth().alpha(0.72f),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RaftAppAvatar(
-                        kind = source.authorAvatarKind,
-                        avatarWireValue = source.authorAvatarWireValue,
-                        label = source.authorName,
-                        avatarSize = RaftAvatarSize.Xs.edge,
-                        cacheSubject = source.authorCacheSubject,
-                    )
-                    RaftText(
-                        text = source.authorName,
-                        style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
-                        color = colors.foreground,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (source.previewText.isNotBlank()) {
-                        RaftText(
-                            text = source.previewText,
-                            modifier = Modifier.weight(1f),
-                            style = RaftTheme.typography.footnote,
-                            color = colors.foregroundMuted,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    } else {
-                        Spacer(Modifier.weight(1f))
-                    }
-                    if (source.timestampLabel.isNotBlank()) {
-                        RaftRelativeTimestampText(
-                            value = source.timestampLabel,
-                            displayGroup = RaftTimestampDisplayGroup.Conversation,
-                            style = RaftTheme.typography.caption,
-                            color = colors.foregroundHint,
-                            maxLines = 1,
-                            toggleEnabled = false,
-                        )
-                    }
-                }
-            }
-            is RaftMobileWebPanelSource.Surface -> {
-                RaftText(
-                    text = source.label,
-                    modifier = Modifier.alpha(0.72f),
-                    style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
-                    color = colors.foregroundMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            null -> {
-                RaftText(
-                    text = stringResource(Res.string.mobile_web_panel_return_to_conversation),
-                    modifier = Modifier.alpha(0.72f),
-                    style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
-                    color = colors.foregroundMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
-/**
- * Mobile web panel bottom bar:
- * - Leading: `×` (`RaftCloseButton`), isolated from history buttons to prevent accidental close.
- * - Center: Layer 3 formatted ASCII host (`www.` stripped, IDN as `xn--`), OR Layer 2 App icon +
- *   App name + subtle "Signed in as <name>" caption when available.
- * - Trailing: history Back (`<`) and Forward (`>`) buttons disabled when no history exists in that
- *   direction, followed by `⋮` overflow menu (Share, Copy link, and for Layer 3 only: Open in browser ↗).
- */
 /** Text layout policy for a site domain vs. ordinary title (botiverse/slock #16701 / #16703). */
 internal data class RaftSiteDomainTextSpec(
     val overflow: TextOverflow,
@@ -284,67 +129,69 @@ internal fun RaftSiteDomainText(
     )
 }
 
+/**
+ * Top bar for both installed Raft App stack pages and cross-origin unauthenticated child pages.
+ */
 @Composable
-internal fun RaftMobileWebPanelBottomBar(
+internal fun RaftAppBrowserTopBar(
     isRaftApp: Boolean,
+    isOutboundChild: Boolean,
     currentUrl: String,
     appName: String?,
     appLogoUrl: String?,
     signedInAsName: String?,
-    onClose: () -> Unit,
+    onBack: () -> Unit,
+    onClosePage: () -> Unit,
+    onReload: () -> Unit,
     onShare: () -> Unit,
     onCopyLink: () -> Unit,
     onOpenInBrowser: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    canGoBack: Boolean = false,
-    canGoForward: Boolean = false,
-    onGoBack: () -> Unit = {},
-    onGoForward: () -> Unit = {},
-    onReload: () -> Unit = {},
+    inColumn: Boolean = false,
+    openTabCount: Int = 1,
+    onOpenSwitcher: (() -> Unit)? = null,
     onForwardToRaft: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     var menuExpanded by remember { mutableStateOf(false) }
+    val showAppIdentity = isRaftApp && !isOutboundChild
     val displayHost = remember(currentUrl) { raftMobileWebPanelDisplayHost(currentUrl) }
     val cleanAppName = appName?.trim()?.takeIf { it.isNotEmpty() }
     val displayAppName = cleanAppName ?: displayHost
     val isFallbackHost = cleanAppName == null && displayHost.isNotBlank()
-    val menuActions = remember(isRaftApp) { raftMobileWebPanelMenuActions(isRaftApp) }
+    val menuActions =
+        remember(showAppIdentity, isOutboundChild) {
+            raftMobileWebPanelMenuActions(isRaftApp = showAppIdentity, isOutboundChild = isOutboundChild)
+        }
 
     Column(
         modifier =
             modifier
                 .fillMaxWidth()
                 .background(colors.layerCanvas)
-                .testTag(RAFT_WEB_PANEL_BOTTOM_BAR_TAG),
+                .testTag(RAFT_APP_BROWSER_TOP_BAR_TAG),
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(RaftStroke.Hairline)
-                    .background(colors.lineHairline),
-        )
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(52.dp) // app-only: kirby-link-sheet-v2 mobile web panel bottom bar
+                    .height(RaftTheme.controls.headHeight)
                     .padding(horizontal = RaftBackButtonDefaults.EdgeInset),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RaftCloseButton(
-                onClick = onClose,
-                label = stringResource(Res.string.common_close),
-                size = RaftCloseButtonSize.Bar,
-                modifier = Modifier.testTag(RAFT_WEB_PANEL_CLOSE_BUTTON_TAG),
-            )
+            if (!inColumn || isOutboundChild) {
+                RaftBackButton(
+                    onClick = onBack,
+                    label = stringResource(Res.string.common_back),
+                    modifier = Modifier.testTag(RAFT_APP_BROWSER_BACK_NAV_TAG),
+                )
+            }
             Box(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).padding(horizontal = 4.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                if (isRaftApp) {
+                if (showAppIdentity) {
                     RaftMobileWebPanelAppIdentity(
                         appName = displayAppName,
                         appLogoUrl = appLogoUrl,
@@ -369,26 +216,15 @@ internal fun RaftMobileWebPanelBottomBar(
                     )
                 }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RaftIconButton(
-                    onClick = onGoBack,
-                    tooltip = stringResource(Res.string.common_back),
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftIconButtonSize.Lg,
-                    enabled = canGoBack,
-                    modifier = Modifier.testTag(RAFT_WEB_PANEL_BACK_BUTTON_TAG),
-                ) {
-                    RaftSlotIcon(RaftLucideIconName.ChevronLeft)
-                }
-                RaftIconButton(
-                    onClick = onGoForward,
-                    tooltip = stringResource(Res.string.in_app_browser_forward),
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftIconButtonSize.Lg,
-                    enabled = canGoForward,
-                    modifier = Modifier.testTag(RAFT_WEB_PANEL_FORWARD_BUTTON_TAG),
-                ) {
-                    RaftSlotIcon(RaftLucideIconName.ChevronRight)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (showAppIdentity && openTabCount >= 2 && onOpenSwitcher != null) {
+                    RaftAppBrowserTabCountButton(
+                        count = openTabCount,
+                        onClick = onOpenSwitcher,
+                    )
                 }
                 Box {
                     RaftIconButton(
@@ -460,11 +296,143 @@ internal fun RaftMobileWebPanelBottomBar(
                                         )
                                     }
                                 }
+                                RaftMobileWebPanelMenuAction.ClosePage -> {
+                                    RaftMenuSeparator()
+                                    RaftMenuItem(
+                                        text = stringResource(Res.string.in_app_browser_close_page),
+                                        leadingIcon = { RaftSlotIcon(RaftLucideIconName.X) },
+                                        onClick = {
+                                            menuExpanded = false
+                                            onClosePage()
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
                 }
+                if (inColumn && !isOutboundChild) {
+                    RaftCloseButton(
+                        onClick = onBack,
+                        label = stringResource(Res.string.common_close),
+                        size = RaftCloseButtonSize.Bar,
+                    )
+                }
             }
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(RaftStroke.Hairline)
+                    .background(colors.lineHairline),
+        )
+    }
+}
+
+/** Compact `[N]` badge trigger in the App top bar opening the multi-page switcher sheet. */
+@Composable
+private fun RaftAppBrowserTabCountButton(
+    count: Int,
+    onClick: () -> Unit,
+) {
+    val colors = RaftTheme.colors
+    val label = stringResource(Res.string.in_app_browser_open_pages_a11y, count)
+    val shape = RoundedCornerShape(RaftRadius.Chip)
+    Box(
+        modifier =
+            Modifier
+                .heightIn(min = 32.dp) // app-only: top-bar tab count pill target
+                .widthIn(min = 32.dp)
+                .testTag(RAFT_APP_BROWSER_SWITCHER_BUTTON_TAG)
+                .semantics { contentDescription = label }
+                .clip(shape)
+                .background(colors.fillSubtle, shape)
+                .border(RaftStroke.Hairline, colors.lineSeam, shape)
+                .raftClickable(onClick = onClick, shape = shape, tier = RaftHoverTier.Subtle)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        RaftText(
+            text = count.toString(),
+            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.SemiBold),
+            color = colors.foreground,
+            maxLines = 1,
+        )
+    }
+}
+
+/** Compact bottom navigation strip below the WebView: Back, Forward, Reload, and explicit Close `×`. */
+@Composable
+internal fun RaftAppBrowserBottomBar(
+    canGoBack: Boolean,
+    canGoForward: Boolean,
+    onGoBack: () -> Unit,
+    onGoForward: () -> Unit,
+    onReload: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RaftTheme.colors
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(colors.layerCanvas)
+                .testTag(RAFT_WEB_PANEL_BOTTOM_BAR_TAG),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(RaftStroke.Hairline)
+                    .background(colors.lineHairline),
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(44.dp) // app-only: compact in-app browser bottom navigation strip
+                    .padding(horizontal = RaftBackButtonDefaults.EdgeInset),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftIconButton(
+                onClick = onGoBack,
+                tooltip = stringResource(Res.string.common_back),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg,
+                enabled = canGoBack,
+                modifier = Modifier.testTag(RAFT_WEB_PANEL_BACK_BUTTON_TAG),
+            ) {
+                RaftSlotIcon(RaftLucideIconName.ChevronLeft)
+            }
+            RaftIconButton(
+                onClick = onGoForward,
+                tooltip = stringResource(Res.string.in_app_browser_forward),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg,
+                enabled = canGoForward,
+                modifier = Modifier.testTag(RAFT_WEB_PANEL_FORWARD_BUTTON_TAG),
+            ) {
+                RaftSlotIcon(RaftLucideIconName.ChevronRight)
+            }
+            RaftIconButton(
+                onClick = onReload,
+                tooltip = stringResource(Res.string.in_app_browser_reload),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Lg,
+                modifier = Modifier.testTag(RAFT_APP_BROWSER_RELOAD_BUTTON_TAG),
+            ) {
+                RaftSlotIcon(RaftLucideIconName.RefreshCw)
+            }
+            Spacer(Modifier.weight(1f))
+            RaftCloseButton(
+                onClick = onClose,
+                label = stringResource(Res.string.in_app_browser_close_page),
+                size = RaftCloseButtonSize.Bar,
+                modifier = Modifier.testTag(RAFT_WEB_PANEL_CLOSE_BUTTON_TAG),
+            )
         }
     }
 }
@@ -520,99 +488,4 @@ private fun RaftMobileWebPanelAppIdentity(
             )
         }
     }
-}
-
-/**
- * Subtle tappable keep-open chip (`"{host} · 页面仍打开"` / `"{host} · Page still open"`) shown
- * under the source message while the panel is collapsed & alive, or floating when the source
- * message is scrolled off-screen / opened from a non-message surface.
- */
-@Composable
-internal fun RaftMobileWebPanelKeepOpenChip(
-    label: String,
-    onClick: () -> Unit,
-    elevated: Boolean = false,
-    modifier: Modifier = Modifier,
-) {
-    val colors = RaftTheme.colors
-    val dark = RaftTheme.isDark
-    val shape = RoundedCornerShape(RaftRadius.Chip)
-    val surfaceColor = if (elevated) colors.layerPopover else colors.fillSubtle
-    val borderColor = if (elevated) colors.lineSeam else colors.lineHairline
-    val displayText =
-        if (label.isNotBlank()) {
-            stringResource(Res.string.mobile_web_panel_page_still_open, label)
-        } else {
-            stringResource(Res.string.in_app_browser_title)
-        }
-    Row(
-        modifier =
-            modifier
-                .then(if (elevated) Modifier.shadow(elevation = if (dark) 8.dp else 4.dp, shape = shape) else Modifier)
-                .clip(shape)
-                .background(surfaceColor, shape)
-                .border(RaftStroke.Hairline, borderColor, shape)
-                .raftClickable(
-                    onClick = onClick,
-                    shape = shape,
-                    tier = RaftHoverTier.Subtle,
-                )
-                .padding(horizontal = 10.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(14.dp), contentAlignment = Alignment.Center) {
-            RaftSlotIcon(RaftLucideIconName.AppWindow, color = colors.foregroundMuted)
-        }
-        RaftText(
-            text = displayText,
-            style = RaftTheme.typography.footnote.copy(fontWeight = FontWeight.Medium),
-            color = colors.foregroundMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-/**
- * Renders the inline keep-open chip directly under the message that opened a collapsed kept-alive
- * web panel. Subscribes only to the matching [messageId] via `distinctUntilChanged`, so unrelated
- * message rows in a timeline never recompose when web panel state changes.
- */
-@Composable
-internal fun ThreadMessageKeepOpenBadgeSlot(
-    messageId: String,
-    modifier: Modifier = Modifier,
-) {
-    val host = LocalRaftMobileWebPanelHost.current ?: return
-    val matchingFlow =
-        remember(host, messageId) {
-            host.coordinator.session
-                .map { session ->
-                    session?.takeIf {
-                        it.ownerHostId == host.hostId &&
-                            it.isCollapsedKeptAlive &&
-                            (it.source as? RaftMobileWebPanelSource.Message)?.messageId == messageId
-                    }
-                }
-                .distinctUntilChanged()
-        }
-    val session by matchingFlow.collectAsState(initial = null)
-    val activeSession = session ?: return
-
-    DisposableEffect(host, activeSession.sessionId) {
-        onDispose { host.reportInlineBadgeVisibility(activeSession.sessionId, visible = false) }
-    }
-    RaftMobileWebPanelKeepOpenChip(
-        label = activeSession.keepOpenLabel,
-        onClick = { host.reopen(activeSession.sessionId) },
-        elevated = false,
-        modifier =
-            modifier
-                .testTag(RAFT_WEB_PANEL_KEEP_OPEN_CHIP_TAG)
-                .onGloballyPositioned { coordinates ->
-                    val visible = coordinates.isAttached && !coordinates.boundsInWindow().isEmpty
-                    host.reportInlineBadgeVisibility(activeSession.sessionId, visible = visible)
-                },
-    )
 }

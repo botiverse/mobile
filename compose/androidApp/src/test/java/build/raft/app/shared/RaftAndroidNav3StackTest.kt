@@ -23,8 +23,11 @@ import org.junit.Test
 class RaftAndroidNav3StackTest {
     private val about =
         JsonObject(mapOf("settingsPage" to JsonPrimitive("about"), "slockShellInstanceId" to JsonPrimitive("shell-1")))
-    // A page that stays an Activity (batch 3 moved the chat onto the stack).
-    private val browser = JsonObject(mapOf("url" to JsonPrimitive("https://example.com")))
+    // Installed Raft App in-app browser pushes onto the stack; login remains an Activity.
+    private val appBrowser =
+        JsonObject(mapOf("url" to JsonPrimitive("https://stamp.build/pulls/1"), "tabId" to JsonPrimitive("1")))
+    private val outboundChild =
+        JsonObject(mapOf("url" to JsonPrimitive("https://docs.example.org/spec"), "outbound" to JsonPrimitive(true)))
 
     @Test
     fun switchOffKeepsEveryPageOnTheActivityPath() {
@@ -41,8 +44,11 @@ class RaftAndroidNav3StackTest {
         stack.open(SETTINGS_DETAIL, about, from = stack.pages.first())
         val aboutPage = stack.pages.last()
         assertEquals(RaftStackOpenRoute.Stack, raftAndroidNav3OpenRoute(stack, SETTINGS_DETAIL, about, from = aboutPage))
+        // In-app Raft App browser and its cross-origin outbound child page push onto the stack.
+        assertEquals(RaftStackOpenRoute.Stack, raftAndroidNav3OpenRoute(stack, RaftPages.IN_APP_BROWSER, appBrowser, from = aboutPage))
+        assertEquals(RaftStackOpenRoute.Stack, raftAndroidNav3OpenRoute(stack, RaftPages.IN_APP_BROWSER, outboundChild, from = aboutPage))
         // Mixing: a page not on the allowlist opened from a stack page still gets an Activity.
-        assertEquals(RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack, RaftPages.IN_APP_BROWSER, browser, from = aboutPage))
+        assertEquals(RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack, RaftPages.LOGIN, JsonObject(emptyMap()), from = aboutPage))
         assertEquals(RaftStackOpenRoute.Host, raftAndroidNav3OpenRoute(stack, RaftPages.APP_SHELL, about, from = aboutPage))
     }
 

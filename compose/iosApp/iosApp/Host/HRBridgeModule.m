@@ -3789,19 +3789,28 @@ NSString *const RaftBridgeCallbackKey = @"callback";
         NSLog(@"[%@][warn] openUrl ignored invalid url", RaftBridgeDefaultLogTag);
         return;
     }
-    // HostLinkCapability.openUrlInBrowser (`browser: true`): an http(s) page in Safari inside the
-    // app, so a Raft universal link can't route back into Raft. When `externalBrowser: true` is set
-    // (e.g. Artifact viewer "Open in browser"), bypass SFSafariViewController and call
-    // UIApplication.openURL directly so Safari shares cookies/sessions and does not cover Raft
-    // full-screen. Everything else: openURL.
+    // HostLinkCapability.openUrlInBrowser (`browser: true`) and external web links
+    // (`systemInAppBrowser: true`): open http(s) pages in SFSafariViewController inside the app
+    // with Raft theme tint so users stay in context and Raft universal links cannot bounce back.
+    // When `externalBrowser: true` is set (e.g. "Open in browser" menu action), bypass
+    // SFSafariViewController and call UIApplication.openURL directly to hand off to Safari.
+    // Non-http(s) schemes and unavailable controllers fall back cleanly to openURL.
     NSString *scheme = url.scheme.lowercaseString;
     BOOL webUrl = [scheme isEqualToString:@"https"] || [scheme isEqualToString:@"http"];
     BOOL externalBrowser = RaftBridgeBool(params[@"externalBrowser"]);
-    if (RaftBridgeBool(params[@"browser"]) && !externalBrowser && webUrl) {
+    BOOL useSafariViewController = RaftBridgeBool(params[@"browser"]) || RaftBridgeBool(params[@"systemInAppBrowser"]);
+    if (useSafariViewController && !externalBrowser && webUrl) {
         RaftBridgeRunOnMain(^{
             UIViewController *controller = [self raft_currentViewController];
             if (controller) {
-                [controller presentViewController:[[SFSafariViewController alloc] initWithURL:url] animated:YES completion:nil];
+                SFSafariViewController *safari = [[SFSafariViewController alloc] initWithURL:url];
+                if (@available(iOS 13.0, *)) {
+                    safari.preferredControlTintColor = UIColor.labelColor;
+                }
+                if (@available(iOS 11.0, *)) {
+                    safari.dismissButtonStyle = SFSafariViewControllerDismissButtonStyleClose;
+                }
+                [controller presentViewController:safari animated:YES completion:nil];
                 return;
             }
             [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];

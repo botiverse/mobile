@@ -11,14 +11,11 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ARTIFACT_CONTENT_DOMAIN
-import build.raft.app.data.KeyValueLinkOpenPreferenceStore
 import build.raft.app.data.LinkOpenMode
-import build.raft.app.data.PersistentLinkOpenPreferenceRepository
 import build.raft.app.data.RaftClientConfigAppHosts
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.isArtifactContentHost
-import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.links.raftComparableHostname
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.network.RaftContentCdnHost
@@ -523,21 +520,10 @@ internal fun SettingsOwnWebViewPage(pager: Pager) {
                     if (!handleAppStoreRestrictedPurchase(cleanTarget, closeCurrentPage = true)) {
                         bridge.logWarn("settings_web-page_appstore_route_blocked url=${raftOwnWebUrlForLog(cleanTarget)}")
                         if (raftOwnLinkIsWebPage(cleanTarget, webBaseUrl)) {
-                            // Non-native Raft web route on iOS: replace atomically into an
-                            // ephemeral InAppBrowserPage (or external browser) instead of push +
-                            // closePage() so UINavigationController never pops the new destination.
-                            val openInApp =
-                                effectiveLinkOpenMode(
-                                    PersistentLinkOpenPreferenceRepository(
-                                        KeyValueLinkOpenPreferenceStore(raftSharedPreferenceStore())
-                                    ).getLinkOpenModeSync()
-                                ) == LinkOpenMode.InAppBrowser
-                            if (openInApp && pager.openRaftInAppBrowserPage(cleanTarget, storeScopeOverride = storeScope, replaceCurrentPage = true)) {
-                                // Replaced atomically.
-                            } else {
-                                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-                                bridge.openUrl(cleanTarget, inBrowser = true)
-                            }
+                            // Non-native Raft web route on iOS: close the embedded web view and
+                            // open in the system in-app browser (SFSafariViewController).
+                            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+                            bridge.openUrl(cleanTarget, inBrowser = true)
                         } else {
                             // Native Raft destination (e.g. "Linked from" channel/thread/task) or
                             // external link: close this WebView first, then dispatch through linkNavigator.

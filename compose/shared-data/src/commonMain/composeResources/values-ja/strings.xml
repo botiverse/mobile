@@ -6892,6 +6892,14 @@
     <string name="in_app_browser_external_app_title">別のアプリで開きますか？</string>
     <string name="in_app_browser_external_app_message">このページは別のアプリで「%1$s」を開こうとしています。</string>
     <string name="in_app_browser_external_app_open">開く</string>
+    <string name="in_app_browser_close_page">ページを閉じる</string>
+    <string name="in_app_browser_open_pages_title">開いているページ（%1$d）</string>
+    <string name="in_app_browser_open_pages_a11y">%1$d 件の開いているページ</string>
+    <string name="in_app_browser_close_all_pages">すべて閉じる</string>
+    <string name="in_app_browser_floating_pill_single_a11y">%1$s を再開</string>
+    <string name="in_app_browser_floating_pill_multi_a11y">%1$d 件の開いているページ、タップして切替</string>
+    <string name="in_app_browser_tab_state_live">実行中</string>
+    <string name="in_app_browser_tab_state_hibernated">休止中</string>
     <string name="server_panel_recently_used">最近使った項目</string>
     <string name="mobile_nav_edit_reset">リセット</string>
     <string name="mobile_nav_edit_tab_bar">タブバー</string>

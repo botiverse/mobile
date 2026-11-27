@@ -208,6 +208,7 @@ class SettingsAppearanceParityUiTest {
 
             onNodeWithTag(SettingsAppearanceSectionTag).assertExists()
             onNodeWithText("Enter to send").assertExists()
+            onNodeWithText("Open web links").assertDoesNotExist()
             onNodeWithTag(SettingsAppearanceKeyboardSectionTag).assertDoesNotExist()
             onNodeWithTag(SettingsAppearanceSendKeyRowTag).assertDoesNotExist()
             onNodeWithText("Send messages with").assertDoesNotExist()

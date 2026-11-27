@@ -52,7 +52,7 @@ class SettingsAppPreferencesPlacementTest {
                 hardwareKeyboardConnected = false,
                 isiOSAppOnMac = false,
             )
-        assertTrue(phone.linkOpenMode)
+        assertFalse(phone.linkOpenMode)
         assertFalse(phone.keyboardSendKey)
         assertFalse(phone.keyboardShortcuts)
         assertFalse(phone.keyboardSection)
@@ -122,9 +122,9 @@ class SettingsAppPreferencesPlacementTest {
     }
 
     @Test
-    fun withoutAnInAppBrowserLinksOpenInTheDefaultBrowser() {
+    fun externalWebLinksAlwaysIgnoreLegacyLinkOpenModePreference() {
         assertEquals(LinkOpenMode.SystemBrowser, effectiveLinkOpenMode(LinkOpenMode.InAppBrowser, supportsInAppBrowser = false))
-        assertEquals(LinkOpenMode.InAppBrowser, effectiveLinkOpenMode(LinkOpenMode.InAppBrowser, supportsInAppBrowser = true))
+        assertEquals(LinkOpenMode.SystemBrowser, effectiveLinkOpenMode(LinkOpenMode.InAppBrowser, supportsInAppBrowser = true))
         assertEquals(LinkOpenMode.SystemBrowser, effectiveLinkOpenMode(LinkOpenMode.SystemBrowser, supportsInAppBrowser = true))
     }
 }

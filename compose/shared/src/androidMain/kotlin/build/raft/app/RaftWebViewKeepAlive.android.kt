@@ -1,5 +1,6 @@
 package build.raft.app
 
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.os.Handler
@@ -14,6 +15,7 @@ import build.raft.webcontainer.AndroidWebContainerProfileStore
 import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.webcontainer.WebIsolationScope
 import build.raft.webcontainer.parseWebContainerOrigin
+import build.raft.webcontainer.pool.WebMemoryTrimLevel
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -42,11 +44,15 @@ internal object RaftAndroidWebViewKeepAlive {
     internal const val PREWARM_LOAD_TIMEOUT_MS = 12_000L
 
     private var parked: RaftAndroidSandboxWebView? = null
+    private val appTabPool = LinkedHashMap<String, RaftAndroidSandboxWebView>()
     private var parkedPrewarmStartedAtMs: Long = 0L
     private var parkedPrewarmTraceHandle: MobileWebViewLoadAttemptHandle? = null
     private val handler by lazy { Handler(Looper.getMainLooper()) }
     private val expire = Runnable { drop("expired") }
     private val prewarmLoadTimeout = Runnable { abortInFlightPrewarmOnTimeout() }
+
+    private fun isAppTabKey(key: String?): Boolean =
+        key != null && key.startsWith(RAFT_APP_BROWSER_KEEP_ALIVE_PREFIX)
 
     internal var nowMs: () -> Long = { SystemClock.elapsedRealtime() }
     internal var prewarmLoadTimeoutMs: Long = PREWARM_LOAD_TIMEOUT_MS
@@ -63,6 +69,23 @@ internal object RaftAndroidWebViewKeepAlive {
         storagePartition: RaftWebViewStoragePartition = RaftWebViewStoragePartition.Default,
     ): RaftAndroidSandboxWebView? {
         if (storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty) return null
+        if (isAppTabKey(key)) {
+            dropAppTabsIfOtherThemeMode()
+            val tabView = appTabPool.remove(key) ?: return null
+            if (
+                tabView.isDestroyed ||
+                tabView.mainFrameLoadFailed ||
+                tabView.hasPendingRenderProcessRestore ||
+                tabView.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty
+            ) {
+                tabView.destroy()
+                logInfo("keep_alive result=dropped scope=app_tab reason=unhealthy")
+                return null
+            }
+            tabView.attachFromKeepAlive(hostContext, events)
+            logInfo("keep_alive result=reused scope=app_tab remaining=${appTabPool.size}")
+            return tabView
+        }
         dropIfOtherThemeMode()
         val view = parked ?: return null
         val prewarmHandle = parkedPrewarmTraceHandle
@@ -103,6 +126,33 @@ internal object RaftAndroidWebViewKeepAlive {
 
     /** Parks [view] when it has a key and has not failed its main-frame load; false when the caller must destroy it. */
     fun park(view: RaftAndroidSandboxWebView): Boolean {
+        val viewKey = view.keepAliveKey
+        if (isAppTabKey(viewKey)) {
+            val key = viewKey!!
+            if (
+                view.isDestroyed ||
+                view.mainFrameLoadFailed ||
+                view.hasPendingRenderProcessRestore ||
+                view.storagePartition == RaftWebViewStoragePartition.IsolatedThirdParty ||
+                view.builtDark != RaftAppThemeState.isDark ||
+                !RaftMobileWebPanelCoordinator.process.isKeepAliveEligible(key)
+            ) {
+                if (appTabPool[key] === view) {
+                    appTabPool.remove(key)
+                }
+                return false
+            }
+            dropAppTabsIfOtherThemeMode()
+            appTabPool.remove(key)?.takeIf { it !== view }?.destroy()
+            while (appTabPool.size >= RAFT_APP_BROWSER_LIVE_POOL_SIZE) {
+                val eldestKey = appTabPool.keys.firstOrNull() ?: break
+                appTabPool.remove(eldestKey)?.destroy()
+            }
+            view.detachForKeepAlive()
+            appTabPool[key] = view
+            logInfo("keep_alive result=parked scope=app_tab size=${appTabPool.size}")
+            return true
+        }
         if (
             view.isDestroyed ||
             view.mainFrameLoadFailed ||
@@ -306,10 +356,30 @@ internal object RaftAndroidWebViewKeepAlive {
         if (view.mainFrameLoadFailed) drop("load_error")
     }
 
-    /** Drops and destroys [view] if it is currently the parked keep-alive view. */
+    /** Drops any parked App tab views whose light/dark mode no longer matches. */
+    private fun dropAppTabsIfOtherThemeMode() {
+        val staleKeys =
+            appTabPool.entries
+                .filter { (_, view) -> view.builtDark != RaftAppThemeState.isDark || view.isDestroyed || view.mainFrameLoadFailed }
+                .map { it.key }
+        for (key in staleKeys) {
+            appTabPool.remove(key)?.destroy()
+            RaftMobileWebPanelCoordinator.process.onTabKeepAliveDropped(key)
+        }
+    }
+
+    /** Drops and destroys [view] if it is currently parked (artifact slot or App tab pool). */
     fun dropIfSame(view: RaftAndroidSandboxWebView, reason: String) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             handler.post { dropIfSame(view, reason) }
+            return
+        }
+        val matchingTabKey = appTabPool.entries.firstOrNull { it.value === view }?.key
+        if (matchingTabKey != null) {
+            appTabPool.remove(matchingTabKey)
+            view.destroy()
+            RaftMobileWebPanelCoordinator.process.onTabKeepAliveDropped(matchingTabKey)
+            logInfo("keep_alive result=dropped scope=app_tab reason=$reason")
             return
         }
         if (parked !== view) return
@@ -326,9 +396,41 @@ internal object RaftAndroidWebViewKeepAlive {
 
     /** Drops and destroys the parked view only if its key matches [key]. */
     fun dropIfKey(key: String, reason: String) {
+        if (appTabPool.containsKey(key)) {
+            evict(key, reason)
+        }
         if (parked?.keepAliveKey == key) drop(reason)
     }
 
+    /** Evicts and destroys any parked view under [key]. */
+    fun evict(key: String, reason: String = "evicted") {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post { evict(key, reason) }
+            return
+        }
+        appTabPool.remove(key)?.let { tabView ->
+            tabView.destroy()
+            logInfo("keep_alive result=dropped scope=app_tab reason=$reason")
+        }
+        if (parked?.keepAliveKey == key) {
+            drop(reason)
+        }
+    }
+
+    /** Drops and destroys every parked App tab WebView without disturbing artifact prewarm. */
+    fun dropAppTabs(reason: String) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            handler.post { dropAppTabs(reason) }
+            return
+        }
+        if (appTabPool.isEmpty()) return
+        val views = appTabPool.values.toList()
+        appTabPool.clear()
+        views.forEach { it.destroy() }
+        logInfo("keep_alive result=dropped_app_tabs count=${views.size} reason=$reason")
+    }
+
+    /** Drops and destroys the legacy single Artifact keep-alive slot without disturbing App tabs. */
     fun drop(reason: String) {
         val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(expire)
@@ -461,6 +563,7 @@ internal actual fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String):
 
 internal actual fun raftWebViewKeepAliveClear() {
     val clearAction = {
+        RaftAndroidWebViewKeepAlive.dropAppTabs("cleared")
         RaftAndroidWebViewKeepAlive.drop("cleared")
         runCatching { WebContainerAndroidKeepAlive.clearAll() }
     }
@@ -469,6 +572,69 @@ internal actual fun raftWebViewKeepAliveClear() {
     } else {
         Handler(Looper.getMainLooper()).post { clearAction() }
     }
+}
+
+internal actual fun raftWebViewKeepAliveEvict(key: String) {
+    val clean = key.trim()
+    if (clean.isEmpty()) return
+    val evictAction = {
+        RaftAndroidWebViewKeepAlive.evict(clean, "evicted")
+        runCatching { WebContainerAndroidKeepAlive.evictKey(clean) }
+    }
+    val mainLooper = runCatching { Looper.getMainLooper() }.getOrNull() ?: return
+    if (Looper.myLooper() == mainLooper) {
+        evictAction()
+    } else {
+        Handler(mainLooper).post { evictAction() }
+    }
+}
+
+internal actual fun raftWebViewKeepAliveOnMemoryPressure(critical: Boolean) {
+    trimAndroidAppAndLegacyPools(critical = critical)
+    runCatching {
+        WebContainerAndroidKeepAlive.onMemoryPressure(
+            if (critical) WebMemoryTrimLevel.CRITICAL else WebMemoryTrimLevel.MODERATE,
+        )
+    }
+}
+
+private fun trimAndroidAppAndLegacyPools(critical: Boolean) {
+    RaftMobileWebPanelCoordinator.process.hibernateBackgroundTabs()
+    val trimAction = {
+        RaftAndroidWebViewKeepAlive.dropAppTabs("memory_pressure")
+        if (critical) {
+            RaftAndroidWebViewKeepAlive.drop("memory_pressure")
+        }
+    }
+    val mainLooper = runCatching { Looper.getMainLooper() }.getOrNull() ?: return
+    if (Looper.myLooper() == mainLooper) {
+        trimAction()
+    } else {
+        Handler(mainLooper).post { trimAction() }
+    }
+}
+
+/**
+ * Public Android `Application.onTrimMemory` / `onLowMemory` hook into `:shared` App-tab and legacy
+ * WebView keep-alive trimming (`WebContainerAndroidKeepAlive.onTrimMemory(level)` is invoked
+ * separately in `RaftApplication` so `:web-container` is never double-trimmed). Preserves warm
+ * tabs on `TRIM_MEMORY_UI_HIDDEN` to match `#5922`.
+ */
+@Suppress("DEPRECATION")
+fun raftAndroidOnTrimMemory(level: Int) {
+    val critical =
+        when (level) {
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+            ComponentCallbacks2.TRIM_MEMORY_COMPLETE,
+            -> true
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE,
+            ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
+            ComponentCallbacks2.TRIM_MEMORY_BACKGROUND,
+            ComponentCallbacks2.TRIM_MEMORY_MODERATE,
+            -> false
+            else -> if (level > ComponentCallbacks2.TRIM_MEMORY_COMPLETE) true else return
+        }
+    trimAndroidAppAndLegacyPools(critical = critical)
 }
 
 internal interface RaftAndroidWebStorageClearTarget {
@@ -595,6 +761,7 @@ internal actual suspend fun raftClearPlatformWebViewAuthStorage(origins: Set<Str
         clearAndroidWebViewAuthStorage(
             origins = origins,
             dropKeepAlive = {
+                RaftAndroidWebViewKeepAlive.dropAppTabs("logout")
                 RaftAndroidWebViewKeepAlive.drop("logout")
                 runCatching { WebContainerAndroidKeepAlive.clearAll() }
             },

@@ -208,18 +208,13 @@ internal fun appShellOpenRailAppPlace(
     )
 }
 
-/** Closes the active mobile web panel when a background rail-places refresh drops an already-opened App (#16960). */
+/** Closes any open Raft App tab matching a rail place dropped by a background refresh (#16960). */
 internal fun appShellCloseDroppedRailAppPanel(
-    webPanelHost: RaftMobileWebPanelHostController?,
     dropped: RaftRailPlaceApp,
+    coordinator: RaftMobileWebPanelCoordinator = RaftMobileWebPanelCoordinator.process,
 ) {
-    val active = webPanelHost?.coordinator?.session?.value ?: return
-    if (active.ownerHostId != webPanelHost.hostId || !active.isRaftApp) return
     val droppedOrigin = raftAppEntryOriginOf(dropped.homepageUrl)
-    val activeOrigin = raftAppEntryOriginOf(active.launchUrl)
-    if ((droppedOrigin != null && droppedOrigin == activeOrigin) || active.appName == dropped.name) {
-        webPanelHost.close(active.sessionId)
-    }
+    coordinator.closeByDroppedRailApp(origin = droppedOrigin, appName = dropped.name)
 }
 
 /**
