@@ -441,51 +441,60 @@ private fun RaftAppBrowserSwitcherRow(
                 .clip(shape)
                 .background(rowBg, shape)
                 .border(RaftStroke.Hairline, borderColor, shape)
-                .raftClickable(onClick = onSelect, shape = shape, tier = RaftHoverTier.Subtle)
-                .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+                .padding(end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        RaftConnectedAppLogo(
-            name = tab.displayName,
-            logoUrl = tab.appLogoUrl,
-            size = RaftAvatarSize.Sm,
-        )
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+        Row(
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .clip(shape)
+                    .raftClickable(onClick = onSelect, shape = shape, tier = RaftHoverTier.Subtle)
+                    .padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            RaftConnectedAppLogo(
+                name = tab.displayName,
+                logoUrl = tab.appLogoUrl,
+                size = RaftAvatarSize.Sm,
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                RaftText(
-                    text = tab.switcherPrimaryLabel,
-                    modifier = Modifier.weight(1f, fill = false),
-                    style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
-                    color = colors.foreground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                RaftBadge(
-                    text =
-                        stringResource(
-                            if (tab.isLive) {
-                                Res.string.in_app_browser_tab_state_live
-                            } else {
-                                Res.string.in_app_browser_tab_state_hibernated
-                            },
-                        ),
-                    appearance = RaftBadgeAppearance.Soft,
-                    variant = if (tab.isLive) RaftBadgeVariant.Success else RaftBadgeVariant.Muted,
-                )
-            }
-            if (tab.displayHost.isNotBlank()) {
-                RaftSiteDomainText(
-                    host = tab.displayHost,
-                    style = RaftTheme.typography.caption,
-                    color = colors.foregroundMuted,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    RaftText(
+                        text = tab.switcherPrimaryLabel,
+                        modifier = Modifier.weight(1f, fill = false),
+                        style = RaftTheme.typography.callout.copy(fontWeight = FontWeight.SemiBold),
+                        color = colors.foreground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    RaftBadge(
+                        text =
+                            stringResource(
+                                if (tab.isLive) {
+                                    Res.string.in_app_browser_tab_state_live
+                                } else {
+                                    Res.string.in_app_browser_tab_state_hibernated
+                                },
+                            ),
+                        appearance = RaftBadgeAppearance.Soft,
+                        variant = if (tab.isLive) RaftBadgeVariant.Success else RaftBadgeVariant.Muted,
+                    )
+                }
+                if (tab.displayHost.isNotBlank()) {
+                    RaftSiteDomainText(
+                        host = tab.displayHost,
+                        style = RaftTheme.typography.caption,
+                        color = colors.foregroundMuted,
+                    )
+                }
             }
         }
         Spacer(Modifier.width(2.dp))
