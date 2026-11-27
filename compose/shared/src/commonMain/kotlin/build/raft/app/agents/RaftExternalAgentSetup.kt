@@ -44,6 +44,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SecondFactorStepUpCoordinator
 import build.raft.app.data.SecondFactorStepUpOutcome
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.members.membersRaftCard
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

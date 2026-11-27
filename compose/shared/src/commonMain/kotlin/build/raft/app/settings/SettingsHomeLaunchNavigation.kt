@@ -58,7 +58,7 @@ import build.raft.app.ConversationOpenSource
 import build.raft.app.ConversationOpenSourceMessageIdentity
 import build.raft.app.HomeDestinationDrafts
 import build.raft.app.HomeMessageOpenRequest
-import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftTaskConversationPushTarget
 import build.raft.app.RaftThreadComposerPayload

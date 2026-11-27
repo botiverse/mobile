@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -33,8 +33,13 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.MemberDetailAccessMode
+import build.raft.app.RaftAppRadius
+import build.raft.app.RaftCachedImage
 import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.SharedServerMembersStore
+import build.raft.app.fill
+import build.raft.app.get
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId

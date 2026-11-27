@@ -1,9 +1,10 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.app.thread.icon
 import build.raft.app.thread.reduce
+import build.raft.app.workingActivityDetailText
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAgentStatusIndicatorState
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftCenteredLoading
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.components.RaftStorePullToRefreshBox
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
@@ -56,6 +63,7 @@ import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampEpochMillis
+import build.raft.app.raftArgbHex
 import build.raft.app.reduce
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftHoverTier
@@ -78,6 +86,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.platform.testTag
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.repeatWhileProcessForeground
+import build.raft.app.fill
+import build.raft.app.localizedMemberStatusLabel
+import build.raft.app.localizedText
 import build.raft.designsystem.components.RaftStepStatus
 import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable

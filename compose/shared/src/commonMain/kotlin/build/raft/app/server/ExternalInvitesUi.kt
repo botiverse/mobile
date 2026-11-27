@@ -22,6 +22,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.AnnotatedString
 import build.raft.app.data.InviteConnectableServer
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
+import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.designsystem.components.RaftChoiceListItem
 import build.raft.designsystem.components.RaftMultiChoiceList
 import androidx.compose.ui.Alignment

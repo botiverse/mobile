@@ -31,6 +31,7 @@ import build.raft.app.data.raftRailPlacesWithVisibleReorder
 import build.raft.app.data.raftRailTabOrderWithVisibleOrder
 import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.ServerId
 import build.raft.app.raftPlatformIsAndroid
 import build.raft.app.raftPlatformIsDesktop

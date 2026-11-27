@@ -25,6 +25,10 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.LocalRaftMemberPreviewCardSource
+import build.raft.app.members.RaftMemberPreviewCardSource
+import build.raft.app.members.RaftProfilePreviewCardModel
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import kotlin.test.Test

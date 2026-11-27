@@ -20,6 +20,7 @@ import androidx.compose.ui.test.SemanticsNodeInteraction
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersCreateAgentMode
 import build.raft.app.resources.StringDesc
 import build.raft.app.thread.RaftThreadMemberItem
 import kotlin.test.AfterTest

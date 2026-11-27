@@ -19,6 +19,7 @@ import build.raft.app.data.TasksQueryIntent
 import build.raft.app.data.TasksQueryState
 import build.raft.app.data.TasksViewMode
 import build.raft.app.localizedLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.model.TaskStatus
 import build.raft.app.resources.*
 import build.raft.app.thread.icon

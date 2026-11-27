@@ -10,6 +10,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.members.MembersRemoteAgentProfileVisualContent
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

@@ -11,6 +11,7 @@ import build.raft.app.toHomeSearchEntityResult
 import build.raft.app.toThreadLaunchConversationIdentity
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.memberDetailIdentity
+import build.raft.app.members.iconName
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import build.raft.app.HomeSearchEntityResultLimit

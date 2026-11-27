@@ -1,6 +1,9 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.runtime.setValue
+import build.raft.app.MemberDetailAccessMode
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.MembersAgentLifecycleAction
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.RaftAgentControlsApi
 import build.raft.app.data.PlatformFile
@@ -47,6 +50,9 @@ import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.SharedServerMembersState
 import build.raft.app.data.SelectedServerStore
 import build.raft.app.data.sharedAgentDetailOwner
+import build.raft.app.dispatchMemberDetailLookup
+import build.raft.app.isConversationAccessLost
+import build.raft.app.memberDetailAccessMode
 import build.raft.app.data.agentDetailCacheKey
 import build.raft.app.data.canManageAgentAppAccess
 import build.raft.app.model.ChannelId
@@ -56,6 +62,10 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
+import build.raft.app.openMemberDirectMessage
+import build.raft.app.optInt
+import build.raft.app.optString
+import build.raft.app.submit
 import build.raft.app.thread.dispatch
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key

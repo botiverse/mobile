@@ -20,6 +20,9 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.members.LocalRaftMemberAppBotResolver
+import build.raft.app.members.RaftAppBotIdentity
+import build.raft.app.members.raftStaticMemberAppBotResolver
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.thread.RaftThreadMessageItem

@@ -36,6 +36,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.shell.LocalRaftPaneGridStore
 import build.raft.app.shell.LocalRaftProfileColumn
 import build.raft.app.shell.LocalRaftSidePanePage

@@ -53,6 +53,10 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.formatTaskConversationRef
 import build.raft.app.data.tasksAssigneeDisplayName
 import build.raft.app.localizedLabel
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
+import build.raft.app.members.localizedLabel
+import build.raft.app.members.rememberRaftMemberAvatarResolver
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.RaftTimeContext

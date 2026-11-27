@@ -28,6 +28,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftMobileBuiltInPlaceIds
 import build.raft.app.data.RaftRailPlace
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.iconName
 import build.raft.app.shell.AppShellServerTabKey
 import build.raft.app.shell.MobileRecentlyUsedEntry

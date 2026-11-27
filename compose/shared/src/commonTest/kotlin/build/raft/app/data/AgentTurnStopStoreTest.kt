@@ -1,8 +1,8 @@
 package build.raft.app.data
 
 import build.raft.app.MembersAgentLifecycleAction
-import build.raft.app.buildMembersManagementMenuItems
-import build.raft.app.membersRouteCanManageAgent
+import build.raft.app.members.buildMembersManagementMenuItems
+import build.raft.app.members.membersRouteCanManageAgent
 import build.raft.app.model.MemberId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent

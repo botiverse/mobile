@@ -1,12 +1,12 @@
 package build.raft.app.settings
 
 import build.raft.app.resources.*
-import build.raft.app.takenAgentNames
+import build.raft.app.members.takenAgentNames
 import build.raft.app.thread.dispatch
 import build.raft.app.toCreateAgentRequest
-import build.raft.app.toMemberDetailPageData
+import build.raft.app.members.toMemberDetailPageData
 import build.raft.app.toRaftAvatarLabel
-import build.raft.app.toRaftMemberDetailPayload
+import build.raft.app.members.toRaftMemberDetailPayload
 import build.raft.app.traceId
 import build.raft.app.userFacingMessage
 import androidx.compose.ui.input.key.key
@@ -66,28 +66,28 @@ import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.unit.Dp
 import build.raft.app.shell.AppShellMembersListState
 import build.raft.app.CreatedAgentLanding
-import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberDetailIdentity
-import build.raft.app.MemberDetailPageContent
-import build.raft.app.MembersAdaptiveWorkspace
-import build.raft.app.MembersCreateAgentInputs
-import build.raft.app.MembersInviteHumanInputs
-import build.raft.app.MembersPageHeader
-import build.raft.app.MembersRouteContent
+import build.raft.app.members.MemberDetailPageContent
+import build.raft.app.members.MembersAdaptiveWorkspace
+import build.raft.app.members.MembersCreateAgentInputs
+import build.raft.app.members.MembersInviteHumanInputs
+import build.raft.app.members.MembersPageHeader
+import build.raft.app.members.MembersRouteContent
 import build.raft.app.RaftAdaptivePaneLayout
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftBackHandler
 import build.raft.app.RaftCenteredLoading
 import build.raft.app.RaftColor
 import build.raft.app.RaftExternalAgentCreateHost
-import build.raft.app.RaftMemberDetailPayload
-import build.raft.app.RaftMembersPayload
+import build.raft.app.members.RaftMemberDetailPayload
+import build.raft.app.members.RaftMembersPayload
 import build.raft.app.SharedCreateAgentDialogSubmit
-import build.raft.app.SharedServerInviteHumanDialogHost
+import build.raft.app.members.SharedServerInviteHumanDialogHost
 import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.compat.pager.Pager
 import build.raft.app.createdAgentLanding
-import build.raft.app.createdAgentMemberProfile
+import build.raft.app.members.createdAgentMemberProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
@@ -108,7 +108,7 @@ import build.raft.app.raftLogger
 import build.raft.app.raftScopedAgentStatusResolver
 import build.raft.app.shell.raftUnderAppShellTopBar
 import build.raft.app.rememberCreatedAgent
-import build.raft.app.rememberMembersRowActions
+import build.raft.app.members.rememberMembersRowActions
 import build.raft.app.rememberRaftCreatedAgentReceipt
 
 @Composable

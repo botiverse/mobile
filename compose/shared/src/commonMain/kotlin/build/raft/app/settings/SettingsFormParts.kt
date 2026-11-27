@@ -38,6 +38,7 @@ import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.fill
 import build.raft.app.iconName
 import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.members.iconName
 import build.raft.app.raftArgbHex
 import build.raft.app.raftGesturePointerInput
 import build.raft.app.rememberRaftGestureOwner

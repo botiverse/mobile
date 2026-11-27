@@ -152,6 +152,7 @@ import build.raft.app.markdown.ThreadMarkdownTagKind
 import build.raft.app.markdown.prepareRaftMarkdownFullRendererBodies
 import build.raft.app.markdown.preparedRaftMarkdownFullRendererContentOrNull
 import build.raft.app.markdown.threadMarkdownTagDisplayLabel
+import build.raft.app.members.RaftMemberModelLabelResolver
 import build.raft.app.model.ChannelId
 import build.raft.app.model.Heartbeat
 import build.raft.app.model.MessageId
@@ -317,7 +318,7 @@ import build.raft.app.thread.toKnownMarkdownTaskNumberSetOrNull
 import build.raft.app.thread.toRaftTimeContext
 import build.raft.app.thread.toThreadReplyMetadataMap
 import build.raft.app.thread.toThreadTimelineSlice
-import build.raft.app.toRaftTimeContext
+import build.raft.app.members.toRaftTimeContext
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.desc
 import androidx.lifecycle.viewmodel.compose.viewModel

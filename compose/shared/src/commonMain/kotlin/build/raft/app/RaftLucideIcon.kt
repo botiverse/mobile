@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import build.raft.app.compat.ui.raftColorFromArgbHex
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.iconName
 import kotlin.math.roundToInt
 

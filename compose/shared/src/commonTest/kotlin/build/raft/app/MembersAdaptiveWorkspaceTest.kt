@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.members.matchesMemberSelection
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

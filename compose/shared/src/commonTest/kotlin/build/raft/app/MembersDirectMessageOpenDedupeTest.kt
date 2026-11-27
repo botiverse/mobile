@@ -16,6 +16,7 @@ import build.raft.app.data.RaftDirectMessageOpenKey
 import build.raft.app.data.RaftDirectMessageOpens
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.isOpening
+import build.raft.app.members.openMembersDirectMessageResult
 import build.raft.app.model.ServerSummary
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberId

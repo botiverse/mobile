@@ -4,10 +4,10 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.RuntimeProviderConfig
 import build.raft.app.model.ServerId
 import build.raft.app.model.ServerSummary
-import build.raft.app.MemberDetailRouteState
+import build.raft.app.members.MemberDetailRouteState
 import build.raft.app.model.serverPermissionsForRole
-import build.raft.app.seedCachedAgentDetail
-import build.raft.app.viewerSeesPrivateAgentSurfaces
+import build.raft.app.members.seedCachedAgentDetail
+import build.raft.app.members.viewerSeesPrivateAgentSurfaces
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

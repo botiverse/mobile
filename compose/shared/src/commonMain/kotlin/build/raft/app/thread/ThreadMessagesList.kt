@@ -12,8 +12,8 @@ import build.raft.app.RAFT_ADAPTIVE_DETAIL_SHELL_ID
 import build.raft.app.RaftAdaptiveDetailCloseRequest
 import build.raft.app.shell.RaftAdaptiveReadyGate
 import build.raft.app.RaftAgentStatusResolver
-import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberModelLabelResolver
 import build.raft.app.RaftScrollFrameSignalEffect
 import build.raft.app.TaskConversationHeadAboveState
 import build.raft.app.TouchType
@@ -82,8 +82,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.app.shell.AppShellScrollToTopRequestFence
 import build.raft.app.EmptyRaftAgentStatusResolver
-import build.raft.app.EmptyRaftMemberAvatarResolver
-import build.raft.app.EmptyRaftMemberModelLabelResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberModelLabelResolver
 import build.raft.app.LocalTaskConversationHeadRow
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RAFT_ADAPTIVE_DETAIL_GENERATION

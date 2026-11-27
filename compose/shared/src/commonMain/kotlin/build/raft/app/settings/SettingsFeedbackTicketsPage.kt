@@ -115,6 +115,8 @@ import build.raft.app.data.feedbackForeignClient
 import build.raft.app.data.feedbackOwnClient
 import build.raft.app.data.feedbackPreviewLine
 import build.raft.app.markdown.RaftMarkdownBody
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay

@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.PermissionBlocker
 import build.raft.app.data.ScreenError
+import build.raft.app.members.membersFormattedPermissionError
+import build.raft.app.members.membersFormattedScreenError
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

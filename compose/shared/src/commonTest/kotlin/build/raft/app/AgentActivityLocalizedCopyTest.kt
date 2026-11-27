@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedServerMemberStatus
+import build.raft.app.members.agentToolLogLabelRes
 import build.raft.app.messageRes
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence

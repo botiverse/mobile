@@ -73,6 +73,7 @@ import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.canToggleFollow
 import build.raft.app.fill
 import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.raftArgbHex
 import build.raft.app.raftRelativeTimestampLabel

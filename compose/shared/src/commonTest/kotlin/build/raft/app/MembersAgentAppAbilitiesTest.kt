@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.members.MembersAgentAppAbility
+import build.raft.app.members.MembersAgentAppAbilityItem
+import build.raft.app.members.membersAgentAppAbilities
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals

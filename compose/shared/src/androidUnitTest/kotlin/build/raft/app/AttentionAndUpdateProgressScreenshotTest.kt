@@ -11,6 +11,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
 import build.raft.app.data.SharedUpdateDownloadProgress
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.AppUpdateSummary
 import build.raft.app.settings.iconName
 import build.raft.app.settings.observe

@@ -1,7 +1,7 @@
 package build.raft.app.compat.pager
 
 import build.raft.app.CHANNEL_SETTINGS_PAGE
-import build.raft.app.MEMBER_DETAIL_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.RAFT_ARTIFACT_VIEWER_PAGE
 import build.raft.app.RAFT_IN_APP_BROWSER_PAGE
 import build.raft.app.thread.THREAD_MEMBERS_PAGE

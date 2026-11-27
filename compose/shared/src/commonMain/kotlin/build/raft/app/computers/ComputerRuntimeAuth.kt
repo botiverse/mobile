@@ -28,6 +28,8 @@ import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.oauthMethods
 import build.raft.app.data.isRuntimeAuthPastedCode
 import build.raft.app.data.resolveServerRefusal
+import build.raft.app.diagnosticsLabel
+import build.raft.app.members.diagnosticsLabel
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RuntimeAuthAccountLabel
 import build.raft.app.model.RuntimeAuthLoginEventPushed

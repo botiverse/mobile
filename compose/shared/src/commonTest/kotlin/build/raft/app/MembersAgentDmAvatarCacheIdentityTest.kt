@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.AgentDmSummary
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.SharedServerMembersState
+import build.raft.app.members.membersAgentDmPeerProfile
 import build.raft.app.data.RaftAvatarCacheSubject
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

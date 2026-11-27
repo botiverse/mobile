@@ -3,6 +3,12 @@ package build.raft.app
 import build.raft.app.base.BasePager
 import build.raft.app.compat.pager.Page
 import build.raft.app.data.SharedComputersLoadStatus
+import build.raft.app.members.MembersAgentDetailVisualVariant
+import build.raft.app.members.MembersAgentDetailVisualVariantContent
+import build.raft.app.members.MembersAgentOfflineComputerInputs
+import build.raft.app.members.MembersMachineStatusRow
+import build.raft.app.members.RaftMemberDetailPayload
+import build.raft.app.members.membersMachineStatusRow
 
 /**
  * Agent-detail profile states that the production `compose_member_detail` route

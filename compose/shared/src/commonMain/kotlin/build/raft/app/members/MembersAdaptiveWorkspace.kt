@@ -1,14 +1,17 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.ServerId
+import build.raft.app.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftColor
 import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
 
 /**

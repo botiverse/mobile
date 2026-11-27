@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.PendingComposerQuote
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.SharedThreadComposerDraftIntent
 import build.raft.app.SharedThreadComposerDraftViewModel
 import build.raft.app.ThreadComposerInsertQuoteRequest

@@ -30,6 +30,7 @@ import build.raft.app.data.TasksUnassignedAssigneeFilterId
 import build.raft.app.data.canApplyTasksBatchAction
 import build.raft.app.data.tasksIdentityFilterId
 import build.raft.app.localizedLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

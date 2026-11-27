@@ -107,7 +107,15 @@ import build.raft.app.data.earlierDiscussionVisible
 import build.raft.app.data.taskHeadSourceDisplay
 import build.raft.app.data.toTaskHistoryRows
 import build.raft.app.data.valueOrNull
+import build.raft.app.localized
 import build.raft.app.localizedLabel
+import build.raft.app.members.LocalRaftJointActorSurface
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
+import build.raft.app.members.localized
+import build.raft.app.members.localizedLabel
+import build.raft.app.members.rememberRaftJointActor
+import build.raft.app.members.rememberRaftMemberAvatarResolver
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

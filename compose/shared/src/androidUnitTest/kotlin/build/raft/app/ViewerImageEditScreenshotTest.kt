@@ -27,6 +27,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
 import build.raft.app.thread.icon

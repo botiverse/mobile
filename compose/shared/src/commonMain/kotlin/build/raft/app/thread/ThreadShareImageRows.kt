@@ -20,11 +20,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import build.raft.app.EmptyRaftAgentStatusResolver
-import build.raft.app.EmptyRaftMemberAvatarResolver
-import build.raft.app.EmptyRaftMemberModelLabelResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberModelLabelResolver
 import build.raft.app.RaftAgentStatusResolver
-import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberModelLabelResolver
 import androidx.compose.foundation.Image
 import build.raft.app.base.putIfAbsent
 import build.raft.app.data.ThreadActionCard

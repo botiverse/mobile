@@ -1,10 +1,11 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.thread.RaftTimelineItem
 import build.raft.app.thread.icon
 import build.raft.app.thread.messageRes
 import build.raft.app.thread.raftTimelineMonoTitleStyle
+import build.raft.app.userFacingMessage
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 import org.jetbrains.compose.resources.StringResource
 import build.raft.app.data.agentToolLogLabel
@@ -30,6 +31,8 @@ import build.raft.app.data.agentWorkerTimelineRefreshKey
 import build.raft.app.data.agentMemoryLimitExit
 import build.raft.app.data.isAgentBackgroundOomActivityTitle
 import build.raft.app.data.parseAgentBackgroundOomActivityText
+import build.raft.app.fill
+import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.messageRes
@@ -40,6 +43,8 @@ import build.raft.app.model.Presence
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampClockWithSeconds
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.parseAgentFreshnessHoldText
+import build.raft.app.raftAgentStatusIndicatorState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +77,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.AgentActivityDetailKindFreshnessHold
+import build.raft.app.RaftAgentStatusIndicatorState
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftCenteredLoading
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.agentFreshnessHold
 import build.raft.designsystem.components.RaftEmptyState
 import build.raft.designsystem.components.RaftEmptyStateDefaults
 

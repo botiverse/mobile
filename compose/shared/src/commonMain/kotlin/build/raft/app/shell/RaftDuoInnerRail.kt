@@ -30,6 +30,8 @@ import build.raft.app.hasHomeSecurityAlert
 import build.raft.app.hasUnreadHomeNotifications
 import build.raft.app.iconName
 import build.raft.app.localized
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.raftArgbHex
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailMetrics

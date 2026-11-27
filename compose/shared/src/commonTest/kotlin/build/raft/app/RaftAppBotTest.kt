@@ -2,6 +2,12 @@ package build.raft.app
 
 import build.raft.app.data.parseSharedAgentProfile
 import build.raft.app.data.parseSharedSettingsAgentsAsMembers
+import build.raft.app.members.RaftAppBotBadgeLabel
+import build.raft.app.members.RaftAppBotIdentity
+import build.raft.app.members.appBotIdentityOrNull
+import build.raft.app.members.isListedInMembers
+import build.raft.app.members.modelLabel
+import build.raft.app.members.raftAppBotBadgeLabel
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

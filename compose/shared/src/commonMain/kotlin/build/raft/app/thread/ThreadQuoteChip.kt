@@ -31,11 +31,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.RaftAppAvatarSticker
 import build.raft.app.RaftAvatarKind
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.MAX_INLINE_QUOTES_PER_MESSAGE
 import build.raft.app.data.StoredAuthUser

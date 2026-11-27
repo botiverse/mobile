@@ -78,6 +78,12 @@ import build.raft.app.markdown.toComposeTextDirection
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
 import build.raft.app.matches
+import build.raft.app.members.RaftAppBotBadge
+import build.raft.app.members.RaftAvatarWithOriginCorner
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
+import build.raft.app.members.localized
+import build.raft.app.members.rememberRaftMemberAppBot
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftIconButton
@@ -89,6 +95,7 @@ import build.raft.app.data.RaftComposerSendKey
 import build.raft.app.data.SharedMembersLoadStatus
 import build.raft.app.displaySizeLabel
 import build.raft.app.format.RaftFormat
+import build.raft.app.localized
 import build.raft.app.model.ConversationSummary
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind

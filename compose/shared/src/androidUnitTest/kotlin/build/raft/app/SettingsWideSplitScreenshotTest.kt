@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.IosBillingPresentation
 import build.raft.app.settings.RaftSettingsAccountPayload
 import build.raft.app.settings.RaftSettingsAccountProfile

@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import build.raft.app.data.RaftAvatarCacheSubject
+import build.raft.app.members.RaftAvatarWithOriginCorner
 import build.raft.app.model.MemberServerRef
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

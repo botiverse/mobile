@@ -57,8 +57,8 @@ import androidx.compose.ui.unit.sp
 import build.raft.app.AUTH_ABOUT_PAGE
 import build.raft.app.AUTH_PROFILE_SETUP_PAGE
 import build.raft.app.LOGIN_PAGE
-import build.raft.app.MEMBERS_PAGE
-import build.raft.app.MEMBERS_SMOKE_PAGE
+import build.raft.app.members.MEMBERS_PAGE
+import build.raft.app.members.MEMBERS_SMOKE_PAGE
 import build.raft.app.RAFT_FILE_PREVIEW_PAGE
 import build.raft.app.RAFT_HOME_PAGE
 import build.raft.app.RAFT_LUCIDE_ICON_GALLERY_PAGE

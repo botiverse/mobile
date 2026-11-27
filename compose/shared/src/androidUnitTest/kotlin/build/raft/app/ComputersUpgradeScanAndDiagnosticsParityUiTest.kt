@@ -34,6 +34,10 @@ import build.raft.app.data.SettingsComputerUpgradeRequestSnapshot
 import build.raft.app.data.SettingsComputerWorkspaceSnapshot
 import build.raft.app.data.SettingsFeedbackType
 import build.raft.app.format.RaftFormat
+import build.raft.app.members.MEMBERS_AGENT_ISSUE_DIAGNOSTICS_BUNDLE_RANGE_TAG
+import build.raft.app.members.MEMBERS_AGENT_ISSUE_DIAGNOSTICS_BUNDLE_TAG
+import build.raft.app.members.MembersAgentIssueReportDialog
+import build.raft.app.members.MembersAgentIssueReportSelection
 import build.raft.app.resources.*
 import build.raft.app.settings.SettingsHandsFeedbackComposer
 import build.raft.app.settings.SettingsHandsFeedbackForm

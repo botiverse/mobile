@@ -1,8 +1,10 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
+import build.raft.app.shownLabel
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
+import build.raft.app.words
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.ActivityRowTime
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftUnifiedDialog
+import build.raft.app.activityRowTime
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import build.raft.app.components.RaftStorePullToRefreshBox
@@ -50,8 +59,10 @@ import build.raft.app.data.AgentWorkersState
 import build.raft.app.data.ScreenError
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.recentEndedAgentWorkers
+import build.raft.app.get
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.raftArgbHex
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant

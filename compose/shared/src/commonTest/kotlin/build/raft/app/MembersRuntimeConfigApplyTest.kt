@@ -8,6 +8,9 @@ import build.raft.app.data.SettingsComputerAgentSnapshot
 import build.raft.app.data.parseSharedAgentConfigApply
 import build.raft.app.data.parseSharedAgentConfigApplyNewSession
 import build.raft.app.data.planRaftBulkModelChange
+import build.raft.app.members.MembersRuntimeConfigApplyKind
+import build.raft.app.members.MembersRuntimeConfigApplyNotice
+import build.raft.app.members.membersRuntimeConfigApplyNotice
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

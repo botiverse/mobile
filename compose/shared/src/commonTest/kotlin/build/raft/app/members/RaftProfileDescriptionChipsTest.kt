@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.ui.text.LinkAnnotation
+import build.raft.app.RaftColor
 import build.raft.app.data.ArtifactDeletedShown
 import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactKind

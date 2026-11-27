@@ -42,6 +42,9 @@ import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedMembersChannelSuggestionSlice
 import build.raft.app.data.SharedMembersMemberSuggestionSlice
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.LocalRaftMemberAppBotResolver
+import build.raft.app.members.raftStaticMemberAppBotResolver
 import build.raft.app.resources.StringDesc
 import build.raft.app.settings.observe
 import build.raft.app.thread.LocalThreadReverseLayout

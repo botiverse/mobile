@@ -32,6 +32,7 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.homeServerSwitcherBadgePresentation
 import build.raft.app.homeServerSwitcherJoinCommunityActions
 import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.app.raftArgbHex
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.designsystem.components.RaftGlyph

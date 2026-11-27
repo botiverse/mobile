@@ -7,8 +7,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import build.raft.app.RaftMemberAppBotResolver
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAppBotResolver
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.agentLoungeActivityMuteState
@@ -27,8 +27,8 @@ import build.raft.app.data.SharedHomeStore
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.model.ServerId
-import build.raft.app.raftMemberAppBotResolver
-import build.raft.app.raftMemberAvatarResolver
+import build.raft.app.members.raftMemberAppBotResolver
+import build.raft.app.members.raftMemberAvatarResolver
 import build.raft.app.rememberAgentLounge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow

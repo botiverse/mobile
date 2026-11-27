@@ -25,7 +25,7 @@ import build.raft.app.data.isSubmittableChannelName
 import build.raft.app.data.SettingsDiagnosticsFeedbackDraft
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
-import build.raft.app.raftMemberPickerToggle
+import build.raft.app.members.raftMemberPickerToggle
 import build.raft.app.raftUnifiedDialogKeepFocusedEditorVisible
 import build.raft.app.raftUnifiedDialogScrollToTargetItem
 import build.raft.app.rememberRaftFocusedInputBoundsResolver
@@ -76,9 +76,11 @@ import build.raft.app.RaftDialogFooter
 import build.raft.app.RaftDialogPresentation
 import build.raft.app.RaftFocusedEditorScrollRequestCoordinator
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberPicker
-import build.raft.app.RaftMemberPickerKey
-import build.raft.app.RaftMemberPickerMode
+import build.raft.app.members.RaftMemberPicker
+import build.raft.app.members.RaftMemberPickerKey
+import build.raft.app.members.RaftMemberPickerMode
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.RaftType
 import build.raft.app.RaftUnifiedDialog
@@ -91,7 +93,7 @@ import build.raft.app.fill
 import build.raft.app.iconName
 import build.raft.app.isAddableToNewChannel
 import build.raft.app.localized
-import build.raft.app.memberPickerKey
+import build.raft.app.members.memberPickerKey
 import kotlinx.coroutines.launch
 
 internal const val DiagnosticsFeedbackComposerSeedText: String =

@@ -20,6 +20,10 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.DataResult
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.ScreenError
+import build.raft.app.members.MembersAgentAvatarDialog
+import build.raft.app.members.MembersAgentAvatarDialogBody
+import build.raft.app.members.MembersAgentAvatarDraft
+import build.raft.app.members.MembersAgentAvatarError
 import build.raft.app.model.AvatarReference
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

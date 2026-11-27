@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.members.RaftMemberAuthorFacts
+import build.raft.app.members.authorFacts
+import build.raft.app.members.authorRowModelLabel
 import build.raft.app.model.ExternalMessageAuthor
 import build.raft.app.model.Message
 import build.raft.app.model.MemberId

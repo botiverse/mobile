@@ -97,7 +97,9 @@ import build.raft.app.AuthScaffold
 import build.raft.app.AuthSuccessNotice
 import build.raft.app.AuthTextField
 import build.raft.app.LOGIN_PAGE
-import build.raft.app.MembersPageHeader
+import build.raft.app.members.MembersPageHeader
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.shell.RAFT_DOCUMENT_SHELL
 import build.raft.app.shell.RAFT_SERVER_SWITCH_KEEP_WINDOW
 import build.raft.app.shell.RAFT_SERVER_SWITCH_WINDOW_ID

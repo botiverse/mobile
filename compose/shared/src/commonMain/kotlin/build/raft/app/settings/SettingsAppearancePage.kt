@@ -30,8 +30,9 @@ import build.raft.app.RaftAppAppearance
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberModelLabelResolver
+import build.raft.app.members.iconName
 import build.raft.app.RaftType
 import build.raft.app.assistant.AssistantOtterVisibleRow
 import build.raft.app.assistant.AssistantOwnerOtterRow

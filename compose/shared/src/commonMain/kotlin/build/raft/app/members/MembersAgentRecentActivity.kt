@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
+import build.raft.app.currentRaftEffectiveDateTimeContext
 import build.raft.app.data.AgentActivityOverviewStatus
 import build.raft.app.data.AgentActivityTurn
 import build.raft.app.data.offsetMinutesAt
@@ -30,6 +31,7 @@ import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.floorDiv
 import build.raft.app.model.formatRaftLocalClock
+import build.raft.app.raftLocalizedShortDateTime
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftCard
 import build.raft.designsystem.components.RaftGlyph

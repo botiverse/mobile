@@ -18,6 +18,7 @@ import build.raft.app.data.SharedAppLoginsIntent
 import build.raft.app.data.SharedAppLoginsState
 import build.raft.app.data.SharedAppLoginsStore
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName

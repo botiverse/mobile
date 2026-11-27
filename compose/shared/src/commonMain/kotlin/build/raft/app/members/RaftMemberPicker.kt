@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
+import build.raft.app.retainInputFocusForInteractions
 import build.raft.app.thread.key
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -25,12 +26,24 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.EmptyRaftAgentStatusResolver
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftModalCompactMemberRowContent
+import build.raft.app.ThreadComposerSuggestionQueryKey
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.components.rememberRaftDesignSystemEditor
+import build.raft.app.filterPeopleSuggestions
+import build.raft.app.get
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.raftAgentStatusIndicatorState
+import build.raft.app.raftAvatarCacheSubject
+import build.raft.app.raftAvatarKind
+import build.raft.app.raftAvatarName
+import build.raft.app.rememberRaftAgentStatusIndicatorState
 import build.raft.designsystem.components.RaftCheckboxIndicator
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.designsystem.components.RaftSectionEyebrow

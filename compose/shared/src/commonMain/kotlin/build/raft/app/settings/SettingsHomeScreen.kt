@@ -55,8 +55,8 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.openPinnedMemberDirectMessage
-import build.raft.app.raftMemberAppBotResolver
-import build.raft.app.raftMemberAvatarResolver
+import build.raft.app.members.raftMemberAppBotResolver
+import build.raft.app.members.raftMemberAvatarResolver
 import build.raft.app.raftScopedAgentStatusResolver
 import build.raft.app.rememberHomeJointInvites
 import build.raft.app.rememberHomeSeatJoinBlocks
@@ -101,7 +101,9 @@ import build.raft.app.SharedThreadComposerDraftRecord
 import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.agentLoungeConversationIdentityOrNull
 import build.raft.app.agentLoungeTitleNow
-import build.raft.app.appBotIdentityOrNull
+import build.raft.app.members.appBotIdentityOrNull
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.channelSettingsIsJoint
 import build.raft.app.channelSettingsIsPrivate
 import build.raft.app.conversationIdentity

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.thread.formatTimestampLabel

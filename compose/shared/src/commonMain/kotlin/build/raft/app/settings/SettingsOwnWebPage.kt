@@ -25,6 +25,7 @@ import build.raft.app.data.isArtifactContentHost
 import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.links.raftComparableHostname
+import build.raft.app.members.iconName
 import build.raft.app.nav.RAFT_REPLACE_CURRENT_PAGE
 import build.raft.app.network.RaftContentCdnHost
 import build.raft.app.network.RaftRetiredContentHost

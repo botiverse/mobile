@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.badgeVariant
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.app.model.AGENT_READINESS_KNOWN_CODES
 import build.raft.app.model.AGENT_READINESS_LIMIT_WAIT_CODES
 import build.raft.app.model.ANTHROPIC_VERIFICATION_PORTAL_URL

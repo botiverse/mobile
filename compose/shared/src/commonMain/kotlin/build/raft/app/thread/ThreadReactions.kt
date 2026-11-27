@@ -8,6 +8,7 @@ import build.raft.app.components.RaftUiMenuItem
 import build.raft.app.components.RaftUiMenuSurface
 import build.raft.app.components.raftMenuWidth
 import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.raftGesturePointerInput

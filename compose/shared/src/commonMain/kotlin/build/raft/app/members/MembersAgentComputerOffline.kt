@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,12 +24,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftComputersIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMessageTimeFormat
+import build.raft.app.currentRaftEffectiveDateTimeContext
 import build.raft.app.data.ComputerStatus
 import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.raftComputerCommandPlatform
+import build.raft.app.raftComputerCommands
+import build.raft.app.rememberRaftMessageTimeFormat
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftCard

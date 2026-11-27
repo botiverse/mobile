@@ -19,6 +19,7 @@ import build.raft.app.data.SharedServerMembersLoadStatus
 import build.raft.app.data.StoredConversationDetailOwner
 import build.raft.app.data.StoredConversationDetails
 import build.raft.app.data.toCanonicalConversationDirectoryProjection
+import build.raft.app.members.resource
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind

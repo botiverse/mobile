@@ -8,6 +8,7 @@ import build.raft.app.format.RaftFormat
 import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.members.iconName
 import build.raft.app.raftArgbHex
 import build.raft.app.transfer.RaftTransferMeter
 import build.raft.app.transfer.RaftTransferProgress

@@ -19,6 +19,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.parseSharedAgentActivity
+import build.raft.app.members.MembersAgentActivityRow
 import build.raft.app.model.MemberId
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test

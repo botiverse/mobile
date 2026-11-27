@@ -89,6 +89,11 @@ import build.raft.app.data.activityUpdateRevisionMessageId
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
+import build.raft.app.members.LocalRaftMemberAppBotResolver
+import build.raft.app.members.iconName
+import build.raft.app.members.localizedLabel
+import build.raft.app.members.raftMemberAppBotResolver
+import build.raft.app.members.raftMemberAvatarResolver
 import build.raft.app.model.MessageDelegatedBy
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind

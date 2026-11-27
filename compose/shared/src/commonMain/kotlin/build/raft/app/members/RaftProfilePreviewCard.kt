@@ -1,6 +1,9 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
+import build.raft.app.runtimeIdentityDisplayName
+import build.raft.app.runtimeLabelWithStatus
+import build.raft.app.toRaftAvatarLabel
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -16,6 +19,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAgentStatusIndicatorState
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftAppAvatarSticker
+import build.raft.app.RaftColor
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.memberOrigin
 import build.raft.app.model.MemberKind
@@ -23,7 +30,21 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.MemberServerRef
 import build.raft.app.model.ServerId
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.origin
+import build.raft.app.raftAgentStatusResolver
+import build.raft.app.raftAvatarKind
+import build.raft.app.raftMemberAvatarCacheSubject
+import build.raft.app.rememberAgentAttentionParts
+import build.raft.app.rememberAgentDeliveryHoldView
+import build.raft.app.rememberAgentReadinessDisplayCopy
+import build.raft.app.rememberRaftAgentStatusIndicatorState
 import build.raft.app.data.runtimeCatalogDisplayName
+import build.raft.app.dotColor
+import build.raft.app.effectiveHoldingReadiness
+import build.raft.app.fill
+import build.raft.app.localized
+import build.raft.app.localizedMemberStatusLabel
+import build.raft.app.members.localized
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftPreviewCard
 import build.raft.designsystem.components.RaftPreviewCardHeader

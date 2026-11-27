@@ -20,6 +20,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.members.MembersDetailHeader
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -6,11 +6,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
+import build.raft.app.RaftAppAvatar
+import build.raft.app.RaftAvatarRowDiagnostics
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.model.MemberKind
 import build.raft.app.model.appAvatarWireValueOrNull
 import build.raft.app.model.avatarWireValueForAvatarSlot
+import build.raft.app.raftAvatarKind
+import build.raft.app.raftMemberAvatarCacheSubject
 
 /**
  * Who a face belongs to: enough to look the person up in their server's member directory.

@@ -6,6 +6,12 @@ import build.raft.app.model.RuntimeModelConfig
 import build.raft.app.model.ServerId
 import build.raft.app.data.AgentDetailSnapshot
 import build.raft.app.data.AgentDetailSummary
+import build.raft.app.members.MembersAgentProfileEditAuthority
+import build.raft.app.members.MembersRuntimeEditorDialog
+import build.raft.app.members.MembersRuntimeEditorLiveFacts
+import build.raft.app.members.membersRouteCanManageAgent
+import build.raft.app.members.membersRuntimeEditorCanManage
+import build.raft.app.members.membersRuntimeEditorDialog
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

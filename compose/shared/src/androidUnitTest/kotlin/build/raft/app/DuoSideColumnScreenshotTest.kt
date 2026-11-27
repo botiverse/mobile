@@ -27,6 +27,7 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.iconName
 import build.raft.app.markdown.ThreadMarkdownTagKind
+import build.raft.app.members.iconName
 import build.raft.app.settings.iconName
 import build.raft.app.shell.LocalRaftAppShellTopBar
 import build.raft.app.shell.RaftAppRailNotificationBell

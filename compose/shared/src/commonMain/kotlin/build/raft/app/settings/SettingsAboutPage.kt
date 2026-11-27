@@ -21,6 +21,7 @@ import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.iconName
 import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.members.iconName
 import build.raft.app.raftPlatformProductName
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect

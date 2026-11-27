@@ -37,7 +37,10 @@ import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.userMessage
 import build.raft.app.iconName
+import build.raft.app.localized
 import build.raft.app.localizedMessage
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.data.SharedAuthRuntimeCapabilities
 import build.raft.app.data.SharedAuthRuntimeCapabilityStore
 import build.raft.app.data.SharedSettingsActionState

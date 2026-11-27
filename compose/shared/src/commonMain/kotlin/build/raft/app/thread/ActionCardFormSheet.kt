@@ -52,9 +52,9 @@ import build.raft.app.EmptyRaftAgentStatusResolver
 import build.raft.app.KmmResourceLocaleRuntime
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftMemberPicker
-import build.raft.app.RaftMemberPickerKey
-import build.raft.app.RaftMemberPickerMode
+import build.raft.app.members.RaftMemberPicker
+import build.raft.app.members.RaftMemberPickerKey
+import build.raft.app.members.RaftMemberPickerMode
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon

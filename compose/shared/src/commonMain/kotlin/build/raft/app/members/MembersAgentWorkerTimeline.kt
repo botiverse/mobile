@@ -1,9 +1,11 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.thread.RaftTimelineItem
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
+import build.raft.app.traceId
+import build.raft.app.userFacingMessage
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -31,6 +33,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import build.raft.app.components.RaftSlotIcon
@@ -60,10 +66,12 @@ import build.raft.app.data.agentWorkerTimelineChipState
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.formatAgentUsageTokens
 import build.raft.app.data.projectAgentWorkerTimelineEvents
+import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.model.MemberId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampClockWithSeconds
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.raftArgbHex
 import build.raft.designsystem.components.RaftBackButton
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance

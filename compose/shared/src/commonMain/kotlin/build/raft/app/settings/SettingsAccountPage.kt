@@ -79,6 +79,7 @@ import build.raft.app.data.secondFactorStepUpWebUrlResolver
 import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.localizedErrorPresentationStrings
+import build.raft.app.members.iconName
 import build.raft.app.model.ServerId
 import build.raft.app.openSettingsComputersPage
 import build.raft.app.optString

@@ -3,6 +3,8 @@ package build.raft.app
 import build.raft.app.data.AgentOperatorEvent
 import build.raft.app.data.AgentOperatorEventActor
 import build.raft.app.data.AgentOperatorEventKind
+import build.raft.app.members.membersActivityOverviewOperatorEventText
+import build.raft.app.members.membersActivityOverviewOperatorEventsSummary
 import build.raft.app.resources.StringDesc
 import build.raft.app.resources.resolve
 import kotlin.test.AfterTest

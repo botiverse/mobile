@@ -58,6 +58,7 @@ import build.raft.app.model.MessageConversationContext
 import build.raft.app.markdown.RaftMarkdownBody
 import build.raft.app.memberDetailIdentity
 import build.raft.app.memberDetailIdentityFromWire
+import build.raft.app.members.iconName
 import build.raft.app.messages
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MessageId

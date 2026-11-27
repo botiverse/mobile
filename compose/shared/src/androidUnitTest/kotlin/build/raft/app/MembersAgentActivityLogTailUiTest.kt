@@ -16,6 +16,9 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.members.MembersAgentActivityLogList
+import build.raft.app.members.MembersAgentActivityLogListTag
+import build.raft.app.members.membersAgentActivityInitialFirstVisibleIndex
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

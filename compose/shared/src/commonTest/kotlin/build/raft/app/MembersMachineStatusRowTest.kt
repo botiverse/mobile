@@ -4,6 +4,14 @@ import build.raft.app.resources.*
 import build.raft.app.data.ComputerStatus
 import build.raft.app.data.ComputerSummary
 import build.raft.app.data.SharedComputersLoadStatus
+import build.raft.app.members.MembersAgentComputerKnownState
+import build.raft.app.members.MembersMachineRunLabel
+import build.raft.app.members.MembersMachineStatusRow
+import build.raft.app.members.formatArg
+import build.raft.app.members.membersAgentComputerKnownState
+import build.raft.app.members.membersMachineRunLabel
+import build.raft.app.members.membersMachineStatusRow
+import build.raft.app.members.resource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertSame

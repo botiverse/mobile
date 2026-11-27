@@ -29,6 +29,7 @@ import org.jetbrains.compose.resources.stringResource
 
 import build.raft.app.markdown.markdownToPreviewText
 import build.raft.app.matches
+import build.raft.app.members.iconName
 import build.raft.app.components.raftLookOverlaySurface
 import build.raft.app.data.PushPreviewMode
 import build.raft.app.data.messageNotificationText

@@ -5,7 +5,7 @@ import build.raft.app.RaftAvatarKind
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.agentLoungeLookupChannelId
 import build.raft.app.agentLoungeTitleNow
-import build.raft.app.appBotIdentityOrNull
+import build.raft.app.members.appBotIdentityOrNull
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftAgentLounge

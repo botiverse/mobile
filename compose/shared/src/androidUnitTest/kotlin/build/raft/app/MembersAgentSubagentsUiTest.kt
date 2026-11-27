@@ -21,6 +21,11 @@ import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentActivitySubagentGroup
 import build.raft.app.data.AgentActivitySubagentState
 import build.raft.app.data.groupAgentActivitySubagents
+import build.raft.app.members.MembersAgentActivityRow
+import build.raft.app.members.MembersAgentSubagentDetail
+import build.raft.app.members.MembersAgentSubagentStop
+import build.raft.app.members.MembersAgentSubagentStopTag
+import build.raft.app.members.MembersAgentSubagentsList
 import build.raft.app.model.AgentActivitySubagentLineage
 import build.raft.app.thread.key
 import kotlin.test.Test

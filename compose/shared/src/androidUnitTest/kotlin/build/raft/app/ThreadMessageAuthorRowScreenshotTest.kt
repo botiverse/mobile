@@ -13,6 +13,9 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.members.RaftMemberModelLabelResolver
+import build.raft.app.members.authorFacts
+import build.raft.app.members.authorRowModelLabel
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

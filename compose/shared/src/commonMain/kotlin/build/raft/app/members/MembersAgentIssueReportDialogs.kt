@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +27,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
+import build.raft.app.RaftDialogFooter
+import build.raft.app.RaftDialogPresentation
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTraceIdNote
+import build.raft.app.RaftUnifiedDialog
 import build.raft.app.components.raftCardSurface
 import build.raft.app.data.AgentIssueDiagnosticsBundleRange
 import build.raft.app.data.AgentIssueReportResult
@@ -35,6 +43,7 @@ import build.raft.app.data.AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN
 import build.raft.app.data.AgentIssueTranscriptRequestState
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.ScreenError
+import build.raft.app.fill
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize

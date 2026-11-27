@@ -13,6 +13,12 @@ import build.raft.app.data.SharedAgentDetailLoadStatus
 import build.raft.app.data.SharedAgentDetailStore
 import build.raft.app.data.agentDetailCacheKey
 import build.raft.app.data.sharedAgentDetailOwner
+import build.raft.app.members.MemberDetailFailureKind
+import build.raft.app.members.MemberDetailFailureTransition
+import build.raft.app.members.isAgentDetailAccessLost
+import build.raft.app.members.memberDetailFailureResolution
+import build.raft.app.members.memberDetailLoadPlan
+import build.raft.app.members.seedCachedAgentDetail
 import build.raft.app.data.EmptyReason
 import build.raft.app.model.MemberId
 import build.raft.app.model.ServerId

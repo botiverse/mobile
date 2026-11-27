@@ -16,6 +16,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersSearchTestTag
 import build.raft.app.resources.StringDesc
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest

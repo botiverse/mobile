@@ -9,6 +9,8 @@ import build.raft.app.iconName
 import build.raft.app.localized
 import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.localizedUserFacingMessage
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsStorageRow
 import build.raft.app.data.SharedSettingsStorageSnapshot

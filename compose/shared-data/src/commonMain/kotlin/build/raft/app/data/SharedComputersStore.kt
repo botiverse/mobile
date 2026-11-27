@@ -1264,7 +1264,7 @@ private fun String?.normalizedComputerServerId(): String? =
  * the viewer's own computers ([isMyComputer]: attached by [userId] or owned by them) first, then
  * everyone else's, each keeping the server's order. A phone is never a computer itself, so unlike
  * the desktop it pins none. The Members page orders its agent groups by this list too
- * ([build.raft.app.groupedAgentMembers]).
+ * ([build.raft.app.members.groupedAgentMembers]).
  */
 @RaftCoreInternalApi fun List<ComputerSummary>.inComputerListOrder(userId: String?): List<ComputerSummary> =
     raftMineFirst { it.isMyComputer(userId) }

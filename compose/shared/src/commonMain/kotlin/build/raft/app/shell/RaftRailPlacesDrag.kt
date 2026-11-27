@@ -87,6 +87,7 @@ import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.data.withRaftRailKeptPlaces
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.origin
 import build.raft.app.raftArgbHex
 import build.raft.app.raftFloatingContentClickTarget

@@ -15,6 +15,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import build.raft.app.resources.*

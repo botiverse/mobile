@@ -23,6 +23,7 @@ import build.raft.app.data.RaftServerNotificationLevels
 import build.raft.app.data.inheritedNotificationLevel
 import build.raft.app.data.resolveEffectiveNotificationLevel
 import build.raft.app.localizedLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.resources.*
 import build.raft.app.settings.SettingsFormDetailText
 import build.raft.app.settings.SettingsFormErrorText

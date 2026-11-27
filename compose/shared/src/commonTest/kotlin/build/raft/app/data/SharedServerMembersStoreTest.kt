@@ -4,7 +4,7 @@ import build.raft.app.model.AvatarReference
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.seedThreadAuthorProfiles
 import build.raft.app.raftScopedAgentStatusResolver
-import build.raft.app.membersPageMergedMembers
+import build.raft.app.members.membersPageMergedMembers
 import build.raft.app.model.*
 import build.raft.app.network.sync.ReplyPreview
 import build.raft.app.network.sync.ThreadRepliesReadModel

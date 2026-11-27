@@ -75,6 +75,8 @@ import build.raft.app.data.TaskConversationDetailsRepository
 import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.toThreadAttachmentCommentsFailureProjection
 import build.raft.app.localizedLabel
+import build.raft.app.members.LocalRaftJointActorSurface
+import build.raft.app.members.localizedLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile

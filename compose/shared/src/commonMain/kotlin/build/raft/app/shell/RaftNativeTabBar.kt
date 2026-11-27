@@ -16,6 +16,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.formatHomeSidebarBadgeCount
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.raftAvatarImageCandidates
 import build.raft.app.settings.iconName
 import build.raft.app.thread.icon

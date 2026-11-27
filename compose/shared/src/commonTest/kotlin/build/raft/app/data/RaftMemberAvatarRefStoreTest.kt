@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.model.AvatarReference
-import build.raft.app.raftMemberAvatarResolver
+import build.raft.app.members.raftMemberAvatarResolver
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

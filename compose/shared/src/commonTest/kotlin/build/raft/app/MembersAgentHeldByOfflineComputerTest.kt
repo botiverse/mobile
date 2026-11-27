@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.AgentBlockedState
+import build.raft.app.members.membersAgentHeldByOfflineComputer
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.Presence
 import kotlin.test.Test

@@ -43,6 +43,7 @@ import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.fill
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.raftArgbHex
 import build.raft.app.raftChannelKindGlyph
 import build.raft.app.settings.iconName

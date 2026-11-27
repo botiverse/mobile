@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.ChannelMemberStillInChannel
+import build.raft.app.members.memberRemovalImpactJoin
 import build.raft.app.resources.*
 import build.raft.app.thread.RaftThreadMemberItem
 import build.raft.designsystem.components.RaftToastActionTimeoutMillis

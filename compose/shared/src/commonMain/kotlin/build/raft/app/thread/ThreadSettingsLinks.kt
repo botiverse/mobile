@@ -15,7 +15,7 @@ import build.raft.app.ChannelSettingsRoute
 import build.raft.app.DirectMessageDetailsAnnouncementSection
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftAgentStatusResolver
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.SharedThreadComposerDraftIntent
 import build.raft.app.SharedThreadComposerDraftViewModel

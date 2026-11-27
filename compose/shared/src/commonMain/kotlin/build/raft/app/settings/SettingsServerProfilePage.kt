@@ -66,7 +66,7 @@ import build.raft.app.model.RaftTimeContext
 import build.raft.app.raftArgbHex
 import build.raft.app.raftFloatingContentClickTarget
 import build.raft.app.raftSpanStyleForWeight
-import build.raft.app.rememberMemberRemovalImpact
+import build.raft.app.members.rememberMemberRemovalImpact
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -104,8 +104,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.HandedOverComputersNote
-import build.raft.app.MemberRemovalImpactNote
+import build.raft.app.members.HandedOverComputersNote
+import build.raft.app.members.MemberRemovalImpactNote
+import build.raft.app.members.iconName
 import build.raft.app.Modal
 import build.raft.app.RaftAppRadius
 import build.raft.app.RaftAppSpacing

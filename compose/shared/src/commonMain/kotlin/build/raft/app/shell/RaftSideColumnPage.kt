@@ -34,6 +34,7 @@ import build.raft.app.RaftLucideIconName
 import build.raft.app.compat.ui.LocalRaftPageActive
 import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
 import build.raft.app.thread.icon

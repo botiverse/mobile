@@ -37,6 +37,7 @@ import build.raft.app.components.RaftUiSelectTrigger
 import build.raft.app.components.RaftUiSelectionOption
 import build.raft.app.components.RaftUiTextarea
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.app.components.RaftUiMenuRow

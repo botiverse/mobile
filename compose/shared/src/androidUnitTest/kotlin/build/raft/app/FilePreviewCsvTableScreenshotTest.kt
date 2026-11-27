@@ -11,6 +11,7 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.iconName
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme

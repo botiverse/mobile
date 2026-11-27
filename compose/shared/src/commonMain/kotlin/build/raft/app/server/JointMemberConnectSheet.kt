@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.JOINT_CHANNEL_MAX_SERVERS
 import build.raft.app.data.RaftAvatarCacheSubject
+import build.raft.app.members.memberRemovalImpactJoin
 import build.raft.designsystem.components.RaftAvatar
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftAvatarType

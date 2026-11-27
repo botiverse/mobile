@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.members.membersShowsExternalAgentSetup
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.homeSearchHighlightRanges
 import build.raft.app.settings.iconName
 import build.raft.app.thread.icon

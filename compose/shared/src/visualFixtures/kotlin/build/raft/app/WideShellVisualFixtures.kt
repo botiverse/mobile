@@ -31,6 +31,7 @@ import build.raft.app.data.TasksViewMode
 import build.raft.app.data.parseSharedServerTasksPayload
 import build.raft.app.data.summaryCounts
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.model.MemberKind
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary

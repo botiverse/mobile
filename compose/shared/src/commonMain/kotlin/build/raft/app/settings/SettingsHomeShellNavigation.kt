@@ -20,6 +20,7 @@ import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.homeSecondaryDestinationKeys
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.optLong
 import build.raft.app.optString
 import build.raft.app.raftAppShellLaunchTab

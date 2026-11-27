@@ -1,6 +1,7 @@
 package build.raft.app
 
 import androidx.compose.ui.unit.dp
+import build.raft.app.members.raftMembersDetailShowsBack
 import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.shell.AppShellSearchTabKey
 import build.raft.app.shell.shouldDismissKeyboardOnAppShellTabSwitch

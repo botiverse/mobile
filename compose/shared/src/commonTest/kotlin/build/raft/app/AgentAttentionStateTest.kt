@@ -15,6 +15,7 @@ import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.data.forDurableRoster
 import build.raft.app.data.parseSharedSettingsAgentsAsMembers
 import build.raft.app.data.toStoredChannelMembers
+import build.raft.app.members.membersAgentHeldByOfflineComputer
 import build.raft.app.model.AgentAttention
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason

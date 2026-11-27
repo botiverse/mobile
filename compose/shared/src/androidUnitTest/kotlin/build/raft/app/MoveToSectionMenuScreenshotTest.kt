@@ -16,6 +16,8 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.SettingsServerSidebarCustomSection
+import build.raft.app.localized
+import build.raft.app.members.localized
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

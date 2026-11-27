@@ -21,7 +21,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import build.raft.app.MembersJoinedDate
+import build.raft.app.members.MembersJoinedDate
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.app.RaftBackHandler
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIconName
@@ -46,8 +48,8 @@ import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.data.seatTenths
 import build.raft.app.iconName
 import build.raft.app.localized
-import build.raft.app.membersJoinedMonthLabel
-import build.raft.app.membersLocalizedDate
+import build.raft.app.members.membersJoinedMonthLabel
+import build.raft.app.members.membersLocalizedDate
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull

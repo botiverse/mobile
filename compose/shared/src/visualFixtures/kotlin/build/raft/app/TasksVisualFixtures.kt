@@ -12,6 +12,7 @@ import build.raft.app.data.stringDescLocaleType
 import build.raft.app.data.summaryCounts
 import build.raft.app.data.toTaskSummary
 import build.raft.app.localizedLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary

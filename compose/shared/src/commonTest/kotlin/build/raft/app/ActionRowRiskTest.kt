@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.members.membersAgentProfileActionRisk
 import build.raft.designsystem.components.RaftRiskTone
 import kotlin.test.Test
 import kotlin.test.assertEquals

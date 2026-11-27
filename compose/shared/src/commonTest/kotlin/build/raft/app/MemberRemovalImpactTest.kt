@@ -20,6 +20,7 @@ import build.raft.app.data.isMemberHasComputerRefusal
 import build.raft.app.data.isMemberHasComputerRefusalCode
 import build.raft.app.data.parseMemberRemovalImpact
 import build.raft.app.data.toMemberRemovalImpactState
+import build.raft.app.members.memberRemovalImpactNameItems
 import build.raft.app.model.ServerId
 import kotlinx.coroutines.awaitCancellation
 import kotlin.test.Test

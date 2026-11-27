@@ -2,6 +2,8 @@ package build.raft.app
 
 import build.raft.app.data.AgentActivityTurn
 import build.raft.app.data.AgentActivityTurnOutcome
+import build.raft.app.members.MembersAgentNowHeadline
+import build.raft.app.members.membersAgentNowHeadline
 import build.raft.app.model.AgentStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals

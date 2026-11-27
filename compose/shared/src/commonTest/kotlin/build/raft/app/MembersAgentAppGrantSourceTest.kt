@@ -1,5 +1,6 @@
 package build.raft.app
 
+import build.raft.app.members.membersAgentAppGrantSourceLabel
 import build.raft.app.resources.*
 import kotlin.test.Test
 import kotlin.test.assertEquals

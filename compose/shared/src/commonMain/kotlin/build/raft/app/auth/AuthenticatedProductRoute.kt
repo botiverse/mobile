@@ -33,6 +33,8 @@ import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.members.MEMBERS_PAGE
+import build.raft.app.members.MEMBER_DETAIL_PAGE
 import build.raft.app.compat.pager.Pager
 
 /** Executable inventory of independently mounted authenticated production routes. */

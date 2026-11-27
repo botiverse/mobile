@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import build.raft.app.resources.*
 import build.raft.app.thread.icon
@@ -19,12 +19,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.compat.ui.NestedScrollMode
 import build.raft.app.compat.ui.nestedScroll
 import build.raft.app.data.AgentActivityEntry
 import build.raft.app.data.AgentActivitySubagentGroup
 import build.raft.app.data.AgentActivitySubagentState
 import build.raft.app.data.agentActivitySubagentKeyResolver
+import build.raft.app.get
 import build.raft.app.model.AgentActivitySubagentLineage
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.formatRaftTimestampClockWithSeconds

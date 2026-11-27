@@ -6,6 +6,13 @@ import build.raft.app.data.SettingsComputerCommandContext
 import build.raft.app.data.SettingsComputerCreatorSnapshot
 import build.raft.app.data.reconcileComputerOfflineObservedAtMs
 import build.raft.app.format.RaftFormatLocale
+import build.raft.app.members.MembersAgentComputerOfflineCardState
+import build.raft.app.members.buildMembersOfflineCardAnnotatedString
+import build.raft.app.members.formattedSince
+import build.raft.app.members.membersAgentComputerRestartCommand
+import build.raft.app.members.membersComputerOwnerId
+import build.raft.app.members.membersComputerOwnerName
+import build.raft.app.members.resolveMembersAgentComputerOfflineCardState
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

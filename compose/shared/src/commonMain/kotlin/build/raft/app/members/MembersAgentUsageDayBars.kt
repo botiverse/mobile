@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -55,6 +55,7 @@ import build.raft.app.data.agentUsageParseUtcEpochDay
 import build.raft.app.data.agentUsageWeekdayIndex
 import build.raft.app.data.formatAgentUsageTokens
 import build.raft.app.localizedLabel
+import build.raft.app.members.localizedLabel
 import build.raft.app.model.civilDateFromEpochDay
 import build.raft.app.resources.*
 import build.raft.app.thread.localizedLabel

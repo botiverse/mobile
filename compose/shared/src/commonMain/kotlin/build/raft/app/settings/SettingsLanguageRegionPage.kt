@@ -26,6 +26,7 @@ import build.raft.app.data.TranslationTargetLanguages
 import build.raft.app.hasUserFacingError
 import build.raft.app.iconName
 import build.raft.app.localizedUserFacingMessage
+import build.raft.app.members.iconName
 import build.raft.app.data.ASSISTANT_LANGUAGE_REGION_SETTINGS
 import build.raft.app.assistant.AssistantSettingChangesSection
 import build.raft.app.assistant.LocalAssistantSettingChangesSource

@@ -48,6 +48,7 @@ import build.raft.app.data.PRO_AGENT_SEAT_BLOCK_SIZE
 import build.raft.app.data.jointInviteRateLimitMinutes
 import build.raft.app.fill
 import build.raft.app.localized
+import build.raft.app.members.localized
 import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.SeatsAddPurpose

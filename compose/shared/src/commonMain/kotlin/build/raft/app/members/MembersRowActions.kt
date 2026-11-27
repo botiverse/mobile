@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -8,6 +8,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.dp
+import build.raft.app.MembersAgentLifecycleAction
+import build.raft.app.RaftAgentStatusResolver
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftUnifiedDialog
+import build.raft.app.SharedCreateAgentMachineOption
+import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.AgentLifecycleActionResult
@@ -22,11 +29,18 @@ import build.raft.app.data.RealMemberRepository
 import build.raft.app.data.ScreenError
 import build.raft.app.data.serverRoleCanControlAgentRuntime
 import build.raft.app.data.serverRoleCanStopAgents
+import build.raft.app.get
+import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.RaftTimeContext
+import build.raft.app.openMemberDirectMessage
+import build.raft.app.raftDisplayUppercase
+import build.raft.app.rememberRaftAgentStatusIndicatorState
 import build.raft.app.resources.*
+import build.raft.app.traceId
+import build.raft.app.userFacingMessage
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftIconButton

@@ -33,6 +33,7 @@ import build.raft.app.data.SettingsServerProfileSnapshot
 import build.raft.app.data.SettingsServerSectionSnapshot
 import build.raft.app.data.SettingsServerSnapshot
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import kotlin.test.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner

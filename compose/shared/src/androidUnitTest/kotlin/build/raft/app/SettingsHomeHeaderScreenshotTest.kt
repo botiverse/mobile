@@ -12,6 +12,7 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.settings.RaftSettingsHomePayload
 import build.raft.app.settings.SettingsDetailShell
 import build.raft.app.settings.SettingsHomeContent

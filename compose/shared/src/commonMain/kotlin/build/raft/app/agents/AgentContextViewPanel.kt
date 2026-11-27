@@ -55,6 +55,9 @@ import build.raft.app.data.MobileUiErrorCode
 import build.raft.app.data.MobileUiErrorSurface
 import build.raft.app.data.agentContextViewBodyState
 import build.raft.app.iconName
+import build.raft.app.members.RaftMemberAvatar
+import build.raft.app.members.RaftMemberAvatarIdentity
+import build.raft.app.members.iconName
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId

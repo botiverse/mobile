@@ -19,6 +19,7 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftProGateDecision
 import build.raft.app.data.SharedServerMemberStatus
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.MembersAgentProfileHeader
 import build.raft.app.model.AgentStatus
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind

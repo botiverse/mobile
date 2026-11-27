@@ -269,13 +269,13 @@ class AgentActivitySubagentsTest {
             )
         val group = groupAgentActivitySubagents(rows).single()
         assertEquals("claude-sonnet-4-6", group.model, "latest reported model wins and survives rows without model")
-        assertEquals("Explore · claude-haiku-4-5-20251001", build.raft.app.membersActivitySubagentBadgeDetail(rows[1]))
+        assertEquals("Explore · claude-haiku-4-5-20251001", build.raft.app.members.membersActivitySubagentBadgeDetail(rows[1]))
 
         val modelOnlyRow =
             log(
                 0 to """{"kind":"text","text":"hi","subagent":{"parentToolUseId":"toolu_o","model":"gpt-5.4-mini"}}""",
             ).single()
-        assertEquals("gpt-5.4-mini", build.raft.app.membersActivitySubagentBadgeDetail(modelOnlyRow))
+        assertEquals("gpt-5.4-mini", build.raft.app.members.membersActivitySubagentBadgeDetail(modelOnlyRow))
 
         val unreportedGroup =
             groupAgentActivitySubagents(

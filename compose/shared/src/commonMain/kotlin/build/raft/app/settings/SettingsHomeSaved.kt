@@ -34,7 +34,7 @@ import build.raft.app.raftLogger
 import build.raft.app.raftMemberAvatarCacheIdentity
 import build.raft.app.shell.rememberRaftAppShellScope
 import build.raft.app.rememberRaftGestureOwner
-import build.raft.app.rememberRaftMemberAvatarWireValue
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 import build.raft.app.resolve
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -81,7 +81,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import build.raft.app.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
 import build.raft.app.RaftAppAvatar
 import build.raft.app.shell.RaftAppShellBodyTopBanner
 import build.raft.app.shell.RaftAppShellScope
@@ -97,7 +97,7 @@ import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftMemberAvatarCacheIdentity
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.RaftMonoFamily
 import build.raft.app.RaftPanelBackHeader
 import build.raft.app.RaftPopoverAnchor

@@ -4,7 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import build.raft.app.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberAvatarResolver
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.agentLoungeDmAgentId
@@ -22,9 +22,9 @@ import build.raft.app.data.agentVoiceCallEntryEligibility
 import build.raft.app.data.loungeAgentDisplayName
 import build.raft.app.data.rememberServerFeatureLatched
 import build.raft.app.data.selectComputerServerSlice
-import build.raft.app.membersComputerId
+import build.raft.app.members.membersComputerId
 import build.raft.app.model.ServerId
-import build.raft.app.rememberRaftMemberAvatarWireValue
+import build.raft.app.members.rememberRaftMemberAvatarWireValue
 
 // Call entry-point helpers (`#wg-mobile-sync:#95`), mirroring web
 // `packages/web/src/features/agent/agentVoiceCallEntry.ts`.

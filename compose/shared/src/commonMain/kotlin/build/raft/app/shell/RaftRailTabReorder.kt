@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.RaftLucideIconName
 import build.raft.app.data.RaftRailTabIds
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.resolve
 import build.raft.app.resources.*
 import build.raft.app.settings.AppShellRailSearchKey

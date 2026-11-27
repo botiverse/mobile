@@ -13,6 +13,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
+import build.raft.app.members.iconName
 import build.raft.app.optString
 import build.raft.app.raftArgbHex
 import build.raft.app.raftLegacyIconInk

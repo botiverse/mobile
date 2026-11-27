@@ -27,6 +27,7 @@ import build.raft.app.compat.json.JSONObject
 import build.raft.app.data.RaftListPaneKind
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.raftArgbHex
 import build.raft.app.settings.iconName
 import build.raft.app.settingsComputersPageData

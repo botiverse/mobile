@@ -15,6 +15,8 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.AgentDetailSnapshot
+import build.raft.app.members.MembersAgentActivityLoadState
+import build.raft.app.members.MembersAgentActivityTab
 import build.raft.app.model.MemberId
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test

@@ -12,6 +12,8 @@ import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.label
 import build.raft.app.localized
+import build.raft.app.members.iconName
+import build.raft.app.members.localized
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftGlyph

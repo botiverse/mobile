@@ -18,6 +18,7 @@ import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RealChannelRepository
 import build.raft.app.data.SharedHomeStore
+import build.raft.app.members.openMembersDirectMessageResult
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

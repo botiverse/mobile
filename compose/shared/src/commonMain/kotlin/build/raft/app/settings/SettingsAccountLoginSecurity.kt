@@ -24,6 +24,7 @@ import build.raft.app.data.SharedAccountLoginSecurityIntent
 import build.raft.app.data.SharedAccountLoginSecurityState
 import build.raft.app.data.SharedAccountLoginSecurityStore
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 import build.raft.app.raftArgbHex
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName

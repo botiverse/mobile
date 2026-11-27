@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.members
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
@@ -15,6 +15,8 @@ import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
+import build.raft.app.MemberDetailIdentity
+import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.data.SharedServerMembersStore
 import build.raft.app.markdown.LocalRaftMarkdownMentionReadStates
 import build.raft.app.model.MemberKind

@@ -11,6 +11,7 @@ import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager
 import build.raft.app.iconName
+import build.raft.app.members.iconName
 
 private const val RAFT_FILE_PREVIEW_EDITOR_VISUAL_PAGE = "compose_file_preview_editor_visual"
 

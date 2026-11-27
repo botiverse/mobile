@@ -21,9 +21,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.shape.RoundedCornerShape
 import build.raft.app.model.TaskStatus
 import build.raft.app.RaftAppSpacing
-import build.raft.app.RaftMarkdownMentionAnnotationTag
-import build.raft.app.RaftMarkdownMentionPreviewCardHost
-import build.raft.app.rememberRaftMarkdownMentionPreviewCards
+import build.raft.app.members.RaftMarkdownMentionAnnotationTag
+import build.raft.app.members.RaftMarkdownMentionPreviewCardHost
+import build.raft.app.members.rememberRaftMarkdownMentionPreviewCards
 import build.raft.app.RaftType
 import build.raft.app.withRaftUserContentLocale
 import build.raft.app.ReplyCacheProvenance

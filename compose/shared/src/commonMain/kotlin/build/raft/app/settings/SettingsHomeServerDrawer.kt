@@ -27,7 +27,7 @@ import build.raft.app.pendingAdmission
 import build.raft.app.pointerPolicy
 import build.raft.app.shell.rememberRaftMoveableDrawerState
 import build.raft.app.rowLaidOut
-import build.raft.app.serverSwitcherShowsInviteHuman
+import build.raft.app.members.serverSwitcherShowsInviteHuman
 import build.raft.app.settle
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.isGenericThreadHeaderFallbackLabel

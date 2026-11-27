@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.members.MembersAgentDetailTab
+import build.raft.app.members.membersAgentDetailPageTab
+import build.raft.app.members.membersAgentDetailPagerIndex
+import build.raft.app.members.membersAgentDetailShouldComposeTab
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

@@ -123,6 +123,9 @@ import build.raft.app.data.parseRaftHome
 import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.data.toSharedConversationDirectoryState
 import build.raft.app.data.typedPinnedOrLegacy
+import build.raft.app.members.EmptyRaftMemberAvatarResolver
+import build.raft.app.members.raftMemberAppBotResolver
+import build.raft.app.members.raftMemberAvatarResolver
 import build.raft.app.model.ServerId
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.RaftTimeFormat24Hour

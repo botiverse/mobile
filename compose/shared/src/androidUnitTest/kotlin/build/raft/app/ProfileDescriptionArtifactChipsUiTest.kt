@@ -38,6 +38,12 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.WORKSPACE_ARTIFACTS_FEATURE_FLAG_KEY
 import build.raft.app.data.artifactSummaryKey
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.members.LocalRaftProfileDescriptionArtifacts
+import build.raft.app.members.MembersHumanDetailSections
+import build.raft.app.members.RaftProfileDescriptionArtifactHost
+import build.raft.app.members.RaftProfileDescriptionUnavailableCardTestTag
+import build.raft.app.members.RaftProfilePreviewCardContent
+import build.raft.app.members.RaftProfilePreviewCardModel
 import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile

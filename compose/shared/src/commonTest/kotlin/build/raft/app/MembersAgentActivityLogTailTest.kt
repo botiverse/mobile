@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.parseSharedAgentActivity
+import build.raft.app.members.MembersAgentActivityTail
+import build.raft.app.members.membersAgentActivityTailOnNewLatest
 import build.raft.app.model.MemberId
 import kotlin.test.Test
 import kotlin.test.assertEquals

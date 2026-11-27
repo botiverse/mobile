@@ -24,8 +24,9 @@ import androidx.compose.ui.zIndex
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftAppSpacing
-import build.raft.app.RaftMemberAvatarResolver
-import build.raft.app.RaftMemberModelLabelResolver
+import build.raft.app.members.RaftMemberAvatarResolver
+import build.raft.app.members.RaftMemberModelLabelResolver
+import build.raft.app.members.localizedLabel
 import build.raft.app.TaskConversationHeadRow
 import build.raft.app.TaskConversationHeadRowContent
 import build.raft.app.currentRaftTimeContextProvider
