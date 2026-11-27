@@ -102,6 +102,8 @@ import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.app.thread.RaftMessageLinkIngress
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftButtonVariant
+import build.raft.designsystem.components.RaftCloseButton
+import build.raft.designsystem.components.RaftCloseButtonSize
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftIconButton
@@ -700,16 +702,12 @@ private fun RaftMiniWindowHeaderBar(
                 ) {
                     RaftSlotIcon(RaftLucideIconName.Maximize2, size = 15.dp)
                 }
-                RaftIconButton(
+                RaftCloseButton(
                     onClick = onClose,
-                    tooltip = closeLabel,
-                    variant = RaftButtonVariant.Ghost,
-                    size = RaftIconButtonSize.Sm,
-                    hitSize = 30.dp,
+                    label = closeLabel,
+                    size = RaftCloseButtonSize.Dialog,
                     modifier = Modifier.testTag(RAFT_MINI_WINDOW_CLOSE_BUTTON_TAG),
-                ) {
-                    RaftSlotIcon(RaftLucideIconName.X, size = 15.dp)
-                }
+                )
             }
         }
     }
