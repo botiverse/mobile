@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
@@ -14,10 +15,12 @@ import build.raft.app.data.ExternalInviteGuestElsewhere
 import build.raft.app.data.ExternalInvitePreview
 import build.raft.app.data.InviteConnectableServer
 import build.raft.app.resources.Res
+import build.raft.app.resources.channel_external_invite_connect_servers_link
 import build.raft.app.resources.channel_external_invite_title
 import build.raft.app.resources.common_close
 import build.raft.app.resources.stringResource
 import build.raft.designsystem.components.RaftDialogSheetDefaults
+import build.raft.designsystem.components.RaftDialogSheetLink
 import build.raft.designsystem.components.RaftDialogSheetSurface
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.Test
@@ -87,8 +90,14 @@ class ExternalInvitesScreenshotTest {
                     commitEnabled = true,
                     onCommit = {},
                     onClose = {},
-                    modifier = Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction),
+                    modifier = Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction).wrapContentHeight(Alignment.Bottom),
                     closeLabel = stringResource(Res.string.common_close),
+                    footerLink =
+                        if (state.preview == null) {
+                            RaftDialogSheetLink(label = stringResource(Res.string.channel_external_invite_connect_servers_link), onClick = {})
+                        } else {
+                            null
+                        },
                 ) {
                     ExternalInviteSheetBody(
                         dialog = state,

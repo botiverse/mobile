@@ -25,6 +25,13 @@ object RaftMotion {
     const val SlideMillis: Int = 220
 
     /**
+     * A surface's height following its content: a phone dialog sheet growing or shrinking when its
+     * step or its body changes (Kirby and sindresorhus, 2026-11-27 in #proj-mobile:c2a6f94a; ahead
+     * of raft-ui), on [EaseSlide].
+     */
+    const val ResizeMillis: Int = 200
+
+    /**
      * Material's fade through, the Android platform transition between top-level destinations
      * (the bottom tabs). raft-ui leaves platform transitions to the platform (motion.md: a page
      * pushed on a phone uses the platform default), so these are Material's numbers, not

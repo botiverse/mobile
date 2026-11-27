@@ -8485,7 +8485,7 @@ private fun RaftSidebarSortOverlay(
         onCommit = { onSave(order) },
         closeLabel = stringResource(Res.string.common_close)
     ) {
-        Box(modifier = Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
+        Box(modifier = Modifier.fillMaxWidth().weight(1f, fill = false).clipToBounds()) {
             // Container-level long-press drag: identify the row under the finger
             // at long-press, then track the finger. Because the gesture is on
             // the container it survives list scrolling and preview reordering.
@@ -8493,7 +8493,7 @@ private fun RaftSidebarSortOverlay(
                 state = listState,
                 modifier =
                     Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
                         .pointerInput(order) {
                             // raft-ui 0.32.2 (#787): the drag starts after the 500ms touch hold.
                             raftDetectDragGesturesAfterHold(
