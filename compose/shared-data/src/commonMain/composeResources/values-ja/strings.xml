@@ -6893,6 +6893,7 @@
     <string name="in_app_browser_external_app_message">このページは別のアプリで「%1$s」を開こうとしています。</string>
     <string name="in_app_browser_external_app_open">開く</string>
     <string name="in_app_browser_close_page">ページを閉じる</string>
+    <string name="in_app_browser_minimize_to_float">フロート表示</string>
     <string name="in_app_browser_open_pages_title">開いているページ（%1$d）</string>
     <string name="in_app_browser_open_pages_a11y">%1$d 件の開いているページ</string>
     <string name="in_app_browser_close_all_pages">すべて閉じる</string>

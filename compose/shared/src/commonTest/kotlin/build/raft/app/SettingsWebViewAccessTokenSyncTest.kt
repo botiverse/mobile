@@ -23,6 +23,34 @@ class SettingsWebViewAccessTokenSyncTest {
         assertEquals("access-after-gap", snapshot.session?.accessToken)
         assertEquals(1L, snapshot.sessionGeneration)
         assertNull(snapshot.event)
+        assertTrue(snapshot.hydrated)
+    }
+
+    @Test
+    fun authSnapshotRemainsUnhydratedUntilReconcileOrEventMarksSignedOutOrSignedIn() {
+        val unhydrated = SettingsWebViewAuthSnapshot()
+        assertFalse(unhydrated.hydrated)
+        assertNull(unhydrated.session)
+
+        var allocatedGeneration = 0L
+        val reducer = SettingsWebViewAuthSnapshotReducer { ++allocatedGeneration }
+
+        val signedOut = reducer.reconcileSubscription(null)
+        assertTrue(signedOut.hydrated)
+        assertNull(signedOut.session)
+        assertEquals(0L, signedOut.sessionGeneration)
+
+        val signedIn = reducer.reconcileSubscription(session())
+        assertTrue(signedIn.hydrated)
+        assertEquals("user-1", signedIn.session?.user?.id)
+        assertEquals(1L, signedIn.sessionGeneration)
+
+        val cleared = AuthSessionEvent.Cleared(5, build.raft.app.data.AuthSessionClearReason.Logout)
+        assertTrue(reducer.admit(cleared))
+        val afterLogout = reducer.reduceAccepted(null, cleared)
+        assertTrue(afterLogout.hydrated)
+        assertNull(afterLogout.session)
+        assertEquals(0L, afterLogout.sessionGeneration)
     }
 
     @Test

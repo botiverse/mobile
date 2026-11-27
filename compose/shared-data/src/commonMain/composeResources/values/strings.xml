@@ -6894,6 +6894,7 @@
     <string name="in_app_browser_external_app_message">This page wants to open "%1$s" in another app.</string>
     <string name="in_app_browser_external_app_open">Open</string>
     <string name="in_app_browser_close_page">Close page</string>
+    <string name="in_app_browser_minimize_to_float">Float window</string>
     <string name="in_app_browser_open_pages_title">Open pages (%1$d)</string>
     <string name="in_app_browser_open_pages_a11y">%1$d open pages</string>
     <string name="in_app_browser_close_all_pages">Close all</string>

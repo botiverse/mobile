@@ -109,8 +109,10 @@ fun evaluateMainFrameNavigation(
     chainState: WebNavigationChainState? = null,
     isUserGesture: Boolean = false,
     isRedirect: Boolean = false,
+    committedDocumentUrl: String = "",
     catchesMainFrameNavigation: ((WebMainFrameInterceptContext) -> Boolean)? = null,
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    routesMainFrameNavigationWithContext: ((WebMainFrameRouteContext) -> Boolean)? = null,
     mutateChainState: Boolean = true,
 ): WebNavigationDecision {
     val trimmed = targetUrl.trim()
@@ -158,7 +160,20 @@ fun evaluateMainFrameNavigation(
     }
 
     // 6. Host external router (e.g., open external link in system browser).
-    if (routesMainFrameNavigation != null && routesMainFrameNavigation(trimmed)) {
+    val routedExternally =
+        if (routesMainFrameNavigationWithContext != null) {
+            routesMainFrameNavigationWithContext(
+                WebMainFrameRouteContext(
+                    url = trimmed,
+                    isRedirect = isRedirect,
+                    isUserGesture = isUserGesture,
+                    committedDocumentUrl = committedDocumentUrl,
+                ),
+            )
+        } else {
+            routesMainFrameNavigation != null && routesMainFrameNavigation(trimmed)
+        }
+    if (routedExternally) {
         return WebNavigationDecision.Block(url = trimmed, reason = "routed_externally")
     }
 
@@ -167,11 +182,25 @@ fun evaluateMainFrameNavigation(
     }
 
     // 7. Origin-scoped header attachment and cross-origin redirect stripping (GET only).
+    // Match #356 §3 (`RaftAppEntry.kt`): only attach the origin-scoped header on explicit host
+    // launches (`chainState == null`) or pre-commit non-gesture launch-chain redirects
+    // (`!hasCommittedDocument && !isUserGesture && starter == Launch`). Cancelling and re-issuing a
+    // post-commit link/GET-form navigation via `loadUrl`/`loadRequest` downgrades `Sec-Fetch-Site`
+    // from `same-origin` to `none` and strips `Referer`, breaking CSRF-checked same-origin consent
+    // flows such as Stamp's `GET /login?agree=1`. Cross-origin stripping always applies regardless
+    // of commit state so scoped headers can never leak off-origin.
     val headerRule = policy.requestHeaderRule
     if (headerRule != null && method.equals("GET", ignoreCase = true)) {
         val onHeaderOrigin = targetOrigin == headerRule.allowedOrigin
         val chainHadHeader = requestCarriesScopedHeader || (chainState?.carriesScopedHeader == true)
-        if (onHeaderOrigin && !requestCarriesScopedHeader) {
+        val allowHeaderAttach =
+            chainState == null ||
+                (
+                    !chainState.hasCommittedDocument &&
+                        !isUserGesture &&
+                        chainState.starter == WebNavigationStarter.Launch
+                )
+        if (onHeaderOrigin && !requestCarriesScopedHeader && allowHeaderAttach) {
             val allowedByBudget = chainState?.consumeReissue(nextCarriesHeader = true) ?: true
             if (allowedByBudget) {
                 return WebNavigationDecision.ReissueWithHeader(
@@ -196,6 +225,36 @@ fun evaluateMainFrameNavigation(
     chainState?.recordHop(trimmed)
     return WebNavigationDecision.Allow
 }
+
+/**
+ * Builds the HTTP header map for a same-origin [WebNavigationDecision.ReissueWithHeader] load,
+ * preserving a browser-supplied `Referer` header from [originalHeaders] (matched case-insensitively,
+ * rejecting CR/LF) without ever fabricating a `Referer` when the browser omitted one.
+ */
+fun buildReissueWithHeaderHeaders(
+    headerName: String,
+    headerValue: String,
+    originalHeaders: Map<String, String>?,
+): Map<String, String> {
+    val referer =
+        if (headerName.equals("Referer", ignoreCase = true)) {
+            null
+        } else {
+            extractOriginalRefererHeader(originalHeaders)
+        }
+    return if (referer != null) {
+        linkedMapOf("Referer" to referer, headerName to headerValue)
+    } else {
+        mapOf(headerName to headerValue)
+    }
+}
+
+internal fun extractOriginalRefererHeader(headers: Map<String, String>?): String? =
+    headers
+        ?.entries
+        ?.firstOrNull { (k, v) -> k.equals("Referer", ignoreCase = true) && v.isNotBlank() }
+        ?.value
+        ?.takeIf { value -> value.none { ch -> ch == '\r' || ch == '\n' } }
 
 /** Validates whether a subframe URL is permitted by [policy]. */
 fun isAllowedSubframeUrl(

@@ -135,6 +135,43 @@ final class RaftIosShareSuggestionsHostTests: XCTestCase {
             defaults.string(forKey: RaftIosShareSuggestionsEngine.donatedAccountIdDefaultsKey),
             "acc-new"
         )
+        XCTAssertEqual(
+            defaults.string(forKey: RaftIosShareSuggestionsEngine.donatedIconStyleVersionDefaultsKey),
+            "iconV2"
+        )
+    }
+
+    func testIconStyleUpgradePurgesLegacyDonationsOnceBeforeDonatingV2() {
+        // Simulate an upgrade from 1.30 (v1 yellow `#` tiles) or 1.31 R4 where persisted IDs and
+        // account exist without `donatedIconStyleVersionDefaultsKey`: Siri still holds older
+        // `INInteraction` records until `deleteAll` clears them once.
+        defaults.set(["raft_share:v1:srv-1:channel:ch-legacy"], forKey: RaftIosShareSuggestionsEngine.donatedIdsDefaultsKey)
+        defaults.set("acc-1", forKey: RaftIosShareSuggestionsEngine.donatedAccountIdDefaultsKey)
+
+        let backend = FakeShareSuggestionsBackend()
+        let engine = makeImmediateEngine(backend: backend)
+        let ch1 = makeSuggestion(serverId: "srv-1", kind: .channel, channelId: "ch-1", title: "#proj-chat")
+        let ch2 = makeSuggestion(serverId: "srv-1", kind: .channel, channelId: "ch-2", title: "#proj-workspace")
+
+        engine.publish(accountId: "acc-1", serverId: "srv-1", suggestions: [ch1])
+
+        XCTAssertEqual(backend.events, ["deleteAll", "donate:raft_share:v1:srv-1:channel:ch-1"])
+        XCTAssertEqual(
+            defaults.string(forKey: RaftIosShareSuggestionsEngine.donatedIconStyleVersionDefaultsKey),
+            "iconV2"
+        )
+
+        // Subsequent publishes under iconV2 must NOT re-purge the Siri database.
+        let restartedEngine = makeImmediateEngine(backend: backend)
+        restartedEngine.publish(accountId: "acc-1", serverId: "srv-1", suggestions: [ch1, ch2])
+        XCTAssertEqual(
+            backend.events,
+            [
+                "deleteAll",
+                "donate:raft_share:v1:srv-1:channel:ch-1",
+                "donate:raft_share:v1:srv-1:channel:ch-1,raft_share:v1:srv-1:channel:ch-2",
+            ]
+        )
     }
 
     func testQueuedLogoutClearAlwaysExecutesBeforeNewAccountPublishAndDropsStalePublish() {

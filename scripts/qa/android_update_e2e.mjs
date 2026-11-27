@@ -444,7 +444,10 @@ async function main() {
 
     await step("update-prompt-offers-B", async () => {
       let relaunched = false;
-      const banner = await waitFor('the "App update available" prompt on Home', (n) => n.pkg === PKG && n.text === "App update available", {
+      const banner = await waitFor(
+        'the "App update available" or "Update ready to install" prompt on Home',
+        (n) => n.pkg === PKG && (n.text === "App update available" || n.text === "Update ready to install"),
+        {
         timeoutMs: 180_000,
         intervalMs: 3000,
         onTick: async () => {

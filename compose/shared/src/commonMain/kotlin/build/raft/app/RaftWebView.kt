@@ -258,6 +258,8 @@ internal fun RaftSandboxWebView(
     onDownloadRequested: ((RaftWebViewDownload) -> Unit)? = null,
     /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    /** Context-aware variant of [routesMainFrameNavigation] (see [RaftWebViewEvents.routesMainFrameNavigationWithContext]). */
+    routesMainFrameNavigationWithContext: ((RaftWebViewMainFrameRouteAsk) -> Boolean)? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
     /** [RaftWebViewConfig.showsFormAccessoryBar]. */
@@ -288,6 +290,8 @@ internal fun RaftSandboxWebView(
     persistBackgroundAfterPaint: Boolean = false,
     /** [RaftWebViewConfig.androidInsetMode]. */
     androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
+    /** [RaftWebViewConfig.audioCaptureAllowedOrigin]. */
+    audioCaptureAllowedOrigin: String? = null,
 ) {
     val useWebContainer = rememberRaftWebContainerV1Enabled()
     val loadAttempt =
@@ -330,6 +334,7 @@ internal fun RaftSandboxWebView(
     val events = remember { RaftWebViewEvents() }
     events.catchesMainFrameNavigation = catchesMainFrameNavigation
     events.routesMainFrameNavigation = routesMainFrameNavigation
+    events.routesMainFrameNavigationWithContext = routesMainFrameNavigationWithContext
     events.onLoadCommit = onLoadCommit
     events.onLoadSuccess = {
         loadWatchdog?.onLoadFinished()
@@ -403,6 +408,7 @@ internal fun RaftSandboxWebView(
             coverActive,
             allowJsDialogs,
             allowNewWindows,
+            audioCaptureAllowedOrigin,
         ) {
             RaftWebViewConfig(
                 url = url,
@@ -431,6 +437,7 @@ internal fun RaftSandboxWebView(
                 coverActive = coverActive,
                 allowJsDialogs = allowJsDialogs,
                 allowNewWindows = allowNewWindows,
+                audioCaptureAllowedOrigin = audioCaptureAllowedOrigin,
             )
         }
     // Full-bleed: in a clipped pane of the wide row (the Artifact column) the page is cut hard at the pane's edge, never
@@ -525,6 +532,8 @@ internal fun RaftWebView(
     loadWatchdog: RaftWebViewLoadWatchdog? = null,
     /** A new top-level document routed as a link (see [RaftWebViewEvents.routesMainFrameNavigation]); null: loaded. */
     routesMainFrameNavigation: ((String) -> Boolean)? = null,
+    /** Context-aware variant of [routesMainFrameNavigation] (see [RaftWebViewEvents.routesMainFrameNavigationWithContext]). */
+    routesMainFrameNavigationWithContext: ((RaftWebViewMainFrameRouteAsk) -> Boolean)? = null,
     /** [RaftWebViewConfig.diagnosticsSurface]. */
     diagnosticsSurface: String = RAFT_WEBVIEW_SURFACE_DEFAULT,
     /** [RaftWebViewConfig.showsFormAccessoryBar]. */
@@ -553,6 +562,8 @@ internal fun RaftWebView(
     androidInsetMode: WebContainerAndroidInsetMode = WebContainerAndroidInsetMode.HostHandled,
     /** [RaftWebViewConfig.keepAliveKey]. */
     keepAliveKey: String? = null,
+    /** [RaftWebViewConfig.audioCaptureAllowedOrigin]. */
+    audioCaptureAllowedOrigin: String? = null,
 ) {
     RaftSandboxWebView(
         url = url,
@@ -579,6 +590,7 @@ internal fun RaftWebView(
         onNavigationStateChange = onNavigationStateChange,
         onHostMessage = onHostMessage,
         routesMainFrameNavigation = routesMainFrameNavigation,
+        routesMainFrameNavigationWithContext = routesMainFrameNavigationWithContext,
         diagnosticsSurface = diagnosticsSurface,
         showsFormAccessoryBar = showsFormAccessoryBar,
         storagePartition = storagePartition,
@@ -592,6 +604,7 @@ internal fun RaftWebView(
         backgroundArgb = backgroundArgb,
         persistBackgroundAfterPaint = persistBackgroundAfterPaint,
         androidInsetMode = androidInsetMode,
+        audioCaptureAllowedOrigin = audioCaptureAllowedOrigin,
     )
 }
 

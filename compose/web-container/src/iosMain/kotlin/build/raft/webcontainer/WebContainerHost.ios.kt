@@ -472,6 +472,8 @@ internal class WebContainerIosHost(
     private var pendingHostLoadUrl: String? = null
     private var pendingHostLoadIsReissue: Boolean = false
     private var hostCancelledUrl: String? = null
+    private var committedDocumentUrl: String = ""
+    private var provisionalNavInFlight: Boolean = false
 
     private val chainState = WebNavigationChainState()
     private val navigationStateRelay = WebNavigationStateRelay()
@@ -780,6 +782,8 @@ internal class WebContainerIosHost(
         pendingHostLoadUrl = null
         pendingHostLoadIsReissue = false
         hostCancelledUrl = null
+        committedDocumentUrl = ""
+        provisionalNavInFlight = false
         downloadCancelledUrl = null
         usingSpare = false
         spareCommitted = false
@@ -1122,6 +1126,8 @@ internal class WebContainerIosHost(
             pendingHostLoadUrl = null
             pendingHostLoadIsReissue = false
             hostCancelledUrl = null
+            committedDocumentUrl = ""
+            provisionalNavInFlight = false
             currentUrl = ""
             currentLoading = false
             view.loadHTMLString("", baseURL = null)
@@ -1160,6 +1166,7 @@ internal class WebContainerIosHost(
                 pendingHostLoadUrl = resolvedTarget
                 pendingHostLoadIsReissue = false
                 hostCancelledUrl = null
+                provisionalNavInFlight = true
                 view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, decision.headerName to decision.headerValue))
             }
             else -> {
@@ -1173,6 +1180,7 @@ internal class WebContainerIosHost(
                 pendingHostLoadUrl = resolvedTarget
                 pendingHostLoadIsReissue = false
                 hostCancelledUrl = null
+                provisionalNavInFlight = true
                 view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, null))
             }
         }
@@ -1182,15 +1190,14 @@ internal class WebContainerIosHost(
         url: NSURL,
         cacheEnabled: Boolean,
         header: Pair<String, String>?,
-    ): NSMutableURLRequest {
-        val cachePolicy =
-            if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
-        val request = NSMutableURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0)
-        if (header != null) {
-            request.setValue(header.second, forHTTPHeaderField = header.first)
-        }
-        return request
-    }
+        referer: String? = null,
+    ): NSMutableURLRequest =
+        buildWebContainerIosRequest(
+            url = url,
+            cacheEnabled = cacheEnabled,
+            header = header,
+            referer = referer,
+        )
 
     private fun executeCommand(command: WebContainerCommand) {
         if (disposed) return
@@ -1200,6 +1207,7 @@ internal class WebContainerIosHost(
             WebContainerCommand.GoBack ->
                 if (canGoBack(view)) {
                     hostCancelledUrl = null
+                    provisionalNavInFlight = true
                     val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                     chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
                     view.goBack()
@@ -1207,18 +1215,22 @@ internal class WebContainerIosHost(
             WebContainerCommand.GoForward ->
                 if (view.canGoForward) {
                     hostCancelledUrl = null
+                    provisionalNavInFlight = true
                     val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                     chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.BackForward)
                     view.goForward()
                 }
             WebContainerCommand.Reload -> {
                 hostCancelledUrl = null
+                provisionalNavInFlight = true
+                mainFrameLoadFailed = false
                 val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
                 chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Reload)
                 view.reload()
             }
             WebContainerCommand.Stop -> {
                 view.stopLoading()
+                provisionalNavInFlight = false
                 currentLoading = false
                 notifyNavigationState(force = false)
             }
@@ -1226,8 +1238,16 @@ internal class WebContainerIosHost(
                 val target = command.url.trim()
                 val nsUrl = NSURL.URLWithString(target) ?: return
                 val resolvedTarget = nsUrl.absoluteString ?: target
+                mainFrameLoadFailed = false
                 val budget = cfg.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
-                chainState.startChain(carriesHeader = false, reissueBudget = budget, starter = WebNavigationStarter.Page)
+                val starter =
+                    if (chainState.hasCommittedDocument) WebNavigationStarter.Page else WebNavigationStarter.Launch
+                chainState.startChain(
+                    carriesHeader = false,
+                    reissueBudget = budget,
+                    starter = starter,
+                    initialHop = resolvedTarget,
+                )
                 val decision =
                     evaluateMainFrameNavigation(
                         targetUrl = resolvedTarget,
@@ -1235,26 +1255,31 @@ internal class WebContainerIosHost(
                         policy = cfg.navigationPolicy,
                         method = "GET",
                         chainState = chainState,
+                        committedDocumentUrl = committedDocumentUrl,
                         catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                         routesMainFrameNavigation = events.routesMainFrameNavigation,
+                        routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
                     )
                 when (decision) {
                     WebNavigationDecision.Allow -> {
                         pendingHostLoadUrl = resolvedTarget
                         pendingHostLoadIsReissue = false
                         hostCancelledUrl = null
+                        provisionalNavInFlight = true
                         view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, null))
                     }
                     is WebNavigationDecision.ReissueWithHeader -> {
                         pendingHostLoadUrl = resolvedTarget
                         pendingHostLoadIsReissue = false
                         hostCancelledUrl = null
+                        provisionalNavInFlight = true
                         view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, decision.headerName to decision.headerValue))
                     }
                     is WebNavigationDecision.ReissueWithoutHeader -> {
                         pendingHostLoadUrl = resolvedTarget
                         pendingHostLoadIsReissue = false
                         hostCancelledUrl = null
+                        provisionalNavInFlight = true
                         view.loadRequest(buildRequest(nsUrl, cfg.cacheEnabled, null))
                     }
                     is WebNavigationDecision.Block -> notifyNavigationBlocked(decision.url, decision.reason)
@@ -1437,6 +1462,7 @@ internal class WebContainerIosHost(
         if (isPendingHostLoad) {
             pendingHostLoadUrl = null
             pendingHostLoadIsReissue = false
+            provisionalNavInFlight = true
             return WKNavigationActionPolicy.WKNavigationActionPolicyAllow
         }
 
@@ -1451,12 +1477,23 @@ internal class WebContainerIosHost(
                 3L, 4L -> WebNavigationStarter.Reload
                 else -> null
             }
+        val isRedirect =
+            explicitStarter == null &&
+                navTypeRaw == -1L &&
+                (provisionalNavInFlight || chainState.currentHops().isNotEmpty())
         if (explicitStarter != null) {
             val budget = headerRule?.maxSameOriginReissues ?: 0
             chainState.startChain(
                 carriesHeader = carriesHeader,
                 reissueBudget = budget,
                 starter = explicitStarter,
+            )
+        } else if (!isRedirect) {
+            val budget = headerRule?.maxSameOriginReissues ?: 0
+            chainState.startChain(
+                carriesHeader = carriesHeader,
+                reissueBudget = budget,
+                starter = if (chainState.hasCommittedDocument) WebNavigationStarter.Page else WebNavigationStarter.Other,
             )
         }
         val decision =
@@ -1468,16 +1505,21 @@ internal class WebContainerIosHost(
                 requestCarriesScopedHeader = carriesHeader,
                 chainState = chainState,
                 isUserGesture = isUserClickOrForm,
+                isRedirect = isRedirect,
+                committedDocumentUrl = committedDocumentUrl,
                 catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                 routesMainFrameNavigation = events.routesMainFrameNavigation,
+                routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
             )
         return when (decision) {
             WebNavigationDecision.Allow -> {
                 hostCancelledUrl = null
+                provisionalNavInFlight = true
                 WKNavigationActionPolicy.WKNavigationActionPolicyAllow
             }
             is WebNavigationDecision.InterceptedByHost -> {
                 hostCancelledUrl = targetUrl
+                provisionalNavInFlight = false
                 currentLoading = false
                 if (loadGeneration > 0) {
                     watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), webContainerMonotonicMillis())
@@ -1487,13 +1529,23 @@ internal class WebContainerIosHost(
             }
             is WebNavigationDecision.Block -> {
                 hostCancelledUrl = targetUrl
+                provisionalNavInFlight = false
                 notifyNavigationBlocked(decision.url, decision.reason, isUserGesture = isUserClickOrForm)
                 WKNavigationActionPolicy.WKNavigationActionPolicyCancel
             }
             is WebNavigationDecision.ReissueWithHeader -> {
                 hostCancelledUrl = targetUrl
+                chainState.recordHop(targetUrl)
+                provisionalNavInFlight = true
                 action.request.URL?.let { nsUrl ->
-                    val reissued = buildRequest(nsUrl, cfg.cacheEnabled, decision.headerName to decision.headerValue)
+                    val originalReferer = action.request.valueForHTTPHeaderField("Referer")
+                    val reissued =
+                        buildRequest(
+                            url = nsUrl,
+                            cacheEnabled = cfg.cacheEnabled,
+                            header = decision.headerName to decision.headerValue,
+                            referer = originalReferer,
+                        )
                     pendingHostLoadUrl = targetUrl
                     pendingHostLoadIsReissue = true
                     dispatch_async(dispatch_get_main_queue()) {
@@ -1506,6 +1558,8 @@ internal class WebContainerIosHost(
             }
             is WebNavigationDecision.ReissueWithoutHeader -> {
                 hostCancelledUrl = targetUrl
+                chainState.recordHop(targetUrl)
+                provisionalNavInFlight = true
                 action.request.URL?.let { nsUrl ->
                     val reissued = buildRequest(nsUrl, cfg.cacheEnabled, null)
                     pendingHostLoadUrl = targetUrl
@@ -1526,6 +1580,7 @@ internal class WebContainerIosHost(
         val provisionalUrl = source.URL?.absoluteString
         if (provisionalUrl != null && provisionalUrl == hostCancelledUrl) return
         if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, provisionalUrl, config?.url.orEmpty())) return
+        provisionalNavInFlight = true
         downloadCancelledUrl = null
         jsDialogTracker.cancelActive()
         jsbDispatcher?.cancelInFlight("main_frame_navigation")
@@ -1544,9 +1599,11 @@ internal class WebContainerIosHost(
         if (disposed || !isSameObjCObject(source, webView)) return
         if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, source.URL?.absoluteString, config?.url.orEmpty())) return
         spareCommitted = true
+        provisionalNavInFlight = false
         hostCancelledUrl = null
         downloadCancelledUrl = null
         currentUrl = source.URL?.absoluteString ?: currentUrl
+        committedDocumentUrl = currentUrl
         chainState.markCommitted()
         watchdog.onEvent(WebContainerWatchdogEvent.PageCommitted(loadGeneration), webContainerMonotonicMillis())
         events.onUrlChange(currentUrl)
@@ -1565,6 +1622,7 @@ internal class WebContainerIosHost(
         if (disposed || !isSameObjCObject(source, webView)) return
         if (shouldIgnoreWarmSpareBlankNavigation(usingSpare, source.URL?.absoluteString, config?.url.orEmpty())) return
         spareCommitted = true
+        provisionalNavInFlight = false
         hostCancelledUrl = null
         downloadCancelledUrl = null
         currentUrl = source.URL?.absoluteString ?: currentUrl
@@ -1572,6 +1630,7 @@ internal class WebContainerIosHost(
         currentLoading = false
         currentProgress = 100
         if (!mainFrameLoadFailed) {
+            committedDocumentUrl = currentUrl
             pagePainted = true
             if (pageRevealed) {
                 config?.let(::applyBackgroundVisuals)
@@ -1653,6 +1712,7 @@ internal class WebContainerIosHost(
                 (failingUrl.isNullOrEmpty() || cancelledDownloadUrl.isEmpty() || failingUrl == cancelledDownloadUrl)
         if (isDownloadInterrupt) {
             downloadCancelledUrl = null
+            provisionalNavInFlight = false
             currentLoading = false
             watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), webContainerMonotonicMillis())
             notifyNavigationState(force = false)
@@ -1666,11 +1726,15 @@ internal class WebContainerIosHost(
             if (failingUrl == null || failingUrl == hostCancelledUrl) {
                 hostCancelledUrl = null
             }
+            if (pendingHostLoadUrl == null) {
+                provisionalNavInFlight = false
+            }
             currentLoading = false
             watchdog.onEvent(WebContainerWatchdogEvent.LoadCancelled(loadGeneration), webContainerMonotonicMillis())
             notifyNavigationState(force = false)
             return
         }
+        provisionalNavInFlight = false
         mainFrameLoadFailed = true
         lastSuccessfulUrl = ""
         currentLoading = false
@@ -2371,3 +2435,28 @@ private fun iosNavigationTypeRaw(action: WKNavigationAction): Long =
         is CEnum -> (navType.value as? Number)?.toLong() ?: -1L
         else -> -1L
     }
+
+internal fun buildWebContainerIosRequest(
+    url: NSURL,
+    cacheEnabled: Boolean,
+    header: Pair<String, String>?,
+    referer: String? = null,
+): NSMutableURLRequest {
+    val cachePolicy =
+        if (cacheEnabled) NSURLRequestUseProtocolCachePolicy else NSURLRequestReloadIgnoringLocalCacheData
+    val request = NSMutableURLRequest.requestWithURL(url, cachePolicy = cachePolicy, timeoutInterval = 60.0)
+    val sanitizedReferer =
+        referer
+            ?.takeIf { value ->
+                value.isNotBlank() &&
+                    value.none { ch -> ch == '\r' || ch == '\n' } &&
+                    header?.first?.equals("Referer", ignoreCase = true) != true
+            }
+    if (sanitizedReferer != null) {
+        request.setValue(sanitizedReferer, forHTTPHeaderField = "Referer")
+    }
+    if (header != null) {
+        request.setValue(header.second, forHTTPHeaderField = header.first)
+    }
+    return request
+}

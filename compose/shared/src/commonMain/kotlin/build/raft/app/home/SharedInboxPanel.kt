@@ -1149,15 +1149,19 @@ private fun SharedActivityPanelContent(
     // loop over the experimental LazyListState constructor): the filter
     // set is a closed enum of seven, and this list is index-aligned with
     // InboxFilter.entries (All/Unread/Mentions/Pinned/Saved/Tasks/Artifacts entry order).
-    val pageListStates = listOf(
-        rememberLazyListState(),
-        rememberLazyListState(),
-        rememberLazyListState(),
-        rememberLazyListState(),
-        rememberLazyListState(),
-        rememberLazyListState(),
-        rememberLazyListState(),
-    )
+    val serverScrollKey = state.ownerServerId ?: state.snapshot?.server?.id?.value
+    val pageListStates =
+        key(serverScrollKey) {
+            listOf(
+                rememberLazyListState(),
+                rememberLazyListState(),
+                rememberLazyListState(),
+                rememberLazyListState(),
+                rememberLazyListState(),
+                rememberLazyListState(),
+                rememberLazyListState(),
+            )
+        }
     // Hoisted to the panel so outside-tap dismissal covers the Header and FilterBar above the list,
     // and switching tabs (`active = false`) or filters closes any open swipe row immediately.
     val swipeHostState = remember { ActivitySwipeListHostState() }
@@ -1671,6 +1675,12 @@ internal fun SharedActivityList(
     prewarmActive: Boolean = active,
 ) {
     val presentationServerId = snapshot.server.id.value
+    val presentationOwnerIdentity =
+        activityPresentationOwnerIdentity(
+            accountId = presentationAccountId,
+            serverId = presentationServerId,
+            filter = selectedFilter,
+        )
     val panelFirstRenderMark = remember { TimeSource.Monotonic.markNow() }
     var firstRenderLogged by remember { mutableStateOf(false) }
     val resumeFirstRenderMark = remember(foregroundEpoch) { TimeSource.Monotonic.markNow() }
@@ -1747,11 +1757,12 @@ internal fun SharedActivityList(
     // The rows that arrived (new, or with new activity) above a scrolled reader
     // (activityPillKeysAfterChange); the pill shows only while one of them is laid out
     // above the viewport (activityNewRowsAboveViewport).
-    var newActivityAboveKeys by
+    val newActivityAboveKeysState =
         remember(presentationStore, presentationAccountId, presentationServerId, selectedFilter) {
             mutableStateOf(emptySet<String>())
         }
-    LaunchedEffect(active, foregroundEpoch) {
+    var newActivityAboveKeys by newActivityAboveKeysState
+    LaunchedEffect(active, foregroundEpoch, presentationOwnerIdentity) {
         if (active) {
             viewportRecoveryArmed = true
             entryTopAnchorOwner.arm()
@@ -1774,10 +1785,13 @@ internal fun SharedActivityList(
     // The day headings' clock, read when a change lands (settleTopEdge's head signature).
     val headTimeContext by rememberUpdatedState(currentRaftDateTimeContext(timeContext))
     // The reader reached the top themselves: nothing new is hidden above any more.
-    LaunchedEffect(listState, active, nearTopPx) {
+    // Keyed on presentationOwnerIdentity & newActivityAboveKeysState so switching servers never
+    // leaves this collector clearing the previous server's MutableState, and reading
+    // newActivityAboveKeysState.value inside snapshotFlow clears immediately even if already near top.
+    LaunchedEffect(listState, active, nearTopPx, presentationOwnerIdentity, newActivityAboveKeysState) {
         if (!active) return@LaunchedEffect
-        snapshotFlow { listState.activityNearTop(nearTopPx) }
-            .collect { atTop -> if (atTop && newActivityAboveKeys.isNotEmpty()) newActivityAboveKeys = emptySet() }
+        snapshotFlow { listState.activityNearTop(nearTopPx) && newActivityAboveKeysState.value.isNotEmpty() }
+            .collect { shouldClear -> if (shouldClear) newActivityAboveKeysState.value = emptySet() }
     }
     fun shouldAnchorTop(pullRefreshOwnsTop: Boolean, genuineTopUpdate: Boolean): Boolean =
         activityShouldAnchorTopOnCanonicalSnapshot(
@@ -1809,7 +1823,8 @@ internal fun SharedActivityList(
         if (anchorTop || keptTop) listState.requestScrollToItem(0)
         // The pill counts only rows that arrived (new, or with new activity), never rows the
         // reader scrolled past that a reorder moved above the old head.
-        val pillKeys = activityPillKeysAfterChange(newActivityAboveKeys, previousItems, nextItems, listAtTop = anchorTop || keptTop)
+        val listAtTopNow = anchorTop || keptTop || listState.activityNearTop(nearTopPx)
+        val pillKeys = activityPillKeysAfterChange(newActivityAboveKeys, previousItems, nextItems, listAtTop = listAtTopNow)
         if (pillKeys != newActivityAboveKeys) newActivityAboveKeys = pillKeys
     }
     LaunchedEffect(presentedItems, active, viewportRecoveryArmed) {
@@ -1869,6 +1884,7 @@ internal fun SharedActivityList(
         savePresentation()
     }
     LaunchedEffect(
+        presentationOwnerIdentity,
         selectedFilter,
         snapshot.items,
         refreshing,
@@ -2037,12 +2053,6 @@ internal fun SharedActivityList(
         }
     }
     val showLoadMoreFooter = snapshot.hasMore || loadingMore || loadMoreErrorCode != null
-    val presentationOwnerIdentity =
-        activityPresentationOwnerIdentity(
-            accountId = presentationAccountId,
-            serverId = presentationServerId,
-            filter = selectedFilter,
-        )
     val currentPresentationOwnerIdentityState = rememberUpdatedState(presentationOwnerIdentity)
     // Freeze the item/key/content triplet for one LazyColumn composition. Reading the mutable
     // presentedItems list independently from the count-key lambda and the row-content lambda can
@@ -2123,9 +2133,8 @@ internal fun SharedActivityList(
             conversationListEntries.map(ActivityConversationListEntry::key)
         }
     val lazyItemKeysState = rememberUpdatedState(lazyItemKeys)
-    val newActivityAboveKeysState = rememberUpdatedState(newActivityAboveKeys)
     val newActivityAboveCount by
-        remember(listState) {
+        remember(listState, newActivityAboveKeysState) {
             derivedStateOf {
                 activityNewRowsAboveViewportCount(
                     newRowKeys = newActivityAboveKeysState.value,
@@ -2135,13 +2144,22 @@ internal fun SharedActivityList(
             }
         }
     // A landed row scrolled into view is seen: it leaves the pill's count.
-    LaunchedEffect(listState, active) {
+    // Keyed on presentationOwnerIdentity & newActivityAboveKeysState so switching servers always
+    // binds to the active server's state instead of mutating the previous server's abandoned state.
+    LaunchedEffect(listState, active, presentationOwnerIdentity, newActivityAboveKeysState) {
         if (!active) return@LaunchedEffect
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.mapNotNullTo(mutableSetOf()) { it.key as? String } }
+        snapshotFlow {
+            val currentKeys = newActivityAboveKeysState.value
+            if (currentKeys.isEmpty()) {
+                currentKeys
+            } else {
+                val visible = listState.layoutInfo.visibleItemsInfo.mapNotNullTo(mutableSetOf()) { it.key as? String }
+                activityUnseenNewRowKeys(currentKeys, visible)
+            }
+        }
             .distinctUntilChanged()
-            .collect { visible ->
-                val unseen = activityUnseenNewRowKeys(newActivityAboveKeys, visible)
-                if (unseen != newActivityAboveKeys) newActivityAboveKeys = unseen
+            .collect { unseen ->
+                if (unseen != newActivityAboveKeysState.value) newActivityAboveKeysState.value = unseen
             }
     }
     // Row gestures resolve the committed item at commit time (see activityItemForCommittedGesture).

@@ -354,4 +354,48 @@ class RaftAndroidSandboxWebViewRaftHostTest {
         controller.reload()
         assertNull(shadowOf(webView).lastLoadedUrl)
     }
+
+    @Test
+    fun sameOriginReissuePreservesOriginalRefererAndCrossOriginStripDoesNot() {
+        val events = RaftWebViewEvents()
+        val host = RaftAndroidSandboxWebView(RuntimeEnvironment.getApplication(), events)
+        host.applyConfig(baseConfig())
+        val webView = host.getChildAt(0) as WebView
+        val client = shadowOf(webView).webViewClient
+
+        // Pre-commit same-origin redirect carrying browser Referer preserves it alongside Raft-Host.
+        val sameOriginRedirect = "$appOrigin/dashboard"
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                request(
+                    url = sameOriginRedirect,
+                    redirect = true,
+                    headers = mapOf("referer" to appStartUrl),
+                ),
+            ),
+        )
+        idleMainLooper()
+        assertEquals(sameOriginRedirect, shadowOf(webView).lastLoadedUrl)
+        assertEquals(
+            linkedMapOf("Referer" to appStartUrl, RAFT_HOST_HEADER to "android"),
+            shadowOf(webView).lastAdditionalHttpHeaders,
+        )
+
+        // Cross-origin redirect strips Raft-Host and does NOT inject Referer.
+        val crossOriginRedirect = "https://third-party.example/landing"
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                request(
+                    url = crossOriginRedirect,
+                    redirect = true,
+                    headers = mapOf("Referer" to sameOriginRedirect),
+                ),
+            ),
+        )
+        idleMainLooper()
+        assertEquals(crossOriginRedirect, shadowOf(webView).lastLoadedUrl)
+        assertNull(shadowOf(webView).lastAdditionalHttpHeaders)
+    }
 }

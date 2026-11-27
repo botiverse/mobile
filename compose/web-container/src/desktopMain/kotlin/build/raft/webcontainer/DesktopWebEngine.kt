@@ -213,6 +213,7 @@ class DesktopWebContainerHostController(
     private var boundController: WebContainerController? = null
 
     private var currentState = DesktopWebSessionState(url = config.url.trim())
+    private var committedDocumentUrl: String = ""
     private var loadGeneration: Int = 0
     private var lastSuccessfulUrl: String = ""
 
@@ -267,6 +268,8 @@ class DesktopWebContainerHostController(
                         starter = request.starter,
                     )
                 }
+                val isRedirect =
+                    request.starter == WebNavigationStarter.Other && chainState.currentHops().isNotEmpty()
                 val decision =
                     evaluateMainFrameNavigation(
                         targetUrl = request.url,
@@ -276,8 +279,11 @@ class DesktopWebContainerHostController(
                         requestCarriesScopedHeader = request.requestCarriesScopedHeader,
                         chainState = chainState,
                         isUserGesture = request.isUserGesture,
+                        isRedirect = isRedirect,
+                        committedDocumentUrl = committedDocumentUrl,
                         catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                         routesMainFrameNavigation = events.routesMainFrameNavigation,
+                        routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
                     )
                 return when (decision) {
                     WebNavigationDecision.Allow -> DesktopNavigationDecision.Allow
@@ -312,8 +318,10 @@ class DesktopWebContainerHostController(
                         policy = config.navigationPolicy,
                         method = "GET",
                         chainState = chainState,
+                        committedDocumentUrl = committedDocumentUrl,
                         catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                         routesMainFrameNavigation = events.routesMainFrameNavigation,
+                        routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
                     )
                 return when (decision) {
                     WebNavigationDecision.Allow -> true
@@ -355,6 +363,7 @@ class DesktopWebContainerHostController(
             override fun onLoadCommit(url: String) {
                 if (disposed) return
                 currentState = currentState.copy(url = url)
+                committedDocumentUrl = url
                 chainState.markCommitted()
                 watchdog.onEvent(WebContainerWatchdogEvent.PageCommitted(loadGeneration), nowMs())
                 events.onLoadCommit()
@@ -365,6 +374,7 @@ class DesktopWebContainerHostController(
             override fun onLoadFinished(url: String) {
                 if (disposed) return
                 currentState = currentState.copy(url = url, isLoading = false, progress = 100)
+                committedDocumentUrl = url
                 chainState.markCommitted()
                 markPageReady()
                 val action = watchdog.onEvent(WebContainerWatchdogEvent.PageFinished(loadGeneration), nowMs())
@@ -624,8 +634,10 @@ class DesktopWebContainerHostController(
                         initialUrl = config.url,
                         policy = config.navigationPolicy,
                         chainState = chainState,
+                        committedDocumentUrl = committedDocumentUrl,
                         catchesMainFrameNavigation = events.catchesMainFrameNavigation,
                         routesMainFrameNavigation = events.routesMainFrameNavigation,
+                        routesMainFrameNavigationWithContext = events.routesMainFrameNavigationWithContext,
                     )
                 when (decision) {
                     WebNavigationDecision.Allow,

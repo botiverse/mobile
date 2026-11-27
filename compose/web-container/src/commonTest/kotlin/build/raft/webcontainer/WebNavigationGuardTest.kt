@@ -124,7 +124,7 @@ class WebNavigationGuardTest {
         val chain = WebNavigationChainState()
         chain.startChain(carriesHeader = false, reissueBudget = 2, starter = WebNavigationStarter.Launch)
 
-        // First hop on allowedOrigin without header -> reissue with header.
+        // First pre-commit launch hop on allowedOrigin without header -> reissue with header.
         val attach =
             evaluateMainFrameNavigation(
                 targetUrl = "https://app.raft.build/app",
@@ -133,6 +133,7 @@ class WebNavigationGuardTest {
                 method = "GET",
                 requestCarriesScopedHeader = false,
                 chainState = chain,
+                isRedirect = true,
             )
         val withHeader = assertIs<WebNavigationDecision.ReissueWithHeader>(attach)
         assertEquals("Raft-Host", withHeader.headerName)
@@ -147,6 +148,7 @@ class WebNavigationGuardTest {
                 method = "GET",
                 requestCarriesScopedHeader = true,
                 chainState = chain,
+                isRedirect = true,
             )
         val withoutHeader = assertIs<WebNavigationDecision.ReissueWithoutHeader>(strip)
         assertEquals("Raft-Host", withoutHeader.headerName)
@@ -160,23 +162,104 @@ class WebNavigationGuardTest {
                 method = "GET",
                 requestCarriesScopedHeader = true,
                 chainState = chain,
+                isRedirect = true,
             )
         val blocked = assertIs<WebNavigationDecision.Block>(exhausted)
         assertEquals("header_strip_budget_exhausted", blocked.reason)
 
-        // Committing a document replenishes the reissue budget for subsequent navigations.
+        // Committing a document replenishes the reissue budget, and post-commit same-origin
+        // navigations (links / GET consent forms such as Stamp /login?agree=1) stay native Allow
+        // so the browser preserves Sec-Fetch-Site: same-origin and Referer (#356 §3).
         chain.markCommitted()
         assertEquals(2, chain.remainingReissues)
-        val reattached =
+        val postCommitConsent =
             evaluateMainFrameNavigation(
-                targetUrl = "https://app.raft.build/next",
+                targetUrl = "https://app.raft.build/login?agree=1&terms_version=2026-10-20",
                 initialUrl = "https://app.raft.build/app",
                 policy = policy,
                 method = "GET",
                 requestCarriesScopedHeader = false,
                 chainState = chain,
+                isUserGesture = true,
+                isRedirect = false,
             )
-        assertIs<WebNavigationDecision.ReissueWithHeader>(reattached)
+        assertEquals(WebNavigationDecision.Allow, postCommitConsent)
+
+        // Post-commit cross-origin request that somehow still carries the header is still stripped.
+        val postCommitCrossOriginLeak =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://cdn.thirdparty.example/after-commit",
+                initialUrl = "https://app.raft.build/app",
+                policy = policy,
+                method = "GET",
+                requestCarriesScopedHeader = true,
+                chainState = chain,
+            )
+        assertIs<WebNavigationDecision.ReissueWithoutHeader>(postCommitCrossOriginLeak)
+
+        // Pre-commit user gesture / non-launch starters (Link, Form, BackForward, Reload) stay Allow.
+        val preCommitLinkChain = WebNavigationChainState()
+        preCommitLinkChain.startChain(carriesHeader = false, reissueBudget = 2, starter = WebNavigationStarter.Link)
+        assertEquals(
+            WebNavigationDecision.Allow,
+            evaluateMainFrameNavigation(
+                targetUrl = "https://app.raft.build/login?agree=1",
+                initialUrl = "https://app.raft.build/sign-in",
+                policy = policy,
+                method = "GET",
+                requestCarriesScopedHeader = false,
+                chainState = preCommitLinkChain,
+                isUserGesture = true,
+            ),
+        )
+
+        // Explicit host launch (chainState == null) attaches the scoped header.
+        val hostLaunch =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://app.raft.build/app",
+                initialUrl = "https://app.raft.build/app",
+                policy = policy,
+                method = "GET",
+                requestCarriesScopedHeader = false,
+                chainState = null,
+            )
+        assertIs<WebNavigationDecision.ReissueWithHeader>(hostLaunch)
+    }
+
+    @Test
+    fun reissueWithHeaderHeadersPreservesBrowserRefererWithoutFabricating() {
+        assertEquals(
+            linkedMapOf("Referer" to "https://stamp.build/sign-in", "Raft-Host" to "android"),
+            buildReissueWithHeaderHeaders(
+                headerName = "Raft-Host",
+                headerValue = "android",
+                originalHeaders = mapOf("referer" to "https://stamp.build/sign-in", "Accept" to "text/html"),
+            ),
+        )
+        assertEquals(
+            mapOf("Raft-Host" to "android"),
+            buildReissueWithHeaderHeaders(
+                headerName = "Raft-Host",
+                headerValue = "android",
+                originalHeaders = mapOf("Accept" to "text/html"),
+            ),
+        )
+        assertEquals(
+            mapOf("Raft-Host" to "android"),
+            buildReissueWithHeaderHeaders(
+                headerName = "Raft-Host",
+                headerValue = "android",
+                originalHeaders = mapOf("Referer" to "https://stamp.build/\r\nX-Injected: 1"),
+            ),
+        )
+        assertEquals(
+            mapOf("Referer" to "https://override.example/"),
+            buildReissueWithHeaderHeaders(
+                headerName = "Referer",
+                headerValue = "https://override.example/",
+                originalHeaders = mapOf("Referer" to "https://stamp.build/sign-in"),
+            ),
+        )
     }
 
     @Test
@@ -292,5 +375,117 @@ class WebNavigationGuardTest {
         assertTrue(chain.hasCommittedDocument)
         assertEquals(WebNavigationStarter.Page, chain.starter)
         assertTrue(chain.currentHops().isEmpty())
+    }
+
+    @Test
+    fun contextAwareRoutePredicateAllowsCrossOriginOAuthRedirectAndStripsRaftHostWhileRoutingDirectLinks() {
+        val stampOrigin = parseWebContainerOrigin("https://stamp.build")!!
+        val policy =
+            WebNavigationPolicy(
+                allowNavigation = true,
+                allowedSchemes = setOf("http", "https"),
+                requestHeaderRule =
+                    WebRequestHeaderRule(
+                        headerName = "Raft-Host",
+                        headerValue = "mobile-v1",
+                        allowedOrigin = stampOrigin,
+                        maxSameOriginReissues = 3,
+                    ),
+            )
+        val observedContexts = mutableListOf<WebMainFrameRouteContext>()
+        val routePredicate: (WebMainFrameRouteContext) -> Boolean = { ctx ->
+            observedContexts += ctx
+            val targetOrigin = parseWebContainerOrigin(ctx.url)
+            val isRaftHost = targetOrigin?.host == "app.raft.build" || targetOrigin?.host == "api.raft.build"
+            if (isRaftHost) {
+                true
+            } else if (ctx.isRedirect) {
+                false
+            } else {
+                val committedOrigin = parseWebContainerOrigin(ctx.committedDocumentUrl)
+                committedOrigin == stampOrigin && targetOrigin != stampOrigin
+            }
+        }
+
+        // 1. Server 302 redirect from stamp.build (carrying Raft-Host) to GitHub OAuth stays in WebView & strips Raft-Host.
+        val chainWithHeader = WebNavigationChainState()
+        chainWithHeader.startChain(carriesHeader = true, reissueBudget = 3, starter = WebNavigationStarter.Link)
+        val redirectWithHeader =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://github.com/login/oauth/authorize?client_id=stamp&state=s1",
+                initialUrl = "https://stamp.build/",
+                policy = policy,
+                method = "GET",
+                requestCarriesScopedHeader = false,
+                chainState = chainWithHeader,
+                isRedirect = true,
+                committedDocumentUrl = "https://stamp.build/settings",
+                routesMainFrameNavigationWithContext = routePredicate,
+            )
+        val stripped = assertIs<WebNavigationDecision.ReissueWithoutHeader>(redirectWithHeader)
+        assertEquals("Raft-Host", stripped.headerName)
+        assertEquals("https://github.com/login/oauth/authorize?client_id=stamp&state=s1", stripped.url)
+        assertTrue(observedContexts.last().isRedirect)
+        assertEquals("https://stamp.build/settings", observedContexts.last().committedDocumentUrl)
+
+        // 2. Server 302 redirect without prior Raft-Host header is allowed directly (not routed_externally).
+        val chainNoHeader = WebNavigationChainState()
+        chainNoHeader.startChain(carriesHeader = false, reissueBudget = 3, starter = WebNavigationStarter.Link)
+        val redirectNoHeader =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://github.com/login/oauth/authorize?client_id=stamp&state=s2",
+                initialUrl = "https://stamp.build/",
+                policy = policy,
+                method = "GET",
+                requestCarriesScopedHeader = false,
+                chainState = chainNoHeader,
+                isRedirect = true,
+                committedDocumentUrl = "https://stamp.build/settings",
+                routesMainFrameNavigationWithContext = routePredicate,
+            )
+        assertEquals(WebNavigationDecision.Allow, redirectNoHeader)
+
+        // 3. Follow-up form submission on github.com stays in WebView because committed origin is github.com.
+        val githubSubmit =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://github.com/session",
+                initialUrl = "https://stamp.build/",
+                policy = policy,
+                method = "POST",
+                isUserGesture = true,
+                isRedirect = false,
+                committedDocumentUrl = "https://github.com/login/oauth/authorize?client_id=stamp&state=s1",
+                routesMainFrameNavigationWithContext = routePredicate,
+            )
+        assertEquals(WebNavigationDecision.Allow, githubSubmit)
+
+        // 4. Direct user link click from committed stamp.build to github.com IS routed externally.
+        val directCrossOriginLink =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://github.com/botiverse/mobile/pull/5955",
+                initialUrl = "https://stamp.build/",
+                policy = policy,
+                method = "GET",
+                isUserGesture = true,
+                isRedirect = false,
+                committedDocumentUrl = "https://stamp.build/pulls/5955",
+                routesMainFrameNavigationWithContext = routePredicate,
+            )
+        val routed = assertIs<WebNavigationDecision.Block>(directCrossOriginLink)
+        assertEquals("routed_externally", routed.reason)
+
+        // 5. Server 302 redirect to a Raft host STILL routes externally.
+        val raftHostRedirect =
+            evaluateMainFrameNavigation(
+                targetUrl = "https://app.raft.build/s/hq/c/general",
+                initialUrl = "https://stamp.build/",
+                policy = policy,
+                method = "GET",
+                isRedirect = true,
+                committedDocumentUrl = "https://stamp.build/settings",
+                routesMainFrameNavigationWithContext = routePredicate,
+            )
+        val routedRaft = assertIs<WebNavigationDecision.Block>(raftHostRedirect)
+        assertEquals("routed_externally", routedRaft.reason)
     }
 }
