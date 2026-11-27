@@ -148,6 +148,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.Layout
@@ -2763,6 +2764,12 @@ private fun ThreadComposerContentLeafBody(
     val voiceDictationHost = LocalThreadVoiceDictationHost.current
     val currentVoiceDictationHost by rememberUpdatedState(voiceDictationHost)
     val voiceDictationAwaitingSubmitFinal = rememberVoiceDictationAwaitingSubmitFinal(voiceDictationHost)
+    var voiceDictationQuoteBlockId by remember(state.instanceId) { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.instanceId, editorOwner.handledCommandId) {
+        if (editorOwner.handledCommandId > 0) {
+            currentVoiceDictationHost?.controller?.onUserEditedComposer(editorOwner.text)
+        }
+    }
     val unknownQuoteAuthor = stringResource(Res.string.thread_comments_unknown_author)
     val quoteController =
         remember(state.instanceId) {
@@ -2889,6 +2896,7 @@ private fun ThreadComposerContentLeafBody(
                 )
             is InsertQuoteResult.Inserted -> {
                 if (serialized != null) {
+                    currentVoiceDictationHost?.controller?.onUserEditedComposer(null)
                     editorOwner.applyProgrammaticText(
                         sourceSessionId = editorOwner.editorSessionId,
                         nextText = serialized,
@@ -3323,6 +3331,7 @@ private fun ThreadComposerContentLeafBody(
             selectionEnd = liveSelEnd,
             handle = handle
         ) ?: return false
+        currentVoiceDictationHost?.controller?.onUserEditedComposer(null)
         if (segmentedNow) {
             val serialized = quoteController.replaceActiveTextBlock(edit.text, edit.cursor)
             if (!editorOwner.applyProgrammaticText(editorOwner.editorSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) {
@@ -3361,6 +3370,7 @@ private fun ThreadComposerContentLeafBody(
         val liveSelStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, liveText.length)
         val liveSelEnd = maxOf(liveState.selection.start, liveState.selection.end).coerceIn(liveSelStart, liveText.length)
         val edit = threadComposerMarkdownEdit(liveText, liveSelStart, liveSelEnd, tool)
+        currentVoiceDictationHost?.controller?.onUserEditedComposer(null)
         if (segmentedNow) {
             val serialized =
                 quoteController.replaceActiveTextBlock(
@@ -3514,6 +3524,7 @@ private fun ThreadComposerContentLeafBody(
                 composing = currentActiveFieldState().composition != null,
                 deferred = false,
             )
+            currentVoiceDictationHost?.controller?.onUserEditedComposer(null)
             if (isSegmentedQuoteComposer) {
                 val serialized = quoteController.replaceActiveTextBlock(edit.text, edit.cursor)
                 if (!editorOwner.applyProgrammaticText(editorSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) return@let
@@ -3702,11 +3713,12 @@ private fun ThreadComposerContentLeafBody(
                 }
             }
         }
-        // Esc cancels active voice dictation before collapsing an expanded composer.
+        // Esc cancels active voice dictation (discarding uncommitted provisional tail, matching web)
+        // before collapsing an expanded composer.
         if (key == Key.Escape && currentActiveFieldState().composition == null) {
             val activeDictation = currentVoiceDictationHost?.controller
             if (activeDictation != null && activeDictation.state.value.isActive) {
-                activeDictation.cancel()
+                activeDictation.cancel(discardProvisional = true)
                 return true
             }
         }
@@ -3821,6 +3833,7 @@ private fun ThreadComposerContentLeafBody(
                     composing = currentActiveFieldState().composition != null,
                     deferred = false,
                 )
+                currentVoiceDictationHost?.controller?.onUserEditedComposer(null)
                 if (isSegmentedQuoteComposer) {
                     val serialized = quoteController.replaceActiveTextBlock(edit.text, edit.cursor)
                     if (!editorOwner.applyProgrammaticText(editorSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) return@onCommit
@@ -4052,7 +4065,7 @@ private fun ThreadComposerContentLeafBody(
                                         keyboardInsetDp = nextInset
                                     }
                                 },
-                                onActiveTextChange = { _, activeState, serialized ->
+                                onActiveTextChange = { blockId, activeState, serialized ->
                                     editorOwner.applyProgrammaticText(
                                         sourceSessionId = sourceSessionId,
                                         nextText = serialized,
@@ -4071,7 +4084,9 @@ private fun ThreadComposerContentLeafBody(
                                         generation = suggestionPortalGeneration,
                                         onFocusedChanged = { focused = it }
                                     )
-                                    currentVoiceDictationHost?.controller?.onUserEditedComposer(activeState.text.toString())
+                                    currentVoiceDictationHost?.controller?.onUserEditedComposer(
+                                        if (blockId == voiceDictationQuoteBlockId) activeState.text.toString() else null,
+                                    )
                                     emitChange(nextText = serialized)
                                 },
                                 onActiveFocus = {
@@ -4135,6 +4150,8 @@ private fun ThreadComposerContentLeafBody(
                                 onPasteAttachments = {
                                     onEvent(ThreadComposerPasteAttachmentsAction, null, null, null)
                                 },
+                                voiceDictationHost = voiceDictationHost,
+                                voiceDictationTargetBlockId = voiceDictationQuoteBlockId,
                                 fill = composerExpanded,
                                 modifier = if (composerExpanded) Modifier.weight(1f) else Modifier,
                             )
@@ -4143,6 +4160,17 @@ private fun ThreadComposerContentLeafBody(
                         val composerDirection = remember(text) { raftTextDirection(text) }
                         val composerLayoutDirection =
                             composerDirection.toComposeLayoutDirection(LocalLayoutDirection.current)
+                        val plainTextFieldScrollState = rememberScrollState()
+                        val plainTextLayoutState = remember { mutableStateOf<TextLayoutResult?>(null) }
+                        val plainVoiceDictationComposingModifier =
+                            rememberVoiceDictationComposingUnderlineModifier(
+                                host = if (voiceDictationQuoteBlockId == null) voiceDictationHost else null,
+                                activeText = text,
+                                imeComposing = fieldState.composition != null,
+                                layoutResultProvider = { plainTextLayoutState.value },
+                                scrollState = plainTextFieldScrollState,
+                                singleLine = false,
+                            )
                         CompositionLocalProvider(LocalLayoutDirection provides composerLayoutDirection) {
                         TextField(
                             state = fieldState,
@@ -4181,6 +4209,7 @@ private fun ThreadComposerContentLeafBody(
                             },
                             enabled = composerEnabled,
                             maxLines = if (composerExpanded) Int.MAX_VALUE else 4,
+                            onTextLayout = { if (plainTextLayoutState.value != it) plainTextLayoutState.value = it },
                             // Only the preference decides the line mode. A multi-line field
                             // suppresses the IME action key, so with "return key sends" off the
                             // editor stays multi-line and Enter inserts a newline; the suggestion
@@ -4232,6 +4261,8 @@ private fun ThreadComposerContentLeafBody(
                             // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                             focusRequester = composerFocusRequester,
                             keyboardIntent = composerKeyboardIntent,
+                            scrollState = plainTextFieldScrollState,
+                            innerTextFieldModifier = plainVoiceDictationComposingModifier,
                             modifier = Modifier
                                 // Where the focus is when a side thread closes (ComposerAutofocusPolicy.kt).
                                 .composerReportsFocus(autofocusOnOpen)
@@ -4291,42 +4322,30 @@ private fun ThreadComposerContentLeafBody(
                         },
                         voiceDictationHost = voiceDictationHost,
                         onStartVoiceDictation = {
-                            val host = currentVoiceDictationHost ?: return@ThreadComposerToolbarRow
-                            val serverId = host.serverId ?: return@ThreadComposerToolbarRow
-                            if (!host.canShow(composerEditable = composerEnabled)) return@ThreadComposerToolbarRow
-                            val segmentedAtStart = quoteController.isSegmented
-                            val liveState = currentActiveFieldState()
-                            val baseText = liveState.text.toString()
-                            val selStart = minOf(liveState.selection.start, liveState.selection.end).coerceIn(0, baseText.length)
-                            val selEnd = maxOf(liveState.selection.start, liveState.selection.end).coerceIn(selStart, baseText.length)
-                            val startSessionId = editorOwner.editorSessionId
-                            host.controller.start(
-                                serverId = serverId,
-                                channelId = host.channelId,
-                                threadId = host.threadId,
-                                language = host.languageHint,
-                                baseText = baseText,
-                                insertStart = selStart,
-                                insertEnd = selEnd,
-                                onComposerUpdate = { update ->
-                                    if (segmentedAtStart && quoteController.isSegmented) {
-                                        val serialized = quoteController.replaceActiveTextBlock(update.composerText, update.caretOffset)
-                                        if (editorOwner.applyProgrammaticText(startSessionId, serialized, cursor = serialized.length, publishAsSynced = true)) {
-                                            suggestionSelectionDispatcher.updateDraft(
-                                                text = update.composerText,
-                                                selectionStart = update.caretOffset,
-                                                selectionEnd = update.caretOffset,
-                                            )
-                                            currentOnEvent("change", serialized, currentAsTask, null)
-                                        }
-                                    } else if (editorOwner.applyProgrammaticText(startSessionId, update.composerText, cursor = update.caretOffset, publishAsSynced = true)) {
-                                        suggestionSelectionDispatcher.updateDraft(
-                                            text = update.composerText,
-                                            selectionStart = update.caretOffset,
-                                            selectionEnd = update.caretOffset,
-                                        )
-                                        currentOnEvent("change", update.composerText, currentAsTask, null)
-                                    }
+                            startThreadComposerVoiceDictation(
+                                host = currentVoiceDictationHost,
+                                composerEnabled = composerEnabled,
+                                editorOwner = editorOwner,
+                                quoteController = quoteController,
+                                suggestionSelectionDispatcher = suggestionSelectionDispatcher,
+                                onQuoteBlockIdChanged = { voiceDictationQuoteBlockId = it },
+                                onEmitChange = { nextText -> currentOnEvent("change", nextText, currentAsTask, null) },
+                                isComposerFocused = focused,
+                                onRequestFocusWithoutKeyboard = { segmentedBlockId, selStart, selEnd ->
+                                    focusThreadComposerForVoiceDictation(
+                                        focusCoordinator = focusCoordinator,
+                                        targetKey = composerFocusTargetKey,
+                                        region = focusRegion,
+                                        modalToken = focusModalToken,
+                                        focusOwnerRegistry = focusOwnerRegistry,
+                                        composerFocusScope = composerFocusScope,
+                                        composerKeyboardIntent = composerKeyboardIntent,
+                                        composerFocusRequester = composerFocusRequester,
+                                        quoteController = quoteController,
+                                        segmentedBlockId = segmentedBlockId,
+                                        selStart = selStart,
+                                        selEnd = selEnd,
+                                    )
                                 },
                             )
                         },

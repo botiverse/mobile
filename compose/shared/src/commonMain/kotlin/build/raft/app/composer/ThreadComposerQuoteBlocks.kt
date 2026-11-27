@@ -18,6 +18,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -39,6 +40,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.quoteChipExcerpt
 import build.raft.app.markdown.raftTextDirection
@@ -82,6 +84,8 @@ internal fun ThreadComposerQuoteBlocks(
     onSerializedCommit: (serialized: String, focusOffset: Int?) -> Unit,
     onJumpToQuotedMessage: ((String) -> Unit)?,
     onPasteAttachments: () -> Unit,
+    voiceDictationHost: ThreadVoiceDictationHost? = null,
+    voiceDictationTargetBlockId: String? = null,
     fill: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -231,6 +235,7 @@ internal fun ThreadComposerQuoteBlocks(
                             keyboardIntent = quoteKeyboardIntent,
                             nativeEditingStateReader = if (isPrimary) nativeEditingStateReader else null,
                             inputTransformation = inputTransformation,
+                            voiceDictationHost = if (block.id == voiceDictationTargetBlockId) voiceDictationHost else null,
                             suggestionKeyPresses = suggestionKeyPresses,
                             onSuggestionKeyDown = onSuggestionKeyDown,
                             onKeyboardHeightChange = onKeyboardHeightChange,
@@ -368,6 +373,7 @@ private fun ComposerSegmentedTextBlockRow(
     keyboardIntent: RaftEditorKeyboardIntent,
     nativeEditingStateReader: RaftTextFieldNativeEditingStateReader?,
     inputTransformation: InputTransformation?,
+    voiceDictationHost: ThreadVoiceDictationHost?,
     suggestionKeyPresses: ThreadComposerSuggestionKeyPresses,
     onSuggestionKeyDown: (Key, Boolean) -> Boolean,
     onKeyboardHeightChange: (Float) -> Unit,
@@ -383,6 +389,17 @@ private fun ComposerSegmentedTextBlockRow(
     val direction = remember(currentText) { raftTextDirection(currentText) }
     val layoutDirection = direction.toComposeLayoutDirection(LocalLayoutDirection.current)
     val quoteKeyPresses = remember(block.id) { ThreadComposerSuggestionKeyPresses() }
+    val blockScrollState = rememberScrollState()
+    val blockLayoutState = remember(block.id) { mutableStateOf<TextLayoutResult?>(null) }
+    val voiceDictationComposingModifier =
+        rememberVoiceDictationComposingUnderlineModifier(
+            host = voiceDictationHost,
+            activeText = currentText,
+            imeComposing = fieldState.composition != null,
+            layoutResultProvider = { blockLayoutState.value },
+            scrollState = blockScrollState,
+            singleLine = false,
+        )
     val latestOnTextChange by rememberUpdatedState(onTextChange)
     val latestCurrentBlocks by rememberUpdatedState(currentBlocks)
     LaunchedEffect(block.id, fieldState) {
@@ -404,6 +421,7 @@ private fun ComposerSegmentedTextBlockRow(
             onBlur = onBlur,
             enabled = composerEnabled,
             maxLines = if (fill) Int.MAX_VALUE else 4,
+            onTextLayout = { if (blockLayoutState.value != it) blockLayoutState.value = it },
             imeActionRequested = effectiveImeActionRequested,
             keyboardOptions = composerKeyboardOptions,
             keyboardActions = composerKeyboardActions,
@@ -421,6 +439,8 @@ private fun ComposerSegmentedTextBlockRow(
             nativeEditingStateReader = nativeEditingStateReader,
             focusRequester = focusRequester,
             keyboardIntent = keyboardIntent,
+            scrollState = blockScrollState,
+            innerTextFieldModifier = voiceDictationComposingModifier,
             modifier =
                 Modifier
                     .fillMaxWidth()

@@ -2,34 +2,54 @@
 
 package build.raft.app
 
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.designsystem.focus.RaftFocusCoordinator
+import build.raft.designsystem.focus.RaftFocusRegion
+import build.raft.designsystem.focus.RaftFocusRegionHost
+import build.raft.designsystem.theme.RaftAppearance
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.VoiceDictationAudioStartResult
 import build.raft.app.data.VoiceDictationGestureMode
+import build.raft.app.data.VoiceDictationTextRange
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Error
 import build.raft.app.data.VoiceDictationV2ErrorCode
@@ -67,6 +87,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import org.robolectric.shadow.api.Shadow
+import org.robolectric.shadows.ShadowViewRootImpl
 
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -1026,6 +1048,548 @@ class ThreadVoiceDictationUiTest {
             "今天的语音输入还剩不到 1 分钟，08:00 恢复。",
             Res.string.thread_voice_dictation_low_quota_under_minute.format("08:00").resolve(),
         )
+    }
+
+    @Test
+    fun composingUnderlineActivatesStrictlyOnUncommittedPartialAndClearsOnFinalCancelAndUserEdit() =
+        runRobolectricComposeUiTest {
+            val connections = listOf(FakeStreamConnection(), FakeStreamConnection())
+            var connectIndex = 0
+            val recorder = FakeRecorder()
+            val changedTexts = mutableListOf<String>()
+            var controllerRef: VoiceDictationV2Controller? = null
+
+            setContent {
+                val scope = rememberCoroutineScope()
+                val controller = remember {
+                    VoiceDictationV2Controller(
+                        permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
+                        streamConnector =
+                            object : VoiceDictationV2StreamConnector {
+                                override suspend fun connect(url: String, permit: String): VoiceDictationV2StreamConnection =
+                                    connections[connectIndex++]
+                            },
+                        scope = scope,
+                        audioRecorderProvider = { recorder },
+                    ).also { controllerRef = it }
+                }
+                val host = remember(controller) {
+                    ThreadVoiceDictationHost(
+                        flagEnabled = true,
+                        viewerIsGuest = false,
+                        recorderAvailable = true,
+                        serverId = "srv-1",
+                        channelId = "550e8400-e29b-41d4-a716-446655440000",
+                        threadId = null,
+                        languageHint = "en",
+                        controller = controller,
+                    )
+                }
+                RaftDesignSystemTheme {
+                    CompositionLocalProvider(LocalThreadVoiceDictationHost provides host) {
+                        ThreadComposerContent(
+                            surface = ThreadComposerSurface(channelId = "chan-composing"),
+                            state =
+                                ThreadComposerUiState(
+                                    instanceId = "voice-composing-plain",
+                                    seedText = "Ship",
+                                    enabled = true,
+                                ),
+                            onEvent = { action, value, _, _ ->
+                                if (action == "change" && value != null) {
+                                    changedTexts += value
+                                }
+                            },
+                            contentPaddingTop = 0.dp,
+                            contentPaddingBottom = 0.dp,
+                            attachmentPreviewEnabled = false,
+                        )
+                    }
+                }
+            }
+
+            val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
+
+            // Idle -> zero composing visual state.
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+
+            // Start session 1 -> partial arrives: underline covers ONLY "today" (8..13), NOT "Ship", "it", or joining space.
+            onNodeWithContentDescription("Voice dictation").performClick()
+            waitForIdle()
+            val conn1 = connections[0]
+            conn1.emitFrame(VoiceDictationV2ServerFrame.Ready)
+            conn1.emitFrame(VoiceDictationV2ServerFrame.Text(text = "it today", stableLen = 2, refined = false))
+            waitForIdle()
+
+            val controller = assertNotNull(controllerRef)
+            assertEquals("Ship it today", changedTexts.lastOrNull())
+            assertEquals(VoiceDictationTextRange(7, 13), controller.state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(8, 13)))
+
+            // Identical text finalized -> composing visual state clears immediately.
+            conn1.emitFrame(VoiceDictationV2ServerFrame.Text(text = "it today", stableLen = 8, refined = false))
+            waitForIdle()
+            assertNull(controller.state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+
+            // Utterance 2 partial -> underline covers ONLY utterance 2 ("please", 14..20), NOT utterance 1.
+            conn1.emitFrame(VoiceDictationV2ServerFrame.Text(text = "it today please", stableLen = 8, refined = false))
+            waitForIdle()
+            assertEquals("Ship it today please", changedTexts.lastOrNull())
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(14, 20)))
+
+            // Escape cancel (discardProvisional = true) -> strips uncommitted " please" and clears composing state.
+            controller.cancel(discardProvisional = true)
+            waitForIdle()
+            assertEquals("Ship it today", changedTexts.lastOrNull())
+            assertNull(controller.state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+
+            // Session 2 -> partial arrives, then manual user edit immediately detaches & clears composing state.
+            onNodeWithContentDescription("Voice dictation").performClick()
+            waitForIdle()
+            val conn2 = connections[1]
+            conn2.emitFrame(VoiceDictationV2ServerFrame.Ready)
+            conn2.emitFrame(VoiceDictationV2ServerFrame.Text(text = "now", stableLen = 0, refined = false))
+            waitForIdle()
+            assertEquals("Ship it today now", changedTexts.lastOrNull())
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(14, 17)))
+
+            onNode(hasSetTextAction()).performTextInput("!")
+            waitForIdle()
+            assertEquals("Ship it today now!", changedTexts.lastOrNull())
+            assertNull(controller.state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+
+            // Subsequent frame after manual edit must stay ignored and never restore composing state.
+            conn2.emitFrame(VoiceDictationV2ServerFrame.Text(text = "now overwritten", stableLen = 0, refined = false))
+            waitForIdle()
+            assertEquals("Ship it today now!", changedTexts.lastOrNull())
+            assertNull(controller.state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+        }
+
+    @Test
+    fun composingUnderlineClearsOnNonBlockingStopAndWorksInCjkAndSegmentedQuoteComposer() =
+        runRobolectricComposeUiTest {
+            ThreadComposerQuoteMetaCache.clear()
+            try {
+                val quote =
+                    PendingComposerQuote(
+                        messageId = "22222222-2222-4222-8222-222222222222",
+                        authorName = "Alice",
+                        authorType = "user",
+                        excerpt = "quoted line",
+                        isPartial = true,
+                        createdAt = "2026-11-26T08:00:00.000Z",
+                    )
+                ThreadComposerQuoteMetaCache.remember(quote)
+
+                val cjkConn = FakeStreamConnection()
+                val quoteConn = FakeStreamConnection()
+                val quoteHost = ThreadQuoteReplyHost()
+                val quoteChanges = mutableListOf<String>()
+                var cjkControllerRef: VoiceDictationV2Controller? = null
+                var quoteControllerRef: VoiceDictationV2Controller? = null
+
+                setContent {
+                    val scope = rememberCoroutineScope()
+                    val cjkController = remember {
+                        VoiceDictationV2Controller(
+                            permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
+                            streamConnector = FakeStreamConnector(cjkConn),
+                            scope = scope,
+                            audioRecorderProvider = { FakeRecorder() },
+                        ).also { cjkControllerRef = it }
+                    }
+                    val cjkHost = remember(cjkController) {
+                        ThreadVoiceDictationHost(
+                            flagEnabled = true,
+                            viewerIsGuest = false,
+                            recorderAvailable = true,
+                            serverId = "srv-1",
+                            channelId = "550e8400-e29b-41d4-a716-446655440000",
+                            threadId = null,
+                            languageHint = "zh",
+                            controller = cjkController,
+                        )
+                    }
+                    val quoteDictationController = remember {
+                        VoiceDictationV2Controller(
+                            permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
+                            streamConnector = FakeStreamConnector(quoteConn),
+                            scope = scope,
+                            audioRecorderProvider = { FakeRecorder() },
+                        ).also { quoteControllerRef = it }
+                    }
+                    val quoteDictationHost = remember(quoteDictationController) {
+                        ThreadVoiceDictationHost(
+                            flagEnabled = true,
+                            viewerIsGuest = false,
+                            recorderAvailable = true,
+                            serverId = "srv-1",
+                            channelId = "550e8400-e29b-41d4-a716-446655440000",
+                            threadId = null,
+                            languageHint = "zh",
+                            controller = quoteDictationController,
+                        )
+                    }
+                    RaftDesignSystemTheme {
+                        Column(Modifier.fillMaxSize()) {
+                            CompositionLocalProvider(LocalThreadVoiceDictationHost provides cjkHost) {
+                                ThreadComposerContent(
+                                    surface = ThreadComposerSurface(channelId = "chan-cjk"),
+                                    state =
+                                        ThreadComposerUiState(
+                                            instanceId = "voice-composing-cjk",
+                                            seedText = "已有内容",
+                                            enabled = true,
+                                        ),
+                                    onEvent = { _, _, _, _ -> },
+                                    contentPaddingTop = 0.dp,
+                                    contentPaddingBottom = 0.dp,
+                                    attachmentPreviewEnabled = false,
+                                )
+                            }
+                            CompositionLocalProvider(
+                                LocalThreadQuoteReplyHost provides quoteHost,
+                                LocalThreadVoiceDictationHost provides quoteDictationHost,
+                            ) {
+                                ThreadComposerContent(
+                                    surface = ThreadComposerSurface(channelId = "chan-quote"),
+                                    state = ThreadComposerUiState(instanceId = "voice-composing-quote", enabled = true),
+                                    onEvent = { action, value, _, _ ->
+                                        if (action == "change" && value != null) {
+                                            quoteChanges += value
+                                        }
+                                    },
+                                    contentPaddingTop = 0.dp,
+                                    contentPaddingBottom = 0.dp,
+                                    attachmentPreviewEnabled = false,
+                                )
+                            }
+                        }
+                    }
+                }
+
+                val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
+                onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+
+                // 1) CJK partial -> composing underline covers strictly "正在说话" (4..8), clears immediately on Stop.
+                onAllNodesWithContentDescription("Voice dictation")[0].performClick()
+                waitForIdle()
+                cjkConn.emitFrame(VoiceDictationV2ServerFrame.Ready)
+                cjkConn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "正在说话", stableLen = 0, refined = false))
+                waitForIdle()
+
+                onNode(hasComposingRange, useUnmergedTree = true)
+                    .assertExists()
+                    .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(4, 8)))
+
+                onNodeWithContentDescription("Stop dictation").performClick()
+                waitForIdle()
+                assertNull(assertNotNull(cjkControllerRef).state.value.provisionalRange)
+                onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+
+                // Post-stop background partial updates draft without re-showing composing underline.
+                cjkConn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "正在说话呢", stableLen = 0, refined = false))
+                cjkConn.emitFrame(VoiceDictationV2ServerFrame.Done)
+                waitForIdle()
+                onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+
+                // 2) Segmented quote composer: insert quote chip, dictate into active block, verify composing state.
+                quoteHost.requestInsertQuote(
+                    ThreadComposerQuoteInsert(quote = quote, fallbackMarkdown = "> ${quote.excerpt}"),
+                )
+                waitForIdle()
+                onAllNodesWithContentDescription("Voice dictation")[1].performClick()
+                waitForIdle()
+                quoteConn.emitFrame(VoiceDictationV2ServerFrame.Ready)
+                quoteConn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "引用回复中", stableLen = 0, refined = false))
+                waitForIdle()
+
+                assertTrue(quoteChanges.lastOrNull()?.endsWith("引用回复中") == true)
+                onNode(hasComposingRange, useUnmergedTree = true)
+                    .assertExists()
+                    .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 5)))
+
+                quoteConn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "引用回复完成。", stableLen = 7, refined = true))
+                waitForIdle()
+                assertNull(assertNotNull(quoteControllerRef).state.value.provisionalRange)
+                onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+                assertTrue(quoteChanges.lastOrNull()?.endsWith("引用回复完成。") == true)
+            } finally {
+                ThreadComposerQuoteMetaCache.clear()
+            }
+        }
+
+    @Test
+    fun pressingAndHoldingMicFromUnfocusedComposerAutoFocusesWithoutOpeningSoftKeyboard() =
+        runRobolectricComposeUiTest {
+            val conn = FakeStreamConnection()
+            val keyboard = RecordingSoftwareKeyboardController()
+            val coordinator = RaftFocusCoordinator()
+            var hostComposeView: View? = null
+            var controllerRef: VoiceDictationV2Controller? = null
+
+            setContent {
+                val view = LocalView.current
+                SideEffect { hostComposeView = view }
+                val scope = rememberCoroutineScope()
+                val controller = remember {
+                    VoiceDictationV2Controller(
+                        permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
+                        streamConnector = FakeStreamConnector(conn),
+                        scope = scope,
+                        audioRecorderProvider = { FakeRecorder() },
+                    ).also { controllerRef = it }
+                }
+                val host = remember(controller) {
+                    ThreadVoiceDictationHost(
+                        flagEnabled = true,
+                        viewerIsGuest = false,
+                        recorderAvailable = true,
+                        serverId = "srv-1",
+                        channelId = "550e8400-e29b-41d4-a716-446655440000",
+                        threadId = null,
+                        languageHint = "zh",
+                        controller = controller,
+                    )
+                }
+                RaftTheme(appearance = RaftAppearance.Light) {
+                    val portal = remember { ThreadComposerSuggestionPortalState() }
+                    CompositionLocalProvider(
+                        LocalSoftwareKeyboardController provides keyboard,
+                        LocalThreadComposerSuggestionPortal provides portal,
+                        LocalThreadVoiceDictationHost provides host,
+                    ) {
+                        RaftWindowFocusScope(coordinator = coordinator) {
+                            Column(Modifier.fillMaxSize()) {
+                                Box(Modifier.size(1.dp).focusable())
+                                RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                    val focusOnOpen =
+                                        rememberComposerFocusOnOpen(
+                                            policy = false,
+                                            shown = true,
+                                            yieldsToSideThread = false,
+                                            opensOnMessage = true,
+                                        )
+                                    ThreadComposerContent(
+                                        surface = ThreadComposerSurface(channelId = "chan-autofocus-plain"),
+                                        state = ThreadComposerUiState(instanceId = "voice-autofocus-plain", enabled = true),
+                                        onEvent = { _, _, _, _ -> },
+                                        contentPaddingTop = 0.dp,
+                                        contentPaddingBottom = 0.dp,
+                                        attachmentPreviewEnabled = false,
+                                        autofocusOnOpen = focusOnOpen,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            // Composer starts unfocused with no soft keyboard or input session.
+            onNode(hasSetTextAction()).assertIsNotFocused()
+            assertFalse(coordinator.anyComposerFocused)
+            assertFalse(composeRoot.onCheckIsTextEditor())
+            assertEquals(0, keyboard.shown)
+
+            // Press and hold the Mic button past the 350 ms hold threshold without releasing.
+            onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { down(center) }
+            mainClock.advanceTimeBy(400L)
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            // Composer automatically gains focus (blinking caret active) while keeping the soft
+            // keyboard closed so the held mic button never shifts upward under the user's thumb.
+            onNode(hasSetTextAction()).assertIsFocused()
+            assertTrue(coordinator.anyComposerFocused)
+            assertEquals(0, keyboard.shown)
+            assertFalse(composeRoot.onCheckIsTextEditor(), "touch press-and-hold must not open soft keyboard")
+            assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
+            onNodeWithTag(ThreadVoiceDictationHoldPillTestTag, useUnmergedTree = true).assertIsDisplayed()
+
+            // Streaming partial renders composing dotted underline while focused and held.
+            val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
+            conn.emitFrame(VoiceDictationV2ServerFrame.Ready)
+            conn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "正在听", stableLen = 0, refined = false))
+            waitForIdle()
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 3)))
+
+            // Releasing the hold stops cleanly, clears composing state, keeps composer focused, and never pops IME.
+            onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { up() }
+            waitForIdle()
+            assertEquals(VoiceDictationV2Phase.Idle, assertNotNull(controllerRef).state.value.phase)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+            onNode(hasSetTextAction()).assertIsFocused()
+            assertEquals(0, keyboard.shown)
+        }
+
+    @Test
+    fun startingDictationFromUnfocusedSegmentedQuoteComposerAutoFocusesWithoutOpeningSoftKeyboard() =
+        runRobolectricComposeUiTest {
+            ThreadComposerQuoteMetaCache.clear()
+            try {
+                val quote =
+                    PendingComposerQuote(
+                        messageId = "33333333-3333-4333-8333-333333333333",
+                        authorName = "Bob",
+                        authorType = "user",
+                        excerpt = "original message",
+                        isPartial = true,
+                        createdAt = "2026-11-26T08:00:00.000Z",
+                    )
+                ThreadComposerQuoteMetaCache.remember(quote)
+                val segmentedSeed =
+                    serializeComposerBlocks(
+                        listOf(
+                            ComposerBlock.Quote(id = "q-1", quote = quote),
+                            ComposerBlock.Text(id = "t-1", text = "已有"),
+                        ),
+                    )
+
+                // Unit-verify focusedTextBlockId tracking and selection-range preservation on requestFocusBlock.
+                val unitQuoteController =
+                    ThreadComposerQuoteController(
+                        initialDraft = segmentedSeed,
+                        resolveQuoteMeta = { _, _ -> quote },
+                    )
+                val unitBlockId = assertNotNull(unitQuoteController.activeTextBlockOrNull()).id
+                assertNull(unitQuoteController.focusedTextBlockId)
+                unitQuoteController.requestFocusBlock(
+                    blockId = unitBlockId,
+                    offset = 0,
+                    raiseKeyboard = false,
+                    selectionEnd = 2,
+                )
+                assertEquals(TextRange(0, 2), unitQuoteController.activeTextFieldState()?.selection)
+                assertEquals(false, unitQuoteController.pendingFocusRequest?.raiseKeyboard)
+                unitQuoteController.onTextBlockFocus(unitBlockId)
+                assertEquals(unitBlockId, unitQuoteController.focusedTextBlockId)
+                unitQuoteController.onTextBlockBlur(unitBlockId)
+                assertNull(unitQuoteController.focusedTextBlockId)
+
+                val conn = FakeStreamConnection()
+                val keyboard = RecordingSoftwareKeyboardController()
+                val coordinator = RaftFocusCoordinator()
+                var hostComposeView: View? = null
+
+                setContent {
+                    val view = LocalView.current
+                    SideEffect { hostComposeView = view }
+                    val scope = rememberCoroutineScope()
+                    val controller = remember {
+                        VoiceDictationV2Controller(
+                            permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
+                            streamConnector = FakeStreamConnector(conn),
+                            scope = scope,
+                            audioRecorderProvider = { FakeRecorder() },
+                        )
+                    }
+                    val host = remember(controller) {
+                        ThreadVoiceDictationHost(
+                            flagEnabled = true,
+                            viewerIsGuest = false,
+                            recorderAvailable = true,
+                            serverId = "srv-1",
+                            channelId = "550e8400-e29b-41d4-a716-446655440000",
+                            threadId = null,
+                            languageHint = "zh",
+                            controller = controller,
+                        )
+                    }
+                    RaftTheme(appearance = RaftAppearance.Light) {
+                        val portal = remember { ThreadComposerSuggestionPortalState() }
+                        CompositionLocalProvider(
+                            LocalSoftwareKeyboardController provides keyboard,
+                            LocalThreadComposerSuggestionPortal provides portal,
+                            LocalThreadVoiceDictationHost provides host,
+                        ) {
+                            RaftWindowFocusScope(coordinator = coordinator) {
+                                Column(Modifier.fillMaxSize()) {
+                                    Box(Modifier.size(1.dp).focusable())
+                                    RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                        ThreadComposerContent(
+                                            surface = ThreadComposerSurface(channelId = "chan-autofocus-quote"),
+                                            state =
+                                                ThreadComposerUiState(
+                                                    instanceId = "voice-autofocus-quote",
+                                                    seedText = segmentedSeed,
+                                                    enabled = true,
+                                                ),
+                                            onEvent = { _, _, _, _ -> },
+                                            contentPaddingTop = 0.dp,
+                                            contentPaddingBottom = 0.dp,
+                                            attachmentPreviewEnabled = false,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                waitForIdle()
+                val composeRoot = checkNotNull(hostComposeView)
+                runOnIdle { dispatchWindowFocus(composeRoot, true) }
+                waitForIdle()
+
+                onNode(hasSetTextAction()).assertIsNotFocused()
+                assertEquals(0, keyboard.shown)
+                assertFalse(composeRoot.onCheckIsTextEditor())
+
+                // Starting dictation focuses the active segmented quote text block without raising IME.
+                onNodeWithTag(ThreadVoiceDictationButtonTestTag).performClick()
+                repeat(4) { mainClock.advanceTimeByFrame() }
+                waitForIdle()
+
+                onNode(hasSetTextAction()).assertIsFocused()
+                assertEquals(0, keyboard.shown)
+                assertFalse(composeRoot.onCheckIsTextEditor())
+
+                val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
+                conn.emitFrame(VoiceDictationV2ServerFrame.Ready)
+                conn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "补一句", stableLen = 0, refined = false))
+                waitForIdle()
+                onNode(hasComposingRange, useUnmergedTree = true)
+                    .assertExists()
+                    .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(2, 5)))
+            } finally {
+                ThreadComposerQuoteMetaCache.clear()
+            }
+        }
+
+    private fun dispatchWindowFocus(composeRoot: View, hasFocus: Boolean) {
+        val viewRoot = checkNotNull(composeRoot.rootView.parent) { "composeRoot must be attached to a ViewRootImpl" }
+        Shadow.extract<ShadowViewRootImpl>(viewRoot).callWindowFocusChanged(hasFocus)
+    }
+
+    private class RecordingSoftwareKeyboardController : SoftwareKeyboardController {
+        var shown = 0
+        var hidden = 0
+
+        override fun show() {
+            shown += 1
+        }
+
+        override fun hide() {
+            hidden += 1
+        }
     }
 
     private fun samplePermit(): VoiceDictationV2Permit =

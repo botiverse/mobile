@@ -779,6 +779,8 @@ internal class ThreadComposerQuoteController(
         private set
     var activeTextBlockId by mutableStateOf(defaultActiveTextBlockId(blocks))
         private set
+    var focusedTextBlockId: String? = null
+        private set
     var armedDeleteQuoteId by mutableStateOf<String?>(null)
         private set
     var duplicateFlashBlockId by mutableStateOf<String?>(null)
@@ -811,13 +813,12 @@ internal class ThreadComposerQuoteController(
             TextFieldState(block.text, initialSelection = TextRange(block.text.length))
         }
 
-    fun activeTextFieldState(): TextFieldState? {
-        val active =
-            blocks.firstOrNull { it is ComposerBlock.Text && it.id == activeTextBlockId } as? ComposerBlock.Text
-                ?: blocks.lastOrNull { it is ComposerBlock.Text } as? ComposerBlock.Text
-                ?: return null
-        return textFieldStateFor(active)
-    }
+    fun activeTextBlockOrNull(): ComposerBlock.Text? =
+        blocks.firstOrNull { it is ComposerBlock.Text && it.id == activeTextBlockId } as? ComposerBlock.Text
+            ?: blocks.lastOrNull { it is ComposerBlock.Text } as? ComposerBlock.Text
+
+    fun activeTextFieldState(): TextFieldState? =
+        activeTextBlockOrNull()?.let(::textFieldStateFor)
 
     fun textFieldValueFor(block: ComposerBlock.Text): TextFieldValue =
         textFieldStateFor(block).toRaftTextFieldValue()
@@ -845,6 +846,7 @@ internal class ThreadComposerQuoteController(
         val parsed = parseDraftToComposerBlocks(draft, resolveQuoteMeta)
         blocks = parsed
         activeTextBlockId = defaultActiveTextBlockId(parsed)
+        focusedTextBlockId = null
         textFieldStatesByBlockId.clear()
         for (block in parsed) {
             if (block is ComposerBlock.Text) {
@@ -859,6 +861,7 @@ internal class ThreadComposerQuoteController(
         val id = empty.first().id
         blocks = empty
         activeTextBlockId = id
+        focusedTextBlockId = null
         lastCommittedSerialized = ""
         armedDeleteQuoteId = null
         duplicateFlashBlockId = null
@@ -880,6 +883,7 @@ internal class ThreadComposerQuoteController(
 
     fun onTextBlockFocus(blockId: String) {
         activeTextBlockId = blockId
+        focusedTextBlockId = blockId
         armedDeleteQuoteId = null
     }
 
@@ -893,10 +897,18 @@ internal class ThreadComposerQuoteController(
 
     /** Collapses an empty non-trailing explicit gap on blur; returns serialized draft if changed, else null. */
     fun onTextBlockBlur(blockId: String): String? {
+        if (focusedTextBlockId == blockId) {
+            focusedTextBlockId = null
+        }
         armedDeleteQuoteId = null
         val collapsed = collapseEmptyExplicitGap(blocks, blockId)
         if (collapsed.size == blocks.size) return null
         return commitBlocks(collapsed)
+    }
+
+    fun textFieldStateOrNull(blockId: String): TextFieldState? {
+        val block = blocks.firstOrNull { it is ComposerBlock.Text && it.id == blockId } as? ComposerBlock.Text ?: return null
+        return textFieldStateFor(block)
     }
 
     /** Replaces the active text block's text & selection (e.g. `@` / `#` suggestion, mention insert, or format tool). */
@@ -908,6 +920,20 @@ internal class ThreadComposerQuoteController(
         val blockId =
             blocks.firstOrNull { it is ComposerBlock.Text && it.id == activeTextBlockId }?.id
                 ?: defaultActiveTextBlockId(blocks)
+        return replaceTextBlock(blockId, nextText, nextCursor, nextSelectionEnd) ?: lastCommittedSerialized
+    }
+
+    /**
+     * Replaces a specific text block's text & selection when [blockId] still exists in [blocks].
+     * Returns the newly serialized draft string, or `null` if that block was removed.
+     */
+    fun replaceTextBlock(
+        blockId: String,
+        nextText: String,
+        nextCursor: Int,
+        nextSelectionEnd: Int = nextCursor,
+    ): String? {
+        if (blocks.none { it is ComposerBlock.Text && it.id == blockId }) return null
         val clampedStart = nextCursor.coerceIn(0, nextText.length)
         val clampedEnd = nextSelectionEnd.coerceIn(clampedStart, nextText.length)
         val targetState =
@@ -1036,21 +1062,27 @@ internal class ThreadComposerQuoteController(
         )
     }
 
-    fun requestFocusBlock(blockId: String, offset: Int, raiseKeyboard: Boolean = false) {
+    fun requestFocusBlock(
+        blockId: String,
+        offset: Int,
+        raiseKeyboard: Boolean = false,
+        selectionEnd: Int = offset,
+    ) {
         val textBlock = blocks.firstOrNull { it is ComposerBlock.Text && it.id == blockId } as? ComposerBlock.Text
         val liveState = textBlock?.let { textFieldStateFor(it) }
         val textLength = liveState?.text?.length ?: textBlock?.text?.length ?: 0
-        val clamped = offset.coerceIn(0, textLength)
+        val clampedStart = offset.coerceIn(0, textLength)
+        val clampedEnd = selectionEnd.coerceIn(clampedStart, textLength)
         activeTextBlockId = blockId
         liveState?.edit {
-            selection = TextRange(clamped)
+            selection = TextRange(clampedStart, clampedEnd)
         }
         focusNonceCounter += 1
         pendingFocusRequest =
             ComposerBlockFocusRequest(
                 nonce = focusNonceCounter,
                 blockId = blockId,
-                offset = clamped,
+                offset = clampedStart,
                 raiseKeyboard = raiseKeyboard,
             )
     }
@@ -1152,6 +1184,9 @@ internal class ThreadComposerQuoteController(
         }
         blocks = nextBlocks
         activeTextBlockId = nextActiveId
+        if (focusedTextBlockId != null && focusedTextBlockId !in validTextIds) {
+            focusedTextBlockId = null
+        }
         lastCommittedSerialized = serialized
         if (requestFocus) {
             val activeText = textFieldStatesByBlockId[nextActiveId]?.text?.toString().orEmpty()

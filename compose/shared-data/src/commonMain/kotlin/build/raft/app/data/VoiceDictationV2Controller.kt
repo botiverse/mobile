@@ -108,6 +108,44 @@ private fun Char.isAsciiAlphaNumeric(): Boolean = isAsciiLetter() || this in '0'
 private fun Char.isAsciiSentencePunctuation(): Boolean =
     this == '.' || this == '!' || this == '?' || this == ',' || this == ';' || this == ':'
 
+/**
+ * Half-open UTF-16 offset range `[start, endExclusive)` inside a composer draft identifying
+ * uncommitted streaming voice dictation text (`0 <= start < endExclusive`).
+ * Mirrors web `DictationRange { start, end }` (`voiceDictationTextHelpers.ts`).
+ */
+@RaftCoreInternalApi
+data class VoiceDictationTextRange(
+    val start: Int,
+    val endExclusive: Int,
+) {
+    val length: Int
+        get() = (endExclusive - start).coerceAtLeast(0)
+
+    val isEmpty: Boolean
+        get() = endExclusive <= start
+}
+
+/**
+ * Clamps [range] safely into [text] and trims leading/trailing whitespace within the slice so only
+ * non-whitespace uncommitted words receive the composing dotted underline (excluding joining spaces
+ * inserted before or after the spoken phrase). Mirrors web `splitProvisionalText`.
+ */
+@RaftCoreInternalApi
+fun trimVoiceDictationProvisionalRange(
+    text: CharSequence,
+    range: VoiceDictationTextRange?,
+): VoiceDictationTextRange? {
+    if (range == null || text.isEmpty()) return null
+    val rawStart = range.start.coerceIn(0, text.length)
+    val rawEnd = range.endExclusive.coerceIn(rawStart, text.length)
+    if (rawEnd <= rawStart) return null
+    var start = rawStart
+    var end = rawEnd
+    while (start < end && text[start].isWhitespace()) start += 1
+    while (end > start && text[end - 1].isWhitespace()) end -= 1
+    return if (end > start) VoiceDictationTextRange(start = start, endExclusive = end) else null
+}
+
 /** Result of applying one v2 `text` snapshot onto [VoiceDictationComposerSpan]. */
 @RaftCoreInternalApi
 data class VoiceDictationComposerUpdate(
@@ -123,12 +161,19 @@ data class VoiceDictationComposerUpdate(
     val stableEnd: Int,
     /** End UTF-16 offset of `frame.text` (before any right-boundary space). */
     val textEnd: Int,
-    /** Collapsed caret offset recommended after applying this update. */
+    /** Selection start / collapsed caret offset recommended after applying this update. */
     val caretOffset: Int,
     /** Clamped `stable_len` relative to `frame.text` (`0..frame.text.length`). */
     val stableLen: Int,
     /** Whether `holt-live` marked this snapshot `refined: true`. */
     val refined: Boolean,
+    /** Selection end offset (equals [caretOffset] unless restoring a non-collapsed initial selection). */
+    val selectionEndOffset: Int = caretOffset,
+    /**
+     * Uncommitted live partial range `[stableEnd, textEnd)` inside [composerText] while listening,
+     * or `null` when confirmed (`stableLen >= text.length`) or applied after `stop()`.
+     */
+    val provisionalRange: VoiceDictationTextRange? = null,
 )
 
 /**
@@ -137,10 +182,12 @@ data class VoiceDictationComposerUpdate(
  * - Captures `(baseText, insertStart, insertEnd)` when dictation begins and normalizes left/right
  *   boundary spacing cleanly (never inserting spaces at CJK boundaries).
  * - While active (and while draining in the background if untouched), replaces the dictated span
- *   with each whole-session `text` snapshot from `holt-live`, tracking `stableLen` and `refined`.
+ *   with each whole-session `text` snapshot from `holt-live`, tracking `stableLen`, `refined`, and
+ *   [lastProvisionalRange] (`[stableEnd, textEnd)` while listening and unconfirmed).
  * - Minimal client safety rule (`docs/contracts/voice-dictation-v2.md` §Client rendering rules):
  *   once the user edits the composer ([onUserEditedComposer]), latches [ignoreSubsequentText] to
- *   `true` and ignores ALL subsequent `text` frames so user edits are never overwritten.
+ *   `true`, clears [lastProvisionalRange], and ignores ALL subsequent `text` frames so user edits
+ *   are never overwritten.
  */
 @RaftCoreInternalApi
 class VoiceDictationComposerSpan(
@@ -151,6 +198,7 @@ class VoiceDictationComposerSpan(
     val start: Int = insertStart.coerceIn(0, baseText.length)
     val end: Int = insertEnd.coerceIn(start, baseText.length)
 
+    private val initialBaseText: String = baseText
     private val prefix: String = baseText.substring(0, start)
     private val suffix: String = baseText.substring(end)
 
@@ -175,21 +223,27 @@ class VoiceDictationComposerSpan(
     var lastComposerText: String = baseText
         private set
 
+    var lastProvisionalRange: VoiceDictationTextRange? = null
+        private set
+
     /** Transitions the span into post-stop drain mode (still applies frames until user edits). */
     fun markStopping() {
         stopping = true
+        lastProvisionalRange = null
     }
 
     /**
      * Records a user edit in the composer. When [currentComposerText] is supplied and equals
      * [lastComposerText], ignores the programmatic write echo; otherwise latches
-     * [ignoreSubsequentText] = `true` so no subsequent `text` snapshot can overwrite user edits.
+     * [ignoreSubsequentText] = `true` and clears [lastProvisionalRange] so no subsequent `text`
+     * snapshot can overwrite user edits.
      */
     fun onUserEditedComposer(currentComposerText: String? = null) {
         if (currentComposerText != null && currentComposerText == lastComposerText) {
             return
         }
         ignoreSubsequentText = true
+        lastProvisionalRange = null
     }
 
     /** Convenience overload applying a decoded [VoiceDictationV2ServerFrame.Text]. */
@@ -220,12 +274,19 @@ class VoiceDictationComposerSpan(
         val stableEnd = textStart + clampedStableLen
         val textEnd = textStart + text.length
         val spanEnd = spanStart + inserted.length
+        val provisionalRange =
+            if (!stopping && stableEnd < textEnd) {
+                VoiceDictationTextRange(start = stableEnd, endExclusive = textEnd)
+            } else {
+                null
+            }
 
         hasAppliedText = true
         lastText = text
         lastStableLen = clampedStableLen
         lastRefined = refined
         lastComposerText = nextComposerText
+        lastProvisionalRange = provisionalRange
 
         return VoiceDictationComposerUpdate(
             composerText = nextComposerText,
@@ -237,7 +298,46 @@ class VoiceDictationComposerSpan(
             caretOffset = textEnd,
             stableLen = clampedStableLen,
             refined = refined,
+            selectionEndOffset = textEnd,
+            provisionalRange = provisionalRange,
         )
+    }
+
+    /**
+     * Discards any uncommitted live partial tail (used on explicit Escape cancel, matching web
+     * `finishV2SnapshotState(..., keepProvisional = false)`):
+     * - If nothing has been confirmed yet (`lastStableLen == 0`), restores the initial base draft
+     *   and original selection `(start, end)`.
+     * - If earlier utterances were confirmed (`lastStableLen > 0`), keeps the confirmed prefix and
+     *   removes only the uncommitted tail.
+     * Returns `null` when no uncommitted partial is active or the user already edited the composer.
+     */
+    fun discardProvisional(): VoiceDictationComposerUpdate? {
+        if (ignoreSubsequentText || !hasAppliedText || lastProvisionalRange == null) return null
+        val stableLen = lastStableLen.coerceIn(0, lastText.length)
+        if (stableLen <= 0) {
+            hasAppliedText = false
+            lastText = ""
+            lastStableLen = 0
+            lastRefined = false
+            lastComposerText = initialBaseText
+            lastProvisionalRange = null
+            return VoiceDictationComposerUpdate(
+                composerText = initialBaseText,
+                spanStart = start,
+                spanEnd = end,
+                textStart = start,
+                stableEnd = start,
+                textEnd = start,
+                caretOffset = start,
+                stableLen = 0,
+                refined = false,
+                selectionEndOffset = end,
+                provisionalRange = null,
+            )
+        }
+        val confirmedPrefix = lastText.substring(0, stableLen)
+        return applyText(text = confirmedPrefix, stableLen = confirmedPrefix.length, refined = false)
     }
 }
 
@@ -308,6 +408,12 @@ data class VoiceDictationV2State(
     val quotaExhaustedResetsAtIso: String? = null,
     /** Epoch millis parsed from [quotaExhaustedResetsAtIso] when available. */
     val quotaExhaustedResetsAtEpochMs: Long? = null,
+    /**
+     * Uncommitted live partial UTF-16 range `[start, endExclusive)` in the active composer draft
+     * while listening, or `null` when confirmed, idle, stopped, cancelled, errored, or detached by
+     * a manual user edit. Mirrors web `VoiceDictationState.provisionalRange`.
+     */
+    val provisionalRange: VoiceDictationTextRange? = null,
 ) {
     val isActive: Boolean
         get() = phase == VoiceDictationV2Phase.Connecting || phase == VoiceDictationV2Phase.Listening
@@ -828,6 +934,7 @@ class VoiceDictationV2Controller(
                         audioLevel = 0f,
                         error = null,
                         hasBackgroundDrain = true,
+                        provisionalRange = null,
                     )
             }
         }
@@ -945,27 +1052,59 @@ class VoiceDictationV2Controller(
         abortAllSessionsLocked(resetState = true, clearQuotaAndOwner = false)
     }
 
-    /** Immediately aborts any active and/or background dictation session and cleans up recorder & WS. */
-    fun cancel() {
-        abortAllSessionsLocked(resetState = true, clearQuotaAndOwner = false)
+    /**
+     * Immediately aborts any active and/or background dictation session and cleans up recorder & WS.
+     * When [discardProvisional] is `true` (e.g. pressing Escape during dictation), reverts any
+     * uncommitted live partial tail (or restores the initial base draft if nothing was confirmed
+     * yet) while preserving already-confirmed utterances.
+     */
+    fun cancel(discardProvisional: Boolean = false) {
+        var discardCallback: Pair<(VoiceDictationComposerUpdate) -> Unit, VoiceDictationComposerUpdate>? = null
+        abortAllSessionsLocked(
+            resetState = true,
+            clearQuotaAndOwner = false,
+            onBeforeAbortActiveLocked =
+                if (discardProvisional) {
+                    { active ->
+                        val update = active.span.discardProvisional()
+                        if (update != null) {
+                            discardCallback = active.onComposerUpdate to update
+                        }
+                        update
+                    }
+                } else {
+                    null
+                },
+        )
+        discardCallback?.let { (callback, update) -> callback(update) }
     }
 
     /**
      * Notifies both active and background sessions that the user edited the composer text. Latches
      * `ignoreSubsequentText = true` so subsequent `text` snapshots (including post-stop refines)
-     * never overwrite user edits, and immediately releases any pending submit wait so the user's
-     * current text sends without delay.
+     * never overwrite user edits, clears any live [VoiceDictationV2State.provisionalRange], and
+     * immediately releases any pending submit wait so the user's current text sends without delay.
      */
     fun onUserEditedComposer(currentComposerText: String? = null) {
         var releaseSubmitWait = false
         synchronized(stateLock) {
-            activeSession?.takeIf { !it.aborted }?.span?.onUserEditedComposer(currentComposerText)
+            val active = activeSession?.takeIf { !it.aborted }
+            if (active != null) {
+                val wasIgnored = active.span.ignoreSubsequentText
+                active.span.onUserEditedComposer(currentComposerText)
+                if (active.span.ignoreSubsequentText && (!wasIgnored || stateFlow.value.provisionalRange != null)) {
+                    stateFlow.value = stateFlow.value.copy(provisionalRange = null)
+                }
+            }
             val bg = backgroundSession?.takeIf { !it.aborted }
             if (bg != null) {
                 val wasIgnored = bg.span.ignoreSubsequentText
                 bg.span.onUserEditedComposer(currentComposerText)
                 if (!wasIgnored && bg.span.ignoreSubsequentText) {
                     releaseSubmitWait = true
+                }
+                if (bg.span.ignoreSubsequentText && activeSession == null && stateFlow.value.provisionalRange != null) {
+                    stateFlow.value = stateFlow.value.copy(provisionalRange = null)
                 }
             }
         }
@@ -1007,6 +1146,7 @@ class VoiceDictationV2Controller(
                         (
                             current.error != null ||
                                 current.lastUpdate != null ||
+                                current.provisionalRange != null ||
                                 current.quota != null ||
                                 current.quotaExhausted ||
                                 current.quotaExhaustedResetsAtIso != null
@@ -1110,8 +1250,20 @@ class VoiceDictationV2Controller(
                             null
                         } else {
                             val applied = session.span.applyFrame(frame)
-                            if (applied != null && (activeSession === session || (activeSession == null && backgroundSession === session))) {
-                                stateFlow.value = stateFlow.value.copy(lastUpdate = applied)
+                            if (applied != null) {
+                                if (activeSession === session) {
+                                    stateFlow.value =
+                                        stateFlow.value.copy(
+                                            lastUpdate = applied,
+                                            provisionalRange = applied.provisionalRange,
+                                        )
+                                } else if (activeSession == null && backgroundSession === session) {
+                                    stateFlow.value =
+                                        stateFlow.value.copy(
+                                            lastUpdate = applied,
+                                            provisionalRange = null,
+                                        )
+                                }
                             }
                             if (
                                 backgroundSession === session &&
@@ -1204,12 +1356,17 @@ class VoiceDictationV2Controller(
                                 phase = VoiceDictationV2Phase.Idle,
                                 audioLevel = 0f,
                                 error = null,
+                                provisionalRange = null,
                             )
                     }
                     backgroundSession === session -> {
                         backgroundSession = null
                         releaseSubmitWait = true
-                        stateFlow.value = stateFlow.value.copy(hasBackgroundDrain = false)
+                        stateFlow.value =
+                            stateFlow.value.copy(
+                                hasBackgroundDrain = false,
+                                provisionalRange = if (activeSession == null) null else stateFlow.value.provisionalRange,
+                            )
                     }
                 }
                 collectSessionJobsLocked(session) to session.runJob
@@ -1238,7 +1395,12 @@ class VoiceDictationV2Controller(
                     activeSession = null
                     stateFlow.value =
                         applyErrorToStateLocked(
-                            base = stateFlow.value.copy(phase = VoiceDictationV2Phase.Idle, audioLevel = 0f),
+                            base =
+                                stateFlow.value.copy(
+                                    phase = VoiceDictationV2Phase.Idle,
+                                    audioLevel = 0f,
+                                    provisionalRange = null,
+                                ),
                             error = error,
                             surfaceErrorBanner = true,
                         )
@@ -1248,7 +1410,11 @@ class VoiceDictationV2Controller(
                     val surfaceBanner = !wasReady && activeSession == null
                     stateFlow.value =
                         applyErrorToStateLocked(
-                            base = stateFlow.value.copy(hasBackgroundDrain = false),
+                            base =
+                                stateFlow.value.copy(
+                                    hasBackgroundDrain = false,
+                                    provisionalRange = if (activeSession == null) null else stateFlow.value.provisionalRange,
+                                ),
                             error = error,
                             surfaceErrorBanner = surfaceBanner,
                         )
@@ -1308,6 +1474,7 @@ class VoiceDictationV2Controller(
         resetState: Boolean,
         clearQuotaAndOwner: Boolean = false,
         nextOwner: VoiceDictationV2Owner? = null,
+        onBeforeAbortActiveLocked: ((Session) -> VoiceDictationComposerUpdate?)? = null,
     ): Job? {
         val sessionsToClean = mutableListOf<Pair<Session, Job?>>()
         val jobsToCancel = mutableListOf<Job>()
@@ -1318,8 +1485,12 @@ class VoiceDictationV2Controller(
             submitWaitToCancel = pendingSubmitWait
             pendingSubmitWait = null
 
+            var discardUpdate: VoiceDictationComposerUpdate? = null
             val active = activeSession
             if (active != null) {
+                if (!active.aborted && onBeforeAbortActiveLocked != null) {
+                    discardUpdate = onBeforeAbortActiveLocked(active)
+                }
                 active.aborted = true
                 activeSession = null
                 jobsToCancel += collectSessionJobsLocked(active)
@@ -1342,15 +1513,23 @@ class VoiceDictationV2Controller(
                             phase = VoiceDictationV2Phase.Idle,
                             audioLevel = 0f,
                             error = null,
+                            lastUpdate = discardUpdate ?: stateFlow.value.lastUpdate,
                             hasBackgroundDrain = false,
                             awaitingSubmitFinal = false,
+                            provisionalRange = null,
                         )
                     }
-            } else if (submitWaitToCancel != null || stateFlow.value.awaitingSubmitFinal || stateFlow.value.hasBackgroundDrain) {
+            } else if (
+                submitWaitToCancel != null ||
+                stateFlow.value.awaitingSubmitFinal ||
+                stateFlow.value.hasBackgroundDrain ||
+                stateFlow.value.provisionalRange != null
+            ) {
                 stateFlow.value =
                     stateFlow.value.copy(
                         hasBackgroundDrain = false,
                         awaitingSubmitFinal = false,
+                        provisionalRange = null,
                     )
             }
             existingRecorderCleanup = pendingRecorderCleanupJob
