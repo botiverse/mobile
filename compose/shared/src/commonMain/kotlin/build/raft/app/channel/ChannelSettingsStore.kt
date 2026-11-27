@@ -1441,8 +1441,10 @@ internal class ChannelSettingsStore(
         actionGeneration += 1L
         loadJob?.cancel()
         actionJob?.cancel()
+        authorityObserveJob?.cancel()
         loadJob = null
         actionJob = null
+        authorityObserveJob = null
     }
 }
 

@@ -672,13 +672,20 @@ class SharedChannelAuthorityStoreTest {
         assertFalse(authorityCanManageChannel(loading))
         assertEquals(ChannelCapabilities(), knownCapabilities(loading))
 
-        val readOnly =
+        val visitorOnly =
+            ChannelViewerAuthorityView.Known(
+                ChannelViewerAuthority(capabilities = ChannelCapabilities(manageVisitorAccess = true))
+            )
+        assertTrue(authorityAllows(visitorOnly) { it.manageVisitorAccess })
+        assertFalse(authorityAllows(visitorOnly) { it.archiveChannels })
+        assertFalse(authorityCanManageChannel(visitorOnly))
+
+        val memberAdder =
             ChannelViewerAuthorityView.Known(
                 ChannelViewerAuthority(capabilities = ChannelCapabilities(addChannelMembers = true))
             )
-        assertTrue(authorityAllows(readOnly) { it.addChannelMembers })
-        assertFalse(authorityAllows(readOnly) { it.archiveChannels })
-        assertFalse(authorityCanManageChannel(readOnly))
+        assertTrue(authorityAllows(memberAdder) { it.addChannelMembers })
+        assertTrue(authorityCanManageChannel(memberAdder))
 
         val deleteOnly =
             ChannelViewerAuthorityView.Known(
