@@ -71,7 +71,7 @@ internal fun SharedCreateExternalChannelReviewBody(
 ) {
     val invite = state.invite
     val created = state.created
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxWidth()) {
         if (created != null && state.showCreatedNotice) {
             RaftBanner(
                 description = stringResource(Res.string.channel_create_external_created, created.channel.name.removePrefix("#")),

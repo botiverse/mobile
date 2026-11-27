@@ -1,6 +1,8 @@
 package build.raft.designsystem.components
 
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -36,6 +38,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -54,8 +57,9 @@ import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
 
 /**
- * raft-ui Dialog "On a phone" (stdrc and Artea, 2026-10-21), the surface only: a dialog with
- * several fields, a long list or steps is a sheet 90% of the screen tall on a phone.
+ * raft-ui Dialog "On a phone" (stdrc and Artea, 2026-10-21; its height Kirby, 2026-11-27 in
+ * #proj-mobile:c2a6f94a), the surface only: a dialog with several fields, a long list or steps is
+ * a sheet on a phone, as tall as its content and at most 90% of the screen.
  *
  * - Surface: `layer-popover`, the dialog radius on its top corners, the `line-seam` ring.
  * - Head: a pushed page's head, 56dp with a seam under it: × at the start
@@ -67,8 +71,15 @@ import build.raft.designsystem.tokens.RaftStroke
  *   [commitIcon] leads its label, as the web's commit keeps its icon in the head (Invite's
  *   Mail). [commitLoading] shows the button's spinner while the commit runs (the web's
  *   `loading` Save): it keeps its colour and ignores taps (RaftButton's busy state).
- * - Body: [content] fills the rest of the sheet as given (a lazy list scrolls itself) and
- *   clears the home indicator; keep the phone's 16dp margin inside it.
+ * - Body: [content] under the head, as tall as it is, up to the rest of the sheet's cap; a body
+ *   taller than that (a lazy list, a scrolling column) scrolls inside it. Don't fill the height
+ *   (`fillMaxSize`, `fillMaxHeight`, a `weight(1f)` spacer): that holds the sheet at its cap. A
+ *   change of the body's height (a step, a list that loads) grows or shrinks the sheet over
+ *   [RaftMotion.ResizeMillis] (at once with reduced motion). It clears the home indicator; keep
+ *   the phone's 16dp margin inside it.
+ * - [footerLink]: what the web puts in the dialog's footer as a link (`DialogSheetFooterLink`).
+ *   A phone sheet has no footer, so it ends the body as a full-width outline button (32dp, a
+ *   finger's 44dp to tap): a quiet link on a phone reads as plain text.
  * - A dialog with steps passes [onBack] from its second step on: the head's start button is then
  *   a back arrow ([RaftGlyph.ArrowLeft], named [backLabel], which the caller localizes) that goes to the previous step instead of
  *   closing (raft-ui `DialogSheetBack`), with no × beside it (raft-ui dialog.md, stdrc 2026-10-22: the
@@ -90,8 +101,23 @@ fun RaftDialogSheetSurface(
     closeEnabled: Boolean = true,
     onBack: (() -> Unit)? = null,
     backLabel: String = "",
+    footerLink: RaftDialogSheetLink? = null,
     content: @Composable ColumnScope.() -> Unit,
-) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitLoading, commitVariant, commitIcon, closeLabel, closeEnabled, clearNavigationBar = false, onBack = onBack, backLabel = backLabel, content = content)
+) = RaftDialogSheetSurfaceImpl(title, commitLabel, onCommit, onClose, modifier, commitEnabled, commitLoading, commitVariant, commitIcon, closeLabel, closeEnabled, clearNavigationBar = false, onBack = onBack, backLabel = backLabel, footerLink = footerLink, content = content)
+
+/**
+ * A link the web writes in the dialog's footer (`DialogSheetFooterLink`, "Connect your
+ * servers"): a full-width outline button at the end of [RaftDialogSheetSurface]'s body on a
+ * phone, a muted link at the start of [RaftDialogSheetCenteredSurface]'s footer.
+ */
+@Immutable
+data class RaftDialogSheetLink(
+    val label: String,
+    val onClick: () -> Unit,
+    val enabled: Boolean = true,
+    /** A test tag on the button or the link. */
+    val testTag: String? = null,
+)
 
 @Composable
 private fun RaftDialogSheetSurfaceImpl(
@@ -109,9 +135,11 @@ private fun RaftDialogSheetSurfaceImpl(
     clearNavigationBar: Boolean,
     onBack: (() -> Unit)?,
     backLabel: String,
+    footerLink: RaftDialogSheetLink?,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
+    val reducedMotion = rememberRaftReducedMotion()
     val navigationBarInsets = rememberRaftStableWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
     CompositionLocalProvider(LocalRaftContentColor provides colors.foreground, LocalRaftSurfaceColor provides colors.layerPopover) {
         Column(
@@ -159,7 +187,39 @@ private fun RaftDialogSheetSurfaceImpl(
                 }
             }
             Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineSeam))
-            Column(Modifier.fillMaxWidth().weight(1f), content = content)
+            // As tall as the body, up to what the cap leaves under the head (a longer body scrolls
+            // in it); its height changes slide instead of jumping. The bottom inset (the home
+            // indicator, the keyboard) is the surface's padding, so the keyboard is not animated here.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .then(
+                        if (reducedMotion) {
+                            Modifier
+                        } else {
+                            Modifier.animateContentSize(tween(RaftMotion.ResizeMillis, easing = RaftMotion.EaseSlide))
+                        },
+                    ),
+            ) {
+                Column(Modifier.fillMaxWidth().weight(1f, fill = false), content = content)
+                if (footerLink != null) {
+                    RaftButton(
+                        text = footerLink.label,
+                        onClick = footerLink.onClick,
+                        modifier =
+                            Modifier
+                                // 8dp above and 16dp below keep the 44dp reach clear of the body and the edge.
+                                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 16.dp)
+                                .fillMaxWidth()
+                                .then(footerLink.testTag?.let { Modifier.testTag(it) } ?: Modifier),
+                        variant = RaftButtonVariant.Default,
+                        size = RaftButtonSize.Md,
+                        enabled = footerLink.enabled,
+                        widenTouchTarget = true,
+                    )
+                }
+            }
         }
     }
 }
@@ -174,7 +234,10 @@ object RaftDialogSheetDefaults {
         @Composable @ReadOnlyComposable
         get() = RaftTheme.controls.headHeight
 
-    /** The sheet's height: 90% of the window. */
+    /**
+     * The phone sheet's tallest height: 90% of the window (it is as tall as its content below
+     * that; Kirby, 2026-11-27 in #proj-mobile:c2a6f94a, was a fixed 90%).
+     */
     const val HeightFraction = 0.9f
 
     /**
@@ -213,13 +276,16 @@ internal fun raftDialogSheetWindowProperties(centered: Boolean): RaftWindowDialo
  * raft-ui Dialog with several fields, a long list or steps.
  *
  * On a phone (a window under [RaftDialogSheetDefaults.CenteredMinWindowWidth]):
- * [RaftDialogSheetSurface] at the bottom of the window over the scrim, 90% of the window tall,
- * sliding up as it opens (240ms, `ease-slide`).
+ * [RaftDialogSheetSurface] at the bottom of the window over the scrim, as tall as its content and
+ * at most 90% of the window (a longer body scrolls inside), sliding up as it opens (240ms,
+ * `ease-slide`); a change of the content's height slides too. The keyboard pushes it up, as before.
  *
  * On a tablet or a large screen: a centred dialog, as on a desktop ([RaftDialogSheetCenteredSurface]):
  * the title with × at the end, the body, and a footer with a ghost Cancel ([cancelLabel]) and the
  * commit button. It appears without animation. [footerStart] and [cancelVisible] are the centred
- * footer's ([RaftDialogSheetCenteredSurface]); a phone sheet has no footer.
+ * footer's ([RaftDialogSheetCenteredSurface]); a phone sheet has no footer. [footerLink] is the
+ * web's footer link: in the centred footer's start, and on a phone a full-width outline button at
+ * the end of the body, so callers pass it here rather than drawing it in the body.
  *
  * Either way × (and Cancel) and Back call [onDismissRequest]; a tap on the scrim does not, so a
  * stray tap loses nothing. [closeEnabled] false disables × and Cancel while the commit is in
@@ -244,6 +310,7 @@ fun RaftDialogSheet(
     backLabel: String = "",
     footerStart: (@Composable RowScope.() -> Unit)? = null,
     cancelVisible: Boolean = true,
+    footerLink: RaftDialogSheetLink? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val hostWindowWidthPx = LocalWindowInfo.current.containerSize.width
@@ -284,6 +351,7 @@ fun RaftDialogSheet(
                         backLabel = backLabel,
                         footerStart = footerStart,
                         cancelVisible = cancelVisible,
+                        footerLink = footerLink,
                         content = content,
                     )
                 }
@@ -303,6 +371,7 @@ fun RaftDialogSheet(
                     onBack = onBack,
                     backLabel = backLabel,
                     drawSyncedScrim = !dialogProperties.drawScrim,
+                    footerLink = footerLink,
                     content = content,
                 )
             }
@@ -326,6 +395,7 @@ private fun RaftDialogSheetBottom(
     onBack: (() -> Unit)?,
     backLabel: String,
     drawSyncedScrim: Boolean,
+    footerLink: RaftDialogSheetLink?,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val reducedMotion = rememberRaftReducedMotion()
@@ -338,7 +408,7 @@ private fun RaftDialogSheetBottom(
             slide.animateTo(0f, tween(240, easing = RaftMotion.EaseSlide))
         }
     }
-    // 90% of the whole window, as raft-ui's `h-[90dvh]` and RaftDialog's sheet; the status bar
+    // At most 90% of the whole window (raft-ui's `90dvh`, now a cap); the status bar
     // or a top cutout only caps it (it never reaches under them). Padding the top first made the
     // sheet 90% of what is left below the status bar, so it sat ~4dp per 40dp of bar lower.
     val topInsetPx = WindowInsets.safeDrawing.getTop(LocalDensity.current)
@@ -381,6 +451,7 @@ private fun RaftDialogSheetBottom(
                 clearNavigationBar = true,
                 onBack = onBack,
                 backLabel = backLabel,
+                footerLink = footerLink,
                 content = content,
             )
         }
@@ -404,6 +475,8 @@ private fun RaftDialogSheetBottom(
  *   footer's start, the buttons staying at its end: a question card's "Submitted · Undo".
  * - [cancelVisible] false leaves Cancel (or Back) out of the footer, as the web footer does while
  *   a question card's answer waits for Undo; the header's × still closes.
+ * - [footerLink]: the web's `DialogSheetFooterLink`, a muted callout link at the footer's start
+ *   (after [footerStart] when there are both).
  */
 @Composable
 fun RaftDialogSheetCenteredSurface(
@@ -423,6 +496,7 @@ fun RaftDialogSheetCenteredSurface(
     backLabel: String = "",
     footerStart: (@Composable RowScope.() -> Unit)? = null,
     cancelVisible: Boolean = true,
+    footerLink: RaftDialogSheetLink? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = RaftTheme.colors
@@ -444,8 +518,20 @@ fun RaftDialogSheetCenteredSurface(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (footerStart != null) {
-                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, content = footerStart)
+                if (footerStart != null || footerLink != null) {
+                    Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                        footerStart?.invoke(this)
+                        if (footerLink != null) {
+                            RaftTextLink(
+                                text = footerLink.label,
+                                onClick = footerLink.onClick,
+                                modifier = footerLink.testTag?.let { Modifier.testTag(it) } ?: Modifier,
+                                variant = RaftTextLinkVariant.Muted,
+                                style = RaftTheme.typography.callout,
+                                enabled = footerLink.enabled,
+                            )
+                        }
+                    }
                 }
                 // From a step's second page on, Cancel is Back (the header's × still closes).
                 if (cancelVisible) {
@@ -474,15 +560,15 @@ fun RaftDialogSheetCenteredSurface(
 }
 
 /**
- * A fixed 90% of the window's height, never taller than the window below [topInsetPx] (the status
- * bar or a top cutout); unchanged when the height is unbounded.
+ * At most 90% of the window's height and never taller than the window below [topInsetPx] (the
+ * status bar or a top cutout), as short as the sheet's content; unchanged when the height is
+ * unbounded.
  */
 internal fun raftDialogSheetConstraints(constraints: Constraints, topInsetPx: Int = 0): Constraints =
     if (!constraints.hasBoundedHeight) {
         constraints
     } else {
         val ninety = (constraints.maxHeight * RaftDialogSheetDefaults.HeightFraction).toInt()
-        val height =
-            minOf(ninety, constraints.maxHeight - topInsetPx.coerceAtLeast(0)).coerceAtLeast(constraints.minHeight)
-        constraints.copy(minHeight = height, maxHeight = height)
+        val cap = minOf(ninety, constraints.maxHeight - topInsetPx.coerceAtLeast(0)).coerceAtLeast(constraints.minHeight)
+        constraints.copy(minHeight = constraints.minHeight, maxHeight = cap)
     }

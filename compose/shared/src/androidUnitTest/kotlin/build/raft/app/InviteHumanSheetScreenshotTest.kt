@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -65,7 +66,7 @@ class InviteHumanSheetScreenshotTest {
                             tab = tab,
                             invitees = invitees,
                             joinUrl = "https://raft.build/join/acme-7f3k2",
-                            modifier = Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction),
+                            modifier = Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction).wrapContentHeight(Alignment.Bottom),
                         )
                     }
                 }

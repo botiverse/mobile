@@ -1,6 +1,8 @@
 package build.raft.designsystem.vcase
 
 import androidx.compose.foundation.background
+import build.raft.designsystem.components.RaftDialogSheetLink
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -1033,6 +1035,70 @@ fun DialogSheetGallery() {
                     closeEnabled = false,
                     modifier = Modifier.height(320.dp),
                 ) {}
+            }
+        }
+    }
+}
+
+/**
+ * [RaftDialogSheetSurface] as tall as its content (Kirby, 2026-11-27 in #proj-mobile:c2a6f94a):
+ * each frame is a 600dp phone window's bottom, the sheet capped at 540dp (its 90%). One field
+ * leaves a short sheet; [RaftDialogSheetLink] ends the body as a full-width outline button
+ * (32dp, 44 to tap); a long list stops at the cap and scrolls inside. Last, the same link at the
+ * centred dialog's footer start, as the web's `DialogSheetFooterLink`.
+ */
+@VCase("ds.dialog-sheet.fit")
+@Composable
+fun DialogSheetFit() {
+    @Composable
+    fun PhoneFrame(caption: String, sheet: @Composable (Modifier) -> Unit) {
+        Column(Modifier.width(358.dp)) {
+            Caption(caption, Modifier.padding(bottom = 12.dp))
+            Box(Modifier.width(358.dp).height(600.dp).background(RaftTheme.scrim), contentAlignment = Alignment.BottomCenter) {
+                sheet(Modifier.heightIn(max = 540.dp))
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(32.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(32.dp), verticalAlignment = Alignment.Top) {
+            PhoneFrame("One field: as tall as its content") { modifier ->
+                RaftDialogSheetSurface(title = "Invite people", commitLabel = "Next", onCommit = {}, onClose = {}, modifier = modifier) {
+                    RaftTextField("", {}, Modifier.fillMaxWidth().padding(16.dp), placeholder = "name@example.com")
+                }
+            }
+            PhoneFrame("footerLink: a full-width outline button") { modifier ->
+                RaftDialogSheetSurface(
+                    title = "Invite people",
+                    commitLabel = "Next",
+                    onCommit = {},
+                    onClose = {},
+                    modifier = modifier,
+                    footerLink = RaftDialogSheetLink(label = "Connect your servers", onClick = {}),
+                ) {
+                    RaftTextField("", {}, Modifier.fillMaxWidth().padding(16.dp), placeholder = "name@example.com")
+                }
+            }
+            PhoneFrame("A long list stops at 90% and scrolls") { modifier ->
+                RaftDialogSheetSurface(title = "Review", commitLabel = "Send", onCommit = {}, onClose = {}, modifier = modifier) {
+                    LazyColumn {
+                        items(40) { index ->
+                            RaftText("person-${index + 1}@example.com", Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = RaftTheme.typography.callout)
+                        }
+                    }
+                }
+            }
+        }
+        Column {
+            Caption("Centred: footerLink at the footer's start", Modifier.padding(bottom = 12.dp))
+            RaftDialogSheetCenteredSurface(
+                title = "Invite people",
+                commitLabel = "Next",
+                onCommit = {},
+                onClose = {},
+                modifier = Modifier.width(448.dp),
+                footerLink = RaftDialogSheetLink(label = "Connect your servers", onClick = {}),
+            ) {
+                RaftTextField("", {}, Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp), placeholder = "name@example.com")
             }
         }
     }

@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -78,7 +79,7 @@ class AddComputerSheetScreenshotTest {
             CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
                 RaftDesignSystemTheme {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                        AddComputerSheetSurfaceForFixture(state, Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction))
+                        AddComputerSheetSurfaceForFixture(state, Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction).wrapContentHeight(Alignment.Bottom))
                     }
                 }
             }

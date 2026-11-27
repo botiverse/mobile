@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -89,7 +90,7 @@ class CreateExternalChannelScreenshotTest {
                             commitEnabled = true,
                             onCommit = {},
                             onClose = {},
-                            modifier = Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction),
+                            modifier = Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction).wrapContentHeight(Alignment.Bottom),
                             closeLabel = stringResource(Res.string.common_close),
                         ) {
                             content()

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -70,7 +71,7 @@ class ThreadInstallAppActionScreenshotTest {
             ScreenshotPage {
                 RaftDesignSystemTheme {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
-                        ThreadInstallAppActionSheetSurfaceForFixture(state, Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction))
+                        ThreadInstallAppActionSheetSurfaceForFixture(state, Modifier.fillMaxHeight(RaftDialogSheetDefaults.HeightFraction).wrapContentHeight(Alignment.Bottom))
                     }
                 }
             }

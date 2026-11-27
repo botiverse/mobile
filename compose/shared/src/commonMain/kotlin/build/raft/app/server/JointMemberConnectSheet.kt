@@ -347,7 +347,7 @@ private fun JointMemberConnectListSheet(
             modifier = Modifier.testTag(JointMemberConnectSheetTag),
         ) {
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 if (sheet.guestEntry) {
@@ -494,7 +494,7 @@ private fun JointMemberConnectNewServerSheet(
             modifier = Modifier.testTag(JointMemberConnectNewServerFormTag),
         ) {
             Column(
-                Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 RaftText(

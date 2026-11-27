@@ -34,4 +34,12 @@ class RaftDialogSheetLayoutTest {
         val tallBar = raftDialogSheetConstraints(Constraints(maxWidth = 1170, maxHeight = 1000), topInsetPx = 200)
         assertEquals(800, tallBar.maxHeight)
     }
+
+    @Test
+    fun theSheetIsAsShortAsItsContentUnderTheCap() {
+        // 90% is the cap, not the height (Kirby, #proj-mobile:c2a6f94a): a one-field sheet stays short.
+        val phone = raftDialogSheetConstraints(Constraints(maxWidth = 1170, maxHeight = 2532), topInsetPx = 120)
+        assertEquals(0, phone.minHeight)
+        assertEquals(2278, phone.maxHeight)
+    }
 }

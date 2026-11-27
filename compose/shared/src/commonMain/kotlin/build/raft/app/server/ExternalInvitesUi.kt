@@ -31,8 +31,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,6 +47,7 @@ import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSheet
+import build.raft.designsystem.components.RaftDialogSheetLink
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftIconButton
@@ -61,10 +60,7 @@ import build.raft.designsystem.components.RaftListRowText
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.designsystem.components.RaftSpinner
 import build.raft.designsystem.components.RaftSpinnerSize
-import build.raft.designsystem.components.RaftTextLink
-import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.RaftTextarea
-import build.raft.designsystem.components.raftDialogSheetCentered
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
@@ -388,13 +384,6 @@ internal fun ExternalInviteSheet(
 ) {
     RaftDesignSystemTheme {
         val preview = dialog.preview
-        val windowWidthPx = LocalWindowInfo.current.containerSize.width
-        val centered =
-            if (windowWidthPx > 0) {
-                raftDialogSheetCentered(with(LocalDensity.current) { windowWidthPx.toDp() })
-            } else {
-                false
-            }
         val connectLinkLabel = stringResource(Res.string.channel_external_invite_connect_servers_link)
         RaftDialogSheet(
             onDismissRequest = { if (!dialog.busy) onDismiss() },
@@ -415,18 +404,15 @@ internal fun ExternalInviteSheet(
             // Web ExternalInviteSteps: keep Back visible and disabled while busy (never morph to Cancel/×).
             onBack = if (preview != null) onBack else null,
             backLabel = stringResource(Res.string.channel_external_invite_back),
-            footerStart =
+            // Web DialogSheetFooterLink: the centred footer's muted link, a phone sheet's outline button.
+            footerLink =
                 if (preview == null && onConnectServers != null) {
-                    {
-                        RaftTextLink(
-                            text = connectLinkLabel,
-                            onClick = onConnectServers,
-                            variant = RaftTextLinkVariant.Muted,
-                            style = RaftTheme.typography.callout,
-                            enabled = !dialog.busy,
-                            modifier = Modifier.testTag(ExternalInviteConnectServersLinkTag),
-                        )
-                    }
+                    RaftDialogSheetLink(
+                        label = connectLinkLabel,
+                        onClick = onConnectServers,
+                        enabled = !dialog.busy,
+                        testTag = ExternalInviteConnectServersLinkTag,
+                    )
                 } else {
                     null
                 },
@@ -443,7 +429,6 @@ internal fun ExternalInviteSheet(
                 channelName = channelName,
                 serversHistoryHint = serversHistoryHint,
                 onServersChange = onServersChange,
-                onConnectServers = if (!centered) onConnectServers else null,
             )
         }
     }
@@ -462,13 +447,12 @@ internal fun ExternalInviteSheetBody(
     channelName: String = "",
     serversHistoryHint: Boolean = false,
     onServersChange: (Set<String>) -> Unit = {},
-    onConnectServers: (() -> Unit)? = null,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
     val preview = dialog.preview
     Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
+        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         // Web privateWarning (#16635/#16643): on step 1 shown as the rule; on review only when
@@ -499,17 +483,6 @@ internal fun ExternalInviteSheetBody(
                 enabled = !dialog.busy,
                 historyHint = serversHistoryHint,
             )
-            // Phone sheets hide the dialog footer, so the quiet "Connect your servers" link ends the body (web DialogSheetFooterLink).
-            if (onConnectServers != null) {
-                RaftTextLink(
-                    text = stringResource(Res.string.channel_external_invite_connect_servers_link),
-                    onClick = onConnectServers,
-                    variant = RaftTextLinkVariant.Muted,
-                    style = typography.callout,
-                    enabled = !dialog.busy,
-                    modifier = Modifier.testTag(ExternalInviteConnectServersLinkTag),
-                )
-            }
         } else {
             val groups = externalInviteReviewGroups(preview, dialog.ownEmail)
             if (groups.isNotEmpty()) {
