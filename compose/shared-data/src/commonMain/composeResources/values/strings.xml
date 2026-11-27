@@ -3002,6 +3002,8 @@
     <string name="in_app_browser_sign_in_notice">A page in this browser asked to sign you in with Raft. If you continue, Raft sends the answer to %1$s.</string>
     <string name="in_app_browser_sign_in_signed_in_toast">Signed in to %1$s with Raft</string>
     <string name="in_app_browser_sign_in_declined">Signing in with Raft isn't available in the built-in browser yet. Open this page in your browser to sign in.</string>
+    <string name="in_app_browser_sign_in_declined_recently">You just tried signing in with Raft. Wait a few seconds and try again, or open this page in your browser.</string>
+    <string name="in_app_browser_sign_in_resolving">Signing in with Raft…</string>
     <string name="in_app_browser_sign_in_open_in_browser">Open in browser</string>
     <string name="in_app_browser_sign_in_signed_in_as">Signed in as</string>
     <string name="in_app_browser_sign_in_server_label">Raft server</string>

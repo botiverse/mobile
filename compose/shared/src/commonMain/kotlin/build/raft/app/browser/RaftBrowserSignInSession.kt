@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -142,8 +143,12 @@ internal data class RaftBrowserSignInSheetState(
 
 internal data class RaftBrowserSignInUiState(
     val sheet: RaftBrowserSignInSheetState? = null,
+    /** True while an intercepted sign-in request is resolving before consent shows or finishes. */
+    val resolving: Boolean = false,
     /** Set when a caught authorize navigation was declined; ↗ opens this original authorize URL in the system browser. */
     val declinedAuthorizeUrl: String? = null,
+    /** Reason [declinedAuthorizeUrl] was declined so the UI can distinguish cooldown from unsupported flows. */
+    val declinedReason: RaftBrowserSignInDropReason? = null,
 )
 
 private data class ParsedSetupQuery(
@@ -154,6 +159,13 @@ private data class ParsedSetupQuery(
     val serverHint: String?,
     val state: String?,
     val scopes: List<String>,
+    val asksToConfirmAgain: Boolean,
+)
+
+private data class LookupBatchResult(
+    val lookups: List<Pair<RaftBrowserSignInServerOption, RaftBrowserSignInLookupResult>>,
+    val resolvedServerIds: Set<String>,
+    val complete: Boolean,
 )
 
 internal class RaftBrowserSignInSession(
@@ -280,7 +292,13 @@ internal class RaftBrowserSignInSession(
                 originalAuthorizeUrl = ask.url,
             )
         pending = currentPending
-        _uiState.value = RaftBrowserSignInUiState(sheet = null, declinedAuthorizeUrl = null)
+        _uiState.value =
+            RaftBrowserSignInUiState(
+                sheet = null,
+                resolving = true,
+                declinedAuthorizeUrl = null,
+                declinedReason = null,
+            )
         logEvent("intercepted", currentPending)
         currentPending.timerJob =
             scope.launch {
@@ -302,8 +320,8 @@ internal class RaftBrowserSignInSession(
         if (pending != null) {
             dropPending(RaftBrowserSignInDropReason.Navigated)
         }
-        if (_uiState.value.declinedAuthorizeUrl != null) {
-            _uiState.value = _uiState.value.copy(declinedAuthorizeUrl = null)
+        if (_uiState.value.declinedAuthorizeUrl != null || _uiState.value.declinedReason != null) {
+            _uiState.value = _uiState.value.copy(declinedAuthorizeUrl = null, declinedReason = null)
         }
     }
 
@@ -319,8 +337,8 @@ internal class RaftBrowserSignInSession(
                 }
             dropPending(reason)
         }
-        if (_uiState.value.declinedAuthorizeUrl != null && active?.accountId != accountId) {
-            _uiState.value = _uiState.value.copy(declinedAuthorizeUrl = null)
+        if ((_uiState.value.declinedAuthorizeUrl != null || _uiState.value.declinedReason != null) && active?.accountId != accountId) {
+            _uiState.value = _uiState.value.copy(declinedAuthorizeUrl = null, declinedReason = null)
         }
     }
 
@@ -330,15 +348,14 @@ internal class RaftBrowserSignInSession(
         closed = true
         if (pending != null) {
             dropPending(RaftBrowserSignInDropReason.PageClosed)
-        } else {
-            _uiState.value = RaftBrowserSignInUiState()
         }
+        _uiState.value = RaftBrowserSignInUiState()
         cancelOpenStepUp()
     }
 
     fun dismissDeclinedNotice() {
-        if (_uiState.value.declinedAuthorizeUrl != null) {
-            _uiState.value = _uiState.value.copy(declinedAuthorizeUrl = null)
+        if (_uiState.value.declinedAuthorizeUrl != null || _uiState.value.declinedReason != null) {
+            _uiState.value = _uiState.value.copy(declinedAuthorizeUrl = null, declinedReason = null)
         }
     }
 
@@ -368,7 +385,7 @@ internal class RaftBrowserSignInSession(
         val returnUrl = active.returnUrl
         val state = active.requestState
         forgetPending(active, armQuiet = true)
-        _uiState.value = _uiState.value.copy(sheet = null)
+        _uiState.value = _uiState.value.copy(sheet = null, resolving = false)
         val deniedUrl =
             returnUrl?.let { raftSignInDeniedUrl(it, state, raftHostsProvider()) }
         val unloaded = loadAnswer(active, deniedUrl)
@@ -381,7 +398,7 @@ internal class RaftBrowserSignInSession(
         val active = pending ?: return
         val authorizeUrl = active.originalAuthorizeUrl
         forgetPending(active, armQuiet = active.shown)
-        _uiState.value = _uiState.value.copy(sheet = null)
+        _uiState.value = _uiState.value.copy(sheet = null, resolving = false)
         logEvent("opened_in_browser", active)
         onOpenInBrowser(authorizeUrl)
     }
@@ -472,16 +489,24 @@ internal class RaftBrowserSignInSession(
         currentPending.setupRequest = setupRequest
         currentPending.setupQuery = setupQuery
 
-        val lookups = lookupAcrossServers(setupRequest, currentPending.servers)
+        val effectivePreferredServerId = preferredServerId ?: currentPending.currentServerId
+        val lookupBatch =
+            lookupAcrossServers(
+                setupRequest = setupRequest,
+                setupQuery = setupQuery,
+                servers = currentPending.servers,
+                effectivePreferredServerId = effectivePreferredServerId,
+                allowServerSkipEarlyExit = true,
+            )
         if (!isPendingLive(currentPending)) return
 
+        var lookups = lookupBatch.lookups
         val foundLookups = lookups.mapNotNull { (_, result) -> (result as? RaftBrowserSignInLookupResult.Found)?.client }
         if (!raftSignInIsRegisteredReturnAddress(setupRequest.returnUrl, foundLookups.map { it.toRuleLookup() })) {
             refusePending(currentPending, RaftBrowserSignInDropReason.UnregisteredReturn)
             return
         }
 
-        val effectivePreferredServerId = preferredServerId ?: currentPending.currentServerId
         val skipTarget =
             raftSignInSkipTarget(
                 request = setupRequest,
@@ -504,6 +529,7 @@ internal class RaftBrowserSignInSession(
                 val validatedUrl = successUrl?.let { raftSignInResultUrl(it, answer.returnUrl, raftHostsProvider()) }
                 if (validatedUrl != null) {
                     forgetPending(currentPending, armQuiet = true)
+                    _uiState.value = _uiState.value.copy(resolving = false)
                     val loadRefusal = loadAnswer(currentPending, validatedUrl)
                     logEvent(if (loadRefusal == null) "completed" else "dropped", currentPending, loadRefusal)
                     if (loadRefusal == null) {
@@ -513,6 +539,27 @@ internal class RaftBrowserSignInSession(
                 }
             }
             // Any non-200 (409 consent_required, 403 step_up_required, network error) falls back to the native sheet.
+        }
+
+        val isAccountReady =
+            foundLookups.any {
+                it.loginMode == RaftSignInLoginMode.Account &&
+                    it.availability == RaftSignInAvailability.Ready &&
+                    it.returnUrl == setupRequest.returnUrl
+            }
+        if (!lookupBatch.complete && !isAccountReady) {
+            val candidateServers = candidateServersForLookup(currentPending.servers, setupQuery.serverHint)
+            val remainingServers = candidateServers.filter { it.id !in lookupBatch.resolvedServerIds }
+            if (remainingServers.isNotEmpty()) {
+                val remainingLookups = lookupServersAll(setupRequest, remainingServers)
+                if (!isPendingLive(currentPending)) return
+                val mergedById =
+                    buildMap(candidateServers.size) {
+                        lookups.forEach { (server, result) -> put(server.id, result) }
+                        remainingLookups.forEach { (server, result) -> put(server.id, result) }
+                    }
+                lookups = candidateServers.mapNotNull { server -> mergedById[server.id]?.let { server to it } }
+            }
         }
 
         if (!isPendingLive(currentPending)) return
@@ -536,7 +583,13 @@ internal class RaftBrowserSignInSession(
                 previousSelectedServerId = null,
                 loginModeChanged = false,
             )
-        _uiState.value = RaftBrowserSignInUiState(sheet = sheet, declinedAuthorizeUrl = null)
+        _uiState.value =
+            RaftBrowserSignInUiState(
+                sheet = sheet,
+                resolving = false,
+                declinedAuthorizeUrl = null,
+                declinedReason = null,
+            )
     }
 
     private suspend fun handleInteractiveApproveResult(
@@ -598,7 +651,14 @@ internal class RaftBrowserSignInSession(
                         active.loginModeRetryCount += 1
                         val previousSelection =
                             (_uiState.value.sheet?.mode as? RaftBrowserSignInSheetMode.ServerReady)?.selectedServerId
-                        val freshLookups = lookupAcrossServers(setupRequest, active.servers)
+                        val freshLookups =
+                            lookupAcrossServers(
+                                setupRequest = setupRequest,
+                                setupQuery = setupQuery,
+                                servers = active.servers,
+                                effectivePreferredServerId = preferredServerId ?: active.currentServerId,
+                                allowServerSkipEarlyExit = false,
+                            ).lookups
                         if (!isPendingLive(active)) return
                         val refreshedSheet =
                             buildSheetState(
@@ -692,6 +752,88 @@ internal class RaftBrowserSignInSession(
 
     private suspend fun lookupAcrossServers(
         setupRequest: RaftSignInSetupRequest,
+        setupQuery: ParsedSetupQuery,
+        servers: List<RaftBrowserSignInServerOption>,
+        effectivePreferredServerId: String?,
+        allowServerSkipEarlyExit: Boolean,
+    ): LookupBatchResult {
+        val candidateServers = candidateServersForLookup(servers, setupQuery.serverHint)
+        if (candidateServers.isEmpty()) {
+            return LookupBatchResult(lookups = emptyList(), resolvedServerIds = emptySet(), complete = true)
+        }
+        val orderedServers =
+            if (effectivePreferredServerId != null && candidateServers.size > 1) {
+                val preferred = candidateServers.filter { it.id == effectivePreferredServerId }
+                if (preferred.isNotEmpty()) {
+                    preferred + candidateServers.filter { it.id != effectivePreferredServerId }
+                } else {
+                    candidateServers
+                }
+            } else {
+                candidateServers
+            }
+        if (orderedServers.size == 1) {
+            val single = lookupServersAll(setupRequest, orderedServers)
+            return LookupBatchResult(
+                lookups = single,
+                resolvedServerIds = single.mapTo(HashSet(1)) { it.first.id },
+                complete = true,
+            )
+        }
+
+        val hasAgentInbound = setupQuery.scopes.any { it in RaftAgentInboundOAuthScopes }
+        val resultsByServerId = LinkedHashMap<String, RaftBrowserSignInLookupResult>(orderedServers.size)
+        var decidedEarly = false
+
+        coroutineScope {
+            val channel = Channel<Pair<RaftBrowserSignInServerOption, RaftBrowserSignInLookupResult>>(Channel.UNLIMITED)
+            val jobs =
+                orderedServers.map { server ->
+                    launch {
+                        val result = api.lookupClient(setupRequest.clientId, server.id, setupRequest.scope)
+                        channel.trySend(server to result)
+                    }
+                }
+            try {
+                var remaining = orderedServers.size
+                while (remaining > 0) {
+                    val (server, result) = channel.receive()
+                    resultsByServerId[server.id] = result
+                    remaining -= 1
+                    if (
+                        canDecideLookupEarly(
+                            server = server,
+                            result = result,
+                            setupRequest = setupRequest,
+                            effectivePreferredServerId = effectivePreferredServerId,
+                            asksToConfirmAgain = setupQuery.asksToConfirmAgain,
+                            hasAgentInbound = hasAgentInbound,
+                            allowServerSkipEarlyExit = allowServerSkipEarlyExit,
+                        )
+                    ) {
+                        decidedEarly = remaining > 0
+                        break
+                    }
+                }
+            } finally {
+                jobs.forEach { it.cancel() }
+                channel.close()
+            }
+        }
+
+        val inOriginalOrder =
+            candidateServers.mapNotNull { server ->
+                resultsByServerId[server.id]?.let { server to it }
+            }
+        return LookupBatchResult(
+            lookups = inOriginalOrder,
+            resolvedServerIds = resultsByServerId.keys,
+            complete = !decidedEarly,
+        )
+    }
+
+    private suspend fun lookupServersAll(
+        setupRequest: RaftSignInSetupRequest,
         servers: List<RaftBrowserSignInServerOption>,
     ): List<Pair<RaftBrowserSignInServerOption, RaftBrowserSignInLookupResult>> =
         coroutineScope {
@@ -701,6 +843,44 @@ internal class RaftBrowserSignInSession(
                 }
             }.awaitAll()
         }
+
+    private fun candidateServersForLookup(
+        servers: List<RaftBrowserSignInServerOption>,
+        serverHint: String?,
+    ): List<RaftBrowserSignInServerOption> {
+        val hint = serverHint.orEmpty()
+        return if (hint.isNotEmpty()) {
+            servers.filter { it.id == hint || it.slug == hint }
+        } else {
+            servers
+        }
+    }
+
+    private fun canDecideLookupEarly(
+        server: RaftBrowserSignInServerOption,
+        result: RaftBrowserSignInLookupResult,
+        setupRequest: RaftSignInSetupRequest,
+        effectivePreferredServerId: String?,
+        asksToConfirmAgain: Boolean,
+        hasAgentInbound: Boolean,
+        allowServerSkipEarlyExit: Boolean,
+    ): Boolean {
+        val client = (result as? RaftBrowserSignInLookupResult.Found)?.client ?: return false
+        if (client.returnUrl != setupRequest.returnUrl) return false
+        if (client.availability != RaftSignInAvailability.Ready) return false
+        return when (client.loginMode) {
+            RaftSignInLoginMode.Account -> true
+            RaftSignInLoginMode.Server -> {
+                if (!allowServerSkipEarlyExit || asksToConfirmAgain || hasAgentInbound) return false
+                if (server.id != effectivePreferredServerId) return false
+                val scopeAllowed =
+                    client.scopeValidation?.allowed != false &&
+                        client.scopeValidation?.disallowedScopes.isNullOrEmpty()
+                val consentCovered = client.consent?.let { it.granted && it.coversRequested } == true
+                scopeAllowed && consentCovered
+            }
+        }
+    }
 
     private fun buildSheetState(
         pending: PendingRequest,
@@ -853,7 +1033,15 @@ internal class RaftBrowserSignInSession(
         forgetPending(candidate, armQuiet = true)
         logEvent("dropped", candidate, reason)
         if (!closed && pageGeneration == candidate.generation) {
-            _uiState.value = RaftBrowserSignInUiState(sheet = null, declinedAuthorizeUrl = authorizeUrl)
+            _uiState.value =
+                RaftBrowserSignInUiState(
+                    sheet = null,
+                    resolving = false,
+                    declinedAuthorizeUrl = authorizeUrl,
+                    declinedReason = reason,
+                )
+        } else if (_uiState.value.resolving || _uiState.value.sheet != null) {
+            _uiState.value = _uiState.value.copy(sheet = null, resolving = false)
         }
     }
 
@@ -862,8 +1050,8 @@ internal class RaftBrowserSignInSession(
         val wasShown = active.shown
         forgetPending(active, armQuiet = wasShown)
         logEvent("dropped", active, reason)
-        if (_uiState.value.sheet != null) {
-            _uiState.value = _uiState.value.copy(sheet = null)
+        if (_uiState.value.sheet != null || _uiState.value.resolving) {
+            _uiState.value = _uiState.value.copy(sheet = null, resolving = false)
         }
     }
 
@@ -897,7 +1085,12 @@ internal class RaftBrowserSignInSession(
     ) {
         log("raft_browser_sign_in event=dropped${logClientId?.let { " clientId=$it" }.orEmpty()} reason=${reason.wire}")
         if (pending == null) {
-            _uiState.value = _uiState.value.copy(declinedAuthorizeUrl = authorizeUrl)
+            _uiState.value =
+                _uiState.value.copy(
+                    resolving = false,
+                    declinedAuthorizeUrl = authorizeUrl,
+                    declinedReason = reason,
+                )
         }
     }
 
@@ -942,6 +1135,7 @@ private fun parseSetupQuery(setupRequest: RaftSignInSetupRequest): ParsedSetupQu
         serverHint = query?.first("server")?.takeIf { it.isNotEmpty() },
         state = query?.first("state")?.takeIf { it.isNotEmpty() },
         scopes = scopes,
+        asksToConfirmAgain = query?.let(::raftSignInAsksToConfirmAgain) == true,
     )
 }
 

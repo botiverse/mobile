@@ -2998,6 +2998,8 @@
     <string name="in_app_browser_sign_in_notice">Страница в этом браузере запросила вход через Raft. Если вы продолжите, Raft отправит ответ на %1$s.</string>
     <string name="in_app_browser_sign_in_signed_in_toast">Вы вошли в %1$s через Raft</string>
     <string name="in_app_browser_sign_in_declined">Вход через Raft пока недоступен во встроенном браузере. Откройте эту страницу в своём браузере, чтобы войти.</string>
+    <string name="in_app_browser_sign_in_declined_recently">Вы только что пытались войти через Raft. Подождите несколько секунд и попробуйте снова или откройте эту страницу в браузере.</string>
+    <string name="in_app_browser_sign_in_resolving">Вход через Raft…</string>
     <string name="in_app_browser_sign_in_open_in_browser">Открыть в браузере</string>
     <string name="in_app_browser_sign_in_signed_in_as">Вы вошли как</string>
     <string name="in_app_browser_sign_in_server_label">Raft Server</string>

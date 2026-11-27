@@ -864,7 +864,7 @@ internal fun RaftMobileWebPanelBrowserBody(
                     val declinedAuthorizeUrl = signInUiState.declinedAuthorizeUrl
                     if (declinedAuthorizeUrl != null) {
                         RaftInAppBrowserError(
-                            message = stringResource(Res.string.in_app_browser_sign_in_declined),
+                            message = raftBrowserSignInDeclinedMessage(signInUiState.declinedReason),
                             onRetry = null,
                             onOpenSystem = {
                                 signInHost.session.dismissDeclinedNotice()
@@ -882,6 +882,8 @@ internal fun RaftMobileWebPanelBrowserBody(
                             onOpenSystem = ::openCurrentInSystemBrowser,
                             onClose = if (storageResolution.isRaftApp) onClose else null,
                         )
+                    } else if (signInUiState.resolving) {
+                        RaftBrowserSignInResolvingOverlay()
                     }
                 }
                 else -> Unit

@@ -3001,6 +3001,8 @@
     <string name="in_app_browser_sign_in_notice">这个浏览器里有一个页面请求使用 Raft 登录。如果继续，Raft 会把结果发送到 %1$s。</string>
     <string name="in_app_browser_sign_in_signed_in_toast">已用 Raft 登录 %1$s</string>
     <string name="in_app_browser_sign_in_declined">内置浏览器暂不支持使用 Raft 登录。请在你的浏览器中打开此页面后登录。</string>
+    <string name="in_app_browser_sign_in_declined_recently">刚刚尝试过使用 Raft 登录，请稍等几秒后重试，或在默认浏览器中打开此页面登录。</string>
+    <string name="in_app_browser_sign_in_resolving">正在使用 Raft 登录…</string>
     <string name="in_app_browser_sign_in_open_in_browser">在浏览器中打开</string>
     <string name="in_app_browser_sign_in_signed_in_as">当前登录身份：</string>
     <string name="in_app_browser_sign_in_server_label">Raft 服务器</string>

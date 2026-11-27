@@ -467,7 +467,7 @@ internal fun raftSignInSkipTarget(
 }
 
 /** The App asked Raft to confirm again (OIDC `prompt`): the sheet is shown whatever was consented before. */
-private fun raftSignInAsksToConfirmAgain(query: RaftBrowserQuery): Boolean {
+internal fun raftSignInAsksToConfirmAgain(query: RaftBrowserQuery): Boolean {
     val prompt = query.first("prompt").orEmpty().split(RaftSignInListSeparator)
     return "consent" in prompt || "login" in prompt
 }
