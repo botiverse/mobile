@@ -87,8 +87,7 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
         activityStore(
             scope = backgroundScope,
             inboxRepository = inbox,
-            inboxInPlaceEnabled = { true },
-            inboxRowPositionEnabled = { true },
+            authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             localMutationHoldMillis = holdMillis,
             nowMillis = { testScheduler.currentTime },
             realtimeBackgroundRefreshIntervalMillis = 60_000L,
@@ -294,6 +293,8 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
 
         // 1) Catch-up success: in-place message moves latestActivitySeq to 12 while storage frontier stays 10.
         store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("msg-12", channelId = "ch-1", seq = 12L))))
+        assertEquals("12", store.state.value.items.single().latestActivitySeq)
+        assertEquals("10", store.state.value.items.single().doneFrontierSeq)
         // Server returns caught-up row with unread=0 (already read) and frontier=12.
         val caughtUpRow = storageRow(channelId = "ch-1", unread = 0, latestActivitySeq = "12", readStateSeq = "12", doneFrontierSeq = "12")
         inbox.serving = snapshot(listOf(caughtUpRow))
@@ -321,6 +322,8 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
         runCurrent()
 
         failStore.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("msg-22", channelId = "ch-2", seq = 22L))))
+        assertEquals("22", failStore.state.value.items.single().latestActivitySeq)
+        assertEquals("20", failStore.state.value.items.single().doneFrontierSeq)
         val failCaughtUp = storageRow(channelId = "ch-2", unread = 0, latestActivitySeq = "22", readStateSeq = "22", doneFrontierSeq = "22")
         failInbox.serving = snapshot(listOf(failCaughtUp))
         failStore.dispatch(SharedActivityIntent.MarkDone(failStore.state.value.items.single()))
