@@ -2,10 +2,10 @@
 // Regenerate: python3 tools/design-tokens/gen_tokens.py
 // Sources (tools/design-tokens/manifest.json):
 //   npm:tailwindcss@4.3.3/theme.css sha256=443d7af364200f8e
-//   npm:@botiverse/raft-ui@0.105.2/dist/styles.css sha256=05a4142a72923af2
-//   npm:@botiverse/raft-ui@0.105.2/dist/foundation.css sha256=2f9f8f4f1d2f8fc9
-//   npm:@botiverse/raft-ui@0.105.2/dist/themes.css sha256=d676bb4b3ad783cf
-//   botiverse/slock@2d727392c8a7ef73bdadadfbb6d200f1451fb7ce:packages/web/src/index.css sha256=2bf045c4df54f969
+//   npm:@botiverse/raft-ui@0.106.3/dist/styles.css sha256=59697ef21d90c816
+//   npm:@botiverse/raft-ui@0.106.3/dist/foundation.css sha256=83ce264d4797946f
+//   npm:@botiverse/raft-ui@0.106.3/dist/themes.css sha256=d676bb4b3ad783cf
+//   botiverse/slock@5582f8c538d3d772054ad39b2668890dd978b782:packages/web/src/index.css sha256=2bf045c4df54f969
 
 package build.raft.app.designtokens
 
@@ -1227,8 +1227,8 @@ import androidx.compose.ui.graphics.Color
         override val taskStatusTodoSoft = Color(0xFFFDE6DE)
         override val taskStatusTodoStrong = Color(0xFF5B310F)
         override val warningGraphic = Color(0xFFD66919)
-        override val warningMuted = Color(0xFFFBD1C0)
-        override val warningSoft = Color(0xFFFDE6DE)
+        override val warningMuted = Color(0xFFFFD39D)
+        override val warningSoft = Color(0xFFFFE7CB)
         override val warningStrong = Color(0xFF5B310F)
     }
 
