@@ -510,7 +510,7 @@ internal fun RaftMobilePlacesEditPopoverBody(
                 title = stringResource(Res.string.tab_more),
             )
             MobilePlacesEditGrid(
-                columns = AppShellPhoneMoreGridColumns,
+                columns = (editState.moreIds.size + 1).coerceIn(1, AppShellPhoneMoreGridColumns),
                 gap = MobilePlacesEditGridGap,
                 modifier = Modifier.testTag(RaftMobilePlacesPopoverTags.EDIT_MORE_GRID).padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
