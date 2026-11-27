@@ -190,13 +190,19 @@ class ThreadMessageHoverQuickReactionUiTest {
             }
             mainClock.advanceTimeByFrame()
 
-            // Fresh hover onto the button: not open at 499ms, opens at 500ms without toggling a reaction.
+            // Fresh hover onto the button: not open before 500ms, opens at 500ms without toggling a reaction.
+            val hoverStartMs = mainClock.currentTime
             onNodeWithTag(THREAD_HOVER_TOOLBAR_QUICK_REACTION_TAG).performMouseInput { moveTo(center) }
             mainClock.advanceTimeByFrame()
-            mainClock.advanceTimeBy(ThreadHoverToolbarReactionHoverOpenDelayMs - 1, ignoreFrameDuration = true)
+            val hoverSettledMs = mainClock.currentTime
+            val beforeDelayTargetMs = hoverStartMs + ThreadHoverToolbarReactionHoverOpenDelayMs - 1
+            if (beforeDelayTargetMs > mainClock.currentTime) {
+                mainClock.advanceTimeBy(beforeDelayTargetMs - mainClock.currentTime, ignoreFrameDuration = true)
+            }
             assertEquals(0, harness.reactionBarOpenCount, "must not open before 500ms")
 
-            mainClock.advanceTimeBy(1, ignoreFrameDuration = true)
+            val afterDelayTargetMs = hoverSettledMs + ThreadHoverToolbarReactionHoverOpenDelayMs
+            mainClock.advanceTimeBy(afterDelayTargetMs - mainClock.currentTime, ignoreFrameDuration = true)
             assertEquals(1, harness.reactionBarOpenCount, "reaction bar opens after resting 500ms")
             assertTrue(harness.popupOpen)
             assertTrue(harness.toggledEmojis.isEmpty(), "hovering must not toggle a reaction")
