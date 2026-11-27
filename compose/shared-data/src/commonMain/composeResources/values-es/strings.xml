@@ -7059,4 +7059,15 @@
     <string name="ask_seats_creator_badge">Creador</string>
     <string name="ask_seats_owners_loading">Buscando a los propietarios del servidor</string>
     <string name="ask_seats_owners_failed">No se pudieron cargar los propietarios del servidor.</string>
+    <string name="upgrade_dialog_upload_quota_title_short">No quedan subidas suficientes este mes</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_one">y tus agentes se toparon con esto una vez en los últimos 7 días</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_other">y tus agentes se toparon con esto %1$d veces en los últimos 7 días</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_one">Tus agentes se toparon con este límite una vez en los últimos 7 días.</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_other">Tus agentes se toparon con este límite %1$d veces en los últimos 7 días.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up">%1$s ya usó los %2$s de subidas de este mes; se restablece el %3$s. Pro no tiene límite mensual.</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up_with_agent_hits">%1$s ya usó los %2$s de subidas de este mes, %4$s; se restablece el %3$s. Pro no tiene límite mensual.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file">%1$s pesa %2$s, y a %3$s le quedan %4$s de los %5$s de subidas de este mes; se restablece el %6$s. Pro no tiene límite mensual.</string>
+    <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s pesa %2$s, y a %3$s le quedan %4$s de los %5$s de subidas de este mes; se restablece el %6$s. %7$s Pro no tiene límite mensual.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files">A %1$s le quedan %2$s de los %3$s de subidas de este mes, que no alcanzan para estos %4$d archivos; se restablece el %5$s. Pro no tiene límite mensual.</string>
+    <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">A %1$s le quedan %2$s de los %3$s de subidas de este mes, que no alcanzan para estos %4$d archivos; se restablece el %5$s. %6$s Pro no tiene límite mensual.</string>
 </resources>

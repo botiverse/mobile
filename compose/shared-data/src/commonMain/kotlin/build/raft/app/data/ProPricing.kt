@@ -386,15 +386,14 @@ private data class WireBillingPricingResponse(val pricing: String? = null)
 }
 
 /**
- * Reads `agentHistoryBlocks7d` from `GET /api/billing/subscription` for [serverId]
- * (botiverse/slock #14512): how often this server's agents ran into the 30-day history window in
- * the past 7 days. Readable by owners/admins only; any non-2xx response or parse error returns
- * null so the upgrade dialog degrades cleanly to the base contextual sentence.
+ * Reads the billing subscription summary from `GET /api/billing/subscription` for [serverId]
+ * (owners/admins only). Any non-2xx response or parse error returns null so callers degrade
+ * cleanly without blocking upgrade dialogs.
  */
-@RaftCoreInternalApi suspend fun loadServerAgentHistoryBlocks7d(
+@RaftCoreInternalApi suspend fun loadServerBillingSubscriptionSummary(
     networkClient: RaftNetworkClient,
     serverId: String,
-): Int? {
+): SettingsBillingSubscriptionSnapshot? {
     val cleanServerId = serverId.trim()
     if (cleanServerId.isEmpty()) return null
     val response =
@@ -410,5 +409,27 @@ private data class WireBillingPricingResponse(val pricing: String? = null)
             return null
         }
     if (!response.isSuccessful) return null
-    return response.bodyText?.let(::parseSharedSettingsBillingSubscription)?.agentHistoryBlocks7d
+    return response.bodyText?.let(::parseSharedSettingsBillingSubscription)
 }
+
+/**
+ * Reads `agentHistoryBlocks7d` from `GET /api/billing/subscription` for [serverId]
+ * (botiverse/slock #14512): how often this server's agents ran into the 30-day history window in
+ * the past 7 days. Readable by owners/admins only; any non-2xx response or parse error returns
+ * null so the upgrade dialog degrades cleanly to the base contextual sentence.
+ */
+@RaftCoreInternalApi suspend fun loadServerAgentHistoryBlocks7d(
+    networkClient: RaftNetworkClient,
+    serverId: String,
+): Int? = loadServerBillingSubscriptionSummary(networkClient, serverId)?.agentHistoryBlocks7d
+
+/**
+ * Reads `agentUploadQuotaBlocks7d` from `GET /api/billing/subscription` for [serverId]
+ * (botiverse/slock #14968): how often this server's agents were refused by the monthly upload
+ * quota in the past 7 days. Readable by owners/admins only; any non-2xx response or parse error
+ * returns null so the upgrade dialog degrades cleanly.
+ */
+@RaftCoreInternalApi suspend fun loadServerAgentUploadQuotaBlocks7d(
+    networkClient: RaftNetworkClient,
+    serverId: String,
+): Int? = loadServerBillingSubscriptionSummary(networkClient, serverId)?.agentUploadQuotaBlocks7d

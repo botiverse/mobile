@@ -7059,4 +7059,15 @@
     <string name="ask_seats_creator_badge">建立者</string>
     <string name="ask_seats_owners_loading">正在尋找伺服器擁有者</string>
     <string name="ask_seats_owners_failed">無法載入伺服器擁有者。</string>
+    <string name="upgrade_dialog_upload_quota_title_short">本月上傳額度不足</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_one">過去 7 天你的 Agent 已經有 1 次因此沒傳上去</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_other">過去 7 天你的 Agent 已經有 %1$d 次因此沒傳上去</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_one">過去 7 天你的 Agent 已經有 1 次因為額度沒傳上去。</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_other">過去 7 天你的 Agent 已經有 %1$d 次因為額度沒傳上去。</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up">%1$s 本月 %2$s 的上傳額度已用完，%3$s 重設。Pro 沒有每月上限。</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up_with_agent_hits">%1$s 本月 %2$s 的上傳額度已用完，%4$s，%3$s 重設。Pro 沒有每月上限。</string>
+    <string name="upgrade_dialog_upload_quota_hint_file">%1$s 的大小為 %2$s，但 %3$s 本月 %5$s 的上傳額度只剩 %4$s，%6$s 重設。Pro 沒有每月上限。</string>
+    <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s 的大小為 %2$s，但 %3$s 本月 %5$s 的上傳額度只剩 %4$s，%6$s 重設。%7$sPro 沒有每月上限。</string>
+    <string name="upgrade_dialog_upload_quota_hint_files">%1$s 本月 %3$s 的上傳額度只剩 %2$s，不夠這 %4$d 個檔案使用，%5$s 重設。Pro 沒有每月上限。</string>
+    <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s 本月 %3$s 的上傳額度只剩 %2$s，不夠這 %4$d 個檔案使用，%5$s 重設。%6$sPro 沒有每月上限。</string>
 </resources>

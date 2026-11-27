@@ -2709,6 +2709,15 @@ private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> {
                         retryable = false,
                         serverMessage = serverMessage,
                         serverCode = serverCode,
+                        monthlyUploadQuota =
+                            if (
+                                serverCode.equals("file_upload_quota_exceeded", ignoreCase = true) ||
+                                    serverCode.equals("upload_quota_exceeded", ignoreCase = true)
+                            ) {
+                                conversationRouteMonthlyUploadQuotaOrNull()
+                            } else {
+                                null
+                            },
                         traceId = responseTraceId,
                     )
                 )
@@ -2772,8 +2781,44 @@ private data class ConversationRouteErrorDto(
 @Serializable
 private data class ConversationRouteStructuredErrorDto(
     val code: String? = null,
-    val errorCode: String? = null
+    val errorCode: String? = null,
 )
+
+@Serializable
+private data class ConversationRouteUploadQuotaErrorDto(
+    val monthlyUpload: ConversationRouteMonthlyUploadQuotaDto? = null,
+    val quota: ConversationRouteMonthlyUploadQuotaDto? = null,
+)
+
+@Serializable
+private data class ConversationRouteMonthlyUploadQuotaDto(
+    val month: String? = null,
+    val limited: Boolean? = null,
+    val limitBytes: Long? = null,
+    val remainingBytes: Long? = null,
+)
+
+private fun HomeNetworkResponse.conversationRouteMonthlyUploadQuotaOrNull(): SettingsBillingFileUploadQuotaSnapshot? {
+    val payload =
+        bodyText?.takeIf { it.isNotBlank() }
+            ?: errorBodyText?.takeIf { it.isNotBlank() }
+            ?: return null
+    val dto =
+        runCatching {
+            conversationRepositoryJson.decodeFromString<ConversationRouteUploadQuotaErrorDto>(payload)
+        }.getOrNull() ?: return null
+    val raw = dto.monthlyUpload ?: dto.quota ?: return null
+    val month = raw.month?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val limitBytes = raw.limitBytes ?: return null
+    val remainingBytes = raw.remainingBytes ?: return null
+    if (raw.limited == false || limitBytes <= 0L || remainingBytes < 0L) return null
+    return SettingsBillingFileUploadQuotaSnapshot(
+        month = month,
+        limited = true,
+        limitBytes = limitBytes,
+        remainingBytes = remainingBytes,
+    )
+}
 
 private fun HomeNetworkResponse.conversationRouteStructuredErrorCodeOrNull(): String? {
     val payload =

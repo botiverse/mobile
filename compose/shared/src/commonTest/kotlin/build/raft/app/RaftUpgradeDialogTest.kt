@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.HiddenHistory
 import build.raft.app.data.HomeChannelRow
 import build.raft.app.data.SeatRequestPurpose
+import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
 import build.raft.app.holdsExternalSlot
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -15,6 +16,8 @@ import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.settings.RaftUpgradeHistoryContext
 import build.raft.app.settings.RaftUpgradeMode
 import build.raft.app.settings.RaftUpgradeOutcome
+import build.raft.app.settings.RaftUpgradeUploadContext
+import build.raft.app.settings.RaftUpgradeUploadFile
 import build.raft.app.settings.externalContextForGate
 import build.raft.app.settings.externalSlotChannelsKey
 import build.raft.app.settings.externalSlotUpgradeContext
@@ -28,6 +31,8 @@ import build.raft.app.settings.raftUpgradeGateForErrorCode
 import build.raft.app.settings.raftUpgradeLinksOut
 import build.raft.app.settings.raftUpgradeOutcome
 import build.raft.app.settings.raftUpgradeWebUrl
+import build.raft.app.settings.toRaftUpgradeMonthlyUploadContext
+import build.raft.app.settings.uploadContextForGate
 import build.raft.app.thread.ThreadHistoryPaywallScope
 import build.raft.app.thread.threadAttachmentUploadFailureUpgradeGate
 import build.raft.app.thread.threadHistoryLimitContext
@@ -250,6 +255,44 @@ class RaftUpgradeDialogTest {
         )
         assertNull(threadHistoryLimitContext(ThreadHistoryPaywallScope.Channel, null, channelName = "roadmap"))
         assertNull(threadHistoryLimitContext(ThreadHistoryPaywallScope.Thread, hiddenZero, channelName = "roadmap"))
+    }
+
+    @Test
+    fun uploadContextPairsOnlyWithUploadMonthlyQuotaAndValidatesQuotaSnapshot() {
+        val mib = 1024L * 1024L
+        val valid =
+            RaftUpgradeUploadContext.MonthlyQuota(
+                month = "2026-11",
+                limitBytes = 100L * mib,
+                remainingBytes = 2L * mib,
+                files = listOf(RaftUpgradeUploadFile("demo.mp4", 12L * mib)),
+            )
+        assertEquals(valid, uploadContextForGate(RaftUpgradeGate.UploadMonthlyQuota, valid))
+        assertNull(uploadContextForGate(RaftUpgradeGate.UploadFileSize, valid))
+        assertNull(uploadContextForGate(RaftUpgradeGate.General, valid))
+        assertNull(uploadContextForGate(RaftUpgradeGate.UploadMonthlyQuota, valid.copy(month = "bad")))
+        assertNull(uploadContextForGate(RaftUpgradeGate.UploadMonthlyQuota, valid.copy(limitBytes = 0L)))
+        assertNull(uploadContextForGate(RaftUpgradeGate.UploadMonthlyQuota, valid.copy(remainingBytes = -1L)))
+
+        val snapshot =
+            SettingsBillingFileUploadQuotaSnapshot(
+                month = "2026-11",
+                limited = true,
+                limitBytes = 100L * mib,
+                remainingBytes = 0L,
+            )
+        assertEquals(
+            RaftUpgradeUploadContext.MonthlyQuota(
+                month = "2026-11",
+                limitBytes = 100L * mib,
+                remainingBytes = 0L,
+                files = listOf(RaftUpgradeUploadFile("a.png", 10L)),
+            ),
+            snapshot.toRaftUpgradeMonthlyUploadContext(
+                listOf(RaftUpgradeUploadFile("a.png", 10L), RaftUpgradeUploadFile(" ", 5L), RaftUpgradeUploadFile("b.png", -1L))
+            ),
+        )
+        assertNull(snapshot.copy(limited = false).toRaftUpgradeMonthlyUploadContext())
     }
 
     @Test

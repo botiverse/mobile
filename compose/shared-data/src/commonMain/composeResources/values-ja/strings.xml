@@ -7060,4 +7060,15 @@
     <string name="ask_seats_creator_badge">作成者</string>
     <string name="ask_seats_owners_loading">サーバーのオーナーを検索中</string>
     <string name="ask_seats_owners_failed">サーバーのオーナーを読み込めませんでした。</string>
+    <string name="upgrade_dialog_upload_quota_title_short">今月のアップロード容量が足りません</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_one">過去 7 日間にエージェントが 1 回この制限に引っかかりました。</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_used_up_other">過去 7 日間にエージェントが %1$d 回この制限に引っかかりました。</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_one">過去 7 日間にエージェントが 1 回この制限に引っかかりました。</string>
+    <string name="upgrade_dialog_upload_quota_agent_hits_limit_other">過去 7 日間にエージェントが %1$d 回この制限に引っかかりました。</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up">%1$s は今月のアップロード容量 %2$s を使い切りました。%3$s にリセットされます。Pro には月間の上限がありません。</string>
+    <string name="upgrade_dialog_upload_quota_hint_used_up_with_agent_hits">%1$s は今月のアップロード容量 %2$s を使い切りました。%3$s にリセットされます。%4$sPro には月間の上限がありません。</string>
+    <string name="upgrade_dialog_upload_quota_hint_file">%1$s は %2$s ですが、%3$s の今月のアップロード容量 %5$s の残りは %4$s です。%6$s にリセットされます。Pro には月間の上限がありません。</string>
+    <string name="upgrade_dialog_upload_quota_hint_file_with_agent_hits">%1$s は %2$s ですが、%3$s の今月のアップロード容量 %5$s の残りは %4$s です。%6$s にリセットされます。%7$sPro には月間の上限がありません。</string>
+    <string name="upgrade_dialog_upload_quota_hint_files">%1$s の今月のアップロード容量 %3$s の残りは %2$s で、この %4$d 件のファイルには足りません。%5$s にリセットされます。Pro には月間の上限がありません。</string>
+    <string name="upgrade_dialog_upload_quota_hint_files_with_agent_hits">%1$s の今月のアップロード容量 %3$s の残りは %2$s で、この %4$d 件のファイルには足りません。%5$s にリセットされます。%6$sPro には月間の上限がありません。</string>
 </resources>
