@@ -218,9 +218,12 @@ internal fun SharedHandsFeedbackContent(
     var keyboardInsetDp by remember { mutableStateOf(0f) }
     // Picking or opening an image leaves the form for the picker and the image editor: the
     // message field gives up focus first, so the keyboard does not stay up over the editor.
+    val voiceDictationHost = LocalThreadVoiceDictationHost.current
+    val currentVoiceDictationHost by rememberUpdatedState(voiceDictationHost)
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     fun dismissFormKeyboard() {
+        currentVoiceDictationHost?.controller?.cancel()
         focusManager.clearFocus(force = true)
         keyboardController?.hide()
     }
@@ -229,7 +232,6 @@ internal fun SharedHandsFeedbackContent(
     // reserved for the attached log bundle); keep UI copy and merge in lockstep.
     val attachmentLimit = 3
     val remainingSlots = attachmentLimit - attachments.size
-    val normalizedMessage = message.trim()
 
     fun abortOwnedImageEditSessions(sessionIds: Collection<String>) {
         abortSettingsHandsFeedbackImageEditSessions(
@@ -788,14 +790,18 @@ internal fun SharedHandsFeedbackContent(
         }
     }
 
-    fun submitFeedback(explicitRetryRequest: SettingsHandsFeedbackRetryRequest? = null) {
+    fun submitFeedback(
+        explicitRetryRequest: SettingsHandsFeedbackRetryRequest? = null,
+        submittedTextOverride: String? = null,
+    ) {
+        val currentNormalizedMessage = (submittedTextOverride ?: messageEditor.text).trim()
         val currentAttachments = attachments.take(attachmentLimit)
         val retryRequest =
             explicitRetryRequest
                 ?: pendingRetryRequest?.takeIf { request ->
-                    request.matches(normalizedMessage, currentAttachments, feedbackType)
+                    request.matches(currentNormalizedMessage, currentAttachments, feedbackType)
                 }
-        val submittedMessage = retryRequest?.message ?: normalizedMessage
+        val submittedMessage = retryRequest?.message ?: currentNormalizedMessage
         val submittedAttachments = retryRequest?.attachments ?: currentAttachments
         val submittedType = retryRequest?.type ?: feedbackType
         settingsCapabilities.log(
@@ -807,6 +813,7 @@ internal fun SharedHandsFeedbackContent(
             settingsCapabilities.log("settings_hands_feedback_submit_ignored reason=busy")
             return
         }
+        currentVoiceDictationHost?.controller?.finishForSubmit()
         settingsFeedbackPrivacyCode(latestPrivacyMode)?.let { code ->
             // Nothing leaves the device; the banner at the top already says why.
             settingsCapabilities.log("settings_hands_feedback_submit_blocked reason=privacy_mode code=$code")
@@ -995,7 +1002,7 @@ internal fun SharedHandsFeedbackContent(
             }
             "send" -> {
                 settingsCapabilities.log("settings_hands_feedback_composer_send")
-                submitFeedback()
+                submitFeedback(submittedTextOverride = value)
             }
             ThreadComposerAttachImageAction -> pickAttachment(imageOnly = true)
             // The camera button, and Add image long-pressed (as in the chat composer): a photo

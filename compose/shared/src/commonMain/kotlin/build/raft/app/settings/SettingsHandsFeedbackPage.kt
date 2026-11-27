@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -15,6 +16,7 @@ import build.raft.app.data.RaftTelemetryPrivacy
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackCardDraft
 import build.raft.app.data.SettingsFeedbackProxySubmitter
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.isFeedbackSubmitAction
 import build.raft.app.network.RaftAppIdentityRegistry
@@ -106,7 +108,7 @@ internal class ComposeSettingsHandsFeedbackPage :
 
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { SettingsHandsFeedbackScreen() }
+        setAuthenticatedContent { SettingsHandsFeedbackScreen(active = raftPageVisible) }
     }
 }
 
@@ -155,12 +157,27 @@ internal object SettingsFeedbackFiledTicketHandoff {
     fun take(): String? = pending.getAndUpdate { null }
 }
 
+/**
+ * Resolves the active server ID for voice dictation (`voice_dictation_v1` flag evaluation and
+ * permit header) on feedback surfaces: a `feedback:submit` action card's viewing server takes
+ * precedence, then the shell scope's server, then the signed-in session's current server.
+ */
+internal fun resolveSettingsFeedbackVoiceServerId(
+    cardEntryServerId: String?,
+    storeScopeServerId: String?,
+    session: StoredAuthSession?,
+): String? =
+    cardEntryServerId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: storeScopeServerId?.trim()?.takeIf { it.isNotEmpty() }
+        ?: session?.currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+
 @Composable
-private fun SettingsHandsFeedbackScreen() {
+private fun SettingsHandsFeedbackScreen(active: Boolean = true) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
     val sharedStores = remember(bridge) { RaftSharedStoreRegistry.get(bridge) }
+    var currentSession by remember { mutableStateOf<StoredAuthSession?>(null) }
     var accountId by remember { mutableStateOf<String?>(null) }
     val router = remember(pager) { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME) }
     val returnToTickets = remember(pager.pageData.params) { pager.pageData.params.optBoolean(SETTINGS_HANDS_FEEDBACK_RETURN_TO_TICKETS, false) }
@@ -178,13 +195,31 @@ private fun SettingsHandsFeedbackScreen() {
     var cardDraft by remember(cardEntry) { mutableStateOf<SettingsFeedbackCardDraft?>(null) }
     // The current server's privacy mode: the form sends nothing unless it answered off.
     val privacyMode by RaftTelemetryPrivacy.state.collectAsState()
+    val voiceServerId =
+        resolveSettingsFeedbackVoiceServerId(
+            cardEntryServerId = cardEntry?.serverId,
+            storeScopeServerId = environment.storeScope.initialServerId,
+            session = currentSession,
+        )
+    val voiceDictationHost =
+        rememberComposerVoiceDictationHost(
+            sharedStores = sharedStores,
+            storeScope = environment.storeScope,
+            active = active,
+            currentSession = currentSession,
+            serverId = voiceServerId,
+            prefetchIfUnresolved = true,
+        )
     val openTicketList: () -> Unit = {
+        voiceDictationHost.controller.cancel()
         pager.openSettingsFeedbackTicketsPage(environment.storeScope)
         router.closePage()
     }
 
     LaunchedEffect(environment.authStore) {
-        accountId = environment.authStore.readSession()?.user?.id.orEmpty()
+        val session = environment.authStore.readSession()
+        currentSession = session
+        accountId = session?.user?.id.orEmpty()
     }
     // Opened from a card: its draft first (web standalone/actionCard.tsx); one it cannot read opens
     // the ticket list, as the web page opened its ordinary workspace.
@@ -204,7 +239,10 @@ private fun SettingsHandsFeedbackScreen() {
     SettingsDetailShell(
         title = settingsHandsFeedbackTitle(),
         subtitle = settingsHandsFeedbackSubtitle(),
-        onBack = { router.closePage() }
+        onBack = {
+            voiceDictationHost.controller.cancel()
+            router.closePage()
+        }
     ) {
         val resolvedAccountId = accountId
         val card = cardDraft
@@ -222,45 +260,47 @@ private fun SettingsHandsFeedbackScreen() {
                         logger = bridge::log,
                     )
                 }
-            SharedHandsFeedbackContent(
-                pager = pager,
-                eventBus = sharedStores.eventBus,
-                settingsCapabilities = environment.settingsCapabilities,
-                sourceStoreScope = environment.storeScope,
-                accountId = resolvedAccountId,
-                // task #176: this standalone page is outside the app shell, so the
-                // form reserves the system navigation bar itself.
-                bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
-                proxySubmitter = proxySubmitter,
-                privacyMode = privacyMode,
-                card = card,
-                onCardAlreadySent =
-                    card?.let {
-                        {
-                            bridge.log("settings_hands_feedback_card_already_sent open=tickets")
-                            openTicketList()
-                        }
-                    },
-                onTicketFiled = { ticketId ->
-                    bridge.log("settings_hands_feedback_ticket_filed ticket=${ticketId.take(8)} returnToTickets=$returnToTickets")
-                    if (returnToTickets) {
-                        SettingsFeedbackFiledTicketHandoff.offer(ticketId)
-                        if (feedbackTicketIdOrNull(ticketId) != null) {
-                            pager.openSettingsFeedbackTicketDetailPage(
-                                environment.storeScope,
-                                ticketId = ticketId,
-                                replaceCurrentPage = true,
-                            )
+            CompositionLocalProvider(LocalThreadVoiceDictationHost provides voiceDictationHost) {
+                SharedHandsFeedbackContent(
+                    pager = pager,
+                    eventBus = sharedStores.eventBus,
+                    settingsCapabilities = environment.settingsCapabilities,
+                    sourceStoreScope = environment.storeScope,
+                    accountId = resolvedAccountId,
+                    // task #176: this standalone page is outside the app shell, so the
+                    // form reserves the system navigation bar itself.
+                    bottomContentPadding = raftBottomSafeAreaPadding() + RaftAppSpacing.Lg,
+                    proxySubmitter = proxySubmitter,
+                    privacyMode = privacyMode,
+                    card = card,
+                    onCardAlreadySent =
+                        card?.let {
+                            {
+                                bridge.log("settings_hands_feedback_card_already_sent open=tickets")
+                                openTicketList()
+                            }
+                        },
+                    onTicketFiled = { ticketId ->
+                        bridge.log("settings_hands_feedback_ticket_filed ticket=${ticketId.take(8)} returnToTickets=$returnToTickets")
+                        if (returnToTickets) {
+                            SettingsFeedbackFiledTicketHandoff.offer(ticketId)
+                            if (feedbackTicketIdOrNull(ticketId) != null) {
+                                pager.openSettingsFeedbackTicketDetailPage(
+                                    environment.storeScope,
+                                    ticketId = ticketId,
+                                    replaceCurrentPage = true,
+                                )
+                            } else {
+                                router.closePage()
+                            }
                         } else {
+                            // Opened from elsewhere: the ticket list, on the new ticket, in its place.
+                            pager.openSettingsFeedbackTicketsPage(environment.storeScope, ticketId)
                             router.closePage()
                         }
-                    } else {
-                        // Opened from elsewhere: the ticket list, on the new ticket, in its place.
-                        pager.openSettingsFeedbackTicketsPage(environment.storeScope, ticketId)
-                        router.closePage()
                     }
-                }
-            )
+                )
+            }
         }
     }
 }

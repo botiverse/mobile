@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,6 +77,7 @@ import build.raft.app.data.settingsFeedbackSendAllowed
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.SettingsFeedbackTicketsState
 import build.raft.app.data.SettingsFeedbackTicketsStore
+import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.feedbackForeignClient
 import build.raft.app.data.feedbackOwnClient
 import build.raft.app.data.feedbackPreviewLine
@@ -206,7 +208,7 @@ internal class ComposeSettingsFeedbackTicketsPage :
 
     override fun willInit() {
         super.willInit()
-        setAuthenticatedContent { SettingsFeedbackTicketsRoute(raftPageVisibleResumeTick) }
+        setAuthenticatedContent { SettingsFeedbackTicketsRoute(raftPageVisibleResumeTick, raftPageVisible) }
     }
 }
 
@@ -278,7 +280,7 @@ internal fun settingsFeedbackPageRequest(storeScope: RaftShellStoreScope, ticket
     SETTINGS_FEEDBACK_TICKETS_PAGE to settingsFeedbackTicketsPageData(storeScope, ticketId)
 
 @Composable
-private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
+private fun SettingsFeedbackTicketsRoute(resumeTick: Int, pageVisible: Boolean = true) {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
     val storeScope =
@@ -398,6 +400,25 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
     val copyLinkFailedMessage = stringResource(Res.string.thread_error_copy_link)
     val settingsCapabilities = remember(bridge, copiedMessage) { BridgeSettingsPlatformCapabilities(bridge, copiedMessage) }
     val authStore = remember(sharedStores, storeScope) { sharedStores.authStore(storeScope) }
+    var currentSession by remember(authStore) { mutableStateOf<StoredAuthSession?>(null) }
+    LaunchedEffect(authStore) {
+        currentSession = authStore.readSession()
+    }
+    val voiceServerId =
+        resolveSettingsFeedbackVoiceServerId(
+            cardEntryServerId = null,
+            storeScopeServerId = storeScope.initialServerId,
+            session = currentSession,
+        )
+    val voiceDictationHost =
+        rememberComposerVoiceDictationHost(
+            sharedStores = sharedStores,
+            storeScope = storeScope,
+            active = pageVisible && state.detail != null,
+            currentSession = currentSession,
+            serverId = voiceServerId,
+            prefetchIfUnresolved = true,
+        )
     val copyTicketLink: ((String) -> Unit)? =
         linkPlatform?.let { platform ->
             { ticketId ->
@@ -429,54 +450,58 @@ private fun SettingsFeedbackTicketsRoute(resumeTick: Int) {
             bridge.logWarn("settings_feedback_tickets_attachment_viewer_rejected")
         }
     })
-    SettingsFeedbackTicketsScreen(
-        state = state,
-        timeContext = timeContext,
-        actions =
-            SettingsFeedbackTicketsActions(
-                onBack = {
-                    if (detailOnly || store.state.value.detail == null) {
-                        router.closePage()
-                    } else {
-                        store.closeTicketView()
-                    }
-                },
-                onNewFeedback = {
-                    skipNextResumeRefresh = false
-                    bridge.log("settings_feedback_tickets_new_feedback")
-                    pager.openSettingsHandsFeedbackPage(storeScope, returnToTickets = true)
-                },
-                onRefresh = {
-                    skipNextResumeRefresh = false
-                    store.refresh()
-                },
-                onRetryList = store::retryList,
-                onLoadMore = store::loadMore,
-                onFilter = store::setFilter,
-                onOpenTicket = { ticketId ->
-                    if (feedbackTicketIdOrNull(ticketId) != null) {
-                        val summary = store.state.value.list.tickets.firstOrNull { it.id == ticketId }
-                        skipNextResumeRefresh = true
-                        pager.openSettingsFeedbackTicketDetailPage(storeScope, ticketId, summary = summary)
-                    } else {
-                        store.openTicket(ticketId)
-                    }
-                },
-                onRetryTicket = store::retryTicket,
-                onRefreshTicket = store::refreshTicket,
-                onLoadMoreReplies = store::loadMoreReplies,
-                onReplyChange = store::setReplyDraft,
-                onSendReply = store::sendReply,
-                onCloseTicket = store::closeTicket,
-                onClearCloseError = store::clearCloseError,
-                onOpenAttachment = { attachment -> store.openAttachment(attachment) { openViewer(it) } },
-                onDismissAttachmentError = store::dismissAttachmentError,
-                onCopyTicketLink = copyTicketLink,
-            ),
-        bottomContentPadding = raftBottomSafeAreaPadding(),
-        privacyMode = privacyMode,
-        handlesDetailBackInPlace = !detailOnly,
-    )
+    CompositionLocalProvider(LocalThreadVoiceDictationHost provides voiceDictationHost) {
+        SettingsFeedbackTicketsScreen(
+            state = state,
+            timeContext = timeContext,
+            actions =
+                SettingsFeedbackTicketsActions(
+                    onBack = {
+                        voiceDictationHost.controller.cancel()
+                        if (detailOnly || store.state.value.detail == null) {
+                            router.closePage()
+                        } else {
+                            store.closeTicketView()
+                        }
+                    },
+                    onNewFeedback = {
+                        voiceDictationHost.controller.cancel()
+                        skipNextResumeRefresh = false
+                        bridge.log("settings_feedback_tickets_new_feedback")
+                        pager.openSettingsHandsFeedbackPage(storeScope, returnToTickets = true)
+                    },
+                    onRefresh = {
+                        skipNextResumeRefresh = false
+                        store.refresh()
+                    },
+                    onRetryList = store::retryList,
+                    onLoadMore = store::loadMore,
+                    onFilter = store::setFilter,
+                    onOpenTicket = { ticketId ->
+                        if (feedbackTicketIdOrNull(ticketId) != null) {
+                            val summary = store.state.value.list.tickets.firstOrNull { it.id == ticketId }
+                            skipNextResumeRefresh = true
+                            pager.openSettingsFeedbackTicketDetailPage(storeScope, ticketId, summary = summary)
+                        } else {
+                            store.openTicket(ticketId)
+                        }
+                    },
+                    onRetryTicket = store::retryTicket,
+                    onRefreshTicket = store::refreshTicket,
+                    onLoadMoreReplies = store::loadMoreReplies,
+                    onReplyChange = store::setReplyDraft,
+                    onSendReply = store::sendReply,
+                    onCloseTicket = store::closeTicket,
+                    onClearCloseError = store::clearCloseError,
+                    onOpenAttachment = { attachment -> store.openAttachment(attachment) { openViewer(it) } },
+                    onDismissAttachmentError = store::dismissAttachmentError,
+                    onCopyTicketLink = copyTicketLink,
+                ),
+            bottomContentPadding = raftBottomSafeAreaPadding(),
+            privacyMode = privacyMode,
+            handlesDetailBackInPlace = !detailOnly,
+        )
+    }
 }
 
 /** The Hands app a copied ticket link names (`raft-android`, `raft-ios`); null where there is none (desktop). */
