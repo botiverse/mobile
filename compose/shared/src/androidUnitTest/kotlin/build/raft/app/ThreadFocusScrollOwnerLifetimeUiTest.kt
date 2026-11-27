@@ -128,6 +128,7 @@ class ThreadFocusScrollOwnerLifetimeUiTest {
             }
             runOnIdle { stack.open("about", JsonObject(emptyMap()), from = stack.pages.first()) }
             startFocusedScroll(probe)
+            assertFalse(probe.finished, "startFocusedScroll must stop mid-scroll before popping")
 
             runOnUiThread { stack.back(); Snapshot.sendApplyNotifications() }
             mainClock.advanceTimeBy(PopSettleMillis)
