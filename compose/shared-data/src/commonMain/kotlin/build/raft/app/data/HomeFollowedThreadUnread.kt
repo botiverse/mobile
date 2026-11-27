@@ -375,6 +375,7 @@ fun HomeSnapshot.parentThreadUnread(parentChannelId: ChannelId): HomeParentThrea
                 existing.copy(
                     name = fresh.name.ifBlank { existing.name },
                     directMessagePeerAvatarWireValue = fresh.directMessagePeerAvatarWireValue ?: existing.directMessagePeerAvatarWireValue,
+                    hasAnnouncement = fresh.hasAnnouncement,
                     lounge = mergedLounge,
                 )
             } else {

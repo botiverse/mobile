@@ -198,6 +198,8 @@ data class ConversationSummary(
     val guestVisible: Boolean = false,
     /** Channel row `hasExternalRelation` (see [build.raft.app.data.HomeChannelWireDto.hasExternalRelation]). */
     val hasExternalRelation: Boolean = false,
+    /** Whether this channel or DM has a pinned announcement (slock #17116, height reservation before load). */
+    val hasAnnouncement: Boolean = false,
     val activityNotificationPreference: ChannelActivityNotificationPreference = ChannelActivityNotificationPreference.Unsupported,
     val permissions: ConversationPermissions = ConversationPermissions(),
     /**

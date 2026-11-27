@@ -1257,6 +1257,23 @@ private data class HomeNotificationAuthority(
             // return must read it too, not reuse the held one (sync on, Tenny 10-27).
             dataSource.dropHeldMachines()
         }
+        if (
+            event is RealtimeRefreshRequired &&
+            event.reason == build.raft.app.data.realtime.RealtimeSocketEvents.ChannelUpdated &&
+            event.channelId != null &&
+            event.channelAnnouncement != null
+        ) {
+            val targetServerId = event.serverId ?: serverId
+            val targetChannelId = event.channelId
+            val hasAnnouncement = event.channelAnnouncement.artifactId != null
+            applyHomeSnapshotLocally { snapshot ->
+                if (snapshot.server.id != targetServerId) {
+                    snapshot
+                } else {
+                    snapshot.withChannelAnnouncementHint(targetChannelId, hasAnnouncement)
+                }
+            }
+        }
         if (!homeSurfaceVisible) {
             applyRealtimeEventWhileHomeHidden(serverId, event)
             return
@@ -7686,6 +7703,37 @@ private fun HomeChannelRow.withJoinedMembership(): HomeChannelRow =
             guard.serverId == server.id && channels.none { it.channelId == guard.channel.channelId }
         }
     return if (missing.isEmpty()) this else copy(channels = channels + missing.map { it.channel })
+}
+
+/**
+ * Updates `hasAnnouncement` on the matching channel or DM row after a live `channel:updated`
+ * event so opening that conversation reserves (or stops reserving) the 40dp strip immediately
+ * even while Home reloads are deferred (slock #17116).
+ */
+@RaftCoreInternalApi fun HomeSnapshot.withChannelAnnouncementHint(
+    channelId: ChannelId,
+    hasAnnouncement: Boolean,
+): HomeSnapshot {
+    var changed = false
+    val nextChannels =
+        channels.map { row ->
+            if (row.channelId == channelId && row.loungeAgentId.isNullOrBlank() && row.hasAnnouncement != hasAnnouncement) {
+                changed = true
+                row.copy(hasAnnouncement = hasAnnouncement)
+            } else {
+                row
+            }
+        }
+    val nextDms =
+        directMessages.map { row ->
+            if (row.channelId == channelId && row.hasAnnouncement != hasAnnouncement) {
+                changed = true
+                row.copy(hasAnnouncement = hasAnnouncement)
+            } else {
+                row
+            }
+        }
+    return if (!changed) this else copy(channels = nextChannels, directMessages = nextDms)
 }
 
 @RaftCoreInternalApi data class HomeRealtimeRowGuard(

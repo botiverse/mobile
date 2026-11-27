@@ -1364,11 +1364,13 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
             // to the messages; not in a Lounge (web ChatPanel `!isLounge`).
             if (conversationLounge == null) data.channelConversionStrip?.invoke()
             // The channel's or DM's pinned content: last of the top regions, right above the timeline (raft-design channel.md).
-            data.channelAnnouncementStrip?.invoke {
-                if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
-                    if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) activeModal = "settings"
-                } else {
-                    onThreadEvent("openChannelSettings", null, null, null)
+            if (conversationLounge == null && !renderAccessRetry) {
+                data.channelAnnouncementStrip?.invoke {
+                    if (payload.surfaceKind == RaftThreadSurfaceKind.DirectMessage) {
+                        if (!(settingsOpensAsPage && onOpenSettingsPage?.invoke() == true)) activeModal = "settings"
+                    } else {
+                        onThreadEvent("openChannelSettings", null, null, null)
+                    }
                 }
             }
             val threadTabContent: @Composable ColumnScope.() -> Unit = {

@@ -36,6 +36,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Canonical Slock home parser.
@@ -180,6 +181,8 @@ data class HomeChannelWireDto(
      * `isSidebarExternalSectionChannel` (components/layout/sidebarChannelVisibility.ts).
      */
     val hasExternalRelation: Boolean = false,
+    /** Whether this channel has a pinned announcement (`GET /api/channels`, slock #17116). */
+    val hasAnnouncement: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -326,6 +329,8 @@ data class HomeDirectMessageWireDto(
     val peerDisplayName: String? = null,
     val peerDescription: String? = null,
     val peerAvatarUrl: String? = null,
+    /** Whether this DM has a pinned announcement (`GET /api/channels/dm`, slock #17116). */
+    val hasAnnouncement: Boolean = false,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -377,6 +382,8 @@ private data class HomeChannelDetailWireDto(
     val visitorVisible: Boolean? = null,
     /** See [HomeChannelWireDto.hasExternalRelation]. */
     val hasExternalRelation: Boolean = false,
+    /** See [HomeChannelWireDto.hasAnnouncement] (`GET /api/channels/:id`, slock #17116). */
+    val hasAnnouncement: Boolean? = null,
     val activityMuted: Boolean = false,
     val muteFromSeq: Long? = null,
     val activityMuteSupported: Boolean = false,
@@ -425,10 +432,30 @@ data class WireChannelCapabilities(
     bodyText: String,
     warningLogger: (String) -> Unit = {}
 ): HomeConversationRow? {
+    val rawObj = runCatching { homeJson.parseToJsonElement(bodyText) as? JsonObject }.getOrNull()
     val wire = runCatching {
-        homeJson.decodeFromString(HomeChannelDetailWireDto.serializer(), bodyText)
+        if (rawObj != null) {
+            homeJson.decodeFromJsonElement(HomeChannelDetailWireDto.serializer(), rawObj)
+        } else {
+            homeJson.decodeFromString(HomeChannelDetailWireDto.serializer(), bodyText)
+        }
     }.getOrNull() ?: return null
     if (wire.id.isBlank() || wire.type.isBlank()) return null
+    // slock #17116: inspect raw JSON key presence so explicit `"announcement": null` or
+    // `"announcementArtifactId": null` overrides a stale `hasAnnouncement: true` rather than
+    // falling through as Kotlin null.
+    val resolvedHasAnnouncement =
+        when {
+            rawObj != null && "announcementArtifactId" in rawObj -> {
+                val elem = rawObj["announcementArtifactId"]
+                elem is JsonPrimitive && elem.isString && elem.content.isNotBlank()
+            }
+            rawObj != null && "announcement" in rawObj -> {
+                val elem = rawObj["announcement"]
+                elem != null && elem !is JsonNull
+            }
+            else -> wire.hasAnnouncement == true
+        }
     return if (wire.type.equals("dm", ignoreCase = true)) {
         val peerId = wire.peerId?.takeIf { it.isNotBlank() } ?: return null
         val peerName = wire.peerName?.takeIf { it.isNotBlank() } ?: return null
@@ -444,6 +471,7 @@ data class WireChannelCapabilities(
             peerDisplayName = wire.peerDisplayName,
             peerDescription = wire.peerDescription,
             peerAvatarUrl = wire.peerAvatarUrl,
+            hasAnnouncement = resolvedHasAnnouncement,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
             activityMuteSupported = wire.activityMuteSupported,
@@ -475,6 +503,7 @@ data class WireChannelCapabilities(
             guestVisible = wire.guestVisible,
             visitorVisible = wire.visitorVisible,
             hasExternalRelation = wire.hasExternalRelation,
+            hasAnnouncement = resolvedHasAnnouncement,
             activityMuted = wire.activityMuted,
             muteFromSeq = wire.muteFromSeq,
             activityMuteSupported = wire.activityMuteSupported,
@@ -726,6 +755,7 @@ fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): Chan
         slackSyncProblem = bridge.slackSyncProblemOrNull(),
         guestVisible = visitorVisible ?: guestVisible,
         hasExternalRelation = hasExternalRelation,
+        hasAnnouncement = !isAgentLoungeWire() && hasAnnouncement,
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,
@@ -776,6 +806,7 @@ private fun HomeDirectMessageWireDto.toDirectMessageRow(warningLogger: (String) 
         lastMessagePreview = lastMessagePreview,
         lastMessageSenderName = lastMessageSenderName,
         readStateV1Hydrate = readStateV1HydrateCarrier(),
+        hasAnnouncement = hasAnnouncement,
         activityNotificationPreference =
             ChannelActivityNotificationPreference(
                 activityMuted = activityMuted,

@@ -459,6 +459,9 @@ sealed interface HomeConversationRow {
     /** Channel `hasExternalRelation` (see [HomeChannelWireDto.hasExternalRelation]); only channels carry one. */
     val hasExternalRelation: Boolean
         get() = false
+    /** Whether this channel or DM has a pinned announcement (slock #17116). */
+    val hasAnnouncement: Boolean
+        get() = false
     /** Agent Lounge v0: the agent this channel is the Lounge of; only channels carry one. */
     val loungeAgentId: String?
         get() = null
@@ -521,6 +524,7 @@ data class HomeChannelRow(
     override val slackSyncProblem: RaftSlackSyncProblem? = null,
     override val guestVisible: Boolean = false,
     override val hasExternalRelation: Boolean = false,
+    override val hasAnnouncement: Boolean = false,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
@@ -567,6 +571,7 @@ data class HomeDirectMessageRow(
     override val jointBillingLocked: Boolean? = null,
     override val jointOverLimitGraceEndsAt: String? = null,
     override val externalFreezeAt: String? = null,
+    override val hasAnnouncement: Boolean = false,
     override val activityNotificationPreference: ChannelActivityNotificationPreference =
         ChannelActivityNotificationPreference.Unsupported,
     override val permissions: ConversationPermissions = ConversationPermissions(),
@@ -620,6 +625,7 @@ fun HomeConversationRow.toConversationSummary(): ConversationSummary =
         slackSyncProblem = slackSyncProblem,
         guestVisible = guestVisible,
         hasExternalRelation = hasExternalRelation,
+        hasAnnouncement = hasAnnouncement,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         channelCapabilities = channelCapabilities,
@@ -668,6 +674,7 @@ fun ConversationSummary.toHomeChannelRow(): HomeChannelRow =
         slackSyncProblem = slackSyncProblem,
         guestVisible = guestVisible,
         hasExternalRelation = hasExternalRelation,
+        hasAnnouncement = hasAnnouncement,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         channelCapabilities = channelCapabilities,
@@ -702,6 +709,7 @@ fun ConversationSummary.toHomeDirectMessageRow(): HomeDirectMessageRow =
         joined = joined,
         archived = archived,
         memberCount = memberCount,
+        hasAnnouncement = hasAnnouncement,
         activityNotificationPreference = activityNotificationPreference,
         permissions = permissions,
         channelCapabilities = channelCapabilities
