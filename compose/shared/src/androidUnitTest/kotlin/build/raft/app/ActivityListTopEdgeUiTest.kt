@@ -75,15 +75,20 @@ class ActivityListTopEdgeUiTest {
     /** Forty rows from yesterday, newest first: one "Yesterday" heading, then the rows. */
     private val rows = (0 until 40).map { index -> row("row$index", "2026-11-04T%02d:00:00Z".format(22 - index / 2)) }
 
-    private fun snapshot(items: List<InboxItem>) = InboxSnapshot(server = ServerSummary(ServerId("server-1"), "Raft"), items = items)
+    private fun snapshot(items: List<InboxItem>, serverId: String = "server-1") =
+        InboxSnapshot(server = ServerSummary(ServerId(serverId), serverId), items = items)
 
-    private class Harness(val items: MutableState<List<InboxItem>>, val listState: LazyListState) {
+    private class Harness(
+        val items: MutableState<List<InboxItem>>,
+        val serverId: MutableState<String>,
+        val listState: LazyListState,
+    ) {
         lateinit var scope: CoroutineScope
     }
 
     private fun ComposeUiTest.mount(): Harness {
         build.raft.app.data.RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
-        val harness = Harness(mutableStateOf(rows), LazyListState())
+        val harness = Harness(mutableStateOf(rows), mutableStateOf("server-1"), LazyListState())
         val store = SharedActivityPresentationStore()
         setContent {
             harness.scope = rememberCoroutineScope()
@@ -92,7 +97,7 @@ class ActivityListTopEdgeUiTest {
             RaftTheme(appearance = RaftAppearance.Light) {
                 SharedActivityList(
                     active = true,
-                    snapshot = snapshot(harness.items.value),
+                    snapshot = snapshot(harness.items.value, harness.serverId.value),
                     selectedFilter = InboxFilter.All,
                     senderProfiles = emptyMap(),
                     refreshing = false,
@@ -170,6 +175,38 @@ class ActivityListTopEdgeUiTest {
             waitForIdle()
             harness.assertAtTop()
             assertEquals("new", harness.firstVisibleRowKey())
+            onNodeWithTag(ActivityNewUpdatesPillTag).assertDoesNotExist()
+        }
+
+    @Test
+    fun afterServerSwitchScrollingBackToTopClearsNewUpdatesPillPermanently() =
+        runRobolectricComposeUiTest {
+            val harness = mount()
+            // Switch to server-2 while reusing the same LazyListState, mirroring an active tab
+            // across a server switch.
+            val server2Old = (0 until 40).map { index -> row("s2-row$index", "2026-11-04T%02d:00:00Z".format(22 - index / 2)) }
+            runOnIdle {
+                harness.serverId.value = "server-2"
+                harness.items.value = server2Old
+            }
+            waitForIdle()
+
+            // Reader scrolls down on server-2, then new top rows land above the viewport.
+            dragBy(harness, 600f)
+            assertTrue(harness.listState.firstVisibleItemIndex > 3)
+            val server2Arrived = (0 until 5).map { index -> row("s2-new$index", "2026-11-05T11:%02d:00Z".format(59 - index)) }
+            change(harness, server2Arrived + server2Old)
+            onNodeWithTag(ActivityNewUpdatesPillTag).assertExists()
+
+            // Reader scrolls all the way back to the top manually (seeing the new rows).
+            runOnIdle { harness.scope.launch { harness.listState.scrollToItem(0) } }
+            waitForIdle()
+            harness.assertAtTop()
+            onNodeWithTag(ActivityNewUpdatesPillTag).assertDoesNotExist()
+
+            // Scrolling down again must NOT resurrect the stale "new updates" pill.
+            dragBy(harness, 600f)
+            assertTrue(harness.listState.firstVisibleItemIndex > 3)
             onNodeWithTag(ActivityNewUpdatesPillTag).assertDoesNotExist()
         }
 }
