@@ -6,10 +6,10 @@ rollout: full
 ---
 
 ## zh-CN
-修复了高刷新率弹簧软键盘动画（如小米 HyperOS Android 16 120Hz，实际动画耗时 450–900ms 但系统上报时长仅 285ms）在动画播放中途被提前判定超时，导致输入框与列表布局发生跳变与多余重排的问题。现在每次收到键盘动画进度帧会顺延短空闲宽限期（250ms），并保留 3 秒绝对上限，既保持键盘跟随流畅又确保系统丢失结束回调时安全兜底。
+重构了 Android 键盘高度同步机制：将软键盘高度统一收口为单一真值，由系统逐帧动画回调直接驱动并按系统渲染帧对齐收尾，移除了原有的固定毫秒超时阈值，修复高刷新率设备（如 120Hz 弹簧键盘动画）在动画播完前被提前截断导致的输入框跳动与掉帧感，同时继续防护厂商丢失动画结束回调的情况。
 
 ## en
-Fixed an issue where long spring keyboard animations on high-refresh-rate Android devices (such as Xiaomi HyperOS on Android 16 120Hz, running 450–900ms while reporting a 285ms duration) prematurely timed out mid-animation, snapping the composer layout and triggering extra relayouts. Keyboard animation tracking now extends a short 250ms idle grace window while frames keep arriving up to a 3-second hard cap, keeping keyboard motion smooth while still recovering safely if the system drops the end callback.
+Refactored Android keyboard inset tracking to a single authoritative height source driven directly by platform per-frame animation callbacks and reconciled with display vsync frames, removing all hardcoded millisecond timeouts. This fixes premature mid-animation cutoffs and composer jumps on high-refresh-rate spring keyboard curves (such as 120Hz devices) while still recovering cleanly if an OEM drops animation start/end callbacks.
 
 ## ja
-高リフレッシュレートのスプリング式キーボードアニメーション（Xiaomi HyperOS Android 16 120Hz など、システム申告時間が 285ms のまま実動作が 450〜900ms に及ぶ端末）でアニメーション途中にタイムアウト誤判定が起き、入力欄のレイアウト飛びや余分な再レイアウトが発生する不具合を修正しました。アニメーションフレームが届いている間は 250ms の短いアイドル猶予を延長しつつ 3 秒の絶対上限を設けることで、滑らかな追従と終了通知欠落時の安全な復旧を両立します。
+Android のキーボード高さ同期を単一の真値ソースへ刷新し、システムから届くフレーム単位のアニメーションコールバックで直接更新しつつ表示の vsync フレームと整合させる方式に変更し、固定ミリ秒のタイムアウトを撤廃しました。120Hz 端末などのスプリング型キーボードアニメーションが途中で打ち切られて入力欄が跳ねる不具合を解消しつつ、メーカー端末で開始・終了コールバックが欠落した場合の復帰も維持します。

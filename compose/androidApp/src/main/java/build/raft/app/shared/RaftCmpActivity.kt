@@ -58,6 +58,7 @@ import android.util.Base64InputStream
 import android.util.DisplayMetrics
 import android.util.LruCache
 import android.util.Log
+import android.view.Choreographer
 import android.view.KeyEvent
 import android.view.PixelCopy
 import android.view.View
@@ -116,6 +117,7 @@ import build.raft.app.nav.LocalRaftStackRootTab
 import build.raft.app.nav.RaftStackRootTab
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshots.Snapshot
 import build.raft.app.parseRaftJsonObjectOrNull
 import build.raft.app.thread.renderThreadShareImageBitmap
 import build.raft.app.toRaftJsonString
@@ -921,13 +923,13 @@ internal open class RaftCmpActivity :
     private var hostFirstFrameDrawn = false
     private val whiteScreenHandler = Handler(Looper.getMainLooper())
     private val whiteScreenWatch = Runnable { checkWindowWhiteScreen() }
-    // Hands 1af517cc: the window's IME as dispatched by the platform, for pages to fall back on
-    // when no IME animation drives Compose's WindowInsets.ime (see RaftHostImeInsets). API 30+
-    // only, where the window is edge to edge and Compose owns the keyboard inset.
+    // Hands 1af517cc / 5f4a14be: single authoritative IME height for this window on API 30+,
+    // driven from onApplyWindowInsets when settled and WindowInsetsAnimation.onProgress per frame
+    // during animations (see RaftHostImeInsets and AndroidImeAnimationTracker).
     private val hostImeInsets: RaftHostImeInsets? =
             if (Build.VERSION.SDK_INT >= 30) RaftHostImeInsets() else null
-    // Hands 1af517cc / 5f4a14be: tracks platform IME animations with progress-renewed idle grace
-    // and an absolute hard cap, plus one summary log per animation.
+    // Hands 1af517cc / 5f4a14be: tracks platform IME animations into hostImeInsets.imeBottomPx
+    // with Choreographer vsync-aligned settlement and one summary log per animation.
     private var imeAnimationTracker: AndroidImeAnimationTracker<WindowInsetsAnimation>? = null
     private var cmpFirstFrameListener: ViewTreeObserver.OnDrawListener? = null
     private var databaseLaunchDrawListener: ViewTreeObserver.OnDrawListener? = null
@@ -3352,9 +3354,19 @@ internal open class RaftCmpActivity :
             }
             return
         }
+        val tracker = trackImeInsetsAnimations(content)
+        content.rootWindowInsets?.getInsets(WindowInsets.Type.ime())?.bottom?.let { initialImePx ->
+            tracker?.onWindowInsetsApplied(initialImePx)
+        }
         content.setOnApplyWindowInsetsListener { view, insets ->
             view.requestLayout()
-            hostImeInsets?.imeBottomPx = insets.getInsets(WindowInsets.Type.ime()).bottom
+            val imeBottomPx = insets.getInsets(WindowInsets.Type.ime()).bottom
+            if (tracker != null) {
+                tracker.onWindowInsetsApplied(imeBottomPx)
+            } else if (hostImeInsets != null && hostImeInsets.imeBottomPx != imeBottomPx) {
+                hostImeInsets.imeBottomPx = imeBottomPx
+                Snapshot.sendApplyNotifications()
+            }
             // task #482: pageData is a one-shot snapshot taken before the first
             // inset dispatch, so it can carry zero/stale bar heights. Publish
             // every real dispatch to the shared layer, which merges it with the
@@ -3362,38 +3374,42 @@ internal open class RaftCmpActivity :
             publishWindowInsets(insets)
             insets
         }
-        trackImeInsetsAnimations(content)
     }
 
-    // Hands 1af517cc: tells pages when a platform IME animation feeds Compose's WindowInsets.ime
-    // frame by frame (follow it) and when it does not (use the dispatched inset above). Installed
-    // on the content view, so the decor view's own callback (Huawei ALT-AL10 runner workaround)
-    // stays in place; CONTINUE_ON_SUBTREE keeps Compose's callback below receiving the animation.
-    // An animation that is prepared but never starts or ends would pin the animated value, so the
-    // flag also expires on its own. A show that reverses a running hide overlaps it, so the flag
-    // stays up until the last IME animation ends.
-    private fun trackImeInsetsAnimations(content: View) {
-        val state = hostImeInsets ?: return
+    // Hands 1af517cc / 5f4a14be: drives hostImeInsets.imeBottomPx as the single authoritative IME
+    // height on Android — settled heights from onApplyWindowInsets, per-frame heights directly from
+    // WindowInsetsAnimation.onProgress, and Choreographer vsync reconciliation if an OEM drops
+    // onStart/onEnd (zero hardcoded millisecond timeouts). Installed on the content view so the
+    // decor view's own callback (Huawei ALT-AL10 runner workaround) stays in place;
+    // CONTINUE_ON_SUBTREE keeps Compose's subtree callback receiving the animation.
+    private fun trackImeInsetsAnimations(content: View): AndroidImeAnimationTracker<WindowInsetsAnimation>? {
+        val state = hostImeInsets ?: return null
         imeAnimationTracker?.dispose()
-        var pendingExpireAction: (() -> Unit)? = null
-        val expireRunnable = Runnable {
-            val action = pendingExpireAction
-            pendingExpireAction = null
-            action?.invoke()
-        }
+        val choreographer = Choreographer.getInstance()
+        var pendingFrameAction: (() -> Unit)? = null
+        val frameCallback =
+                Choreographer.FrameCallback {
+                    val action = pendingFrameAction
+                    pendingFrameAction = null
+                    action?.invoke()
+                }
         val tracker =
                 AndroidImeAnimationTracker<WindowInsetsAnimation>(
                         state = state,
                         nowMillis = SystemClock::uptimeMillis,
-                        scheduleExpiry = { delayMillis, onExpire ->
-                            pendingExpireAction = onExpire
-                            content.removeCallbacks(expireRunnable)
-                            content.postDelayed(expireRunnable, delayMillis)
+                        scheduleNextFrame = { onFrame ->
+                            pendingFrameAction = onFrame
+                            choreographer.removeFrameCallback(frameCallback)
+                            choreographer.postFrameCallback(frameCallback)
                         },
-                        cancelExpiry = {
-                            pendingExpireAction = null
-                            content.removeCallbacks(expireRunnable)
+                        cancelNextFrame = {
+                            pendingFrameAction = null
+                            choreographer.removeFrameCallback(frameCallback)
                         },
+                        readSettledWindowImePx = {
+                            content.rootWindowInsets?.getInsets(WindowInsets.Type.ime())?.bottom
+                        },
+                        onStateChanged = Snapshot::sendApplyNotifications,
                 )
         imeAnimationTracker = tracker
         content.setWindowInsetsAnimationCallback(
@@ -3440,6 +3456,7 @@ internal open class RaftCmpActivity :
                     }
                 }
         )
+        return tracker
     }
 
     private var lastPublishedInsetsKey: String? = null
