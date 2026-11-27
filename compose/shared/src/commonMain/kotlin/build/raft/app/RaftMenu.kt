@@ -59,6 +59,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.avatarWireValueForAvatarSlot
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
+import build.raft.app.members.appBotIdentityOrNull
 import build.raft.app.thread.resolveThreadMemberAgentStatusIndicatorState
 import build.raft.app.thread.threadMemberListHeight
 import androidx.compose.ui.text.input.TextFieldValue
@@ -497,14 +498,14 @@ internal fun RaftTaskAssigneeMenuOverlay(
                     item(key = member.tasksIdentityFilterId()) {
                         val selected = member.tasksIdentityFilterId() == selectedId
                         val statusIndicatorState =
-                            if (member.kind == MemberKind.Agent) {
+                            if (member.kind == MemberKind.Agent && member.appBotIdentityOrNull() == null) {
                                 resolveThreadMemberAgentStatusIndicatorState(
                                     memberKind = member.kind.name.lowercase(),
                                     canonicalState = rememberRaftAgentStatusIndicatorState(
                                         agentStatusResolver,
                                         member.id.value
                                     )
-                                )
+                                ).knownPresenceDotOrNull()
                             } else {
                                 null
                             }

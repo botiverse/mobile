@@ -5401,6 +5401,26 @@ internal fun RaftComposerMemberItem.mentionOriginServers(): List<MemberServerRef
 internal fun RaftComposerMemberItem.mentionAppBotLookupMemberId(): String? =
     memberId?.trim()?.takeIf { kind == MemberKind.Agent && it.isNotBlank() }
 
+/**
+ * Web `MentionCandidateAvatar` (slock #17017): show an activity dot only for in-channel non-App-Bot
+ * agents whose presence is actually known; omit both dot and badge shell when presence is unknown.
+ */
+internal fun resolveComposerMentionAgentStatusIndicatorState(
+    inChannel: Boolean,
+    kind: MemberKind?,
+    isAppBot: Boolean,
+    isOtherServer: Boolean,
+    rawStatus: RaftAgentStatusIndicatorState?,
+): RaftAgentStatusIndicatorState? {
+    if (!inChannel || kind != MemberKind.Agent || isAppBot) return null
+    val known = rawStatus.knownPresenceDotOrNull() ?: return null
+    return if (isOtherServer && known.runningWorkers != null && !known.runningWorkersPresenceOnly) {
+        known.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
+    } else {
+        known
+    }
+}
+
 @Composable
 internal fun ComposerMemberSuggestionRow(
     member: RaftComposerMemberItem,
@@ -5427,15 +5447,16 @@ internal fun ComposerMemberSuggestionRow(
     // kind tag's place, and its avatar has no activity light (`MentionCandidateAvatar`).
     val appBot = rememberRaftMemberAppBot(member.mentionAppBotLookupMemberId())
     // web `MentionCandidateAvatar`: the agent's activity light sits on the avatar corner
-    // (`AgentActivityDot size="sm"`), only for members of this conversation.
+    // (`AgentActivityDot size="sm"`), only for members of this conversation with known presence.
     val agentStatus =
         if (inChannel && member.kind == MemberKind.Agent && appBot == null) {
-            val rawStatus = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId)
-            if (member.mentionOriginServers().isNotEmpty() && rawStatus?.runningWorkers != null && !rawStatus.runningWorkersPresenceOnly) {
-                rawStatus.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
-            } else {
-                rawStatus
-            }
+            resolveComposerMentionAgentStatusIndicatorState(
+                inChannel = true,
+                kind = member.kind,
+                isAppBot = false,
+                isOtherServer = member.mentionOriginServers().isNotEmpty(),
+                rawStatus = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.memberId),
+            )
         } else {
             null
         }

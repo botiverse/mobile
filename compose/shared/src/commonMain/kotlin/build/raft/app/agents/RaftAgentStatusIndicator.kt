@@ -264,6 +264,23 @@ internal fun rememberRaftAgentStatusIndicatorState(
 }
 
 /**
+ * Whether this state carries a known presence/status light rather than the neutral unknown
+ * sentinel (`status = null`, `Presence.Offline`, `label = "—"`) emitted when no presence fact or
+ * authoritative status exists (web `useAgentPresenceKnown`, botiverse/slock #17017).
+ */
+internal fun RaftAgentStatusIndicatorState.hasKnownPresenceDot(): Boolean =
+    status != null ||
+        external ||
+        likelyOnline ||
+        lastSeenAt != null ||
+        blocked != null ||
+        attention != null ||
+        deliveryHold != null
+
+internal fun RaftAgentStatusIndicatorState?.knownPresenceDotOrNull(): RaftAgentStatusIndicatorState? =
+    this?.takeIf { it.hasKnownPresenceDot() }
+
+/**
  * The coarse part only (dot color, status name): for surfaces that do not subscribe to an agent's
  * detailed `agent:activity` (Tenny, slock 968d102d), whose last detailed label could be stale.
  */
@@ -443,7 +460,8 @@ internal fun raftAgentStatusIndicatorState(
         // can never disagree with the text beside it (React
         // resolveAgentDisplayState parity, #198/#73).
         label = statusLabel?.takeIf { it.isNotBlank() } ?: status?.label ?: presence.name,
-        external = false
+        external = false,
+        lastSeenAt = lastSeenAt
     )
 }
 

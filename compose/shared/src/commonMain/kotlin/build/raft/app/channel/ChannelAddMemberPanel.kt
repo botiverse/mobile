@@ -371,7 +371,7 @@ private fun ThreadAddMemberAvatar(
 ) {
     // web `ChannelMembers` add panel: an App Bot gets the Bot badge, no light.
     val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
-    val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
+    val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver).knownPresenceDotOrNull() else null
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, member.id) ?: member.modalAvatarWireValue()
     RaftAvatarWithStatus(
         statusColor = status?.color,
