@@ -1846,137 +1846,38 @@ private fun ThreadMessagesListContent(
     val headerScrollToTopRequestFence =
         remember(threadInstanceKey) { AppShellScrollToTopRequestFence(headerScrollToTopRequest) }
     val outlineOriginJumpRequestState = remember(threadInstanceKey) { mutableStateOf(0) }
-    var outlineOriginJumpRequest by outlineOriginJumpRequestState
-    var outlineOriginJumpConsumed by remember(threadInstanceKey) { mutableStateOf(0) }
-    // A thread beside this conversation whose original is behind the history window: the same jump
-    // to the start, where the history paywall card is (ThreadHeaderOriginalTitle.kt).
-    ThreadHistoryStartFocusEffect(threadInstanceKey, renderPayload.historyStartFocusRequest) { outlineOriginJumpRequest += 1 }
-    LaunchedEffect(threadInstanceKey, headerScrollToTopRequest, lazyItemCount) {
-        if (!consumeThreadHeaderScrollToTopRequest(
-                request = headerScrollToTopRequest,
-                lazyItemCount = lazyItemCount,
-                fence = headerScrollToTopRequestFence,
-            )
-        ) {
-            return@LaunchedEffect
-        }
-        listState.noteUserNavigation()
-        pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
-            scrollInterruptedFocusedMessageAnchorIdentity = pendingIdentity
-        }
-        latestLocalSendBottomAnchorActiveKey = null
-        pendingKeyboardBottomAnchor = false
-        allowBottomAutoAnchor = false
-        initialBottomAnchorReady = true
-        userScrollGeneration.value += 1
-        dispatchViewportEvent(LazyViewportEvent.PinTop)
-        diagnosticsLogger(
-            "thread_header_scroll_to_top request=$headerScrollToTopRequest " +
-                "firstVisible=${listState.firstVisibleItemIndex} totalItems=$lazyItemCount"
-        )
-    }
-    // The thread timeline's jump to the thread's first message (web `jumpToParent`): its row is the
-    // list's first, so the thread's start is loaded first (older pages until there are none), then
-    // the list pins its top and the row is located, as a focused message is.
-    LaunchedEffect(
-        threadInstanceKey,
-        outlineOriginJumpRequest,
-        renderPayload.canLoadMoreBefore,
-        renderPayload.olderMessagesStatus,
-        renderPayload.originStatus,
-        lazyItemCount
-    ) {
-        val step =
-            threadOutlineOriginJumpStep(
-                request = outlineOriginJumpRequest,
-                consumed = outlineOriginJumpConsumed,
-                canLoadMoreBefore = renderPayload.canLoadMoreBefore,
-                olderMessagesStatus = renderPayload.olderMessagesStatus,
-                originRowShown = renderPayload.threadStartRowShown(),
-            )
-        when (step) {
-            ThreadOutlineOriginJumpStep.Idle, ThreadOutlineOriginJumpStep.Wait -> Unit
-            ThreadOutlineOriginJumpStep.LoadOlder -> onThreadEvent("loadOlder", null, null, null)
-            ThreadOutlineOriginJumpStep.GiveUp -> outlineOriginJumpConsumed = outlineOriginJumpRequest
-            ThreadOutlineOriginJumpStep.Pin -> {
-                listState.noteUserNavigation()
-                outlineOriginJumpConsumed = outlineOriginJumpRequest
-                pendingFocusedMessageAnchorIdentityState.value?.let { pendingIdentity ->
-                    scrollInterruptedFocusedMessageAnchorIdentity = pendingIdentity
-                }
-                latestLocalSendBottomAnchorActiveKey = null
-                pendingKeyboardBottomAnchor = false
-                allowBottomAutoAnchor = false
-                initialBottomAnchorReady = true
-                userScrollGeneration.value += 1
-                dispatchViewportEvent(LazyViewportEvent.PinTop)
-                activeFocusedMessageId = renderPayload.originMessage?.id
-                diagnosticsLogger("thread_outline_origin_jump request=$outlineOriginJumpRequest totalItems=$lazyItemCount")
-            }
-        }
-    }
-    LaunchedEffect(
-        threadInstanceKey,
-        shareSelectionCaptureActive,
-        shareSelectionCaptureAnchorMessageId,
-        shareSelectionCaptureAnchorBeforeTarget,
-        shareSelectionCaptureScrollOffsetPx,
-        messageIndexSignature,
-        lazyItemCount
-    ) {
-        val anchorMessageId =
-            shareSelectionCaptureAnchorMessageId
-                ?.takeIf { shareSelectionCaptureActive && it.isNotBlank() }
-                ?: return@LaunchedEffect
-        val targetIndex = renderPayload.threadMessageListItemIndex(anchorMessageId)
-        val scrollIndex =
-            threadShareCaptureAnchorListItemIndex(
-                targetIndex = targetIndex,
-                anchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget
-            )
-        diagnosticsLogger(
-            "thread_share_anchor_start messageId=$anchorMessageId targetIndex=$targetIndex " +
-                "scrollIndex=$scrollIndex beforeTarget=$shareSelectionCaptureAnchorBeforeTarget " +
-                "offset=$shareSelectionCaptureScrollOffsetPx total=${listState.layoutInfo.totalItemsCount}"
-        )
-        if (!listState.canScrollToThreadItem(scrollIndex)) {
-            diagnosticsLogger(
-                "thread_share_anchor_rejected messageId=$anchorMessageId scrollIndex=$scrollIndex " +
-                    "total=${listState.layoutInfo.totalItemsCount}"
-            )
-            return@LaunchedEffect
-        }
-        selectedShareMessageIds.forEach { messageId ->
-            onShareSelectionBounds(messageId, null)
-        }
-        val scrollTarget =
-            threadShareCaptureAnchorTarget(
-                targetIndex = targetIndex,
-                anchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
-                originVisible = renderPayload.hasThreadOriginItem(),
-                historyBoundaryVisible = renderPayload.hasThreadHistoryBoundaryItem(),
-                messageIds = renderPayload.messages.map { message -> message.id }
-            ) ?: return@LaunchedEffect
-        val desiredScrollOffset =
-            if (shareSelectionCaptureAnchorBeforeTarget) 0 else shareSelectionCaptureScrollOffsetPx
-        dispatchViewportEvent(
-            LazyViewportEvent.Anchor(
-                target = scrollTarget,
-                offset = -desiredScrollOffset,
-                layoutGeneration = viewportLayoutGeneration,
-                fallback = LazyViewportAnchorFallback.Free
-            )
-        )
-        val commandId = viewportControllerState.pendingCommand?.id
-        if (commandId != null) {
-            awaitViewportCommandSettlement(commandId)
-        }
-        delay(ThreadShareCaptureScrollSettleMs)
-        diagnosticsLogger(
-            "thread_share_anchor_complete messageId=$anchorMessageId " +
-                "visible=${listState.layoutInfo.visibleItemsInfo.joinToString(",") { it.index.toString() }}"
-        )
-    }
+    val outlineOriginJumpConsumedState = remember(threadInstanceKey) { mutableStateOf(0) }
+    ThreadMessagesListJumpEffects(
+        threadInstanceKey = threadInstanceKey,
+        renderPayload = renderPayload,
+        listState = listState,
+        lazyItemCount = lazyItemCount,
+        messageIndexSignature = messageIndexSignature,
+        headerScrollToTopRequest = headerScrollToTopRequest,
+        headerScrollToTopRequestFence = headerScrollToTopRequestFence,
+        shareSelectionCaptureActive = shareSelectionCaptureActive,
+        shareSelectionCaptureAnchorMessageId = shareSelectionCaptureAnchorMessageId,
+        shareSelectionCaptureAnchorBeforeTarget = shareSelectionCaptureAnchorBeforeTarget,
+        shareSelectionCaptureScrollOffsetPx = shareSelectionCaptureScrollOffsetPx,
+        selectedShareMessageIds = selectedShareMessageIds,
+        userScrollGeneration = userScrollGeneration,
+        pendingFocusedMessageAnchorIdentityState = pendingFocusedMessageAnchorIdentityState,
+        dispatchViewportEvent = dispatchViewportEvent,
+        awaitViewportCommandSettlement = { commandId -> awaitViewportCommandSettlement(commandId) },
+        onThreadEvent = onThreadEvent,
+        onShareSelectionBounds = onShareSelectionBounds,
+        diagnosticsLogger = diagnosticsLogger,
+        allowBottomAutoAnchorState = allowBottomAutoAnchorState,
+        initialBottomAnchorReadyState = initialBottomAnchorReadyState,
+        viewportControllerMutableState = viewportControllerMutableState,
+        viewportLayoutGenerationState = viewportLayoutGenerationState,
+        latestLocalSendBottomAnchorActiveKeyState = latestLocalSendBottomAnchorActiveKeyState,
+        activeFocusedMessageIdState = activeFocusedMessageIdState,
+        pendingKeyboardBottomAnchorState = pendingKeyboardBottomAnchorState,
+        outlineOriginJumpRequestState = outlineOriginJumpRequestState,
+        outlineOriginJumpConsumedState = outlineOriginJumpConsumedState,
+        focusedAnchorState = focusedAnchorState,
+    )
     val pendingOlderPageAnchorState = remember(threadInstanceKey) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     val previousOlderMessagesStatusState = remember(threadInstanceKey) { mutableStateOf(renderPayload.olderMessagesStatus) }
     val olderPageCycleActiveState = remember(threadInstanceKey) { mutableStateOf(false) }
