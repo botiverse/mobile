@@ -6,6 +6,10 @@ import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSettingsTab
 import build.raft.app.settings.AppShellRailSavedKey
 import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.shell.AppShellSearchTabKey
+import build.raft.app.shell.appShellRailInlineProductPageView
+import build.raft.app.shell.appShellTabProductPageView
+import build.raft.app.shell.authenticatedProductPageView
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

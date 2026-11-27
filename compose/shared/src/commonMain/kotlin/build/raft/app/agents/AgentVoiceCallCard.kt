@@ -60,10 +60,10 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import build.raft.app.RaftAppAvatarSticker
-import build.raft.app.RaftAppBottomTabBarHostZIndex
+import build.raft.app.shell.RaftAppBottomTabBarHostZIndex
 import build.raft.app.RaftAvatarKind
 import build.raft.app.RaftContentLucideIcon
-import build.raft.app.RaftHorizontalSafeArea
+import build.raft.app.shell.RaftHorizontalSafeArea
 import build.raft.app.RaftLucideIconName
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.raftImeBottomPx
@@ -76,10 +76,10 @@ import build.raft.app.data.SharedAgentVoiceCallStore
 import build.raft.app.data.formatAgentVoiceCallClock
 import build.raft.app.data.raftNowEpochMillis
 import build.raft.app.model.MemberKind
-import build.raft.app.raftBottomSafeAreaPadding
-import build.raft.app.raftHorizontalSafeArea
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftHorizontalSafeArea
 import build.raft.app.raftMemberAvatarCacheSubject
-import build.raft.app.raftWindowTopSafeAreaPadding
+import build.raft.app.shell.raftWindowTopSafeAreaPadding
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.RaftBanner

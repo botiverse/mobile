@@ -87,6 +87,7 @@ import build.raft.app.markdown.withRaftInlineChipGaps
 import build.raft.app.markdown.withRaftMarkdownBodyClick
 import build.raft.app.model.ServerId
 import build.raft.app.resources.*
+import build.raft.app.shell.rememberRaftWebPageOpener
 import build.raft.app.thread.LocalThreadAppLinkPreviewHost
 import build.raft.app.thread.LocalThreadShareCaptureActive
 import build.raft.app.thread.ThreadAppLinkPreviewHost

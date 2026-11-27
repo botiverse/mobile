@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 // App shell layer contract:
 //   RaftEnvironmentIndicatorZIndex > RaftFloatingOverlayHostZIndex

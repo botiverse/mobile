@@ -13,6 +13,16 @@ import build.raft.app.settings.MessageLinkNavigationSource
 import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import build.raft.app.settings.RaftPendingDataExportLink
 import build.raft.app.settings.buildStandaloneConversationThreadLaunchPayload
+import build.raft.app.shell.RaftIncomingNavigationSignal
+import build.raft.app.shell.RaftNavigationTopPageCheck
+import build.raft.app.shell.RaftPaneNavigator
+import build.raft.app.shell.RaftShellNavigationIntake
+import build.raft.app.shell.RaftShellNavigationIntakeHost
+import build.raft.app.shell.raftAdaptiveNavRailActive
+import build.raft.app.shell.raftResolveNavigationTopPageRoute
+import build.raft.app.shell.raftWindowNavigationTargetIsTopPage
+import build.raft.app.shell.withRaftOpenAnimation
+import build.raft.app.shell.withRaftShellStoreScope
 import build.raft.app.thread.RaftArtifactLinkInbox
 import build.raft.app.thread.RaftExternalInviteLinkInbox
 import build.raft.app.thread.RaftMessageLink

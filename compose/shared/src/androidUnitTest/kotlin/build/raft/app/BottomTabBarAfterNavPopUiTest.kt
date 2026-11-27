@@ -35,6 +35,9 @@ import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.nav.RaftMobilePageStackDisplay
 import build.raft.app.nav.RaftPageStack
 import build.raft.app.settings.RAFT_APP_SHELL_PAGE
+import build.raft.app.shell.RaftAppShellScope
+import build.raft.app.shell.RaftAppShellSurface
+import build.raft.app.shell.RaftBottomTabItemPayload
 import build.raft.app.thread.THREAD_PAGE
 import build.raft.app.thread.key
 import kotlinx.serialization.json.JsonObject

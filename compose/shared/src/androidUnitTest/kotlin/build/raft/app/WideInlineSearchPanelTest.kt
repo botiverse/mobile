@@ -28,6 +28,9 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.data.SharedHomeSearchPanelState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.settings.SharedHomeSearchPanel
+import build.raft.app.shell.HomeSearchPageChrome
+import build.raft.app.shell.RaftAppShellRootBackHandler
+import build.raft.app.shell.homeSearchPageChrome
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import java.time.Duration

@@ -26,7 +26,7 @@ import androidx.navigation3.runtime.NavMetadataKey
 import androidx.navigation3.runtime.get
 import androidx.navigation3.runtime.metadata
 import androidx.navigation3.ui.NavDisplay
-import build.raft.app.RAFT_OPEN_WITHOUT_ANIMATION
+import build.raft.app.shell.RAFT_OPEN_WITHOUT_ANIMATION
 import build.raft.app.compat.ui.RaftProvidePageActive
 import build.raft.app.resources.RaftProvideResourceEnvironment
 import kotlinx.serialization.json.JsonPrimitive

@@ -46,7 +46,7 @@ import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.SoftwareKeyboardController
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftAdaptiveDetailCloseRequest
-import build.raft.app.RaftLinkNavigator
+import build.raft.app.shell.RaftLinkNavigator
 import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.settings.RaftUpgradeExternalContext
 import build.raft.app.settings.RaftUpgradeGate

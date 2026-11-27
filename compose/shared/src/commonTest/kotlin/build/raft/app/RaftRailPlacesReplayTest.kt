@@ -12,6 +12,12 @@ import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.InboxItemKind
 import build.raft.app.settings.AppShellRailPlaces
+import build.raft.app.shell.RaftAdaptiveHomeLandingCandidate
+import build.raft.app.shell.RaftWideNavDetail
+import build.raft.app.shell.RaftWideNavEntry
+import build.raft.app.shell.appShellChatDetailShown
+import build.raft.app.shell.chatConversation
+import build.raft.app.shell.raftWideNavEntryOf
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

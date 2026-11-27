@@ -11,6 +11,10 @@ import build.raft.app.settings.StandaloneSettingsEffectHandler
 import build.raft.app.settings.iconName
 import build.raft.app.settings.openRaftUpgradeDialog
 import build.raft.app.settings.rememberStandaloneSettingsEnvironment
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.openRaftPage
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftWindowWide
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.icon
 import androidx.compose.foundation.layout.ExperimentalLayoutApi

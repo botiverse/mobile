@@ -46,9 +46,9 @@ import build.raft.app.compat.pager.Pager
 import androidx.lifecycle.viewmodel.compose.viewModel
 import build.raft.app.AuthenticatedProductPager
 import build.raft.app.AuthenticatedProductRoute
-import build.raft.app.LocalRaftLinkNavigator
-import build.raft.app.RAFT_SHELL_INSTANCE_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.LocalRaftLinkNavigator
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.RaftBackHandler
 import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftWebViewController

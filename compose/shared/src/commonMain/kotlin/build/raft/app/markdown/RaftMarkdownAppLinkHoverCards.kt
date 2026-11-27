@@ -17,13 +17,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLayoutResult
-import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.shell.LocalRaftLinkNavigator
 import build.raft.app.thread.RaftAppLinkCardView
 import build.raft.app.thread.chipCardButtons
 import build.raft.app.thread.raftAppLinkCardOpenButton
 import build.raft.app.thread.raftAppLinkOpenLinkButton
 import build.raft.app.raftLogInfo
-import build.raft.app.rememberRaftAppLinkCardLeavesRaft
+import build.raft.app.shell.rememberRaftAppLinkCardLeavesRaft
 import build.raft.app.data.AppLinkResult
 import build.raft.designsystem.components.RaftPreviewCardDefaults
 import build.raft.designsystem.components.RaftPreviewCardPopup

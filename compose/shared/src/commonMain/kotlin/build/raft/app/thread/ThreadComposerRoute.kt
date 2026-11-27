@@ -35,7 +35,7 @@ import build.raft.app.onSizeChangedDp
 import build.raft.app.optString
 import build.raft.app.originLabel
 import build.raft.app.raftComposerImagePickerIsStrictImage
-import build.raft.app.raftWindowWidth
+import build.raft.app.shell.raftWindowWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState

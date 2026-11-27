@@ -1,9 +1,10 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import build.raft.app.data.RaftRailPlace
 import build.raft.app.data.mergeRaftMobilePlacesOrder
+import build.raft.app.get
 import build.raft.app.thread.key
 import kotlin.math.sqrt
 

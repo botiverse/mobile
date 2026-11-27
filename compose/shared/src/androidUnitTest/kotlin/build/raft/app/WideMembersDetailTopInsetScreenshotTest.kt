@@ -25,6 +25,14 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
+import build.raft.app.shell.LocalRaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellScope
+import build.raft.app.shell.RaftAppShellSurface
+import build.raft.app.shell.RaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellTopBarState
+import build.raft.app.shell.RaftBottomTabItemPayload
+import build.raft.app.shell.RaftNavigationRailTabBar
+import build.raft.app.shell.raftWindowTopSafeAreaPadding
 import kotlin.test.Test
 import org.junit.Rule
 import org.junit.runner.RunWith

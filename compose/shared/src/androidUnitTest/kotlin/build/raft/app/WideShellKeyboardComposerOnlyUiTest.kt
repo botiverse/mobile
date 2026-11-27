@@ -24,6 +24,8 @@ import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.RaftHostImeInsets
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.shell.LocalRaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellTopBarState
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue

@@ -1,8 +1,14 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftServerSwitcherItem
 import build.raft.app.data.isAppUpdateHomeNotificationId
 import build.raft.app.data.raftComputerAttentionPairs
 import build.raft.app.data.raftComputerAttentionUnseen
+import build.raft.app.homeHeaderServerIdentity
+import build.raft.app.homeServerSwitcherBadgePresentation
+import build.raft.app.homeServerSwitcherHasOtherUnread
+import build.raft.app.origin
 import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.settings.SettingsDestinationComputers
 import build.raft.app.settings.SettingsDestinationConnectedApps

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +58,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import build.raft.app.HomeAssistantFace
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftFloatingOverlayClickTriggeredDismissDelayMillis
+import build.raft.app.RaftFloatingOverlayHost
+import build.raft.app.RaftFloatingOverlayOutsidePointerMode
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.base.BridgeModule
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RaftRailPlace
@@ -78,7 +85,12 @@ import build.raft.app.data.raftRailSlots
 import build.raft.app.data.raftVisiblePlaceCount
 import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.data.withRaftRailKeptPlaces
+import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.origin
+import build.raft.app.raftArgbHex
+import build.raft.app.raftFloatingContentClickTarget
+import build.raft.app.resolve
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftConnectedAppLogo

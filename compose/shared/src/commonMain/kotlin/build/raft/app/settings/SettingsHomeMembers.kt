@@ -64,7 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import build.raft.app.compat.pager.LocalActivity
 import androidx.compose.ui.unit.Dp
-import build.raft.app.AppShellMembersListState
+import build.raft.app.shell.AppShellMembersListState
 import build.raft.app.CreatedAgentLanding
 import build.raft.app.MEMBER_DETAIL_PAGE
 import build.raft.app.MemberDetailIdentity
@@ -101,12 +101,12 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import build.raft.app.model.isExternalAgent
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.openSettingsComputersPage
 import build.raft.app.raftLogWarn
 import build.raft.app.raftLogger
 import build.raft.app.raftScopedAgentStatusResolver
-import build.raft.app.raftUnderAppShellTopBar
+import build.raft.app.shell.raftUnderAppShellTopBar
 import build.raft.app.rememberCreatedAgent
 import build.raft.app.rememberMembersRowActions
 import build.raft.app.rememberRaftCreatedAgentReceipt

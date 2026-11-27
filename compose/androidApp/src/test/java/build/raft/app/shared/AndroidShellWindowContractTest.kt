@@ -1,12 +1,12 @@
 package build.raft.app.shared
 
-import build.raft.app.RAFT_ROUTE_ACCOUNT_ID
-import build.raft.app.RAFT_ROUTE_ENVIRONMENT_ID
-import build.raft.app.RAFT_ROUTE_SERVER_ID
-import build.raft.app.RAFT_SERVER_SWITCH_KEEP_WINDOW
-import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
-import build.raft.app.RAFT_SERVER_SWITCH_WINDOW_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.RAFT_ROUTE_ACCOUNT_ID
+import build.raft.app.shell.RAFT_ROUTE_ENVIRONMENT_ID
+import build.raft.app.shell.RAFT_ROUTE_SERVER_ID
+import build.raft.app.shell.RAFT_SERVER_SWITCH_KEEP_WINDOW
+import build.raft.app.shell.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
+import build.raft.app.shell.RAFT_SERVER_SWITCH_WINDOW_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.RaftDesktopShortcutContract
 import org.json.JSONObject

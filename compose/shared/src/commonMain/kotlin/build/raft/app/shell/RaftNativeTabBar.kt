@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -10,9 +10,13 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIconName
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.formatHomeSidebarBadgeCount
+import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.raftAvatarImageCandidates
 import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.app.thread.key

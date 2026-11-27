@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.app.compat.pager.Page
 import build.raft.app.settings.BOTTOM_TAB_BAR_SMOKE_PAGE

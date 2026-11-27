@@ -13,6 +13,7 @@ import build.raft.app.settings.SettingsDestinationImBridges
 import build.raft.app.settings.SettingsNativeDetailPage
 import build.raft.app.settings.parseRaftSettingsLink
 import build.raft.app.settings.raftSettingsLinkTarget
+import build.raft.app.shell.RaftLinkOpenIntent
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

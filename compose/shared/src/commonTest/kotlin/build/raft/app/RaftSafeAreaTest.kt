@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.shell.resolveRaftNativeSafeAreaDp
+import build.raft.app.shell.resolveRaftSafeAreaDp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

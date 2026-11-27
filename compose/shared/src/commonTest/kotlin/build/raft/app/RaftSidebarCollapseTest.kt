@@ -6,6 +6,11 @@ import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftCollapsibleColumn
 import build.raft.app.settings.AppShellRailSavedKey
 import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.shell.RaftSidebarCollapseState
+import build.raft.app.shell.appShellCollapsibleColumn
+import build.raft.app.shell.raftSidebarGivesWay
+import build.raft.app.shell.raftSidebarToggleShortcut
+import build.raft.app.shell.raftSidebarToggleShortcutLabel
 import build.raft.app.thread.key
 import build.raft.designsystem.theme.RaftPointerInput
 import kotlin.test.Test

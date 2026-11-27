@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -6,9 +6,13 @@ import androidx.compose.runtime.remember
 import build.raft.app.base.Utils
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.iconName
+import build.raft.app.optString
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftTimestampDisplayScope
+import build.raft.app.RaftUnifiedDialogHostProvider
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.pager.Pager

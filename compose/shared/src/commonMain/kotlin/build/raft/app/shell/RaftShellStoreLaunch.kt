@@ -1,8 +1,13 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.ProcessAttachmentAuthScopes
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.RaftSharedStoreRegistry
 import build.raft.app.data.raftProcessRealtimeSessionDemand
+import build.raft.app.has
+import build.raft.app.optBoolean
+import build.raft.app.optString
+import build.raft.app.raftLogWarn
 import build.raft.app.data.AuthenticatedRouteOwner
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.compat.json.JSONObject

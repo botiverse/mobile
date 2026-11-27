@@ -13,8 +13,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import build.raft.app.LocalRaftLinkNavigator
-import build.raft.app.RaftLinkOpenIntent
+import build.raft.app.shell.LocalRaftLinkNavigator
+import build.raft.app.shell.RaftLinkOpenIntent
 import build.raft.app.RaftLucideIconName
 import build.raft.app.base.Utils
 import build.raft.app.compat.json.JSONObject

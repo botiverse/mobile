@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -7,8 +7,16 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
+import build.raft.app.HomeServerSwitcherMenuMaxWidth
+import build.raft.app.RaftHomeShellLabels
+import build.raft.app.RaftServerSwitcherItem
 import build.raft.app.compat.ui.rememberAsyncImageBitmap
 import build.raft.app.data.RaftSharedStoreRegistry
+import build.raft.app.homeServerSwitchListPending
+import build.raft.app.homeServerSwitcherBadgePresentation
+import build.raft.app.homeServerSwitcherJoinCommunityActions
+import build.raft.app.raftAvatarImageCandidates
+import build.raft.app.toServerSwitcherAvatarPresentation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

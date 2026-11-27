@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.settings.matches
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import build.raft.app.thread.label

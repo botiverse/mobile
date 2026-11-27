@@ -11,8 +11,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import build.raft.app.AuthenticatedProductPager
 import build.raft.app.AuthenticatedProductRoute
-import build.raft.app.RAFT_SHELL_INSTANCE_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftCenteredLoading
 import build.raft.app.base.Utils
@@ -29,7 +29,7 @@ import build.raft.app.get
 import build.raft.app.network.RaftAppIdentityRegistry
 import build.raft.app.optBoolean
 import build.raft.app.optString
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftFeedbackWebViewClientKind
 import build.raft.app.resources.raftCurrentUiLocaleTag
 import build.raft.app.thread.LocalThreadVoiceDictationHost

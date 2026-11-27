@@ -1,12 +1,21 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.Dp
+import build.raft.app.RaftAdaptiveDisplay
+import build.raft.app.RaftAdaptivePaneEvent
+import build.raft.app.RaftAdaptivePanePosture
+import build.raft.app.RaftAdaptiveReservedRegion
+import build.raft.app.RaftAdaptiveReservedRegionKind
+import build.raft.app.RaftAdaptiveSideColumn
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.optBoolean
+import build.raft.app.optDouble
+import build.raft.app.optString
 import build.raft.designsystem.theme.RaftScale
 
 internal fun JSONObject.toRaftAdaptivePaneEventOrNull(): RaftAdaptivePaneEvent? {

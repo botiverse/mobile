@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.unit.dp
+import build.raft.app.shell.AppShellTabFadeThroughStack
 import build.raft.designsystem.motion.RaftMotion
 import java.time.Duration
 import kotlin.test.Test

@@ -12,7 +12,7 @@ import build.raft.app.data.ForwardMessageTarget
 import build.raft.app.data.ForwardMessageTargetRepository
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.reduce
 import build.raft.app.thread.reduce
 import build.raft.app.traceId

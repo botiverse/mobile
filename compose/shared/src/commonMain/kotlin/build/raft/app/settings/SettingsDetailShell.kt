@@ -24,7 +24,7 @@ import build.raft.app.RaftAppStroke
 import build.raft.app.RaftColor
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
-import build.raft.app.RaftNativeNavBarAction
+import build.raft.app.shell.RaftNativeNavBarAction
 import build.raft.app.RaftTopPageHeader
 import build.raft.app.RaftType
 import build.raft.app.iconName

@@ -1,6 +1,7 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.app.data.RaftRailAppPlacePrefix
+import build.raft.app.get
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.RaftBesideMemoryRepository
+import build.raft.app.shell.RaftBesideMemoryRepository
 import build.raft.app.RaftComputersRackToolbarStore
 import build.raft.app.image.raftClearImageCaches
 import build.raft.app.resources.raftSystemPreferredLanguageTagsOrEmpty
@@ -26,7 +26,7 @@ import build.raft.app.thread.SharedThreadPayloadStore
 import build.raft.app.sharedThreadTimelineOwnerScopeId
 import build.raft.app.RaftPixelAvatarRuntime
 import build.raft.app.RaftPlatformLogHint
-import build.raft.app.SharedForegroundBannerStore
+import build.raft.app.shell.SharedForegroundBannerStore
 import build.raft.app.data.realtime.MessageSeqEnvelope
 import build.raft.app.data.realtime.RaftRealtimeConnectionCauses
 import build.raft.app.data.realtime.MessageShadowObserver
@@ -2200,8 +2200,8 @@ internal class RaftSharedStoreProvider private constructor(
      * Per-account × per-server recently opened Artifacts and installed Raft Apps (up to 4 entries)
      * for the mobile Server Tab Popover (`#proj-mobile:#329`).
      */
-    val mobileRecentlyUsedStore: build.raft.app.MobileRecentlyUsedStore by lazy {
-        build.raft.app.MobileRecentlyUsedStore()
+    val mobileRecentlyUsedStore: build.raft.app.shell.MobileRecentlyUsedStore by lazy {
+        build.raft.app.shell.MobileRecentlyUsedStore()
     }
 
     /**

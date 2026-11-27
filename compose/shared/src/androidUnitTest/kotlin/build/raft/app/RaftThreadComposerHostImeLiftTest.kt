@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.ui.LocalRaftHostImeInsets
 import build.raft.app.compat.ui.RaftHostImeInsets
+import build.raft.app.shell.raftImeVisible
 import build.raft.app.thread.raftThreadComposerLiveKeyboardPadding
 import build.raft.app.thread.threadComposerBottomPadding
 import java.time.Duration

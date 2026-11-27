@@ -1,5 +1,12 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.HomeMessageOpenRequest
+import build.raft.app.RaftDownloadCenterLaunchInbox
+import build.raft.app.RaftPendingDownloadCenterLaunch
+import build.raft.app.RaftPendingSendPromptLink
+import build.raft.app.RaftSendPromptLinkInbox
+import build.raft.app.RaftThreadSurfaceKind
+import build.raft.app.ThreadRouteIdentity
 import build.raft.app.cmp.host.RaftCmpPageArgs
 import build.raft.app.data.SharedWindowNavigationCoordinator
 import build.raft.app.data.WindowNavigationAction

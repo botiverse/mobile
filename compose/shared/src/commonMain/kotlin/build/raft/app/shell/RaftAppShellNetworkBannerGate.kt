@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job

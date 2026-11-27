@@ -20,6 +20,9 @@ import build.raft.app.settings.openAppShellReplacingCurrentPage
 import build.raft.app.settings.openAppShellServerSwitchWindow
 import build.raft.app.settings.openLoginReplacingCurrentPage
 import build.raft.app.settings.raftMultiShellHostEnabled
+import build.raft.app.shell.RAFT_DOCUMENT_SHELL
+import build.raft.app.shell.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
+import build.raft.app.shell.raftShellStoreScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue

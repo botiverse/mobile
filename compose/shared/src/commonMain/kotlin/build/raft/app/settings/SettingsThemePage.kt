@@ -22,7 +22,7 @@ import build.raft.app.assistant.LocalAssistantSettingChangesSource
 import build.raft.app.assistant.rememberAssistantSettingChanges
 import build.raft.app.data.ASSISTANT_THEME_SETTINGS
 import build.raft.app.raftPlatformLargeScreenPossible
-import build.raft.app.raftWindowWide
+import build.raft.app.shell.raftWindowWide
 import build.raft.designsystem.components.raftSafeAreaHorizontalPadding
 
 /*

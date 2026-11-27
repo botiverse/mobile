@@ -5,6 +5,7 @@ import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.isUnspecified
 import build.raft.app.assistant.threadAssistantPanelWide
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.shell.toRaftAdaptivePaneEventOrNull
 import build.raft.app.thread.artifactScreenshotPhoneLayout
 import build.raft.app.thread.threadAppLinkBlockCardMaxWidth
 import kotlin.test.Test

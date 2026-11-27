@@ -39,7 +39,7 @@ import build.raft.app.RaftAnchoredPopover
 import build.raft.app.RaftAvatarWithStatus
 import build.raft.app.RaftColor
 import build.raft.app.RaftFloatingHorizontalPlacement
-import build.raft.app.RaftFloatingOverlayHostZIndex
+import build.raft.app.shell.RaftFloatingOverlayHostZIndex
 import build.raft.app.RaftFloatingVerticalPlacement
 import build.raft.app.RaftLiveRootAnchorRef
 import build.raft.app.RaftLucideIcon
@@ -76,7 +76,7 @@ import build.raft.app.model.ThreadFollowersUpdated
 import build.raft.app.raftArgbHex
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftNativeDispatchCapture
-import build.raft.app.raftWindowWide
+import build.raft.app.shell.raftWindowWide
 import build.raft.app.rememberRaftAgentStatusIndicatorState
 import build.raft.app.resolve
 import build.raft.app.resolveCurrentPlacement

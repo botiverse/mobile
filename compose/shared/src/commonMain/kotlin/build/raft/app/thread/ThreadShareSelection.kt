@@ -15,7 +15,7 @@ import build.raft.app.fill
 import build.raft.app.get
 import build.raft.app.messages
 import build.raft.app.raftArgbHex
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.resolve
 import androidx.compose.runtime.Composable

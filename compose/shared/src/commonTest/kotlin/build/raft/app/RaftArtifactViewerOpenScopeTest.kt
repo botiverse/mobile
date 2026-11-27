@@ -9,6 +9,10 @@ import build.raft.app.compat.pager.PageData
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.raftEmbeddedChildPageData
+import build.raft.app.shell.withRaftShellStoreScope
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test

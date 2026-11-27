@@ -25,7 +25,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.shell.LocalRaftLinkNavigator
 import build.raft.app.RaftAppEntryRequest
 import build.raft.app.RaftArtifactViewerHeader
 import build.raft.app.RaftArtifactViewerPrewarm
@@ -62,8 +62,8 @@ import build.raft.app.model.ServerId
 import build.raft.app.origin
 import build.raft.app.raftAppEntryOriginOf
 import build.raft.app.rememberRaftArtifactOpener
-import build.raft.app.rememberRaftSystemBrowserOpener
-import build.raft.app.rememberRaftWebPageOpener
+import build.raft.app.shell.rememberRaftSystemBrowserOpener
+import build.raft.app.shell.rememberRaftWebPageOpener
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import build.raft.app.data.SharedAppLinkPreviewStore

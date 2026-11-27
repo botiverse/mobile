@@ -14,6 +14,7 @@ import build.raft.app.nav.RaftMobileStackMotion
 import build.raft.app.nav.RaftPageStack
 import build.raft.app.settings.RAFT_APP_SHELL_PAGE
 import build.raft.app.settings.buildStandaloneTaskThreadLaunchPayload
+import build.raft.app.shell.RAFT_OPEN_WITHOUT_ANIMATION
 import build.raft.app.thread.THREAD_PAGE
 import kotlin.test.Test
 import kotlin.test.assertEquals

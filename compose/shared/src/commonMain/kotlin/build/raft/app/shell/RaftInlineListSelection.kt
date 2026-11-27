@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Stable
@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import build.raft.app.RaftColor
+import build.raft.app.get
 
 /** A row of an inline wide list and the detail it put in the pane beside the list. */
 internal data class RaftInlineOpenedRow(val rowKey: String, val detailKey: String)

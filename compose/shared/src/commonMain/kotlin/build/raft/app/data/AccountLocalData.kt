@@ -1,7 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.ProcessAttachmentAuthScopes
-import build.raft.app.RaftBesideMemoryRepository
+import build.raft.app.shell.RaftBesideMemoryRepository
 import build.raft.app.RaftJointConnectionsCache
 import build.raft.app.thread.SharedThreadPayloadStore
 import build.raft.app.network.sync.CanonicalMessageV2GenerationEngine

@@ -3,6 +3,9 @@ package build.raft.app
 import androidx.compose.ui.unit.dp
 import build.raft.app.compat.json.JSONArray
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.shell.RaftSideColumnPosture
+import build.raft.app.shell.toRaftAdaptivePaneEventOrNull
+import build.raft.app.shell.toRaftSideColumnPosture
 import build.raft.designsystem.components.RaftSideActionColumnSide
 import build.raft.designsystem.components.RaftSideColumnKeepOut
 import kotlin.test.Test

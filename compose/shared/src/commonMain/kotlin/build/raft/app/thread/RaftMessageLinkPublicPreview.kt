@@ -49,10 +49,10 @@ import build.raft.app.data.raftPublicServerPath
 import build.raft.app.get
 import build.raft.app.messages
 import build.raft.app.model.ConversationKind
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.optString
-import build.raft.app.raftShellStoreScope
-import build.raft.app.raftTopSafeAreaPadding
+import build.raft.app.shell.raftShellStoreScope
+import build.raft.app.shell.raftTopSafeAreaPadding
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftSpinner

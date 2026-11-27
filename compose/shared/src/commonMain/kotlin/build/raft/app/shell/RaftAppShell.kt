@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.layout.WindowInsetsSides
 import build.raft.designsystem.components.raftConsumeSafeAreaHorizontal
@@ -26,6 +26,11 @@ import build.raft.designsystem.components.RaftStatusBarBackdropClaim
 import build.raft.designsystem.components.RaftLaidAside
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.get
+import build.raft.app.origin
+import build.raft.app.raftDialogContentPointerBarrier
+import build.raft.app.raftNativeDispatchCapture
+import build.raft.app.rememberRaftUnifiedDialogHostState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -58,6 +63,19 @@ import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import build.raft.app.LocalRaftAppShellNetworkOffline
+import build.raft.app.LocalRaftInputFocusOwnerRegistry
+import build.raft.app.RaftAdaptivePaneLayout
+import build.raft.app.RaftAdaptivePaneState
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftColor
+import build.raft.app.RaftInputFocusDismissHost
+import build.raft.app.RaftType
+import build.raft.app.RaftUnifiedDialogHost
+import build.raft.app.RaftUnifiedDialogHostProvider
+import build.raft.app.RaftUnifiedDialogHostState
 import kotlin.math.abs
 
 internal data class RaftAppShellScope(

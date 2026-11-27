@@ -72,7 +72,7 @@ internal val RaftStackChatFilesBrowsePages: List<String> =
     )
 
 /** The shell tabs the phone server panel opens as stack pages (RAFT_APP_SHELL_SERVER_PAGE): Members, Settings. */
-internal val RaftStackServerPanelTabs: List<String> = listOf("members", build.raft.app.AppShellServerTabKey)
+internal val RaftStackServerPanelTabs: List<String> = listOf("members", build.raft.app.shell.AppShellServerTabKey)
 
 /** The Settings web page surfaces on the stack (the others keep the host's way). */
 internal val RaftStackSettingsWebSurfaces: List<build.raft.app.settings.SettingsWebViewSurface> =
@@ -148,8 +148,8 @@ val RaftMobileStackPages: RaftStackPageAllowlist =
             RaftStackChatFilesBrowsePages.map { RaftStackPageRule(pageName = it) } +
             RaftStackServerPanelTabs.map { tab ->
                 RaftStackPageRule(
-                    pageName = build.raft.app.RAFT_APP_SHELL_SERVER_PAGE,
-                    field = build.raft.app.RAFT_APP_SHELL_SERVER_PAGE_TAB,
+                    pageName = build.raft.app.shell.RAFT_APP_SHELL_SERVER_PAGE,
+                    field = build.raft.app.shell.RAFT_APP_SHELL_SERVER_PAGE_TAB,
                     value = tab,
                 )
             } +

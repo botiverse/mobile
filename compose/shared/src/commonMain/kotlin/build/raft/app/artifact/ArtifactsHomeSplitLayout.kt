@@ -12,6 +12,13 @@ import androidx.compose.ui.platform.testTag
 import build.raft.app.cmp.host.LocalRaftHost
 import build.raft.app.compat.pager.RaftPaneRole
 import build.raft.app.resources.*
+import build.raft.app.shell.RaftArtifactColumnCell
+import build.raft.app.shell.RaftArtifactColumnPane
+import build.raft.app.shell.RaftChildPage
+import build.raft.app.shell.RaftPaneEntry
+import build.raft.app.shell.RaftPaneGrid
+import build.raft.app.shell.RaftPaneHost
+import build.raft.app.shell.raftArtifactColumn
 import build.raft.designsystem.components.RaftPaneGridExpand
 import build.raft.designsystem.focus.RaftFocusRegion
 import build.raft.designsystem.focus.RaftFocusRegionHost

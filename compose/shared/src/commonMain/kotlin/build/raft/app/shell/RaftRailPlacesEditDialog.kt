@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +26,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import build.raft.app.HomeAssistantFace
+import build.raft.app.RaftAppEntryRequest
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftMobileWebPanelCoordinator
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.RAIL_PLACES_V0_FEATURE_FLAG_KEY
 import build.raft.app.data.RaftRailPlace
@@ -45,6 +50,8 @@ import build.raft.app.data.raftRailRemovePlace
 import build.raft.app.data.withRaftRailKeptPlaceKeys
 import build.raft.app.iconName
 import build.raft.app.model.ServerId
+import build.raft.app.origin
+import build.raft.app.raftAppEntryOriginOf
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftConnectedAppLogo

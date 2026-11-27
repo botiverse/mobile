@@ -12,6 +12,8 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import build.raft.app.shell.AppShellScrollToTopRequestFence
+import build.raft.app.shell.raftImeVisible
 
 /**
  * Focus ownership of the Search page field. The phone Search tab is kept alive (composed, not

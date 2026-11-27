@@ -10,9 +10,9 @@ import androidx.compose.ui.Modifier
 import build.raft.app.HomeMessageOpenRequest
 import build.raft.app.MemberDetailIdentity
 import build.raft.app.RaftAgentStatusResolver
-import build.raft.app.RaftChildPage
-import build.raft.app.RaftForegroundBannerHandoff
-import build.raft.app.RaftForegroundMessageBannerView
+import build.raft.app.shell.RaftChildPage
+import build.raft.app.shell.RaftForegroundBannerHandoff
+import build.raft.app.shell.RaftForegroundMessageBannerView
 import build.raft.app.TaskConversationHeadRoute
 import build.raft.app.TaskHeadEdits
 import build.raft.app.TaskHeadPlacement
@@ -35,7 +35,7 @@ import build.raft.app.data.TaskConversationHeaderViewModel
 import build.raft.app.data.TasksUiState
 import build.raft.app.data.taskHeadSourceMessageId
 import build.raft.app.data.valueOrNull
-import build.raft.app.foregroundBannerMemberServerId
+import build.raft.app.shell.foregroundBannerMemberServerId
 import build.raft.app.model.MemberId
 import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeContext
@@ -46,7 +46,7 @@ import build.raft.app.taskHeadAmend
 import build.raft.app.taskHeadDelete
 import build.raft.app.thread.toRaftTimeCapabilities
 import build.raft.app.toRaftTimeCapabilities
-import build.raft.app.withRaftShellStoreScope
+import build.raft.app.shell.withRaftShellStoreScope
 
 // Subtrees of the banner host's content lambda in `SharedThreadRouteContentContent`, moved verbatim
 // (dedent only) and called where they were: the route reads like a list of its parts, and its

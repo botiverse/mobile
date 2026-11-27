@@ -25,7 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
-import build.raft.app.LocalRaftLinkNavigator
+import build.raft.app.shell.LocalRaftLinkNavigator
 import build.raft.app.Modal
 import build.raft.app.RaftAnchoredPopover
 import build.raft.app.RaftAppEntryRequest
@@ -45,8 +45,8 @@ import build.raft.app.origin
 import build.raft.app.raftCaptureLiveRootAnchor
 import build.raft.app.raftLogInfo
 import build.raft.app.raftNativeDispatchCapture
-import build.raft.app.rememberRaftAppLinkCardLeavesRaft
-import build.raft.app.rememberRaftSystemBrowserOpener
+import build.raft.app.shell.rememberRaftAppLinkCardLeavesRaft
+import build.raft.app.shell.rememberRaftSystemBrowserOpener
 import build.raft.app.resolve
 import build.raft.designsystem.components.RaftPreviewCardButton
 import build.raft.designsystem.components.RaftPreviewCardDefaults

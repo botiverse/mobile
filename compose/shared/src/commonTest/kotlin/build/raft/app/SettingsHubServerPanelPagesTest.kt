@@ -5,6 +5,9 @@ import build.raft.app.settings.SettingsDestinationComputers
 import build.raft.app.settings.SettingsDestinationConnectedApps
 import build.raft.app.settings.SettingsDestinationStorage
 import build.raft.app.settings.settingsHomeRowKeys
+import build.raft.app.shell.RaftAppDestination
+import build.raft.app.shell.RaftServerMenuEntry
+import build.raft.app.shell.raftServerMenuEntriesFor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

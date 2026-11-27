@@ -1,6 +1,12 @@
 package build.raft.app
 
 import build.raft.app.model.MemberKind
+import build.raft.app.shell.RaftWideNavDetail
+import build.raft.app.shell.RaftWideNavDirection
+import build.raft.app.shell.RaftWideNavEntry
+import build.raft.app.shell.RaftWideNavHistories
+import build.raft.app.shell.RaftWideNavHistory
+import build.raft.app.shell.toRaftWideNavRoute
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

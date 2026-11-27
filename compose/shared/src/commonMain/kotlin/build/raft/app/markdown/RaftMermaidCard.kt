@@ -49,8 +49,8 @@ import build.raft.app.base.Utils
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.Pager
 import build.raft.app.components.RaftDesignSystemTheme
-import build.raft.app.raftBottomSafeAreaPadding
-import build.raft.app.raftWindowTopSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftWindowTopSafeAreaPadding
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize

@@ -2,7 +2,7 @@ package build.raft.app.shared
 
 import android.app.Activity
 import build.raft.app.R
-import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
+import build.raft.app.shell.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
 import org.json.JSONObject
 
 /**

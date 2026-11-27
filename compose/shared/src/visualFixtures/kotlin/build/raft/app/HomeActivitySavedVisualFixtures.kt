@@ -28,6 +28,7 @@ import build.raft.app.settings.AppShellThreadTimeContext
 import build.raft.app.settings.SharedHomeSavedPanel
 import build.raft.app.settings.appShellPhoneBottomTabs
 import build.raft.app.settings.homeSearchVisualServer
+import build.raft.app.shell.RaftBottomTabBar
 import build.raft.app.thread.key
 import kotlinx.coroutines.flow.flowOf
 

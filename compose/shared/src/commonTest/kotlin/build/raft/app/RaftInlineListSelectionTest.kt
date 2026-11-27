@@ -1,5 +1,10 @@
 package build.raft.app
 
+import build.raft.app.shell.RaftInlineListSelection
+import build.raft.app.shell.RaftInlineOpenedRow
+import build.raft.app.shell.opening
+import build.raft.app.shell.raftInlineListBindOpenedRow
+import build.raft.app.shell.raftInlineListSelectedRowKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

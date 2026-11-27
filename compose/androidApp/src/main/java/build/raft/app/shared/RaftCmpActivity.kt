@@ -87,7 +87,7 @@ import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import build.raft.app.R
-import build.raft.app.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
+import build.raft.app.shell.RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS
 import build.raft.app.RAFT_WHITE_SCREEN_SUSPECT_MS
 import build.raft.app.RAFT_WHITE_SCREEN_TAG
 import build.raft.app.raftFirstFrameLine
@@ -140,7 +140,7 @@ import build.raft.app.FeedbackDiagnosticsFailureReason
 import build.raft.app.FeedbackDiagnosticsLifecycle
 import build.raft.app.FeedbackDiagnosticsReference
 import build.raft.app.RaftHostStrings
-import build.raft.app.releaseRaftShellStoreScope
+import build.raft.app.shell.releaseRaftShellStoreScope
 import build.raft.app.selectExternalWebHandlerPackage
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
 import build.raft.app.core.data.auth.AndroidAuthApiFactory
@@ -3661,7 +3661,7 @@ internal open class RaftCmpActivity :
                 "slockNotificationTaskConversationChannelId"
         internal const val KEY_APP_SHELL_NOTIFICATION_TASK_MESSAGE_ID = "slockNotificationTaskMessageId"
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
-        private const val KEY_OPEN_WITHOUT_ANIMATION = build.raft.app.RAFT_OPEN_WITHOUT_ANIMATION
+        private const val KEY_OPEN_WITHOUT_ANIMATION = build.raft.app.shell.RAFT_OPEN_WITHOUT_ANIMATION
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
         internal const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
@@ -3849,7 +3849,7 @@ internal open class RaftCmpActivity :
                     AndroidPendingLauncherTaskLaunchStore.stash(
                         taskId = forwardTaskId,
                         serverId = pageData.androidShellRouteOwnerOrNull()?.serverId
-                            ?: pageData.optNonNullString(build.raft.app.RAFT_SHELL_SERVER_ID).takeIf { it.isNotEmpty() }
+                            ?: pageData.optNonNullString(build.raft.app.shell.RAFT_SHELL_SERVER_ID).takeIf { it.isNotEmpty() }
                             ?: pageData.optNonNullString(ANDROID_SHELL_SERVER_ID_KEY).takeIf { it.isNotEmpty() },
                         initialTab = pageData.optNonNullString(KEY_APP_SHELL_INITIAL_TAB).takeIf { it.isNotEmpty() },
                         tapEpochMillis = pageData.optLong(RAFT_SERVER_SWITCH_TAP_EPOCH_MILLIS, 0L),

@@ -42,8 +42,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.ActivityMonthResources
 import build.raft.app.AuthenticatedProductPager
 import build.raft.app.AuthenticatedProductRoute
-import build.raft.app.RAFT_SHELL_INSTANCE_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftBackHandler
 import build.raft.app.RaftCenteredLoading
@@ -95,9 +95,9 @@ import build.raft.app.openRaftFilePreviewPage
 import build.raft.app.optBoolean
 import build.raft.app.optString
 import build.raft.app.raftArgbHex
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftFeedbackWebViewClientKind
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.data.NetworkSettingsFeedbackTicketsRepository
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.RaftSharedStoreRegistry

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,8 +26,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftLucideIconName
 import build.raft.app.data.RaftRailTabIds
 import build.raft.app.iconName
+import build.raft.app.resolve
 import build.raft.app.resources.*
 import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.settings.iconName

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -62,6 +62,9 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import build.raft.app.RaftAppEntryRequest
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.RaftRailAppPlacePrefix
 import build.raft.app.data.RaftRailPlace
@@ -69,6 +72,9 @@ import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
 import build.raft.app.data.artifactWebUrl
 import build.raft.app.data.resolveAppLinkIconUrl
+import build.raft.app.raftAppEntryOriginOf
+import build.raft.app.raftArgbHex
+import build.raft.app.rememberRaftArtifactOpener
 import build.raft.app.resources.*
 import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.app.thread.icon

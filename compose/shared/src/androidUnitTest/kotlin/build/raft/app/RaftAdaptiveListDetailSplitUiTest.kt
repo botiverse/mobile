@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RaftListPaneKind
+import build.raft.app.shell.RaftAdaptiveListDetailSplit
+import build.raft.app.shell.RaftListPaneWidths
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme

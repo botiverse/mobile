@@ -36,7 +36,7 @@ import kotlin.time.TimeSource
 /**
  * The signed-in person's unread feedback replies summed over every Hands app they file into (web,
  * Raft Desktop, Android, iOS, HarmonyOS): the dot on Settings and its Feedback row
- * ([build.raft.app.RaftMoreAttention.FeedbackReplies]), as the one Feedback list holds every app's
+ * ([build.raft.app.shell.RaftMoreAttention.FeedbackReplies]), as the one Feedback list holds every app's
  * tickets (slock #14722; design settings.md "Feedback": "its pink pixel counts new replies on all of
  * them"). Process-wide, one per app.
  *

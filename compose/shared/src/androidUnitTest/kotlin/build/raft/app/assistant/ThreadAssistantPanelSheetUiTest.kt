@@ -26,11 +26,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import build.raft.app.HomeMessageOpenRequest
-import build.raft.app.LocalRaftForegroundBannerHandoff
-import build.raft.app.RaftForegroundBannerHost
-import build.raft.app.RaftForegroundMessageBanner
-import build.raft.app.RaftForegroundMessageBannerIconKind
-import build.raft.app.RaftForegroundMessageBannerView
+import build.raft.app.shell.LocalRaftForegroundBannerHandoff
+import build.raft.app.shell.RaftForegroundBannerHost
+import build.raft.app.shell.RaftForegroundMessageBanner
+import build.raft.app.shell.RaftForegroundMessageBannerIconKind
+import build.raft.app.shell.RaftForegroundMessageBannerView
 import build.raft.app.RobolectricComposeActivityRule
 import build.raft.app.ThreadLaunchConversationIdentity
 import build.raft.app.cmp.host.LocalRaftHost

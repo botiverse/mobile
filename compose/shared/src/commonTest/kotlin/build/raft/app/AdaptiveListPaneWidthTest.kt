@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.*
+import build.raft.app.shell.RaftListPaneWidths
+import build.raft.app.shell.raftListPaneDragCollapses
 import build.raft.designsystem.theme.RaftPointerInput
 import kotlin.test.*
 

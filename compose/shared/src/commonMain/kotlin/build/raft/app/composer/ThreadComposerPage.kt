@@ -4,6 +4,8 @@ import build.raft.app.assistant.threadComposerComposing
 import build.raft.app.resources.*
 import build.raft.app.settings.matches
 import build.raft.app.settings.raftComposerModEnterKeyLabel
+import build.raft.app.shell.raftWindowWide
+import build.raft.app.shell.raftWindowWidth
 import build.raft.app.thread.LocalThreadQuoteReplyHost
 import build.raft.app.thread.LocalThreadVoiceDictationHost
 import build.raft.app.thread.RaftThreadScreenPayload

@@ -14,6 +14,8 @@ import build.raft.app.iconName
 import build.raft.app.settings.AppUpdateSummary
 import build.raft.app.settings.iconName
 import build.raft.app.settings.observe
+import build.raft.app.shell.RaftTabItemPayload
+import build.raft.app.shell.RaftVerticalTabBar
 import build.raft.app.thread.key
 import build.raft.app.transfer.RaftTransferMeter
 import kotlin.test.Test

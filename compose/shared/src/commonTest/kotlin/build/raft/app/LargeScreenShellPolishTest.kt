@@ -2,6 +2,10 @@ package build.raft.app
 
 import androidx.compose.ui.unit.dp
 import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.shell.AppShellSearchTabKey
+import build.raft.app.shell.shouldDismissKeyboardOnAppShellTabSwitch
+import build.raft.app.shell.shouldDismissKeyboardOnRailInlinePageSelect
+import build.raft.app.shell.shouldDismissKeyboardOnRailTabSelect
 import build.raft.designsystem.theme.RaftScale
 import kotlin.test.Test
 import kotlin.test.assertEquals

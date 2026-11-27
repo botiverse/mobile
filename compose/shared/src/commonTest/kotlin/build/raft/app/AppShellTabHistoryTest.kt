@@ -1,5 +1,9 @@
 package build.raft.app
 
+import build.raft.app.shell.AppShellSearchTabKey
+import build.raft.app.shell.AppShellServerTabKey
+import build.raft.app.shell.AppShellTabHistory
+import build.raft.app.shell.appShellTabHistoryRoots
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

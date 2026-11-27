@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.designsystem.components.RaftListRowGroup
 import build.raft.app.base.BasePager
@@ -13,6 +13,8 @@ import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowVariant
 import build.raft.app.data.KeyValueRouterPreferenceRepository
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.get
+import build.raft.app.optString
 import build.raft.app.settings.AUTH_CHOOSE_SERVER_PAGE
 import build.raft.app.settings.BOTTOM_TAB_BAR_SMOKE_PAGE
 import build.raft.app.settings.RAFT_APP_SHELL_PAGE
@@ -52,6 +54,18 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import build.raft.app.AUTH_ABOUT_PAGE
+import build.raft.app.AUTH_PROFILE_SETUP_PAGE
+import build.raft.app.LOGIN_PAGE
+import build.raft.app.MEMBERS_PAGE
+import build.raft.app.MEMBERS_SMOKE_PAGE
+import build.raft.app.RAFT_FILE_PREVIEW_PAGE
+import build.raft.app.RAFT_HOME_PAGE
+import build.raft.app.RAFT_LUCIDE_ICON_GALLERY_PAGE
+import build.raft.app.RAFT_TYPOGRAPHY_PROBE_PAGE
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftColor
+import build.raft.app.RaftType
 import build.raft.app.compat.pager.Page
 import build.raft.app.compat.module.RouterModule
 import build.raft.app.compat.json.JSONObject

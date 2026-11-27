@@ -9,6 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
+import build.raft.app.shell.RaftSideColumnPosture
+import build.raft.app.shell.RaftSideColumnScaffold
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import org.junit.Rule

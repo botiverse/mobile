@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.shell.openRaftPage
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.thread.RaftExternalInviteLinkInbox
 import build.raft.app.thread.RaftMessageLink
 import build.raft.app.thread.RaftMessageLinkInbox

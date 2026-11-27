@@ -39,6 +39,14 @@ import build.raft.app.settings.rememberRaftPagerAppeared
 import build.raft.app.settings.rememberSettingsWebViewAuthSnapshot
 import build.raft.app.settings.settingsBillingOpenTarget
 import build.raft.app.settings.settingsWebViewAuthEventSource
+import build.raft.app.shell.RaftInAppBrowserRouteScope
+import build.raft.app.shell.RaftLinkOpenDecision
+import build.raft.app.shell.RaftLinkOpenIntent
+import build.raft.app.shell.RaftLinkOpenTarget
+import build.raft.app.shell.appShellRailPlacesEnabled
+import build.raft.app.shell.raftOwnLinkIsWebPage
+import build.raft.app.shell.raftOwnLinkShellOpener
+import build.raft.app.shell.rememberRaftLinkNavigator
 import build.raft.app.thread.icon
 import build.raft.designsystem.gesture.RaftBlockBackSwipe
 import build.raft.designsystem.theme.RaftTheme

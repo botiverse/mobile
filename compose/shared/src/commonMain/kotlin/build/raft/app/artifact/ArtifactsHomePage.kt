@@ -63,6 +63,10 @@ import build.raft.app.settings.LocalRaftSettingsWideDetail
 import build.raft.app.settings.currentServerSummary
 import build.raft.app.settings.settingsStandalonePageData
 import build.raft.app.settings.standaloneSettingsWebBaseUrl
+import build.raft.app.shell.RaftArtifactColumnPane
+import build.raft.app.shell.raftShellStoreScope
+import build.raft.app.shell.rememberRaftWebPageOpener
+import build.raft.app.shell.withRaftShellStoreScope
 import build.raft.app.thread.ArtifactCardScreenshotView
 import build.raft.app.thread.LocalArtifactScreenshotReader
 import build.raft.app.thread.dispatch

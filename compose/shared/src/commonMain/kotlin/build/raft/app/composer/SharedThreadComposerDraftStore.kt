@@ -12,7 +12,9 @@ import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.ThreadSendMessageMention
 import build.raft.app.model.InboxItemKind
 import build.raft.app.model.TaskSummary
+import build.raft.app.normalized
 import build.raft.app.reduce
+import build.raft.app.shell.normalized
 import build.raft.app.thread.ThreadComposerOwnedTemporarySources
 import build.raft.app.thread.appendThreadQuoteToComposer
 import build.raft.app.thread.dispatch

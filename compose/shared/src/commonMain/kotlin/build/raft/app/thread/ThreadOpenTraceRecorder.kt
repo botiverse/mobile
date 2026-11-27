@@ -10,7 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.platform.LocalDensity
-import build.raft.app.LocalRaftAppShellTopBar
+import build.raft.app.shell.LocalRaftAppShellTopBar
 import build.raft.app.data.MOBILE_THREAD_OPEN_TRACE_NAME
 import build.raft.app.data.ProcessRaftDatetimeFoundationOwner
 import build.raft.app.data.RaftClientTraceEvents

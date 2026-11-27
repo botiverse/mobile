@@ -1,6 +1,8 @@
-package build.raft.app
+package build.raft.app.shell
 
+import build.raft.app.RaftAdaptiveHomeLanding
 import build.raft.app.model.ConversationKind
+import build.raft.app.resolveRaftAdaptiveHomeLanding
 
 internal data class RaftAdaptiveHomeLandingCandidate(
     val threadId: String,

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.designsystem.components.LocalRaftFrameInsets
 import build.raft.designsystem.components.RaftFrameInsets
@@ -25,7 +25,14 @@ import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAdaptiveDisplay
+import build.raft.app.RaftAdaptivePaneEvent
+import build.raft.app.RaftAdaptiveSideColumn
+import build.raft.app.RaftColor
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftLucideIconName
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.get
 import build.raft.app.iconName
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName

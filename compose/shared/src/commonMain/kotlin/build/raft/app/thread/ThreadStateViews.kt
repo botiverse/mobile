@@ -28,11 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import build.raft.app.RaftColor
-import build.raft.app.RaftFloatingOverlayHostZIndex
+import build.raft.app.shell.RaftFloatingOverlayHostZIndex
 import build.raft.app.RaftNotificationLevelTarget
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.RaftType
-import build.raft.app.raftTopSafeAreaPadding
+import build.raft.app.shell.raftTopSafeAreaPadding
 import kotlinx.coroutines.delay
 
 @Composable

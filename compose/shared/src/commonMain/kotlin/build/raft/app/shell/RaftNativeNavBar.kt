@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
@@ -27,6 +27,12 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
+import build.raft.app.AgentLoungeSystemSymbol
+import build.raft.app.RaftAvatarKind
+import build.raft.app.RaftChannelKindGlyph
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
+import build.raft.app.available
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -34,7 +40,11 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.coroutines.launch
 import build.raft.app.compat.ui.LocalRaftPageActive
+import build.raft.app.fill
+import build.raft.app.get
 import build.raft.app.iconName
+import build.raft.app.raftArgbHex
+import build.raft.app.raftChannelKindGlyph
 import build.raft.app.settings.iconName
 import build.raft.app.thread.FOCUS_MODE_MENU_ITEM_ID
 import build.raft.app.thread.FOLLOW_THREAD_MENU_ITEM_ID
@@ -45,6 +55,9 @@ import build.raft.app.thread.THREAD_TIMELINE_MENU_ITEM_ID
 import build.raft.app.thread.VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID
 import build.raft.app.thread.icon
 import build.raft.app.thread.splitPhoneConversationHeaderActions
+import build.raft.app.toJson
+import build.raft.app.toJsonArray
+import build.raft.app.wireChannelKind
 import build.raft.designsystem.components.RaftSideAction
 
 /*

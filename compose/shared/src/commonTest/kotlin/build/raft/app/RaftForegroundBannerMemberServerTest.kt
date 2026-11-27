@@ -6,6 +6,9 @@ import build.raft.app.model.ConversationKind
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.settings.iconName
+import build.raft.app.shell.RaftForegroundMessageBanner
+import build.raft.app.shell.RaftForegroundMessageBannerIconKind
+import build.raft.app.shell.foregroundBannerMemberServerId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

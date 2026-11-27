@@ -37,6 +37,13 @@ import build.raft.app.data.AppLocale
 import build.raft.app.data.RaftMinBuildGateDecision
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.shell.LocalRaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellSurface
+import build.raft.app.shell.RaftAppShellTopBar
+import build.raft.app.shell.RaftAppShellTopBarState
+import build.raft.app.shell.RaftBottomTabItemPayload
+import build.raft.app.shell.RaftNavigationRailTabBar
+import build.raft.app.shell.rememberRaftAppShellScope
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest

@@ -1,6 +1,11 @@
 package build.raft.app
 
 import androidx.compose.ui.unit.dp
+import build.raft.app.shell.RaftWideKeyboardComposerFocus
+import build.raft.app.shell.raftAppShellTopBarShown
+import build.raft.app.shell.raftWideKeyboardComposerOnly
+import build.raft.app.shell.raftWideKeyboardHidesHead
+import build.raft.app.shell.raftWideKeyboardRoom
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -10,6 +10,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
+import build.raft.app.shell.RaftProfileColumnPanes
+import build.raft.app.shell.RaftSupportingPaneShownReport
+import build.raft.app.shell.RaftWideBackStep
+import build.raft.app.shell.raftWideBackStep
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

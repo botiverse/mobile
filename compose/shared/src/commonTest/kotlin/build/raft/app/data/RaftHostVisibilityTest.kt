@@ -1,6 +1,6 @@
 package build.raft.app.data
 
-import build.raft.app.releaseRaftShellStoreScope
+import build.raft.app.shell.releaseRaftShellStoreScope
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

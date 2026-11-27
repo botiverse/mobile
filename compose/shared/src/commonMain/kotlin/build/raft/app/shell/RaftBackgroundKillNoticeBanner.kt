@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftColor
 import build.raft.app.data.RaftBackgroundKillNotice
 import build.raft.app.data.RaftBackgroundKillNoticeHostRegistry
 import build.raft.app.data.RaftMinBuildGate

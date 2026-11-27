@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.shell.foregroundBannerDragOffsetAfterDelta
+import build.raft.app.shell.shouldDismissForegroundBannerOnSwipeRelease
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

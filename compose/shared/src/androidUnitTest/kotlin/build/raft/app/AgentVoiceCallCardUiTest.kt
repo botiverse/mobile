@@ -32,6 +32,7 @@ import build.raft.app.data.AgentVoiceCaption
 import build.raft.app.data.AppLocale
 import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
+import build.raft.app.shell.RaftHorizontalSafeArea
 import kotlin.math.abs
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest

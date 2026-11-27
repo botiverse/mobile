@@ -5,6 +5,7 @@ import build.raft.app.data.raftSharedPreferenceStore
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MessageId
+import build.raft.app.shell.RaftAdaptiveHomeLandingCandidate
 import build.raft.app.thread.key
 import build.raft.app.thread.toThreadLaunchConversationIdentity
 import build.raft.app.toThreadLaunchConversationIdentity

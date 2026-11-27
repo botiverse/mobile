@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.designsystem.tokens.RaftUiComponentTokens
 import build.raft.designsystem.components.raftAppRailMetricsFor
@@ -7,6 +7,7 @@ import build.raft.app.settings.AppShellRailSearchKey
 import build.raft.app.settings.iconName
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
+import build.raft.app.visibleHomeNotifications
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -20,7 +21,16 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
+import build.raft.app.HomeNotificationSecurityMarker
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.ServerSwitcherAvatarTile
+import build.raft.app.get
+import build.raft.app.hasHomeSecurityAlert
+import build.raft.app.hasUnreadHomeNotifications
 import build.raft.app.iconName
+import build.raft.app.localized
+import build.raft.app.raftArgbHex
 import build.raft.designsystem.components.RaftAppRailDefaults
 import build.raft.designsystem.components.RaftAppRailMetrics
 import build.raft.designsystem.components.raftAppRailCompact

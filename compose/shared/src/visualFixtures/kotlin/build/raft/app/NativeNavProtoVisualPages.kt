@@ -20,6 +20,7 @@ import build.raft.app.compat.pager.Page
 import build.raft.app.settings.SettingsHomeContent
 import build.raft.app.settings.SettingsPageVisualContent
 import build.raft.app.settings.settingsTabBarSmokePayload
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.ThreadMessageCard
 import build.raft.app.thread.ThreadPageHeader

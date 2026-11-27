@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.app.resources.*
 import build.raft.app.thread.icon
@@ -18,7 +18,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.HomeServerSwitcherBadgeKind
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftColor
+import build.raft.app.RaftFloatingOverlayClickTriggeredDismissDelayMillis
+import build.raft.app.RaftFloatingOverlayHost
+import build.raft.app.RaftHomeShellLabels
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftServerSwitcherItem
+import build.raft.app.ServerSwitcherAvatarTile
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.homeServerSwitcherBadgePresentation
+import build.raft.app.homeServerSwitcherJoinCommunityActions
+import build.raft.app.localized
+import build.raft.app.raftArgbHex
+import build.raft.app.raftFloatingContentClickTarget
 import build.raft.designsystem.components.RaftGlyph
 import build.raft.designsystem.components.RaftGlyphIcon
 import build.raft.designsystem.components.RaftMobileNavDefaults

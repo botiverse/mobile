@@ -1,5 +1,7 @@
 package build.raft.app
 
+import build.raft.app.shell.AppShellSearchHandoffTarget
+import build.raft.app.shell.appShellSearchHandoffTarget
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

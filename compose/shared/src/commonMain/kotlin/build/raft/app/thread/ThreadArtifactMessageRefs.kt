@@ -76,10 +76,10 @@ import build.raft.app.localized
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
 import build.raft.app.raftArgbHex
 import build.raft.app.raftRelativeTimestampLabel
-import build.raft.app.raftWindowWide
-import build.raft.app.raftWindowWidth
+import build.raft.app.shell.raftWindowWide
+import build.raft.app.shell.raftWindowWidth
 import build.raft.app.rememberRaftArtifactOpener
-import build.raft.app.rememberRaftWebPageOpener
+import build.raft.app.shell.rememberRaftWebPageOpener
 import build.raft.app.model.MillisPerDay
 import build.raft.app.model.MillisPerMinute
 import build.raft.app.model.RaftTimeContext

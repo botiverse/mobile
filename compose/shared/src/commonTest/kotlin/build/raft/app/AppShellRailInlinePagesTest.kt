@@ -11,6 +11,11 @@ import build.raft.app.settings.appShellRailInlinePageKey
 import build.raft.app.settings.appShellRailInlinePageRailId
 import build.raft.app.settings.appShellRailSurfaceBackDismissesDetailFirst
 import build.raft.app.settings.appShellSharedDetailSurfaceVisible
+import build.raft.app.shell.RaftAppDestination
+import build.raft.app.shell.RaftNavPresentation
+import build.raft.app.shell.RaftNavRoute
+import build.raft.app.shell.appShellRailFooterTabs
+import build.raft.app.shell.appShellRailTabs
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

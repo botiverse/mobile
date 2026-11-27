@@ -2,6 +2,18 @@ package build.raft.app
 
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.SyncTestPreferences
+import build.raft.app.shell.RAFT_BESIDE_MEMORY_INDEX_KEY
+import build.raft.app.shell.RAFT_BESIDE_MEMORY_MAX_CONVERSATIONS
+import build.raft.app.shell.RaftBesideArtifact
+import build.raft.app.shell.RaftBesideKind
+import build.raft.app.shell.RaftBesideMemoryRepository
+import build.raft.app.shell.RaftBesideProfile
+import build.raft.app.shell.RaftBesideProfileKind
+import build.raft.app.shell.RaftBesideState
+import build.raft.app.shell.RaftBesideStoredEntry
+import build.raft.app.shell.decodeRaftBesideMemory
+import build.raft.app.shell.raftBesideMemoryKey
+import build.raft.app.shell.raftPruneBesideEntries
 import build.raft.app.thread.key
 import kotlin.test.Test
 import kotlin.test.assertEquals

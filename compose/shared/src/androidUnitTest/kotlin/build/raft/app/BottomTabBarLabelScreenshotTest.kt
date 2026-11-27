@@ -2,6 +2,7 @@ package build.raft.app
 
 import build.raft.app.resources.*
 import build.raft.app.settings.appShellPhoneBottomTabs
+import build.raft.app.shell.RaftSharedBottomTabBarBand
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box

@@ -47,7 +47,7 @@ import build.raft.app.memberDetailIdentity
 import build.raft.app.model.ChannelId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.ServerId
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.rememberThreadChannelSettingsPanel
 import build.raft.app.rememberThreadPageLounge
 import build.raft.app.thread.memberDetailIdentity

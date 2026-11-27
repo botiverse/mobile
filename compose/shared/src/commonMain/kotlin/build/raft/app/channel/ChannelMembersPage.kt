@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.resources.*
+import build.raft.app.shell.RaftNativeNavBarTitleExtras
 import build.raft.app.thread.icon
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement

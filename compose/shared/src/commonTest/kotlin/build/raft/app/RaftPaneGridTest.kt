@@ -1,6 +1,9 @@
 package build.raft.app
 
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.shell.RaftPaneGridStore
+import build.raft.app.shell.decodeRaftPaneGridFlags
+import build.raft.app.shell.decodeRaftPaneGridSplits
 import build.raft.app.thread.conversationSideCardsBesideInGrid
 import build.raft.app.thread.key
 import kotlin.test.Test

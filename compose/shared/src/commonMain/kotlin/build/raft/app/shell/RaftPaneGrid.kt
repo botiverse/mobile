@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -20,9 +20,18 @@ import androidx.compose.ui.semantics.expand
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftChannelSideLayoutStore
+import build.raft.app.RaftChannelSideSection
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIconName
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.SharedPreferenceStore
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.fill
+import build.raft.app.paneGridArrangement
+import build.raft.app.raftColumnMoves
+import build.raft.app.raftNativeDispatchCapture
+import build.raft.app.raftPlatformHasFinePointer
 import build.raft.app.resources.*
 import build.raft.app.thread.key
 import build.raft.designsystem.components.LocalRaftPaneGridArrangement

@@ -20,6 +20,7 @@ import build.raft.app.model.ServerId
 import build.raft.app.model.isRuntimeRetired
 import build.raft.app.model.retiredRuntimeNeedsComputerUpdate
 import build.raft.app.resources.*
+import build.raft.app.shell.openRaftPage
 import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.toThreadMemberDetailPageData
 import build.raft.designsystem.components.RaftButton

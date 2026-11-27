@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.designsystem.components.RaftAvatarSize
 import build.raft.designsystem.components.raftSlot
@@ -8,10 +8,16 @@ import build.raft.app.settings.iconName
 import build.raft.app.thread.RaftConnectedAppLogo
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
+import build.raft.app.withRaftFontWeight
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
 import build.raft.app.markdown.traceMarkdownSection
 import build.raft.app.markdown.traceMarkdownSectionNonComposable
+import build.raft.app.optString
+import build.raft.app.raftArgbHex
+import build.raft.app.raftLegacyIconInk
+import build.raft.app.raftLogInfo
+import build.raft.app.raftPlatformDefaultAppTabBarRenderer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -58,6 +64,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import build.raft.app.HomeAssistantFace
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftAppStroke
+import build.raft.app.RaftColor
+import build.raft.app.RaftLucideIcon
+import build.raft.app.RaftLucideIconName
+import build.raft.app.RaftType
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.Pager
 import build.raft.designsystem.components.RaftUnreadCount
@@ -71,6 +84,7 @@ import build.raft.designsystem.components.RaftConversationKindIcon
 import build.raft.designsystem.components.RaftConversationKindGlyph
 import build.raft.designsystem.components.RaftAppRailFooterItem
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.get
 import build.raft.app.iconName
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentSize

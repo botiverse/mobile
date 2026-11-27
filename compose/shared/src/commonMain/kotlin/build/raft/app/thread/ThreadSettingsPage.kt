@@ -49,9 +49,9 @@ import build.raft.app.get
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
 import build.raft.app.optString
-import build.raft.app.raftBottomSafeAreaPadding
-import build.raft.app.raftWindowWide
-import build.raft.app.raftWindowWidth
+import build.raft.app.shell.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftWindowWide
+import build.raft.app.shell.raftWindowWidth
 import build.raft.app.rememberThreadChannelSettingsPanel
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor

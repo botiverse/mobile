@@ -8,7 +8,7 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.NotificationPushReceived
 import build.raft.app.model.ServerId
 import build.raft.app.network.raftProcessIsForeground
-import build.raft.app.raftNotificationPushBannerOrNull
+import build.raft.app.shell.raftNotificationPushBannerOrNull
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 

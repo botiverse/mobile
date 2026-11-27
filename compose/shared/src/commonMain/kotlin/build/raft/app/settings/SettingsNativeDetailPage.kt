@@ -2,8 +2,8 @@ package build.raft.app.settings
 
 import build.raft.app.AuthenticatedProductPager
 import build.raft.app.AuthenticatedProductRoute
-import build.raft.app.RAFT_SHELL_INSTANCE_ID
-import build.raft.app.RAFT_SHELL_SERVER_ID
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import build.raft.app.data.SharedSettingsDestination
 import build.raft.app.matches
 import build.raft.app.optLong

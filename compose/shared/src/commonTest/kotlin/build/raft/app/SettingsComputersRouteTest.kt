@@ -1,6 +1,8 @@
 package build.raft.app
 
 import build.raft.app.data.RaftShellStoreScope
+import build.raft.app.shell.RAFT_SHELL_INSTANCE_ID
+import build.raft.app.shell.RAFT_SHELL_SERVER_ID
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test

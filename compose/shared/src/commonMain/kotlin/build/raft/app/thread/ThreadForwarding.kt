@@ -64,14 +64,14 @@ import build.raft.app.model.MessageId
 import build.raft.app.model.RaftTimeFormat24Hour
 import build.raft.app.model.ServerId
 import build.raft.app.settings.observe
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.optString
-import build.raft.app.raftBottomSafeAreaPadding
+import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftNativeDispatchCapture
 import build.raft.app.raftPlatformHasFinePointer
-import build.raft.app.raftShellStoreScope
+import build.raft.app.shell.raftShellStoreScope
 import build.raft.app.rememberLiveRaftTimeContext
-import build.raft.app.rememberRaftLinkNavigator
+import build.raft.app.shell.rememberRaftLinkNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -145,7 +145,7 @@ import build.raft.app.RaftTopPageHeader
 import build.raft.app.RaftType
 import build.raft.app.RaftUnifiedDialog
 import build.raft.app.ThreadLaunchConversationIdentity
-import build.raft.app.authenticatedRouteOwnerOrNull
+import build.raft.app.shell.authenticatedRouteOwnerOrNull
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first

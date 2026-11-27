@@ -34,6 +34,8 @@ import build.raft.app.settings.SettingsRowVisualContent
 import build.raft.app.settings.SettingsVisualFixtureBridge
 import build.raft.app.settings.SettingsVisualFixtureValues
 import build.raft.app.settings.appShellPhoneBottomTabs
+import build.raft.app.shell.RaftAppBottomTabBarHost
+import build.raft.app.shell.RaftBottomTabBar
 import build.raft.app.thread.ChannelAddMemberPanelVisualScreen
 import build.raft.app.thread.ChannelSettingsPanelVisualScreen
 import build.raft.app.thread.DirectMessageSettingsPanelVisualScreen

@@ -36,6 +36,7 @@ import build.raft.app.model.MemberProfile
 import build.raft.app.model.TaskStatus
 import build.raft.app.model.TaskSummary
 import build.raft.app.resources.*
+import build.raft.app.shell.RaftNativeTabBarCover
 import build.raft.app.thread.icon
 import build.raft.app.thread.localizedLabel
 import build.raft.designsystem.components.LocalRaftToastHostState

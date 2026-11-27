@@ -15,11 +15,11 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import build.raft.app.RaftAdaptiveListDetailSplit
+import build.raft.app.shell.RaftAdaptiveListDetailSplit
 import build.raft.app.RaftAppSpacing
 import build.raft.app.RaftBackHandler
 import build.raft.app.RaftColor
-import build.raft.app.RaftListPaneWidths
+import build.raft.app.shell.RaftListPaneWidths
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.SETTINGS_COMPUTERS_PAGE

@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -12,6 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAdaptivePaneLayout
+import build.raft.app.RaftAdaptivePaneState
+import build.raft.app.RaftAppSpacing
+import build.raft.app.RaftMainTabHeaderTitleStyle
+import build.raft.app.RaftTopPageHeader
 import build.raft.app.settings.appShellPhoneBottomTabs
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant

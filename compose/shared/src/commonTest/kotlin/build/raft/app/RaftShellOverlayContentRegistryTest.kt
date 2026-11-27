@@ -1,6 +1,8 @@
 package build.raft.app
 
 import androidx.compose.ui.geometry.Size
+import build.raft.app.shell.RaftShellOverlayContentEntry
+import build.raft.app.shell.RaftShellOverlayContentRegistry
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull

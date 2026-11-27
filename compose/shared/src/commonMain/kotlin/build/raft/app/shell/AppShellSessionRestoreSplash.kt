@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +23,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftAppThemeState
+import build.raft.app.RaftCachedImage
+import build.raft.app.RaftColor
 import build.raft.app.data.SharedAuthGateIntent
 import build.raft.app.resources.*
 import build.raft.app.thread.dispatch

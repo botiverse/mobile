@@ -1,4 +1,4 @@
-package build.raft.app
+package build.raft.app.shell
 
 import build.raft.app.resources.*
 import androidx.compose.foundation.layout.Box
@@ -9,7 +9,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import build.raft.app.RaftBackHandler
+import build.raft.app.RaftContentLucideIcon
+import build.raft.app.RaftFloatingOverlayClickTriggeredDismissDelayMillis
+import build.raft.app.RaftFloatingOverlayHost
+import build.raft.app.RaftLucideIconName
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.raftFloatingContentClickTarget
 import build.raft.designsystem.components.RaftMenuItem
 import build.raft.designsystem.components.RaftMenuLabel
 import build.raft.designsystem.components.RaftMenuSurface

@@ -1,5 +1,15 @@
 package build.raft.app
 
+import build.raft.app.shell.RaftAppDestination
+import build.raft.app.shell.RaftMoreAttention
+import build.raft.app.shell.RaftNavBadgeInputs
+import build.raft.app.shell.RaftNavPresentation
+import build.raft.app.shell.RaftNavRoute
+import build.raft.app.shell.raftNavItems
+import build.raft.app.shell.raftNavNativeBadgeCount
+import build.raft.app.shell.raftNavPresentation
+import build.raft.app.shell.raftNavShowsBadge
+import build.raft.app.shell.raftNavShowsOttie
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

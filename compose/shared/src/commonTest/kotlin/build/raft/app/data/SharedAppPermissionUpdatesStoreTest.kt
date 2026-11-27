@@ -1,17 +1,17 @@
 package build.raft.app.data
 
-import build.raft.app.RaftAppDestination
-import build.raft.app.RaftMoreAttention
-import build.raft.app.RaftNavBadgeInputs
-import build.raft.app.RaftServerMenuEntry
+import build.raft.app.shell.RaftAppDestination
+import build.raft.app.shell.RaftMoreAttention
+import build.raft.app.shell.RaftNavBadgeInputs
+import build.raft.app.shell.RaftServerMenuEntry
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
 import build.raft.app.model.PermissionUpdatesChanged
 import build.raft.app.model.ServerId
 import build.raft.app.model.serverRoleCanManageIntegrations
-import build.raft.app.raftMoreAttention
-import build.raft.app.raftNavShowsBadge
-import build.raft.app.serverMenuEntry
+import build.raft.app.shell.raftMoreAttention
+import build.raft.app.shell.raftNavShowsBadge
+import build.raft.app.shell.serverMenuEntry
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle

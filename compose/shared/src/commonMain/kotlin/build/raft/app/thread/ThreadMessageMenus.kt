@@ -28,8 +28,8 @@ import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftModalAnchoredPopover
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftPopoverLocalPoint
-import build.raft.app.RaftShellOverlayContentEntry
-import build.raft.app.RaftShellOverlayContentRegistry
+import build.raft.app.shell.RaftShellOverlayContentEntry
+import build.raft.app.shell.RaftShellOverlayContentRegistry
 import build.raft.app.RaftType
 import build.raft.app.ThreadComposerQuoteInsert
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
@@ -48,7 +48,7 @@ import build.raft.app.settings.observe
 import build.raft.app.optString
 import build.raft.app.post
 import build.raft.app.raftCaptureLiveRootAnchor
-import build.raft.app.raftChildPageOriginKey
+import build.raft.app.shell.raftChildPageOriginKey
 import build.raft.app.raftChildPageWindowAnchor
 import build.raft.app.resolve
 import androidx.compose.runtime.Composable

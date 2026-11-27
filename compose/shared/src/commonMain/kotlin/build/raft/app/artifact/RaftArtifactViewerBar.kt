@@ -19,6 +19,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.resources.*
+import build.raft.app.shell.RaftNativeNavBarDecline
+import build.raft.app.shell.raftTopSafeAreaPadding
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDropdownMenu
 import build.raft.designsystem.components.RaftIconButton

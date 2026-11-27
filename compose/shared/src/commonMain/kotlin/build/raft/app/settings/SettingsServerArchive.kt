@@ -44,7 +44,7 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.model.ServerId
-import build.raft.app.openRaftPage
+import build.raft.app.shell.openRaftPage
 import build.raft.app.raftArgbHex
 import build.raft.app.raftChannelRecordKindGlyph
 import build.raft.app.raftLocalizedMediumDateTime
