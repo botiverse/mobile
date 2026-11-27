@@ -33,9 +33,16 @@ fun Throwable.safeDiagnosticsSummary(): String =
 @RaftCoreInternalApi
 fun String.toSafeDiagnosticsToken(): String {
     val redacted =
-        SensitiveNetworkDiagnosticsPatterns.fold(this) { current, pattern ->
-            current.replace(pattern, "$1[redacted]")
-        }.redactUrlQueries()
+        VoiceDictationDropDiagnosticsPatterns
+            .fold(this) { current, pattern ->
+                current.replace(pattern, "[redacted]")
+            }
+            .let { afterVoiceDrop ->
+                SensitiveNetworkDiagnosticsPatterns.fold(afterVoiceDrop) { current, pattern ->
+                    current.replace(pattern, "$1[redacted]")
+                }
+            }
+            .redactUrlQueries()
     return redacted
         .replace(Regex("""\s+"""), "_")
         .filter { char ->
@@ -87,6 +94,12 @@ private val EncodedPresignedUrlPattern =
 
 private val SignedQueryValuePattern =
     Regex("((?:X-Amz-(?:Signature|Credential|Security-Token)|Signature|sig|token)=)[^&\\s\\\"'<>]+", RegexOption.IGNORE_CASE)
+
+private val VoiceDictationDropDiagnosticsPatterns =
+    listOf(
+        Regex("""(?:"?(?:draft_?before|contact_?hints)"?\s*[:=]\s*(?:\[[^\]]*\]|"(?:\\.|[^"\\])*"|[^\s,;}]+))""", RegexOption.IGNORE_CASE),
+        Regex("""\b(?:draft_?before|contact_?hints)\b""", RegexOption.IGNORE_CASE),
+    )
 
 private val SensitiveNetworkDiagnosticsPatterns =
     listOf(

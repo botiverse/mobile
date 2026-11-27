@@ -674,11 +674,17 @@ class VoiceDictationV2Controller(
         baseText: String = "",
         insertStart: Int = baseText.length,
         insertEnd: Int = insertStart,
+        draftBefore: String? = null,
+        contactHints: List<String>? = null,
         onComposerUpdate: (VoiceDictationComposerUpdate) -> Unit,
     ) {
         val cleanServerId = serverId.trim()
         val cleanChannelId = channelId?.trim()?.takeIf { it.isNotEmpty() }
         val cleanThreadId = threadId?.trim()?.takeIf { it.isNotEmpty() }
+        // Normalize once at session start; pass transiently to Step 2 permit request only (never
+        // retained in VoiceDictationV2State, outcome tracker, feedback target, logs, or traces).
+        val normalizedDraftBefore = normalizeVoiceDictationDraftBefore(draftBefore)
+        val normalizedContactHints = normalizeVoiceDictationContactHints(contactHints)
         val owner =
             VoiceDictationV2Owner(
                 serverId = cleanServerId,
@@ -826,6 +832,8 @@ class VoiceDictationV2Controller(
                                 serverId = session.owner.serverId,
                                 language = session.language,
                                 channelId = session.owner.channelId,
+                                draftBefore = normalizedDraftBefore,
+                                contactHints = normalizedContactHints,
                             )
                         } catch (cancellation: CancellationException) {
                             throw cancellation
