@@ -30,7 +30,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -98,6 +100,8 @@ import build.raft.app.raftArgbHex
 import build.raft.app.shell.raftBottomSafeAreaPadding
 import build.raft.app.raftFeedbackWebViewClientKind
 import build.raft.app.shell.raftShellStoreScope
+import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
+import build.raft.designsystem.gesture.rememberRaftBackSwipeDismiss
 import build.raft.app.data.NetworkSettingsFeedbackTicketsRepository
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.RaftSharedStoreRegistry
@@ -278,10 +282,18 @@ internal fun settingsFeedbackTicketsPageData(
         }
     }
 
-internal fun Pager.openSettingsFeedbackTicketsPage(storeScope: RaftShellStoreScope, ticketId: String? = null) {
+internal fun Pager.openSettingsFeedbackTicketsPage(
+    storeScope: RaftShellStoreScope,
+    ticketId: String? = null,
+    replaceCurrentPage: Boolean = false,
+) {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(
         SETTINGS_FEEDBACK_TICKETS_PAGE,
-        settingsFeedbackTicketsPageData(storeScope, ticketId),
+        settingsFeedbackTicketsPageData(
+            storeScope = storeScope,
+            ticketId = ticketId,
+            replaceCurrentPage = replaceCurrentPage,
+        ),
     )
 }
 
@@ -732,11 +744,18 @@ internal fun SettingsFeedbackTicketsScreen(
         actions.onClearCloseError()
         closeDialogOpen = true
     }
+    val inPlaceDetail = handlesDetailBackInPlace && detail != null
     RaftBackHandler(
-        enabled = handlesDetailBackInPlace && detail != null,
+        enabled = inPlaceDetail,
         label = "settings_feedback_ticket",
-        blocksBackSwipe = false,
+        blocksBackSwipe = true,
     ) { actions.onBack() }
+    val swipeBackToList =
+        rememberRaftBackSwipeDismiss(
+            enabled = inPlaceDetail,
+            onDismiss = actions.onBack,
+        )
+    val showListBehindDetailForBackSwipe = inPlaceDetail && LocalRaftBackSwipeRegions.current != null
     val ticket = detail?.ticket
     SettingsDetailShell(
         title = ticket?.title?.ifBlank { null } ?: stringResource(Res.string.settings_feedback_title),
@@ -789,6 +808,31 @@ internal fun SettingsFeedbackTicketsScreen(
                 newFeedbackBlocked = settingsFeedbackNewFeedbackNotice(privacyMode),
                 listState = listState,
             )
+        } else if (showListBehindDetailForBackSwipe) {
+            Box(Modifier.fillMaxSize()) {
+                // Visible during the iOS swipe-back peek; hidden from semantics/touches while detail covers it.
+                Box(Modifier.fillMaxSize().clearAndSetSemantics {}) {
+                    FeedbackTicketList(
+                        state.list,
+                        timeContext,
+                        actions,
+                        bottomContentPadding,
+                        ownClient = ownClient,
+                        showAgentHint = state.showAgentHint,
+                        newFeedbackBlocked = settingsFeedbackNewFeedbackNotice(privacyMode),
+                        listState = listState,
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .then(swipeBackToList)
+                        .background(RaftColor.Canvas)
+                        .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
+                ) {
+                    FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, ownClient = ownClient, onOpenCloseDialog = openCloseDialog)
+                }
+            }
         } else {
             FeedbackTicketDetail(detail, timeContext, actions, replyComposer, bottomContentPadding, ownClient = ownClient, onOpenCloseDialog = openCloseDialog)
         }

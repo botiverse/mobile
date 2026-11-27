@@ -25,6 +25,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeRight
 import build.raft.app.compat.json.JSONObject
 import build.raft.app.compat.pager.LocalActivity
 import build.raft.app.compat.pager.PageData
@@ -58,8 +59,10 @@ import build.raft.app.data.SettingsFeedbackTicketsStore
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.nav.RaftPageStack
 import build.raft.app.nav.raftPageRouteIdentity
+import build.raft.app.settings.SETTINGS_FEEDBACK_TICKETS_DETAIL_ONLY
 import build.raft.app.settings.SETTINGS_FEEDBACK_TICKETS_PAGE
 import build.raft.app.settings.SETTINGS_FEEDBACK_TICKETS_TICKET_ID
+import build.raft.app.settings.SETTINGS_HANDS_FEEDBACK_PAGE
 import build.raft.app.settings.SettingsFeedbackTicketSummaryCache
 import build.raft.app.settings.SettingsFeedbackTicketsActions
 import build.raft.app.settings.SettingsFeedbackTicketsListTag
@@ -70,6 +73,8 @@ import build.raft.app.settings.settingsFeedbackTicketsPageData
 import build.raft.app.thread.key
 import build.raft.designsystem.components.RaftButton
 import build.raft.designsystem.components.RaftTextarea
+import build.raft.designsystem.gesture.LocalRaftBackSwipeRegions
+import build.raft.designsystem.gesture.RaftBackSwipeRegions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -487,6 +492,160 @@ class SettingsFeedbackTicketsPageUiTest {
             onNodeWithText("Crash on launch").assertIsDisplayed()
             onAllNodesWithText("Loading feedback").assertCountEquals(0)
         }
+    }
+
+    @Test
+    fun deepLinkedTicketSwipeBackBlocksHostPopLandsOnListAndThenReleasesHostPop() {
+        val detail =
+            FeedbackTicketDetail(
+                ticket = crash,
+                comments = listOf(FeedbackComment("c-1", FeedbackAuthorType.Staff, "Deep linked detail body", now - 1_000L)),
+                attachments = emptyList(),
+                nextCommentCursor = null,
+                unreadTotal = 0,
+            )
+        runRobolectricComposeUiTest {
+            val regions = RaftBackSwipeRegions()
+            val repository = FakeRepository(list = pageOf(crash), details = mapOf(crash.id to detail))
+            var storeRef: SettingsFeedbackTicketsStore? = null
+            var hostPageBacks = 0
+            var dispatcher: OnBackPressedDispatcher? = null
+            setContent {
+                val scope = rememberCoroutineScope()
+                val store =
+                    remember {
+                        SettingsFeedbackTicketsStore(repository, scope).also {
+                            it.start(initialTicketId = crash.id, loadList = true)
+                            storeRef = it
+                        }
+                    }
+                val state by store.state.collectAsState()
+                Host {
+                    CompositionLocalProvider(LocalRaftBackSwipeRegions provides regions) {
+                        dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+                        RaftBackHandler(enabled = true, label = "test_host_page") { hostPageBacks += 1 }
+                        SettingsFeedbackTicketsScreen(
+                            state = state,
+                            timeContext = timeContext,
+                            actions = SettingsFeedbackTicketsActions(onBack = store::closeTicketView),
+                            replyComposer = { _, _, _, _, _, _ -> },
+                            handlesDetailBackInPlace = true,
+                        )
+                    }
+                }
+            }
+            waitForIdle()
+            onNodeWithText("Deep linked detail body").assertIsDisplayed()
+            assertTrue(
+                regions.contentConsumesBackSwipeAt(20f, 300f),
+                "in-place deep-linked ticket must block host back-swipe so swipe lands on Feedback list",
+            )
+
+            // Swiping right on the detail lands on the Feedback list instead of popping to the caller.
+            onNodeWithText("Deep linked detail body").performTouchInput {
+                swipeRight(startX = left + 24f, endX = right - 24f, durationMillis = 150L)
+            }
+            waitForIdle()
+            assertNull(storeRef?.state?.value?.detail)
+            onNodeWithText("Crash on launch").assertIsDisplayed()
+            assertFalse(
+                regions.contentConsumesBackSwipeAt(20f, 300f),
+                "once back on the Feedback list, host back-swipe must be released",
+            )
+
+            // Next Back leaves Feedback back to the caller.
+            runOnIdle { assertNotNull(dispatcher).onBackPressed() }
+            waitForIdle()
+            assertEquals(1, hostPageBacks)
+        }
+    }
+
+    @Test
+    fun pushedDetailModeDoesNotBlockHostBackSwipe() {
+        val detail =
+            FeedbackTicketDetail(
+                ticket = crash,
+                comments = listOf(FeedbackComment("c-1", FeedbackAuthorType.Staff, "Pushed detail body", now - 1_000L)),
+                attachments = emptyList(),
+                nextCommentCursor = null,
+                unreadTotal = 0,
+            )
+        val detailState =
+            SettingsFeedbackTicketsState(
+                detail =
+                    FeedbackTicketDetailState(
+                        ticketId = crash.id,
+                        summary = crash,
+                        detail = detail,
+                        loading = false,
+                    ),
+            )
+        runRobolectricComposeUiTest {
+            val regions = RaftBackSwipeRegions()
+            setContent {
+                Host {
+                    CompositionLocalProvider(LocalRaftBackSwipeRegions provides regions) {
+                        SettingsFeedbackTicketsScreen(
+                            state = detailState,
+                            timeContext = timeContext,
+                            actions = SettingsFeedbackTicketsActions(),
+                            replyComposer = { _, _, _, _, _, _ -> },
+                            handlesDetailBackInPlace = false,
+                        )
+                    }
+                }
+            }
+            waitForIdle()
+            onNodeWithText("Pushed detail body").assertIsDisplayed()
+            assertFalse(
+                regions.contentConsumesBackSwipeAt(20f, 300f),
+                "dedicated pushed detail page must leave native swipe-back enabled to pop to the list underneath",
+            )
+        }
+    }
+
+    @Test
+    fun externallyFiledTicketReplacesFormWithInPlaceTicketPageAndDistinctReopenIdentity() {
+        val scope = RaftShellStoreScope.create(shellInstanceId = "shell-1", initialServerId = "srv-1")
+        val formJson = Json.parseToJsonElement(JSONObject().apply { put("pageName", SETTINGS_HANDS_FEEDBACK_PAGE) }.toString()).jsonObject
+        val inPlaceTicketJson =
+            Json.parseToJsonElement(
+                settingsFeedbackTicketsPageData(
+                    storeScope = scope,
+                    ticketId = crash.id,
+                    replaceCurrentPage = true,
+                ).toString(),
+            ).jsonObject
+        val pushedDetailJson =
+            Json.parseToJsonElement(
+                settingsFeedbackTicketsPageData(
+                    storeScope = scope,
+                    ticketId = crash.id,
+                    detailOnly = true,
+                ).toString(),
+            ).jsonObject
+
+        // Caller -> New Feedback form -> filing replaces the form atomically with the in-place ticket page.
+        val stack = RaftPageStack()
+        stack.open(SETTINGS_HANDS_FEEDBACK_PAGE, formJson, from = stack.pages.last())
+        assertEquals(2, stack.pages.size)
+
+        stack.open(SETTINGS_FEEDBACK_TICKETS_PAGE, inPlaceTicketJson, from = stack.pages.last())
+        assertEquals(2, stack.pages.size)
+        assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, stack.pages.last().key.pageName)
+        assertEquals(crash.id, stack.pages.last().key.pageData[SETTINGS_FEEDBACK_TICKETS_TICKET_ID]?.toString()?.trim('"'))
+        assertFalse(stack.pages.last().key.pageData.containsKey(SETTINGS_FEEDBACK_TICKETS_DETAIL_ONLY))
+
+        // After Back lands on the list inside this page, tapping the same ticket pushes detailOnly cleanly.
+        assertNotEquals(
+            raftPageRouteIdentity(SETTINGS_FEEDBACK_TICKETS_PAGE, inPlaceTicketJson),
+            raftPageRouteIdentity(SETTINGS_FEEDBACK_TICKETS_PAGE, pushedDetailJson),
+        )
+        stack.open(SETTINGS_FEEDBACK_TICKETS_PAGE, pushedDetailJson, from = stack.pages.last())
+        assertEquals(3, stack.pages.size)
+        assertTrue(stack.back())
+        assertEquals(2, stack.pages.size)
+        assertEquals(SETTINGS_FEEDBACK_TICKETS_PAGE, stack.pages.last().key.pageName)
     }
 
     private companion object {
