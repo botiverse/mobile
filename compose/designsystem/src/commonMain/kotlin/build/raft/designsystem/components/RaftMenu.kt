@@ -25,7 +25,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.TextFieldLineLimits
@@ -38,6 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -66,6 +71,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInputModeManager
@@ -127,6 +133,26 @@ fun RaftMenuSurface(
     header: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    RaftMenuSurfaceFrame(modifier, minWidth, width, header, scroll = null, content = content)
+}
+
+/**
+ * [RaftMenuSurface] whose rows scroll in [scroll] (raft-ui 0.106.0 `MenuScroll`, a
+ * `[data-slot=dropdown-menu-scroll]` ScrollArea): the 4dp padding is on the scrolled content,
+ * not round the scroller, so a cut row runs to the surface's edge instead of stopping 4dp short
+ * of it, and a separator still meets the edge; while the rows overflow their edges fade
+ * ([raftScrollFadeY], up to 24dp) and the overlay scrollbar shows while they scroll. A menu
+ * that fits draws as before. [header] stays above the scroller.
+ */
+@Composable
+internal fun RaftMenuSurfaceFrame(
+    modifier: Modifier,
+    minWidth: Dp,
+    width: Dp?,
+    header: (@Composable () -> Unit)?,
+    scroll: ScrollState?,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     RaftPopoverChrome(
         modifier
             // Material DropdownMenu does the same: the popup hugs its rows instead of
@@ -134,8 +160,21 @@ fun RaftMenuSurface(
             .then(if (width != null) Modifier.width(width) else Modifier.widthIn(min = minWidth).width(IntrinsicSize.Max)),
     ) {
         header?.invoke()
-        // raft-ui "inside a frame": the highlighted item sits 4dp inside the popup.
-        Column(Modifier.padding(RaftMenuMetrics.Padding), content = content)
+        if (scroll == null) {
+            // raft-ui "inside a frame": the highlighted item sits 4dp inside the popup.
+            Column(Modifier.padding(RaftMenuMetrics.Padding), content = content)
+        } else {
+            Column(
+                // Measured after the header, so it takes what the surface's cap leaves (`min-h-0`).
+                Modifier
+                    .raftScrollFadeY(scroll)
+                    .raftScrollbar(scroll)
+                    .verticalScroll(scroll)
+                    // `contentClassName="flex flex-col p-1"`.
+                    .padding(RaftMenuMetrics.Padding),
+                content = content,
+            )
+        }
     }
 }
 
@@ -233,7 +272,7 @@ fun RaftMenuItem(
                 if (nav != null) {
                     Modifier
                         .focusRequester(entry.requester)
-                        .onFocusChanged { entry.focused = it.isFocused }
+                        .raftMenuKeepClearOfFade(entry)
                         .onGloballyPositioned { entry.top = it.positionInRoot().y }
                 } else {
                     Modifier
@@ -282,6 +321,37 @@ fun RaftMenuItem(
         if (checked) RaftGlyphIcon(RaftGlyph.Check, size = 16.dp, color = ink)
     }
 }
+
+/**
+ * raft-ui 0.106.0 `scroll-py-6`: a menu row that takes the focus (the keyboard's highlight) is
+ * scrolled into view [RaftMaskFadeLength] (24dp, the fade's length) clear of the scroller's top
+ * and bottom edge, so the fade never covers it. Also records [entry]'s focus.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun Modifier.raftMenuKeepClearOfFade(entry: RaftMenuNav.Entry): Modifier {
+    val requester = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    val clearance = with(LocalDensity.current) { RaftMaskFadeLength.toPx() }
+    // Not state: read only when the focus moves.
+    val size = remember { IntArray(2) }
+    return this
+        .bringIntoViewRequester(requester)
+        .onSizeChanged {
+            size[0] = it.width
+            size[1] = it.height
+        }
+        .onFocusChanged {
+            entry.focused = it.isFocused
+            if (it.isFocused && size[1] > 0) {
+                scope.launch { requester.bringIntoView(raftMenuFocusRevealRect(size[0], size[1], clearance)) }
+            }
+        }
+}
+
+/** The part of a focused menu row ([width] x [height] px) to keep in view: the row and [clearance] px above and below. */
+internal fun raftMenuFocusRevealRect(width: Int, height: Int, clearance: Float): Rect =
+    Rect(0f, -clearance, width.toFloat(), height + clearance)
 
 /** A group label in a menu: `text-caption` bold `foreground-hint`, 10dp in, 8dp above, 4dp below. */
 @Composable
@@ -535,7 +605,7 @@ fun RaftDropdownMenu(
                 LocalRaftMenuNav provides nav,
                 LocalRaftFocusInteractionObserverInstalled provides true,
             ) {
-                RaftMenuSurface(
+                RaftMenuSurfaceFrame(
                     // Swallows taps on the surface's own padding.
                     modifier
                         .heightIn(max = 480.dp)
@@ -554,9 +624,9 @@ fun RaftDropdownMenu(
                     minWidth = minWidth,
                     width = width,
                     header = header,
-                ) {
-                    Column(Modifier.verticalScroll(rememberScrollState()), content = content)
-                }
+                    scroll = rememberScrollState(),
+                    content = content,
+                )
             }
         }
     }
