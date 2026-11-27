@@ -289,15 +289,15 @@ class MacOsNativeWebEngineTest {
 
         val handler = assertNotNull(ops.handlers[session.sessionId])
 
-        // 1. Same-origin link without header -> ReissueWithHeader (actionCode = 2).
+        // 1. Pre-commit same-origin launch redirect without header -> ReissueWithHeader (actionCode = 2).
         handler.onNavigationDecisionRequest(
             decisionId = 1L,
             url = "https://app.raft.build/account",
             isMainFrame = true,
             method = "GET",
             carriesScopedHeader = false,
-            isUserGesture = true,
-            starterCode = 1,
+            isUserGesture = false,
+            starterCode = 0,
         )
         assertEquals(MacOsNativeWebSession.ACTION_REISSUE_WITH_HEADER, ops.decisions.last().actionCode)
         assertEquals("Raft-Host", ops.decisions.last().headerName)
@@ -317,6 +317,20 @@ class MacOsNativeWebEngineTest {
         assertEquals("https://other.example.com/auth", ops.decisions.last().reissueUrl)
         assertNull(ops.decisions.last().headerName)
         assertNull(ops.decisions.last().headerValue)
+
+        // 2b. Once a document commits, same-origin GET links/consent forms stay native Allow (actionCode = 1)
+        // so WKWebView preserves Sec-Fetch-Site: same-origin and Referer (e.g. Stamp /login?agree=1).
+        handler.onLoadCommit("https://app.raft.build/sign-in")
+        handler.onNavigationDecisionRequest(
+            decisionId = 21L,
+            url = "https://app.raft.build/login?agree=1&terms_version=2026-10-20",
+            isMainFrame = true,
+            method = "GET",
+            carriesScopedHeader = false,
+            isUserGesture = true,
+            starterCode = 1,
+        )
+        assertEquals(MacOsNativeWebSession.ACTION_ALLOW, ops.decisions.last().actionCode)
 
         // 3. Disallowed scheme -> Cancel (actionCode = 0) + onNavigationBlocked.
         handler.onNavigationDecisionRequest(

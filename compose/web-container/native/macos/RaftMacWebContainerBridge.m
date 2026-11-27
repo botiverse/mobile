@@ -195,6 +195,7 @@ static void RaftEnsureGlobalsOnMain(void) {
 @property (nonatomic, assign) int64_t nextReplyId;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, void (^)(WKNavigationActionPolicy)> *pendingDecisions;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSNumber *> *pendingDecisionMainFrame;
+@property (nonatomic, strong) NSMutableDictionary<NSNumber *, NSString *> *pendingDecisionReferer;
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, void (^)(id, NSString *)> *pendingJsbReplies;
 
 - (void)attachKvo;
@@ -220,6 +221,7 @@ static void RaftEnsureGlobalsOnMain(void) {
         _sessionId = sessionId;
         _pendingDecisions = [NSMutableDictionary dictionary];
         _pendingDecisionMainFrame = [NSMutableDictionary dictionary];
+        _pendingDecisionReferer = [NSMutableDictionary dictionary];
         _pendingJsbReplies = [NSMutableDictionary dictionary];
     }
     return self;
@@ -303,6 +305,7 @@ static void RaftEnsureGlobalsOnMain(void) {
     NSArray<void (^)(WKNavigationActionPolicy)> *decisions = [self.pendingDecisions allValues];
     [self.pendingDecisions removeAllObjects];
     [self.pendingDecisionMainFrame removeAllObjects];
+    [self.pendingDecisionReferer removeAllObjects];
     for (void (^handler)(WKNavigationActionPolicy) in decisions) {
         handler(WKNavigationActionPolicyCancel);
     }
@@ -366,6 +369,12 @@ static void RaftEnsureGlobalsOnMain(void) {
     NSNumber *dKey = @(decisionId);
     self.pendingDecisions[dKey] = [decisionHandler copy];
     self.pendingDecisionMainFrame[dKey] = @(isMainFrame);
+    NSString *origReferer = [navigationAction.request valueForHTTPHeaderField:@"Referer"];
+    if (origReferer.length > 0 &&
+        [origReferer stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].length > 0 &&
+        [origReferer rangeOfCharacterFromSet:[NSCharacterSet newlineCharacterSet]].location == NSNotFound) {
+        self.pendingDecisionReferer[dKey] = origReferer;
+    }
     NSString *method = navigationAction.request.HTTPMethod ?: @"GET";
     BOOL carriesHeader = NO;
     if (self.scopedHeaderName.length > 0) {
@@ -393,6 +402,7 @@ static void RaftEnsureGlobalsOnMain(void) {
         void (^fallback)(WKNavigationActionPolicy) = self.pendingDecisions[dKey];
         [self.pendingDecisions removeObjectForKey:dKey];
         [self.pendingDecisionMainFrame removeObjectForKey:dKey];
+        [self.pendingDecisionReferer removeObjectForKey:dKey];
         if (fallback != nil) {
             fallback(WKNavigationActionPolicyCancel);
         }
@@ -918,8 +928,10 @@ JNIEXPORT void JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeC
         void (^handler)(WKNavigationActionPolicy) = session.pendingDecisions[dKey];
         if (handler == nil) return;
         BOOL isMainFrame = [session.pendingDecisionMainFrame[dKey] boolValue];
+        NSString *origReferer = session.pendingDecisionReferer[dKey];
         [session.pendingDecisions removeObjectForKey:dKey];
         [session.pendingDecisionMainFrame removeObjectForKey:dKey];
+        [session.pendingDecisionReferer removeObjectForKey:dKey];
         if (session.disposed || actionCode == 0) {
             if (isMainFrame) {
                 session.hostCancelledUrl = reissueUrl;
@@ -946,6 +958,10 @@ JNIEXPORT void JNICALL Java_build_raft_webcontainer_MacOsNativeWebBridge_nativeC
                 NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url
                                                                    cachePolicy:RaftCachePolicy(session.cacheEnabled)
                                                                timeoutInterval:60.0];
+                if (actionCode == 2 && origReferer.length > 0 &&
+                    (headerName.length == 0 || [headerName caseInsensitiveCompare:@"Referer"] != NSOrderedSame)) {
+                    [req setValue:origReferer forHTTPHeaderField:@"Referer"];
+                }
                 if (actionCode == 2 && headerName.length > 0 && headerValue.length > 0) {
                     [req setValue:headerValue forHTTPHeaderField:headerName];
                 }

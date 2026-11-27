@@ -412,14 +412,26 @@ class WebContainerAndroidSignInInterceptionTest {
         client.onPageCommitVisible(webView, settingsUrl)
         client.onPageFinished(webView, settingsUrl)
 
-        // 2) User taps "使用 GitHub 授权登录" -> same-origin /auth/github/start attaches Raft-Host and starts load.
-        assertTrue(client.shouldOverrideUrlLoading(webView, fakeRequest(githubStartUrl, hasGesture = true)))
-        assertEquals(githubStartUrl, shadowOf(webView).lastLoadedUrl)
-        assertEquals(mapOf("Raft-Host" to "mobile-v1"), shadowOf(webView).lastAdditionalHttpHeaders)
+        // 2) User taps "使用 GitHub 授权登录" -> post-commit same-origin /auth/github/start stays
+        // native Allow (preserving Sec-Fetch-Site: same-origin & Referer without attaching Raft-Host).
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest(githubStartUrl, hasGesture = true)))
+        assertEquals(settingsUrl, shadowOf(webView).lastLoadedUrl)
         client.onPageStarted(webView, githubStartUrl, null)
 
-        // 3) Stamp responds 302 -> github.com/login/oauth/authorize: must stay in WebView & strip Raft-Host (NOT blocked/routed out!).
-        assertTrue(client.shouldOverrideUrlLoading(webView, fakeRequest(githubAuthorizeUrl, isRedirect = true)))
+        // 3) Stamp responds 302 -> github.com/login/oauth/authorize: stays in WebView natively (NOT blocked/routed out!),
+        // and if a cross-origin redirect ever carries Raft-Host, it strips it cleanly.
+        assertFalse(client.shouldOverrideUrlLoading(webView, fakeRequest(githubAuthorizeUrl, isRedirect = true)))
+        assertTrue(blocked.isEmpty(), "OAuth 302 redirect must never route out to external browser: $blocked")
+        val leakingRedirectRequest =
+            object : WebResourceRequest {
+                override fun getUrl(): Uri = Uri.parse(githubAuthorizeUrl)
+                override fun isForMainFrame(): Boolean = true
+                override fun isRedirect(): Boolean = true
+                override fun hasGesture(): Boolean = false
+                override fun getMethod(): String = "GET"
+                override fun getRequestHeaders(): Map<String, String> = mapOf("Raft-Host" to "mobile-v1")
+            }
+        assertTrue(client.shouldOverrideUrlLoading(webView, leakingRedirectRequest))
         assertEquals(githubAuthorizeUrl, shadowOf(webView).lastLoadedUrl)
         assertNull(shadowOf(webView).lastAdditionalHttpHeaders, "Cross-origin OAuth redirect must strip Raft-Host")
         assertTrue(blocked.isEmpty(), "OAuth 302 redirect must never route out to external browser: $blocked")
@@ -430,7 +442,7 @@ class WebContainerAndroidSignInInterceptionTest {
         client.onPageCommitVisible(webView, githubAuthorizeUrl)
         client.onPageFinished(webView, githubAuthorizeUrl)
 
-        // 5) Follow-up POST on github.com and callback back to stamp.build both stay in the same WebView.
+        // 5) Follow-up POST on github.com and callback back to stamp.build both stay natively in the same WebView.
         assertFalse(
             client.shouldOverrideUrlLoading(
                 webView,
@@ -438,13 +450,12 @@ class WebContainerAndroidSignInInterceptionTest {
             ),
         )
         assertTrue(blocked.isEmpty())
-        assertTrue(
+        assertFalse(
             client.shouldOverrideUrlLoading(
                 webView,
                 fakeRequest(stampCallbackUrl, isRedirect = true),
             ),
         )
-        assertEquals(stampCallbackUrl, shadowOf(webView).lastLoadedUrl)
         assertTrue(blocked.isEmpty())
         client.onPageStarted(webView, stampCallbackUrl, null)
         client.onPageCommitVisible(webView, stampCallbackUrl)
@@ -467,5 +478,123 @@ class WebContainerAndroidSignInInterceptionTest {
             ),
         )
         assertEquals(raftHostUrl to "routed_externally", blocked.last())
+    }
+
+    @Test
+    fun preCommitReissuePreservesRefererAndPostCommitConsentLinkStaysNativeAllow() {
+        val caught = mutableListOf<WebMainFrameInterceptContext>()
+        val stampOrigin = parseWebContainerOrigin("https://stamp.build")!!
+        val startUrl = "https://stamp.build/"
+        val preCommitRedirectUrl = "https://stamp.build/auth-check"
+        val crossOriginRedirectUrl = "https://other.example/bounce"
+        val signInUrl = "https://stamp.build/sign-in"
+        val consentLoginUrl = "https://stamp.build/login?agree=1&privacy_version=2026-10-20&terms_version=2026-10-20"
+        val authorizeUrl = "https://api.raft.build/api/oauth/authorize?client_id=stamp&redirect_uri=https%3A%2F%2Fstamp.build%2Flogin%2Fraft%2Fcallback"
+
+        fun requestWithHeaders(
+            url: String,
+            isRedirect: Boolean = false,
+            hasGesture: Boolean = false,
+            headers: Map<String, String> = emptyMap(),
+        ): WebResourceRequest =
+            object : WebResourceRequest {
+                override fun getUrl(): Uri = Uri.parse(url)
+                override fun isForMainFrame(): Boolean = true
+                override fun isRedirect(): Boolean = isRedirect
+                override fun hasGesture(): Boolean = hasGesture
+                override fun getMethod(): String = "GET"
+                override fun getRequestHeaders(): Map<String, String> = headers
+            }
+
+        val host =
+            createAttachedHost(
+                initialUrl = startUrl,
+                requestHeaderRule =
+                    WebRequestHeaderRule(
+                        headerName = "Raft-Host",
+                        headerValue = "android",
+                        allowedOrigin = stampOrigin,
+                        maxSameOriginReissues = 5,
+                    ),
+                events =
+                    WebContainerEvents(
+                        catchesMainFrameNavigation = { ctx ->
+                            if (ctx.url == authorizeUrl) {
+                                caught += ctx
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                    ),
+            )
+        val webView = host.getChildAt(0) as WebView
+        val client = shadowOf(webView).webViewClient
+
+        // 1. Initial launch attaches Raft-Host without fabricating a Referer.
+        assertEquals(startUrl, shadowOf(webView).lastLoadedUrl)
+        assertEquals(mapOf("Raft-Host" to "android"), shadowOf(webView).lastAdditionalHttpHeaders)
+
+        // 2. Pre-commit same-origin redirect re-issues with Raft-Host AND preserves browser Referer.
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                requestWithHeaders(
+                    url = preCommitRedirectUrl,
+                    isRedirect = true,
+                    headers = mapOf("referer" to startUrl),
+                ),
+            ),
+        )
+        assertEquals(preCommitRedirectUrl, shadowOf(webView).lastLoadedUrl)
+        assertEquals(
+            linkedMapOf("Referer" to startUrl, "Raft-Host" to "android"),
+            shadowOf(webView).lastAdditionalHttpHeaders,
+        )
+
+        // 3. Cross-origin redirect strips Raft-Host and does NOT inject Referer.
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                requestWithHeaders(
+                    url = crossOriginRedirectUrl,
+                    isRedirect = true,
+                    headers = mapOf("Referer" to preCommitRedirectUrl),
+                ),
+            ),
+        )
+        assertEquals(crossOriginRedirectUrl, shadowOf(webView).lastLoadedUrl)
+        assertNull(shadowOf(webView).lastAdditionalHttpHeaders)
+
+        // 4. Committed stamp.build/sign-in: clicking Sign in with Raft (/login?agree=1...) stays
+        // native Allow (returns false) so Chromium preserves Sec-Fetch-Site: same-origin + Referer.
+        client.onPageStarted(webView, signInUrl, null)
+        client.onPageCommitVisible(webView, signInUrl)
+        client.onPageFinished(webView, signInUrl)
+        assertFalse(
+            client.shouldOverrideUrlLoading(
+                webView,
+                requestWithHeaders(
+                    url = consentLoginUrl,
+                    isRedirect = false,
+                    hasGesture = true,
+                    headers = mapOf("Referer" to signInUrl),
+                ),
+            ),
+        )
+        // Must NOT have called loadUrl(consentLoginUrl, ...).
+        assertEquals(crossOriginRedirectUrl, shadowOf(webView).lastLoadedUrl)
+
+        // 5. Server 302 from /login?agree=1 -> api.raft.build/api/oauth/authorize is intercepted
+        // with Link starter and /login?agree=1 recorded in priorHops.
+        assertTrue(
+            client.shouldOverrideUrlLoading(
+                webView,
+                requestWithHeaders(url = authorizeUrl, isRedirect = true),
+            ),
+        )
+        assertEquals(1, caught.size)
+        assertEquals(WebNavigationStarter.Link, caught.single().starter)
+        assertEquals(listOf(consentLoginUrl), caught.single().priorHops)
     }
 }

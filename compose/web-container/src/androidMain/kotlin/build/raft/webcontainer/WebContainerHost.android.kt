@@ -1545,6 +1545,7 @@ internal class WebContainerAndroidView(
                         carriesHeader = carriesHeader,
                         isUserGesture = request.hasGesture(),
                         isRedirect = isRedirect,
+                        requestHeaders = request.requestHeaders,
                     )
                 }
 
@@ -1788,6 +1789,7 @@ internal class WebContainerAndroidView(
         carriesHeader: Boolean,
         isUserGesture: Boolean,
         isRedirect: Boolean,
+        requestHeaders: Map<String, String>? = null,
     ): Boolean {
         if (!isRedirect) {
             val budget = config.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0
@@ -1843,7 +1845,10 @@ internal class WebContainerAndroidView(
                 true
             }
             is WebNavigationDecision.ReissueWithHeader -> {
-                view?.loadUrl(decision.url, mapOf(decision.headerName to decision.headerValue))
+                view?.loadUrl(
+                    decision.url,
+                    buildReissueWithHeaderHeaders(decision.headerName, decision.headerValue, requestHeaders),
+                )
                 true
             }
             is WebNavigationDecision.ReissueWithoutHeader -> {
