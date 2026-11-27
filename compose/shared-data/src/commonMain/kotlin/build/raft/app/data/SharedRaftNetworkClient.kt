@@ -1525,8 +1525,8 @@ class SharedRaftAuthTransport @RaftCoreInternalApi constructor(
                 ),
         )
 
-    override suspend fun logout(bodyText: String): AuthNetworkResponse =
-        request(path = "auth/logout", method = "POST", bodyText = bodyText)
+    override suspend fun logout(bodyText: String, authorization: String?): AuthNetworkResponse =
+        request(path = "auth/logout", method = "POST", authorization = authorization, bodyText = bodyText)
 
     override suspend fun servers(authorization: String): AuthNetworkResponse =
         request(path = "servers", method = "GET", authorization = authorization)
@@ -1611,13 +1611,15 @@ class SharedRaftAuthTransport @RaftCoreInternalApi constructor(
                 (response.transportDiagnostics ?: "engine=unknown status=none kind=none rawCode=none detail=none") +
                 response.requestIdLogSuffix()
         )
-        // Authenticated auth routes (`auth/me`, `servers`) answer the same 403 while a deletion is pending.
-        if (authorization != null && RaftAccountDeletionPendingSignal.Process.observe(response.code, response.errorBodyText)) {
+        // Authenticated auth routes (`auth/me`, `servers`) answer the same 403 while a deletion is pending
+        // or SSO is required. Skip `auth/logout`, which sends Bearer only as a session-revocation fallback
+        // (slock #16981) and must never trigger a deletion redirect or recursive SSO sign-out loop.
+        val observeAuthGates = authorization != null && path != "auth/logout"
+        if (observeAuthGates && RaftAccountDeletionPendingSignal.Process.observe(response.code, response.errorBodyText)) {
             warningLogger("account_deletion_pending path=$path action=open_deletion_page")
         }
-        // And a 403 `SSO_REQUIRED` while an organization requires single sign-on.
         if (
-            authorization != null &&
+            observeAuthGates &&
             RaftSsoRequiredSignal.Process.observe(response.code, response.errorBodyText, response.responseHeaders.raftResponseTraceIdOrNull())
         ) {
             warningLogger("sso_required path=$path action=sign_in_again")

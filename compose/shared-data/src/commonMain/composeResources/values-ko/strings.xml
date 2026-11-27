@@ -4457,7 +4457,6 @@
     <string name="agent_stop_turn_not_running">실행 중인 턴이 없었어요.</string>
     <string name="agent_stop_turn_failed">현재 턴을 중지하지 못했어요.</string>
     <string name="agent_stop_turn_restarted">턴을 중지하려고 에이전트를 다시 시작했어요. 대화 맥락은 그대로 남아 있어요.</string>
-    <string name="agent_stop_turn_upgrade_required">턴만 중지하려면 이 에이전트의 컴퓨터를 업그레이드하세요. 에이전트 전체를 중지할 수도 있어요.</string>
     <string name="agent_stop_turn_computer_offline">이 에이전트의 컴퓨터가 오프라인이에요.</string>
     <string name="channel_sos_entry">모든 에이전트 중지</string>
     <string name="channel_sos_stop_all_agents">모든 에이전트 중지</string>

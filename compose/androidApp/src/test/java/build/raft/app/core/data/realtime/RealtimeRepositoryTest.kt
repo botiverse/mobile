@@ -1045,7 +1045,7 @@ class RealtimeRepositoryTest {
             return AuthApiResult.Success(response)
         }
 
-        override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =
+        override suspend fun logout(refreshToken: String, authorization: String?): AuthApiResult<Unit> =
             AuthApiResult.Success(Unit)
 
         override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =

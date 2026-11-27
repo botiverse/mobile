@@ -4457,7 +4457,6 @@
     <string name="agent_stop_turn_not_running">目前沒有在執行。</string>
     <string name="agent_stop_turn_failed">無法停止目前這一輪。</string>
     <string name="agent_stop_turn_restarted">為了停止這一輪，Agent 已重新啟動，對話上下文仍會保留。</string>
-    <string name="agent_stop_turn_upgrade_required">升級這個 Agent 所在的電腦，即可只停止這一輪。你也可以停止整個 Agent。</string>
     <string name="agent_stop_turn_computer_offline">這個 Agent 所在的電腦已離線。</string>
     <string name="channel_sos_entry">停止所有 Agent</string>
     <string name="channel_sos_stop_all_agents">停止所有 Agent</string>

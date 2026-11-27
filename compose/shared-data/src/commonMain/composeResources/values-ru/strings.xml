@@ -4457,7 +4457,6 @@
     <string name="agent_stop_turn_not_running">Ничего не выполнялось.</string>
     <string name="agent_stop_turn_failed">Не удалось остановить текущий ход.</string>
     <string name="agent_stop_turn_restarted">Чтобы остановить ход, агента пришлось перезапустить. Контекст разговора сохранён.</string>
-    <string name="agent_stop_turn_upgrade_required">Обновите компьютер этого агента, чтобы останавливать отдельный ход. Вместо этого можно остановить агента целиком.</string>
     <string name="agent_stop_turn_computer_offline">Компьютер этого агента не в сети.</string>
     <string name="channel_sos_entry">Остановить всех агентов</string>
     <string name="channel_sos_stop_all_agents">Остановить всех агентов</string>

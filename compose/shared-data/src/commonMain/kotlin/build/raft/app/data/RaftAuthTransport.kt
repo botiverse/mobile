@@ -25,7 +25,7 @@ interface RaftAuthTransport {
         attemptId: String,
         installationId: String,
     ): AuthNetworkResponse = refresh(bodyText)
-    suspend fun logout(bodyText: String): AuthNetworkResponse
+    suspend fun logout(bodyText: String, authorization: String? = null): AuthNetworkResponse
     suspend fun servers(authorization: String): AuthNetworkResponse
     suspend fun serverOrder(authorization: String): AuthNetworkResponse
     suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse

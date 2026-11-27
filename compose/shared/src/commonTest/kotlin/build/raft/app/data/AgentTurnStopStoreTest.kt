@@ -56,7 +56,7 @@ class AgentTurnStopStoreTest {
                 Triple(
                     409,
                     """{"error":"This agent's computer needs an upgrade before a single turn can be stopped. You can stop the whole agent instead.","code":"computer_upgrade_required"}""",
-                    AgentTurnStopFeedback.UpgradeRequired
+                    AgentTurnStopFeedback.Failed
                 ),
                 Triple(504, """{"error":"The agent's computer did not answer in time. Try again, or stop the whole agent.","code":"computer_timeout"}""", AgentTurnStopFeedback.Failed),
                 Triple(503, """{"error":"Couldn't stop the agent's current turn. Try again.","code":"hosted_stop_failed"}""", AgentTurnStopFeedback.Failed),

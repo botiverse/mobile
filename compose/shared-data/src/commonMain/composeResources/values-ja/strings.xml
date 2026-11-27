@@ -4636,7 +4636,6 @@
     <string name="agent_stop_turn_not_running">実行中の処理はありませんでした。</string>
     <string name="agent_stop_turn_failed">現在のターンを停止できませんでした。</string>
     <string name="agent_stop_turn_restarted">ターンを停止するため、エージェントを再起動しました。会話のコンテキストは保持されています。</string>
-    <string name="agent_stop_turn_upgrade_required">ターンだけを停止するには、このエージェントのコンピューターをアップグレードしてください。エージェント全体を停止することもできます。</string>
     <string name="agent_stop_turn_computer_offline">このエージェントのコンピューターはオフラインです。</string>
     <string name="channel_sos_entry">すべてのエージェントを停止</string>
     <string name="channel_sos_stop_all_agents">すべてのエージェントを停止</string>
