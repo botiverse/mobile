@@ -2,6 +2,7 @@ package build.raft.app
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,17 +38,19 @@ class RaftArtifactViewerFrameOverlayUiTest {
 
             setContent {
                 RaftDesignSystemTheme {
-                    RaftArtifactViewerFrame(
-                        title = "q4-launch-plan.html",
-                        onBack = {},
-                        pageDrawsBar = pageDrawsBar,
-                        topSafeAreaOverride = 24.dp,
-                        overlayHeaderOverContent = overlayHeader,
-                    ) {
-                        DisposableEffect(Unit) {
-                            onDispose { disposals += 1 }
+                    Box(Modifier.size(390.dp, 600.dp)) {
+                        RaftArtifactViewerFrame(
+                            title = "q4-launch-plan.html",
+                            onBack = {},
+                            pageDrawsBar = pageDrawsBar,
+                            topSafeAreaOverride = 24.dp,
+                            overlayHeaderOverContent = overlayHeader,
+                        ) {
+                            DisposableEffect(Unit) {
+                                onDispose { disposals += 1 }
+                            }
+                            Box(Modifier.fillMaxSize().testTag(CONTENT_TAG))
                         }
-                        Box(Modifier.fillMaxSize().testTag(CONTENT_TAG))
                     }
                 }
             }
@@ -62,7 +65,7 @@ class RaftArtifactViewerFrameOverlayUiTest {
 
             val (initialTop, initialHeight) = boundsDp()
             assertNear(24f, initialTop, "overlaid content starts directly below status bar")
-            assertNear(736f, initialHeight, "overlaid content has full final height from frame 0")
+            assertNear(576f, initialHeight, "overlaid content has full final height from frame 0")
 
             runOnIdle { pageDrawsBar = true }
             waitForIdle()
@@ -97,17 +100,19 @@ class RaftArtifactViewerFrameOverlayUiTest {
 
             setContent {
                 RaftDesignSystemTheme {
-                    RaftArtifactViewerFrame(
-                        title = "q4-launch-plan.html",
-                        onBack = {},
-                        pageDrawsBar = pageDrawsBar,
-                        inColumn = true,
-                        overlayHeaderOverContent = true,
-                    ) {
-                        DisposableEffect(Unit) {
-                            onDispose { disposals += 1 }
+                    Box(Modifier.size(390.dp, 600.dp)) {
+                        RaftArtifactViewerFrame(
+                            title = "q4-launch-plan.html",
+                            onBack = {},
+                            pageDrawsBar = pageDrawsBar,
+                            inColumn = true,
+                            overlayHeaderOverContent = true,
+                        ) {
+                            DisposableEffect(Unit) {
+                                onDispose { disposals += 1 }
+                            }
+                            Box(Modifier.fillMaxSize().testTag(CONTENT_TAG))
                         }
-                        Box(Modifier.fillMaxSize().testTag(CONTENT_TAG))
                     }
                 }
             }
@@ -122,7 +127,7 @@ class RaftArtifactViewerFrameOverlayUiTest {
 
             val (initialTop, initialHeight) = boundsDp()
             assertNear(0f, initialTop, "overlaid column content starts at y=0")
-            assertNear(760f, initialHeight, "overlaid column content spans full column height")
+            assertNear(600f, initialHeight, "overlaid column content spans full column height")
 
             runOnIdle { pageDrawsBar = true }
             waitForIdle()

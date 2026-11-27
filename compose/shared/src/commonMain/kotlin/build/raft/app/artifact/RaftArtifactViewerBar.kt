@@ -98,7 +98,8 @@ internal fun RaftArtifactViewerFrame(
                         title = title,
                         backgroundColor = RaftColor.Canvas,
                         onBack = onBack,
-                        topSafeAreaOverride = topSafeAreaOverride,
+                        applyTopSafeArea = !inColumn,
+                        topSafeAreaOverride = if (inColumn) 0.dp else topSafeAreaOverride,
                         trailingContent =
                             if (!hasMenu) null else {
                                 {
