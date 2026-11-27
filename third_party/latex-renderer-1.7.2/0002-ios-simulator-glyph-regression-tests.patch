@@ -19,10 +19,12 @@ index 2323f78..544fcb1 100644
          }
 diff --git a/latex-renderer/src/jvmTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsWidthJvmTest.kt b/latex-renderer/src/jvmTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsWidthJvmTest.kt
 new file mode 100644
-index 0000000..1c878c0
+index 0000000..a461fde
 --- /dev/null
 +++ b/latex-renderer/src/jvmTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsWidthJvmTest.kt
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,51 @@
++@file:OptIn(org.jetbrains.compose.resources.InternalResourceApi::class)
++
 +package com.hrm.latex.renderer.utils
 +
 +import com.hrm.latex.renderer.font.loadKatexFonts
@@ -74,10 +76,12 @@ index 0000000..1c878c0
 +}
 diff --git a/latex-renderer/src/skiaTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsTextEncodingTest.kt b/latex-renderer/src/skiaTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsTextEncodingTest.kt
 new file mode 100644
-index 0000000..5b3d550
+index 0000000..e7d88b1
 --- /dev/null
 +++ b/latex-renderer/src/skiaTest/kotlin/com/hrm/latex/renderer/utils/GlyphBoundsTextEncodingTest.kt
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,168 @@
++@file:OptIn(org.jetbrains.compose.resources.InternalResourceApi::class)
++
 +package com.hrm.latex.renderer.utils
 +
 +import androidx.compose.ui.text.TextMeasurer
