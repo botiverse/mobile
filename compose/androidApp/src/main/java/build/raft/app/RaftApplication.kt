@@ -2,8 +2,10 @@ package build.raft.app
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.os.Bundle
+import build.raft.webcontainer.WebContainerAndroidKeepAlive
 import build.raft.app.cmp.RaftCmpRouter
 import build.raft.app.compat.pager.RaftPageRegistry
 import build.raft.app.core.data.installAndroidAppScopePlatformFileResolver
@@ -251,6 +253,17 @@ class RaftApplication : Application() {
                 appDebuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0,
             )
         }
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        runCatching { WebContainerAndroidKeepAlive.onTrimMemory(level) }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onLowMemory() {
+        super.onLowMemory()
+        runCatching { WebContainerAndroidKeepAlive.onTrimMemory(ComponentCallbacks2.TRIM_MEMORY_COMPLETE) }
     }
 }
 

@@ -61,7 +61,9 @@ object IosWebContainerDataStoreRegistry {
         scopeManager.clearIsolationScope(
             scope = scope,
             evictPooled = { target ->
-                if (target == WebIsolationScope.Default) WebContainerIosSparePool.drop("clear_scope") else 0
+                val evictedKeepAlive = WebContainerIosKeepAlive.evictScope(target)
+                val evictedSpare = if (target == WebIsolationScope.Default) WebContainerIosSparePool.drop("clear_scope") else 0
+                evictedKeepAlive + evictedSpare
             },
             deletePlatformStore = { target -> deletePlatformStore(target, osMajorVersion) },
         )
@@ -85,7 +87,9 @@ object IosWebContainerDataStoreRegistry {
             scopeManager.clearIsolationScope(
                 scope = scope,
                 evictPooled = { target ->
-                    if (target == WebIsolationScope.Default) WebContainerIosSparePool.drop("clear_scope") else 0
+                    val evictedKeepAlive = WebContainerIosKeepAlive.evictScope(target)
+                    val evictedSpare = if (target == WebIsolationScope.Default) WebContainerIosSparePool.drop("clear_scope") else 0
+                    evictedKeepAlive + evictedSpare
                 },
                 deletePlatformStore = { target ->
                     if (!inlineCall) {

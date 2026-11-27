@@ -324,6 +324,11 @@ internal object RaftAndroidWebViewKeepAlive {
         logInfo("keep_alive result=dropped reason=$reason")
     }
 
+    /** Drops and destroys the parked view only if its key matches [key]. */
+    fun dropIfKey(key: String, reason: String) {
+        if (parked?.keepAliveKey == key) drop(reason)
+    }
+
     fun drop(reason: String) {
         val prewarmHandle = parkedPrewarmTraceHandle
         handler.removeCallbacks(expire)
@@ -421,6 +426,37 @@ internal actual fun raftWebViewEvaluateInKept(key: String, origin: String, scrip
                 isDarkTheme = RaftAppThemeState.isDark,
             )
         }
+    } == true
+
+internal actual fun raftWebViewKeepAliveDrop(key: String) {
+    val dropAction = {
+        RaftAndroidWebViewKeepAlive.dropIfKey(key, "dropped")
+        runCatching { WebContainerAndroidKeepAlive.dropAllThemes(key, WebIsolationScope.Default) }
+    }
+    if (Looper.myLooper() == Looper.getMainLooper()) {
+        dropAction()
+    } else {
+        Handler(Looper.getMainLooper()).post { dropAction() }
+    }
+}
+
+internal actual fun raftWebViewKeepAliveHasPrefix(prefix: String): Boolean =
+    runOnMainOrNull {
+        WebContainerAndroidKeepAlive.hasAnyWithPrefix(
+            prefix = prefix,
+            isolationScope = WebIsolationScope.Default,
+            isDarkTheme = RaftAppThemeState.isDark,
+        )
+    } == true
+
+internal actual fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String): Boolean =
+    runOnMainOrNull {
+        WebContainerAndroidKeepAlive.promote(
+            fromKey = fromKey,
+            toKey = toKey,
+            isolationScope = WebIsolationScope.Default,
+            isDarkTheme = RaftAppThemeState.isDark,
+        )
     } == true
 
 internal actual fun raftWebViewKeepAliveClear() {

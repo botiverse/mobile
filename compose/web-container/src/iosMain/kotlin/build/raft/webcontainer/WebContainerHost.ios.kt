@@ -12,8 +12,13 @@ import build.raft.webcontainer.jsb.JsbRegistry
 import build.raft.webcontainer.jsb.JsbResult
 import build.raft.webcontainer.jsb.JsbWireCodec
 import build.raft.webcontainer.pool.WEB_CONTAINER_SPARE_BLANK_URL
+import build.raft.webcontainer.pool.WebContainerKeepAlivePool
+import build.raft.webcontainer.pool.WebContainerKeptSnapshot
+import build.raft.webcontainer.pool.WebContainerPoolKey
 import build.raft.webcontainer.pool.WebContainerTelemetryEvent
 import build.raft.webcontainer.pool.WebContainerTelemetrySink
+import build.raft.webcontainer.pool.WebMemoryTrimLevel
+import build.raft.webcontainer.pool.WebPooledContainer
 import build.raft.webcontainer.pool.isIosWarmSpareEligible
 import build.raft.webcontainer.pool.shouldIgnoreWarmSpareBlankNavigation
 import build.raft.webcontainer.resilience.WebContainerWatchdog
@@ -46,6 +51,7 @@ import platform.CoreGraphics.CGRectMake
 import platform.Foundation.*
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidEnterBackgroundNotification
+import platform.UIKit.UIApplicationDidReceiveMemoryWarningNotification
 import platform.UIKit.UIApplicationState
 import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIColor
@@ -92,6 +98,228 @@ import platform.objc.object_getClass
 import platform.objc.sel_registerName
 import platform.posix.memcpy
 
+/** Process-wide iOS keep-alive pool for parked `WKWebView` container hosts (main thread only). */
+object WebContainerIosKeepAlive {
+    private var poolTelemetrySink: WebContainerTelemetrySink? = null
+    private var memoryWarningInstalled: Boolean = false
+
+    private val pool =
+        WebContainerKeepAlivePool<WebContainerIosHost>(
+            telemetrySink =
+                WebContainerTelemetrySink { event ->
+                    runCatching {
+                        val attributed =
+                            if (event is WebContainerTelemetryEvent.PoolEvent && event.engine == null) {
+                                event.copy(engine = IOS_WKWEBVIEW_ENGINE)
+                            } else {
+                                event
+                            }
+                        poolTelemetrySink?.onEvent(attributed)
+                    }
+                },
+        )
+
+    private fun ensureMemoryWarningObserver() {
+        if (memoryWarningInstalled) return
+        memoryWarningInstalled = true
+        NSNotificationCenter.defaultCenter.addObserverForName(
+            name = UIApplicationDidReceiveMemoryWarningNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+        ) { _ ->
+            onMemoryPressure(WebMemoryTrimLevel.CRITICAL)
+        }
+    }
+
+    internal fun take(
+        key: WebContainerPoolKey,
+        events: WebContainerEvents,
+        jsbRegistry: JsbRegistry,
+        resourceInterceptor: WebResourceInterceptor?,
+        telemetrySink: WebContainerTelemetrySink?,
+        incomingConfig: WebContainerConfig? = null,
+    ): WebContainerIosContainerView? {
+        if (!NSThread.isMainThread) return null
+        if (telemetrySink != null) poolTelemetrySink = telemetrySink
+        val host = pool.take(key, emitReusedEvent = false) ?: return null
+        val willReload = incomingConfig?.let(host::willReloadForConfig) ?: false
+        runCatching {
+            (telemetrySink ?: poolTelemetrySink)?.onEvent(
+                WebContainerTelemetryEvent.PoolEvent(
+                    action = "reused",
+                    keepAliveKey = key.keepAliveKey,
+                    poolSizeAfter = pool.size,
+                    engine = IOS_WKWEBVIEW_ENGINE,
+                    reloaded = willReload,
+                    surfaceId = incomingConfig?.surfaceId,
+                ),
+            )
+        }
+        host.attachFromKeepAlive(
+            nextEvents = events,
+            nextRegistry = jsbRegistry,
+            nextInterceptor = resourceInterceptor,
+            nextTelemetry = telemetrySink,
+            willReload = willReload,
+        )
+        return host.container
+    }
+
+    internal fun emitCreated(
+        key: WebContainerPoolKey,
+        surfaceId: String,
+        telemetrySink: WebContainerTelemetrySink?,
+    ) {
+        if (telemetrySink != null) poolTelemetrySink = telemetrySink
+        runCatching {
+            (telemetrySink ?: poolTelemetrySink)?.onEvent(
+                WebContainerTelemetryEvent.PoolEvent(
+                    action = "created",
+                    keepAliveKey = key.keepAliveKey,
+                    poolSizeAfter = pool.size,
+                    engine = IOS_WKWEBVIEW_ENGINE,
+                    reloaded = true,
+                    surfaceId = surfaceId,
+                ),
+            )
+        }
+    }
+
+    internal fun park(
+        host: WebContainerIosHost,
+        telemetrySink: WebContainerTelemetrySink? = null,
+    ): Boolean {
+        if (!NSThread.isMainThread) return false
+        if (telemetrySink != null) {
+            poolTelemetrySink = telemetrySink
+            host.ensureTelemetrySink(telemetrySink)
+        }
+        val key = host.currentPoolKey() ?: return false
+        if (IosWebContainerDataStoreRegistry.scopeManager.hasPendingDeletion(host.isolationScope)) {
+            return false
+        }
+        ensureMemoryWarningObserver()
+        host.detachForKeepAlive()
+        return pool.park(key, host)
+    }
+
+    internal fun dropIfSame(host: WebContainerIosHost): Boolean {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { pool.dropIfSame(host) }
+            return false
+        }
+        return pool.dropIfSame(host)
+    }
+
+    /** Returns a read-only snapshot of the healthy parked document matching the given pool key. */
+    fun keptDocument(
+        keepAliveKey: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): WebContainerKeptSnapshot? {
+        if (!NSThread.isMainThread) return null
+        val trimmedKey = keepAliveKey.trim()
+        if (trimmedKey.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return null
+        val key = WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme)
+        return pool.peek(key)?.keptSnapshot()
+    }
+
+    /** Evaluates [script] in the top-level document of a healthy parked container matching [expectedOrigin]. */
+    fun evaluateInKept(
+        keepAliveKey: String,
+        expectedOrigin: WebContainerOrigin,
+        script: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): Boolean {
+        if (!NSThread.isMainThread) return false
+        val trimmedKey = keepAliveKey.trim()
+        if (trimmedKey.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return false
+        val key = WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme)
+        return pool.peek(key)?.evaluateInTopDocument(expectedOrigin, script) == true
+    }
+
+    /** Removes and destroys any parked container matching [keepAliveKey] across light and dark modes. */
+    fun dropAllThemes(
+        keepAliveKey: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+    ): Int {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { dropAllThemes(keepAliveKey, isolationScope) }
+            return 0
+        }
+        val trimmedKey = keepAliveKey.trim()
+        if (trimmedKey.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return 0
+        var dropped = 0
+        if (pool.drop(WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme = false))) dropped += 1
+        if (pool.drop(WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme = true))) dropped += 1
+        return dropped
+    }
+
+    /** Returns `true` when any healthy parked container matches [prefix], [isolationScope], and [isDarkTheme]. */
+    fun hasAnyWithPrefix(
+        prefix: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): Boolean {
+        if (!NSThread.isMainThread) return false
+        val trimmed = prefix.trim()
+        if (trimmed.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return false
+        return pool.hasAnyMatching { key ->
+            key.isolationScope == isolationScope &&
+                key.isDarkTheme == isDarkTheme &&
+                key.keepAliveKey.startsWith(trimmed)
+        }
+    }
+
+    /** Atomically re-keys a healthy parked container from [fromKey] to [toKey]. */
+    fun promote(
+        fromKey: String,
+        toKey: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): Boolean {
+        if (!NSThread.isMainThread) return false
+        val trimmedFrom = fromKey.trim()
+        val trimmedTo = toKey.trim()
+        if (trimmedFrom.isEmpty() || trimmedTo.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return false
+        val src = WebContainerPoolKey(trimmedFrom, isolationScope, isDarkTheme)
+        val dst = WebContainerPoolKey(trimmedTo, isolationScope, isDarkTheme)
+        val promoted = pool.promote(src, dst) ?: return false
+        promoted.updateKeepAliveKey(trimmedTo)
+        return true
+    }
+
+    /** Evicts and destroys all pooled instances bound to [scope]. */
+    fun evictScope(scope: WebIsolationScope): Int {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { pool.evictScope(scope) }
+            return 0
+        }
+        return pool.evictScope(scope)
+    }
+
+    /** Evicts pooled views under iOS memory warnings. */
+    fun onMemoryPressure(level: WebMemoryTrimLevel): Int {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { pool.onMemoryPressure(level) }
+            return 0
+        }
+        return pool.onMemoryPressure(level)
+    }
+
+    /** Destroys all pooled views immediately. */
+    fun clearAll(): Int {
+        if (!NSThread.isMainThread) {
+            dispatch_async(dispatch_get_main_queue()) { clearAll() }
+            return 0
+        }
+        val cleared = pool.clearAll()
+        poolTelemetrySink = null
+        return cleared
+    }
+}
+
 @Composable
 internal actual fun WebContainerPlatformHost(
     config: WebContainerConfig,
@@ -104,7 +332,36 @@ internal actual fun WebContainerPlatformHost(
 ) {
     UIKitView(
         factory = {
-            WebContainerIosContainerView(
+            val poolKey =
+                config.keepAliveKey
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() && config.isolationScope !is WebIsolationScope.Ephemeral }
+                    ?.let { key ->
+                        WebContainerPoolKey(
+                            keepAliveKey = key,
+                            isolationScope = config.isolationScope,
+                            isDarkTheme = config.isDarkTheme,
+                        )
+                    }
+            val reused =
+                poolKey?.let { key ->
+                    WebContainerIosKeepAlive.take(
+                        key = key,
+                        events = events,
+                        jsbRegistry = jsbRegistry,
+                        resourceInterceptor = resourceInterceptor,
+                        telemetrySink = telemetrySink,
+                        incomingConfig = config,
+                    )
+                }
+            if (reused == null && poolKey != null) {
+                WebContainerIosKeepAlive.emitCreated(
+                    key = poolKey,
+                    surfaceId = config.surfaceId,
+                    telemetrySink = telemetrySink,
+                )
+            }
+            reused ?: WebContainerIosContainerView(
                 events = events,
                 jsbRegistry = jsbRegistry,
                 resourceInterceptor = resourceInterceptor,
@@ -119,7 +376,11 @@ internal actual fun WebContainerPlatformHost(
             view.host.applyConfig(config)
             view.host.bindController(controller)
         },
-        onRelease = { view -> view.host.dispose() },
+        onRelease = { view ->
+            if (!WebContainerIosKeepAlive.park(view.host, telemetrySink = telemetrySink)) {
+                view.host.dispose()
+            }
+        },
     )
 }
 
@@ -171,16 +432,22 @@ internal class WebContainerIosContainerView(
  * - Rolling-window `webViewWebContentProcessDidTerminate` circuit breaker via [WebContainerWatchdog].
  */
 internal class WebContainerIosHost(
-    private val container: UIView,
+    internal val container: WebContainerIosContainerView,
     var events: WebContainerEvents,
     private var jsbRegistry: JsbRegistry,
     private var resourceInterceptor: WebResourceInterceptor?,
     var telemetrySink: WebContainerTelemetrySink?,
-) {
+) : WebPooledContainer {
     private var webView: WKWebView? = null
     private var config: WebContainerConfig? = null
     private var registeredActiveScope: WebIsolationScope? = null
     private var disposed: Boolean = false
+    private var parkedForKeepAlive: Boolean = false
+    private var mainFrameLoadFailed: Boolean = false
+    override var isolationScope: WebIsolationScope = WebIsolationScope.Ephemeral
+        private set
+    override var isDarkTheme: Boolean = false
+        private set
 
     private var currentUrl: String = ""
     private var currentTitle: String = ""
@@ -291,20 +558,139 @@ internal class WebContainerIosHost(
         syncWatchdogLifecycle(syncStateOnResume = attached)
     }
 
+    override fun isHealthy(): Boolean = !disposed && !mainFrameLoadFailed && webView != null
+
+    override fun isLoadInFlight(): Boolean =
+        !disposed && !mainFrameLoadFailed && webView != null && (currentLoading || lastSuccessfulUrl.isBlank())
+
+    override fun destroy() {
+        dispose()
+    }
+
+    internal fun ensureTelemetrySink(sink: WebContainerTelemetrySink) {
+        if (telemetrySink == null) {
+            telemetrySink = sink
+        }
+    }
+
+    internal fun updateKeepAliveKey(nextKey: String) {
+        config = config?.copy(keepAliveKey = nextKey)
+    }
+
+    internal fun currentPoolKey(): WebContainerPoolKey? {
+        val cfg = config ?: return null
+        val key = cfg.keepAliveKey?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        if (isolationScope is WebIsolationScope.Ephemeral) return null
+        if (cfg.isDarkTheme != isDarkTheme) return null
+        return WebContainerPoolKey(
+            keepAliveKey = key,
+            isolationScope = isolationScope,
+            isDarkTheme = isDarkTheme,
+        )
+    }
+
+    internal fun keptSnapshot(): WebContainerKeptSnapshot? {
+        val cfg = config ?: return null
+        if (!isHealthy()) return null
+        val activeUrl = webView?.URL?.absoluteString.orEmpty().ifBlank { currentUrl }
+        return WebContainerKeptSnapshot(
+            configuredUrl = cfg.url,
+            currentUrl = activeUrl,
+            loaded = !currentLoading && lastSuccessfulUrl.isNotBlank(),
+        )
+    }
+
+    internal fun evaluateInTopDocument(
+        expectedOrigin: WebContainerOrigin,
+        script: String,
+    ): Boolean {
+        val cfg = config ?: return false
+        val view = webView ?: return false
+        if (!isHealthy() || !cfg.allowScripts || script.isBlank()) return false
+        if (script.length > cfg.maxRuntimeJavaScriptLength) return false
+        if (currentLoading || lastSuccessfulUrl.isBlank()) return false
+        val activeUrl = view.URL?.absoluteString.orEmpty()
+        if (activeUrl.isBlank()) return false
+        val activeOrigin = parseWebContainerOrigin(activeUrl) ?: return false
+        val lockedOrigin = cfg.navigationPolicy.lockedMainFrameOrigin
+        if (activeOrigin != expectedOrigin) return false
+        if (lockedOrigin != null && activeOrigin != lockedOrigin) return false
+        if (!cfg.navigationPolicy.allowNavigation && !isSameDocumentIgnoringFragment(cfg.url.trim(), activeUrl)) {
+            return false
+        }
+        view.evaluateJavaScript(script, completionHandler = null)
+        return true
+    }
+
+    internal fun willReloadForConfig(next: WebContainerConfig): Boolean {
+        val prev = config ?: return true
+        if (needsWebViewRebuild(prev, next)) return true
+        return prev.url.trim() != next.url.trim()
+    }
+
+    private fun needsWebViewRebuild(
+        prev: WebContainerConfig,
+        next: WebContainerConfig,
+    ): Boolean =
+        prev.isolationScope != next.isolationScope ||
+            prev.allowScripts != next.allowScripts ||
+            prev.allowPinchZoom != next.allowPinchZoom ||
+            prev.desktopViewportMode != next.desktopViewportMode ||
+            prev.jsbPolicy != next.jsbPolicy ||
+            prev.offlineBundle != next.offlineBundle ||
+            (usingSpare && next.allowsBackForwardNavigationGestures) ||
+            (!pagePainted && (prev.backgroundArgb != next.backgroundArgb || prev.isDarkTheme != next.isDarkTheme))
+
+    internal fun detachForKeepAlive() {
+        jsDialogTracker.cancelActive()
+        boundController?.unbindDispatcher(this)
+        boundController = null
+        events = WebContainerEvents()
+        parkedForKeepAlive = true
+        syncWatchdogLifecycle()
+        jsbRegistry = JsbRegistry.Empty
+        jsbDispatcher?.cancelInFlight("parked_for_keep_alive")
+        jsbDispatcher = null
+        container.removeFromSuperview()
+        unregisterActiveScope()
+    }
+
+    internal fun attachFromKeepAlive(
+        nextEvents: WebContainerEvents,
+        nextRegistry: JsbRegistry,
+        nextInterceptor: WebResourceInterceptor?,
+        nextTelemetry: WebContainerTelemetrySink?,
+        willReload: Boolean = false,
+    ) {
+        parkedForKeepAlive = false
+        events = nextEvents
+        telemetrySink = nextTelemetry
+        resourceInterceptor = nextInterceptor
+        activeSchemeHandler?.interceptor = nextInterceptor
+        jsbRegistry = nextRegistry
+        config?.let(::rebuildJsbDispatcher)
+        registerActiveScope(isolationScope)
+        navigationStateRelay.reset()
+        syncWatchdogLifecycle(syncStateOnResume = true)
+        if (!willReload) {
+            notifyNavigationState(force = true)
+            if (!mainFrameLoadFailed && lastSuccessfulUrl.isNotBlank()) {
+                events.onLoadSuccess()
+            }
+        }
+    }
+
     fun applyConfig(next: WebContainerConfig) {
         if (disposed) return
         val prev = config
-        val needsRebuild =
-            prev == null ||
-                prev.isolationScope != next.isolationScope ||
-                prev.allowScripts != next.allowScripts ||
-                prev.allowPinchZoom != next.allowPinchZoom ||
-                prev.desktopViewportMode != next.desktopViewportMode ||
-                prev.jsbPolicy != next.jsbPolicy ||
-                prev.documentStartScripts != next.documentStartScripts ||
-                prev.offlineBundle != next.offlineBundle ||
-                (usingSpare && next.allowsBackForwardNavigationGestures) ||
-                (!pagePainted && (prev.backgroundArgb != next.backgroundArgb || prev.isDarkTheme != next.isDarkTheme))
+        val needsRebuild = prev == null || needsWebViewRebuild(prev, next)
+        val scriptsChanged =
+            prev != null &&
+                (prev.documentStartScripts != next.documentStartScripts ||
+                    prev.backgroundArgb != next.backgroundArgb ||
+                    prev.isDarkTheme != next.isDarkTheme ||
+                    prev.navigationPolicy.lockedMainFrameOrigin != next.navigationPolicy.lockedMainFrameOrigin ||
+                    parseWebContainerOrigin(prev.url) != parseWebContainerOrigin(next.url))
         val backgroundChanged =
             prev == null ||
                 prev.backgroundArgb != next.backgroundArgb ||
@@ -325,6 +711,11 @@ internal class WebContainerIosHost(
             rebuildWebView(next, restoreUrl = null)
         } else {
             registerActiveScope(next.isolationScope)
+            if (scriptsChanged) {
+                webView?.configuration?.userContentController?.let { controller ->
+                    rebindUserScripts(controller, next)
+                }
+            }
             if (backgroundChanged) {
                 applyBackgroundVisuals(next)
             }
@@ -337,6 +728,7 @@ internal class WebContainerIosHost(
     fun dispose() {
         if (disposed) return
         disposed = true
+        parkedForKeepAlive = false
         jsDialogTracker.cancelActive()
         removeLifecycleObservers()
         boundController?.unbindDispatcher(this)
@@ -391,6 +783,7 @@ internal class WebContainerIosHost(
         previous.navigationDelegate = null
         previous.UIDelegate = null
         previous.stopLoading()
+        previous.configuration.userContentController.removeAllUserScripts()
         activeJsbPortName?.let { port ->
             previous.configuration.userContentController.removeScriptMessageHandlerForName(port, WKContentWorld.pageWorld)
         }
@@ -398,69 +791,20 @@ internal class WebContainerIosHost(
         previous.removeFromSuperview()
     }
 
-    private fun rebuildJsbDispatcher(cfg: WebContainerConfig) {
-        jsbDispatcher?.cancelInFlight("jsb_rebound")
-        jsbDispatcher =
-            if (cfg.allowScripts && cfg.jsbPolicy.isEffectivelyEnabled) {
-                JsbDispatcher(
-                    policy = cfg.jsbPolicy,
-                    registry = jsbRegistry,
-                    scope = hostScope,
-                    surfaceId = cfg.surfaceId,
-                    isolationScope = cfg.isolationScope,
-                    telemetrySinkProvider = { telemetrySink },
-                )
-            } else {
-                null
-            }
-    }
-
-    private fun rebuildWebView(
+    private fun rebindUserScripts(
+        userContentController: WKUserContentController,
         cfg: WebContainerConfig,
-        restoreUrl: String?,
     ) {
-        val hadPreviousView = webView != null
-        tearDownWebView()
-        registerActiveScope(cfg.isolationScope)
-        rebuildJsbDispatcher(cfg)
-
+        userContentController.removeAllUserScripts()
         val defaultOriginSet =
             buildSet {
                 parseWebContainerOrigin(cfg.url)?.let(::add)
                 cfg.navigationPolicy.lockedMainFrameOrigin?.let(::add)
             }
-
-        val customScheme = cfg.offlineBundle?.iosCustomScheme?.takeIf(::isValidIosCustomScheme)
-        val ignoresScaleLimits = cfg.allowPinchZoom || cfg.desktopViewportMode
-        val spare =
-            if (
-                isIosWarmSpareEligible(
-                    isolationScope = cfg.isolationScope,
-                    allowScripts = cfg.allowScripts,
-                    hasCustomScheme = customScheme != null,
-                    allowsBackForwardNavigationGestures = cfg.allowsBackForwardNavigationGestures,
-                    isRecoveryOrRebuild = restoreUrl != null || hadPreviousView,
-                )
-            ) {
-                WebContainerIosSparePool.take(
-                    ignoresViewportScaleLimits = ignoresScaleLimits,
-                    telemetrySink = telemetrySink,
-                )
-            } else {
-                null
-            }
-
-        val userContentController =
-            spare?.configuration?.userContentController?.also { it.removeAllUserScripts() } ?: WKUserContentController()
         if (cfg.allowScripts && cfg.jsbPolicy.isEffectivelyEnabled) {
-            val portName = cfg.jsbPolicy.portName
-            // Web-accessible bridge lives in WKContentWorld.pageWorld so page JS can call window.raftBridge;
-            // internal probes execute strictly in WKContentWorld.defaultClientWorld.
-            userContentController.addScriptMessageHandlerWithReply(jsbReplyHandler, WKContentWorld.pageWorld, portName)
-            activeJsbPortName = portName
             userContentController.addUserScript(
                 WKUserScript(
-                    source = JsbBootstrapScripts.buildPageBridgeScript(portName, cfg.jsbPolicy.allowedOrigins),
+                    source = JsbBootstrapScripts.buildPageBridgeScript(cfg.jsbPolicy.portName, cfg.jsbPolicy.allowedOrigins),
                     injectionTime = WKUserScriptInjectionTime.WKUserScriptInjectionTimeAtDocumentStart,
                     forMainFrameOnly = true,
                 ),
@@ -521,6 +865,67 @@ internal class WebContainerIosHost(
                 }
             }
         }
+    }
+
+    private fun rebuildJsbDispatcher(cfg: WebContainerConfig) {
+        jsbDispatcher?.cancelInFlight("jsb_rebound")
+        jsbDispatcher =
+            if (!disposed && !parkedForKeepAlive && cfg.allowScripts && cfg.jsbPolicy.isEffectivelyEnabled) {
+                JsbDispatcher(
+                    policy = cfg.jsbPolicy,
+                    registry = jsbRegistry,
+                    scope = hostScope,
+                    surfaceId = cfg.surfaceId,
+                    isolationScope = cfg.isolationScope,
+                    telemetrySinkProvider = { telemetrySink },
+                )
+            } else {
+                null
+            }
+    }
+
+    private fun rebuildWebView(
+        cfg: WebContainerConfig,
+        restoreUrl: String?,
+    ) {
+        val hadPreviousView = webView != null
+        tearDownWebView()
+        isolationScope = cfg.isolationScope
+        isDarkTheme = cfg.isDarkTheme
+        mainFrameLoadFailed = false
+        registerActiveScope(cfg.isolationScope)
+        rebuildJsbDispatcher(cfg)
+
+        val customScheme = cfg.offlineBundle?.iosCustomScheme?.takeIf(::isValidIosCustomScheme)
+        val ignoresScaleLimits = cfg.allowPinchZoom || cfg.desktopViewportMode
+        val spare =
+            if (
+                isIosWarmSpareEligible(
+                    isolationScope = cfg.isolationScope,
+                    allowScripts = cfg.allowScripts,
+                    hasCustomScheme = customScheme != null,
+                    allowsBackForwardNavigationGestures = cfg.allowsBackForwardNavigationGestures,
+                    isRecoveryOrRebuild = restoreUrl != null || hadPreviousView,
+                )
+            ) {
+                WebContainerIosSparePool.take(
+                    ignoresViewportScaleLimits = ignoresScaleLimits,
+                    telemetrySink = telemetrySink,
+                )
+            } else {
+                null
+            }
+
+        val userContentController =
+            spare?.configuration?.userContentController ?: WKUserContentController()
+        if (cfg.allowScripts && cfg.jsbPolicy.isEffectivelyEnabled) {
+            val portName = cfg.jsbPolicy.portName
+            // Web-accessible bridge lives in WKContentWorld.pageWorld so page JS can call window.raftBridge;
+            // internal probes execute strictly in WKContentWorld.defaultClientWorld.
+            userContentController.addScriptMessageHandlerWithReply(jsbReplyHandler, WKContentWorld.pageWorld, portName)
+            activeJsbPortName = portName
+        }
+        rebindUserScripts(userContentController, cfg)
 
         val nextView =
             if (spare != null) {
@@ -630,7 +1035,7 @@ internal class WebContainerIosHost(
         applyBackgroundVisuals(cfg)
     }
 
-    private fun isWatchdogActive(): Boolean = !disposed && windowAttached && !appInBackground
+    private fun isWatchdogActive(): Boolean = !disposed && !parkedForKeepAlive && windowAttached && !appInBackground
 
     private fun syncWatchdogLifecycle(syncStateOnResume: Boolean = false) {
         if (disposed) {
@@ -891,7 +1296,7 @@ internal class WebContainerIosHost(
         val raw = message.body as? String ?: ""
         val quickCallId = JsbWireCodec.extractBestEffortCallId(raw)
         val activeView = webView
-        if (disposed || activeView == null || !isSameObjCObject(controller, activeView.configuration.userContentController)) {
+        if (disposed || parkedForKeepAlive || activeView == null || !isSameObjCObject(controller, activeView.configuration.userContentController)) {
             replyOnMainOnce(
                 JsbWireCodec.encodeResponse(
                     quickCallId,
@@ -1070,6 +1475,7 @@ internal class WebContainerIosHost(
         loadGeneration += 1
         currentLoading = true
         currentProgress = 0
+        mainFrameLoadFailed = false
         lastSuccessfulUrl = ""
         currentUrl = source.URL?.absoluteString ?: currentUrl
         watchdog.onEvent(WebContainerWatchdogEvent.LoadStarted(loadGeneration), webContainerMonotonicMillis())
@@ -1108,18 +1514,20 @@ internal class WebContainerIosHost(
         currentTitle = source.title ?: currentTitle
         currentLoading = false
         currentProgress = 100
-        pagePainted = true
-        if (pageRevealed) {
-            config?.let(::applyBackgroundVisuals)
-        } else {
-            revealView()
-        }
-        chainState.markCommitted()
-        val action = watchdog.onEvent(WebContainerWatchdogEvent.PageFinished(loadGeneration), webContainerMonotonicMillis())
-        handleWatchdogAction(action)
-        if (lastSuccessfulUrl != currentUrl) {
-            lastSuccessfulUrl = currentUrl
-            events.onLoadSuccess()
+        if (!mainFrameLoadFailed) {
+            pagePainted = true
+            if (pageRevealed) {
+                config?.let(::applyBackgroundVisuals)
+            } else {
+                revealView()
+            }
+            chainState.markCommitted()
+            val action = watchdog.onEvent(WebContainerWatchdogEvent.PageFinished(loadGeneration), webContainerMonotonicMillis())
+            handleWatchdogAction(action)
+            if (lastSuccessfulUrl != currentUrl) {
+                lastSuccessfulUrl = currentUrl
+                events.onLoadSuccess()
+            }
         }
         events.onUrlChange(currentUrl)
         notifyNavigationState(force = false)
@@ -1203,11 +1611,16 @@ internal class WebContainerIosHost(
             }
             return
         }
+        mainFrameLoadFailed = true
+        lastSuccessfulUrl = ""
         currentLoading = false
         val reason = "${error.domain}:${error.code}"
         watchdog.onEvent(WebContainerWatchdogEvent.LoadFailed(loadGeneration, reason), webContainerMonotonicMillis())
         events.onLoadFailure(reason)
         notifyNavigationState(force = false)
+        if (parkedForKeepAlive) {
+            WebContainerIosKeepAlive.dropIfSame(this)
+        }
     }
 
     internal fun contentProcessDidTerminate(source: WKWebView) {
@@ -1215,6 +1628,22 @@ internal class WebContainerIosHost(
         val cfg = config ?: return
         jsDialogTracker.cancelActive()
         jsbDispatcher?.cancelInFlight("web_content_process_terminated")
+        if (parkedForKeepAlive) {
+            runCatching {
+                telemetrySink?.onEvent(
+                    WebContainerTelemetryEvent.RenderProcessGone(
+                        surfaceId = cfg.surfaceId,
+                        didCrash = true,
+                        recovered = true,
+                        attempt = 0,
+                        parked = true,
+                        engine = IOS_WKWEBVIEW_ENGINE,
+                    ),
+                )
+            }
+            WebContainerIosKeepAlive.dropIfSame(this)
+            return
+        }
         events.onContentProcessGone(true)
         val action =
             watchdog.onEvent(
@@ -1329,7 +1758,7 @@ internal class WebContainerIosHost(
         defaultPromptText: String?,
         deliverResult: (WebJsDialogResult) -> Unit,
     ) {
-        val visibleAndActive = !disposed && windowAttached && !appInBackground && isSameObjCObject(source, webView)
+        val visibleAndActive = !disposed && !parkedForKeepAlive && windowAttached && !appInBackground && isSameObjCObject(source, webView)
         val handler = events.onJsDialog
         if (!isWebJsDialogPermitted(config?.allowJsDialogs == true, visibleAndActive, handler != null)) {
             val defaultCancel =

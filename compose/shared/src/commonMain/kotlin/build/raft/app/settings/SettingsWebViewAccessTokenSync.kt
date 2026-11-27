@@ -91,12 +91,21 @@ internal class SettingsWebViewAuthSnapshotReducer(
 internal fun rememberSettingsWebViewAuthSnapshot(
     shellAuthStore: RaftAuthSessionStore,
     processAuthEvents: RaftAuthSessionEventSource,
+    initialSession: StoredAuthSession? = null,
 ): SettingsWebViewAuthSnapshot {
-    var snapshot by remember(shellAuthStore, processAuthEvents) { mutableStateOf(SettingsWebViewAuthSnapshot()) }
     val reducer =
         remember(shellAuthStore, processAuthEvents) {
             SettingsWebViewAuthSnapshotReducer { nextSettingsWebViewSessionGeneration.incrementAndGet() }
         }
+    var snapshot by remember(shellAuthStore, processAuthEvents) {
+        mutableStateOf(
+            if (initialSession != null) {
+                reducer.reconcileSubscription(initialSession)
+            } else {
+                SettingsWebViewAuthSnapshot()
+            },
+        )
+    }
     LaunchedEffect(shellAuthStore, processAuthEvents) {
         processAuthEvents.authSessionEvents
             .onSubscription {

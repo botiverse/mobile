@@ -128,7 +128,10 @@ class WebContainerKeepAlivePool<T : WebPooledContainer>(
     }
 
     /** Takes a live, healthy container matching [key], or `null` if absent, expired, or unhealthy. */
-    fun take(key: WebContainerPoolKey): T? {
+    fun take(
+        key: WebContainerPoolKey,
+        emitReusedEvent: Boolean = true,
+    ): T? {
         val now = nowMs()
         pruneExpired(now)
         val entry = entries.remove(key) ?: return null
@@ -137,7 +140,89 @@ class WebContainerKeepAlivePool<T : WebPooledContainer>(
             emitPoolEvent("evict_unhealthy_on_take", key.keepAliveKey)
             return null
         }
-        emitPoolEvent("reused", key.keepAliveKey)
+        if (emitReusedEvent) {
+            emitPoolEvent("reused", key.keepAliveKey)
+        }
+        return entry.container
+    }
+
+    /** Removes and destroys the entry matching [key], if present. Returns `true` if removed. */
+    fun drop(key: WebContainerPoolKey): Boolean {
+        val removed = entries.remove(key) ?: return false
+        removed.container.destroy()
+        emitPoolEvent("dropped", key.keepAliveKey)
+        return true
+    }
+
+    /**
+     * Evicts and destroys every entry whose `keepAliveKey` equals [prefix] or starts with
+     * `"$prefix|"`. Returns the number destroyed.
+     */
+    fun evictByKeyPrefix(prefix: String): Int {
+        if (prefix.isBlank()) return 0
+        val boundaryPrefix = "$prefix|"
+        val matchingKeys =
+            entries.keys.filter { key ->
+                key.keepAliveKey == prefix || key.keepAliveKey.startsWith(boundaryPrefix)
+            }
+        for (key in matchingKeys) {
+            entries.remove(key)?.let { removed ->
+                removed.container.destroy()
+                emitPoolEvent("evict_prefix", key.keepAliveKey)
+            }
+        }
+        return matchingKeys.size
+    }
+
+    /**
+     * Returns `true` when at least one non-expired, healthy parked entry matches [predicate].
+     * Unhealthy matching entries encountered are evicted immediately.
+     */
+    fun hasAnyMatching(predicate: (WebContainerPoolKey) -> Boolean): Boolean {
+        val now = nowMs()
+        pruneExpired(now)
+        val candidates = entries.entries.filter { (key, _) -> predicate(key) }.map { it.key }
+        for (key in candidates) {
+            val entry = entries[key] ?: continue
+            if (!entry.container.isHealthy()) {
+                entries.remove(key)
+                entry.container.destroy()
+                emitPoolEvent("evict_unhealthy_on_peek", key.keepAliveKey)
+            } else {
+                return true
+            }
+        }
+        return false
+    }
+
+    /**
+     * Atomically re-keys a healthy, non-expired parked entry from [fromKey] to [toKey] without
+     * destroying its underlying WebView (e.g. promoting a shared prewarm slot to a concrete
+     * per-artifact slot). Requires matching isolation scope and theme. Returns the promoted
+     * container, or `null` if [fromKey] was absent, expired, unhealthy, or incompatible.
+     */
+    fun promote(
+        fromKey: WebContainerPoolKey,
+        toKey: WebContainerPoolKey,
+    ): T? {
+        if (fromKey.isolationScope != toKey.isolationScope || fromKey.isDarkTheme != toKey.isDarkTheme) {
+            return null
+        }
+        if (fromKey == toKey) return peek(fromKey)
+        val now = nowMs()
+        pruneExpired(now)
+        val entry = entries.remove(fromKey) ?: return null
+        if (!entry.container.isHealthy()) {
+            entry.container.destroy()
+            emitPoolEvent("evict_unhealthy_on_take", fromKey.keepAliveKey)
+            return null
+        }
+        entries.remove(toKey)?.let { replaced ->
+            replaced.container.destroy()
+            emitPoolEvent("evict_replaced", toKey.keepAliveKey)
+        }
+        entries[toKey] = entry.copy(key = toKey)
+        emitPoolEvent("promoted", toKey.keepAliveKey)
         return entry.container
     }
 
@@ -384,6 +469,8 @@ sealed interface WebContainerTelemetryEvent {
         val keepAliveKey: String,
         val poolSizeAfter: Int,
         val engine: String? = null,
+        val reloaded: Boolean? = null,
+        val surfaceId: String? = null,
     ) : WebContainerTelemetryEvent
 
     data class IsolationScopeCleared(

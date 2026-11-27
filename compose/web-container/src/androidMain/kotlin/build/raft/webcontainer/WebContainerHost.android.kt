@@ -1,6 +1,7 @@
 package build.raft.webcontainer
 
 import android.annotation.SuppressLint
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.MutableContextWrapper
 import android.graphics.Bitmap
@@ -90,6 +91,27 @@ val LocalAndroidWebFileChooser = staticCompositionLocalOf<WebContainerAndroidFil
 
 internal const val ANDROID_WEBVIEW_ENGINE: String = "android_webview"
 
+/**
+ * Maps Android `ComponentCallbacks2.onTrimMemory` levels onto [WebMemoryTrimLevel].
+ *
+ * `TRIM_MEMORY_UI_HIDDEN` (20) intentionally returns `null` so switching away from the app briefly
+ * preserves warm parked Artifact WebViews within their TTL, while active/background memory pressure
+ * trims half ([WebMemoryTrimLevel.MODERATE]) or all ([WebMemoryTrimLevel.CRITICAL]) pooled entries.
+ */
+@Suppress("DEPRECATION")
+internal fun mapAndroidTrimMemoryLevel(level: Int): WebMemoryTrimLevel? =
+    when (level) {
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL,
+        ComponentCallbacks2.TRIM_MEMORY_COMPLETE,
+        -> WebMemoryTrimLevel.CRITICAL
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_MODERATE,
+        ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW,
+        ComponentCallbacks2.TRIM_MEMORY_BACKGROUND,
+        ComponentCallbacks2.TRIM_MEMORY_MODERATE,
+        -> WebMemoryTrimLevel.MODERATE
+        else -> if (level > ComponentCallbacks2.TRIM_MEMORY_COMPLETE) WebMemoryTrimLevel.CRITICAL else null
+    }
+
 /** Process-wide Android keep-alive pool and isolation-scope lifecycle coordinator. */
 object WebContainerAndroidKeepAlive {
     /** Safety ceiling for a parked background prewarm to finish loading before being aborted. */
@@ -117,6 +139,7 @@ object WebContainerAndroidKeepAlive {
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     private val prewarmTimeouts = LinkedHashMap<WebContainerAndroidView, Runnable>()
     internal var prewarmLoadTimeoutMs: Long = PREWARM_LOAD_TIMEOUT_MS
+    internal val poolSize: Int get() = pool.size
 
     internal fun take(
         key: WebContainerPoolKey,
@@ -126,10 +149,24 @@ object WebContainerAndroidKeepAlive {
         resourceInterceptor: WebResourceInterceptor?,
         telemetrySink: WebContainerTelemetrySink?,
         fileChooser: WebContainerAndroidFileChooser?,
+        incomingConfig: WebContainerConfig? = null,
     ): WebContainerAndroidView? {
         if (telemetrySink != null) poolTelemetrySink = telemetrySink
-        val view = pool.take(key) ?: return null
+        val view = pool.take(key, emitReusedEvent = false) ?: return null
         cancelPrewarmTimeout(view)
+        val willReload = incomingConfig?.let(view::willReloadForConfig) ?: false
+        runCatching {
+            (telemetrySink ?: poolTelemetrySink)?.onEvent(
+                WebContainerTelemetryEvent.PoolEvent(
+                    action = "reused",
+                    keepAliveKey = key.keepAliveKey,
+                    poolSizeAfter = pool.size,
+                    engine = ANDROID_WEBVIEW_ENGINE,
+                    reloaded = willReload,
+                    surfaceId = incomingConfig?.surfaceId,
+                ),
+            )
+        }
         view.attachFromKeepAlive(
             hostContext = hostContext,
             nextEvents = events,
@@ -137,8 +174,29 @@ object WebContainerAndroidKeepAlive {
             nextInterceptor = resourceInterceptor,
             nextTelemetry = telemetrySink,
             nextFileChooser = fileChooser,
+            willReload = willReload,
         )
         return view
+    }
+
+    internal fun emitCreated(
+        key: WebContainerPoolKey,
+        surfaceId: String,
+        telemetrySink: WebContainerTelemetrySink?,
+    ) {
+        if (telemetrySink != null) poolTelemetrySink = telemetrySink
+        runCatching {
+            (telemetrySink ?: poolTelemetrySink)?.onEvent(
+                WebContainerTelemetryEvent.PoolEvent(
+                    action = "created",
+                    keepAliveKey = key.keepAliveKey,
+                    poolSizeAfter = pool.size,
+                    engine = ANDROID_WEBVIEW_ENGINE,
+                    reloaded = true,
+                    surfaceId = surfaceId,
+                ),
+            )
+        }
     }
 
     internal fun park(
@@ -273,9 +331,94 @@ object WebContainerAndroidKeepAlive {
         return false
     }
 
+    /** Removes and destroys the single parked container matching the given pool key, if present. */
+    fun drop(
+        keepAliveKey: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) return false
+        val trimmedKey = keepAliveKey.trim()
+        if (trimmedKey.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return false
+        val key = WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme)
+        return pool.drop(key).also { pruneInactivePrewarmTimeouts() }
+    }
+
+    /** Removes and destroys any parked container matching [keepAliveKey] across light and dark modes. */
+    fun dropAllThemes(
+        keepAliveKey: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+    ): Int {
+        if (Looper.myLooper() != Looper.getMainLooper()) return 0
+        val trimmedKey = keepAliveKey.trim()
+        if (trimmedKey.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return 0
+        var dropped = 0
+        if (pool.drop(WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme = false))) dropped += 1
+        if (pool.drop(WebContainerPoolKey(trimmedKey, isolationScope, isDarkTheme = true))) dropped += 1
+        if (dropped > 0) pruneInactivePrewarmTimeouts()
+        return dropped
+    }
+
+    /** Evicts and destroys all pooled containers whose key equals [prefix] or starts with `"$prefix|"`. */
+    fun evictByKeyPrefix(prefix: String): Int {
+        if (Looper.myLooper() != Looper.getMainLooper()) return 0
+        val trimmed = prefix.trim()
+        if (trimmed.isEmpty()) return 0
+        return pool.evictByKeyPrefix(trimmed).also { pruneInactivePrewarmTimeouts() }
+    }
+
+    /** Returns `true` when any healthy parked container matches [prefix], [isolationScope], and [isDarkTheme]. */
+    fun hasAnyWithPrefix(
+        prefix: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) return false
+        val trimmed = prefix.trim()
+        if (trimmed.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return false
+        return pool.hasAnyMatching { key ->
+            key.isolationScope == isolationScope &&
+                key.isDarkTheme == isDarkTheme &&
+                key.keepAliveKey.startsWith(trimmed)
+        }
+    }
+
+    /**
+     * Atomically re-keys a healthy parked container from [fromKey] to [toKey] (for example promoting
+     * a shared prewarm slot to a concrete per-artifact slot without destroying or reloading it).
+     */
+    fun promote(
+        fromKey: String,
+        toKey: String,
+        isolationScope: WebIsolationScope = WebIsolationScope.Default,
+        isDarkTheme: Boolean = false,
+    ): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) return false
+        val trimmedFrom = fromKey.trim()
+        val trimmedTo = toKey.trim()
+        if (trimmedFrom.isEmpty() || trimmedTo.isEmpty() || isolationScope is WebIsolationScope.Ephemeral) return false
+        val src = WebContainerPoolKey(trimmedFrom, isolationScope, isDarkTheme)
+        val dst = WebContainerPoolKey(trimmedTo, isolationScope, isDarkTheme)
+        val promoted = pool.promote(src, dst) ?: return false
+        promoted.updateKeepAliveKey(trimmedTo)
+        pruneInactivePrewarmTimeouts()
+        return true
+    }
+
     /** Evicts pooled views under OS memory pressure (`onTrimMemory`). */
-    fun onMemoryPressure(level: WebMemoryTrimLevel): Int =
-        pool.onMemoryPressure(level).also { pruneInactivePrewarmTimeouts() }
+    fun onMemoryPressure(level: WebMemoryTrimLevel): Int {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { onMemoryPressure(level) }
+            return 0
+        }
+        return pool.onMemoryPressure(level).also { pruneInactivePrewarmTimeouts() }
+    }
+
+    /** Handles Android `Application.onTrimMemory` / `onLowMemory` signals cleanly on the main thread. */
+    fun onTrimMemory(level: Int): Int {
+        val mapped = mapAndroidTrimMemoryLevel(level) ?: return 0
+        return onMemoryPressure(mapped)
+    }
 
     /** Destroys all pooled views immediately. */
     fun clearAll(): Int {
@@ -382,8 +525,16 @@ internal actual fun WebContainerPlatformHost(
                         resourceInterceptor = resourceInterceptor,
                         telemetrySink = telemetrySink,
                         fileChooser = fileChooser,
+                        incomingConfig = config,
                     )
                 }
+            if (reused == null && poolKey != null) {
+                WebContainerAndroidKeepAlive.emitCreated(
+                    key = poolKey,
+                    surfaceId = config.surfaceId,
+                    telemetrySink = telemetrySink,
+                )
+            }
             reused ?: WebContainerAndroidView(
                 context = MutableContextWrapper(context),
                 initialConfig = config,
@@ -597,6 +748,17 @@ internal class WebContainerAndroidView(
         return true
     }
 
+    internal fun updateKeepAliveKey(nextKey: String) {
+        config = config.copy(keepAliveKey = nextKey)
+    }
+
+    internal fun willReloadForConfig(next: WebContainerConfig): Boolean {
+        if (!configured) return true
+        if (config.isolationScope != next.isolationScope) return true
+        if (config.url.trim() != next.url.trim()) return true
+        return config.desktopViewportMode != next.desktopViewportMode
+    }
+
     internal fun currentPoolKey(): WebContainerPoolKey? {
         val key = config.keepAliveKey?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         if (isolationScope is WebIsolationScope.Ephemeral) return null
@@ -759,6 +921,7 @@ internal class WebContainerAndroidView(
         nextInterceptor: WebResourceInterceptor?,
         nextTelemetry: WebContainerTelemetrySink?,
         nextFileChooser: WebContainerAndroidFileChooser?,
+        willReload: Boolean = false,
     ) {
         (context as? MutableContextWrapper)?.baseContext = hostContext
         parkedForKeepAlive = false
@@ -773,13 +936,15 @@ internal class WebContainerAndroidView(
         }
         registerActiveScope(isolationScope)
         navigationStateRelay.reset()
-        notifyNavigationState(force = true)
         if (isAttachedToWindow) {
             lastWindowVisibility = windowVisibility
         }
         syncWatchdogLifecycle()
-        if (!mainFrameLoadFailed && lastSuccessfulUrl.isNotBlank()) {
-            events.onLoadSuccess()
+        if (!willReload) {
+            notifyNavigationState(force = true)
+            if (!mainFrameLoadFailed && lastSuccessfulUrl.isNotBlank()) {
+                events.onLoadSuccess()
+            }
         }
     }
 

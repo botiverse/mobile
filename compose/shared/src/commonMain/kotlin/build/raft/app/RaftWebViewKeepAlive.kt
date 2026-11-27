@@ -32,6 +32,18 @@ internal expect fun raftWebViewKeptDocument(key: String): RaftWebViewKeptDocumen
  */
 internal expect fun raftWebViewEvaluateInKept(key: String, origin: String, script: String): Boolean
 
+/** Destroys only the kept WebView parked under [key] (403/404, load error, stale slot). */
+internal expect fun raftWebViewKeepAliveDrop(key: String)
+
+/** Whether any healthy kept WebView is currently parked whose key starts with [prefix]. */
+internal expect fun raftWebViewKeepAliveHasPrefix(prefix: String): Boolean
+
+/**
+ * Atomically re-keys a healthy parked WebView from [fromKey] to [toKey] without destroying or
+ * reloading it (used to promote a prewarm slot to a concrete per-artifact slot).
+ */
+internal expect fun raftWebViewKeepAlivePromote(fromKey: String, toKey: String): Boolean
+
 /** Destroys every kept WebView (sign-out, an account or server switch, a 403/404). */
 internal expect fun raftWebViewKeepAliveClear()
 
