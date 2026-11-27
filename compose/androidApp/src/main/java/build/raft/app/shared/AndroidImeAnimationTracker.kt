@@ -2,14 +2,17 @@ package build.raft.app.shared
 
 import build.raft.app.compat.ui.RaftHostImeInsets
 
-// Hands 1af517cc / 5f4a14be: how long a prepared IME animation may wait for onStart, how long past
-// its stated duration a started one may run if no progress frames extend it, how far each
-// onProgress frame slides the idle grace deadline, and the absolute upper bound for timed
-// animations so a platform that drops onEnd never pins imeAnimationRunning forever.
-internal const val IME_ANIMATION_START_GRACE_MILLIS = 300L
-internal const val IME_ANIMATION_END_GRACE_MILLIS = 150L
-internal const val IME_ANIMATION_PROGRESS_IDLE_GRACE_MILLIS = 250L
-internal const val IME_ANIMATION_HARD_CAP_MILLIS = 3_000L
+// Frame-based (vsync-aligned, zero hardcoded milliseconds) settlement counts for broken OEMs that
+// drop WindowInsetsAnimation lifecycle callbacks:
+// - Android's InsetsController dispatches onPrepare -> onApplyWindowInsets -> onStart within the
+//   same traversal; waiting 2 live Choreographer frames covers any cross-frame prepare while still
+//   recovering an orphaned onPrepare (e.g. Huawei 1af517cc) within 2 frames.
+// - During a timed animation, onProgress runs on display vsyncs; waiting 4 consecutive live frames
+//   without any onProgress supports animations stepped down to 1/4 display refresh rate (e.g. 30Hz on
+//   a 120Hz screen) and main-thread jank pauses (Choreographer only fires once when unblocked), while
+//   settling cleanly if an OEM drops onEnd.
+internal const val IME_PREPARED_VSYNC_FRAMES_TO_SETTLE = 2
+internal const val IME_IDLE_VSYNC_FRAMES_TO_SETTLE = 4
 
 internal data class AndroidImeAnimationEndSummary(
     val durationMs: Long,
@@ -21,219 +24,278 @@ internal data class AndroidImeAnimationEndSummary(
 )
 
 /**
- * Tracks platform [android.view.WindowInsetsAnimation] IME animations and drives
- * [RaftHostImeInsets.imeAnimationRunning] with a single reusable timeout callback.
+ * First-principles single-source Android IME inset tracker (Hands 1af517cc / 5f4a14be).
  *
- * OEM 120Hz spring curves (e.g. Xiaomi HyperOS Android 16, Hands 5f4a14be) routinely report
- * `durationMillis = 285` while emitting 53-54 `onProgress` frames over 450-900 ms. A fixed
- * `durationMillis + 150 ms` deadline expires mid-animation and snaps the composer to the settled
- * window inset before the keyboard finishes moving. Extending an idle grace timer on each
- * `onProgress` frame up to [hardCapMillis] keeps [RaftHostImeInsets.imeAnimationRunning] active
- * while frames keep arriving, while still guaranteeing recovery if the platform drops `onEnd`.
+ * Instead of switching between two IME sources (`WindowInsets.ime` vs `hostImeInsets.imeBottomPx`)
+ * via `imeAnimationRunning` and relying on hardcoded millisecond timeouts to unstick broken OEMs,
+ * Android keeps `state.imeAnimationRunning = false` and drives `state.imeBottomPx` directly as the
+ * single authoritative value:
+ * - Settled / non-animated `onApplyWindowInsets` dispatches write `state.imeBottomPx` immediately.
+ * - While a `WindowInsetsAnimation` is active, `onApplyWindowInsets` records the target height
+ *   without snapping, and each `onProgress` frame writes the live interpolated IME height directly
+ *   into `state.imeBottomPx` — regardless of refresh rate or spring curve length (60Hz/120Hz/240Hz,
+ *   285ms or 900ms+).
+ * - `onEnd` (or a `Choreographer` vsync watcher if an OEM drops `onStart` / `onEnd`) reconciles
+ *   `state.imeBottomPx` with the authoritative live window inset (`readSettledWindowImePx`).
  */
 internal class AndroidImeAnimationTracker<Token : Any>(
     private val state: RaftHostImeInsets,
     private val nowMillis: () -> Long,
-    private val scheduleExpiry: (delayMillis: Long, onExpire: () -> Unit) -> Unit,
-    private val cancelExpiry: () -> Unit,
-    private val startGraceMillis: Long = IME_ANIMATION_START_GRACE_MILLIS,
-    private val endGraceMillis: Long = IME_ANIMATION_END_GRACE_MILLIS,
-    private val progressIdleGraceMillis: Long = IME_ANIMATION_PROGRESS_IDLE_GRACE_MILLIS,
-    private val hardCapMillis: Long = IME_ANIMATION_HARD_CAP_MILLIS,
+    private val scheduleNextFrame: (onFrame: () -> Unit) -> Unit,
+    private val cancelNextFrame: () -> Unit,
+    private val readSettledWindowImePx: () -> Int? = { null },
+    private val onStateChanged: () -> Unit = {},
+    private val preparedVsyncFramesToSettle: Int = IME_PREPARED_VSYNC_FRAMES_TO_SETTLE,
+    private val idleVsyncFramesToSettle: Int = IME_IDLE_VSYNC_FRAMES_TO_SETTLE,
 ) {
+    private val preparedAnimations = HashSet<Token>()
     private val runningAnimations = HashSet<Token>()
     private val userDrivenAnimations = HashSet<Token>()
     private val timedOutAnimations = HashSet<Token>()
+
+    private var settledWindowImePx = state.imeBottomPx.coerceAtLeast(0)
     private var preparedAtMs = 0L
     private var progressFrames = 0
     private var maxProgressImePx = 0
-    private var currentDeadlineAtMs = 0L
-    private var hardCapAtMs = 0L
-    private var expiryScheduled = false
-    private var timerGeneration = 0
+    private var preparedIdleFrames = 0
+    private var consecutiveIdleFrames = 0
+    private var sawProgressSinceLastFrame = false
+    private var frameScheduled = false
+    private var frameGeneration = 0
     private var disposed = false
+
+    init {
+        clearImeAnimationRunning()
+    }
+
+    /**
+     * Records a platform `onApplyWindowInsets` IME height. Written immediately to
+     * `state.imeBottomPx` when no animation is prepared or running; deferred (held as the settled
+     * target) while an IME animation is in flight so the composer slides instead of snapping.
+     */
+    fun onWindowInsetsApplied(imeBottomPx: Int) {
+        if (disposed) return
+        val clamped = imeBottomPx.coerceAtLeast(0)
+        settledWindowImePx = clamped
+        if (preparedAnimations.isEmpty() && runningAnimations.isEmpty()) {
+            writeImeBottomPx(clamped)
+        }
+    }
 
     fun onPrepare(token: Token) {
         if (disposed) return
-        val now = nowMillis()
-        val maxSpan = hardCapMillis.coerceAtLeast(endGraceMillis)
-        val isNewBatch = runningAnimations.isEmpty()
-        if (isNewBatch) {
-            timedOutAnimations.clear()
-            preparedAtMs = now
-            progressFrames = 0
-            maxProgressImePx = 0
-            currentDeadlineAtMs = 0L
-            hardCapAtMs = now + maxSpan
-        } else if (token !in runningAnimations) {
-            // A newly prepared overlapping animation (e.g. reversal near prior cap) gets a fresh
-            // hard-cap window from now so it is not starved of startGraceMillis.
-            hardCapAtMs = maxOf(hardCapAtMs, now + maxSpan)
+        if (preparedAnimations.isEmpty() && runningAnimations.isEmpty()) {
+            resetBatchMetrics()
         }
-        runningAnimations += token
-        state.imeAnimationRunning = true
-        val startSpan = startGraceMillis.coerceAtMost(maxSpan)
-        currentDeadlineAtMs = minOf(maxOf(currentDeadlineAtMs, now + startSpan), hardCapAtMs)
+        preparedAnimations += token
+        preparedIdleFrames = 0
         if (userDrivenAnimations.isEmpty()) {
-            armTimer(now, currentDeadlineAtMs)
+            armFrameWatcherIfNeeded()
         }
     }
 
     fun onStart(token: Token, durationMillis: Long) {
         if (disposed) return
-        val now = nowMillis()
-        if (runningAnimations.isEmpty()) {
-            timedOutAnimations.clear()
-            preparedAtMs = now
-            progressFrames = 0
-            maxProgressImePx = 0
-            currentDeadlineAtMs = 0L
-            hardCapAtMs = 0L
+        val wasIdle = preparedAnimations.isEmpty() && runningAnimations.isEmpty()
+        preparedAnimations -= token
+        if (wasIdle) {
+            resetBatchMetrics()
         }
         runningAnimations += token
-        state.imeAnimationRunning = true
         if (durationMillis < 0L) {
-            // User-driven (e.g. predictive back / scroll-driven IME): duration is -1 and only
-            // onEnd tells us when the gesture finishes; suspend timed expiry while it is active.
+            // User-driven gesture (e.g. scroll-driven IME / predictive back): finger may pause
+            // indefinitely mid-drag, so suspend idle-vsync settlement while active.
             userDrivenAnimations += token
-            cancelPendingExpiry()
+            cancelFrameWatcher()
             return
         }
         userDrivenAnimations -= token
-        val maxSpan = hardCapMillis.coerceAtLeast(endGraceMillis)
-        // Clamp stated duration against maxSpan before adding endGraceMillis so huge or bogus
-        // OEM durations neither overflow Long nor defeat the absolute hard cap.
-        val clampedDuration = durationMillis.coerceAtMost(maxSpan - endGraceMillis)
-        val desiredInitialSpan = clampedDuration + endGraceMillis
-        // Each newly started timed animation (e.g. a show reversing a running hide) gets a fresh
-        // hard-cap window from its start; onProgress never extends hardCapAtMs.
-        hardCapAtMs = maxOf(hardCapAtMs, now + maxSpan)
-        // Always persist currentDeadlineAtMs even while a user-driven animation overlaps, so if
-        // the user-driven gesture ends before this timed animation finishes it keeps its full span.
-        currentDeadlineAtMs = minOf(maxOf(currentDeadlineAtMs, now + desiredInitialSpan), hardCapAtMs)
+        sawProgressSinceLastFrame = true
+        consecutiveIdleFrames = 0
         if (userDrivenAnimations.isEmpty()) {
-            armTimer(now, currentDeadlineAtMs)
+            armFrameWatcherIfNeeded()
         }
     }
 
     fun onProgress(imeBottomPx: Int) {
         if (disposed) return
+        val clamped = imeBottomPx.coerceAtLeast(0)
         if (runningAnimations.isNotEmpty() || timedOutAnimations.isNotEmpty()) {
             progressFrames++
-            maxProgressImePx = maxOf(maxProgressImePx, imeBottomPx)
+            maxProgressImePx = maxOf(maxProgressImePx, clamped)
         }
-        // Never resurrect an animation after it already timed out or ended.
-        if (!state.imeAnimationRunning || runningAnimations.isEmpty() || userDrivenAnimations.isNotEmpty()) return
-        val now = nowMillis()
-        if (hardCapAtMs <= now) {
-            expireNow()
-            return
-        }
-        val targetDeadline = minOf(maxOf(currentDeadlineAtMs, now + progressIdleGraceMillis), hardCapAtMs)
-        if (!expiryScheduled || targetDeadline > currentDeadlineAtMs) {
-            armTimer(now, targetDeadline)
+        // Never resurrect an animation that has already settled or ended.
+        if (runningAnimations.isEmpty()) return
+        writeImeBottomPx(clamped)
+        sawProgressSinceLastFrame = true
+        consecutiveIdleFrames = 0
+        if (userDrivenAnimations.isEmpty()) {
+            armFrameWatcherIfNeeded()
         }
     }
 
     /**
      * Records an animation end. Returns an [AndroidImeAnimationEndSummary] when the last tracked
-     * IME animation ends (either normally or as a late `onEnd` after timeout), and null when
-     * another overlapping IME animation is still running or when [token] was never tracked /
-     * already completed.
+     * IME animation ends (either normally or as a late `onEnd` after vsync settlement), and null
+     * when another overlapping IME animation is still active or when [token] was never tracked.
      */
     fun onEnd(token: Token, durationMillis: Long): AndroidImeAnimationEndSummary? {
         if (disposed) return null
+        val wasPrepared = preparedAnimations.remove(token)
         val wasRunning = runningAnimations.remove(token)
-        userDrivenAnimations -= token
-        if (runningAnimations.isNotEmpty()) {
-            // If a user-driven animation just ended while a timed animation is still running,
-            // make sure the remaining timed animation has a bounded expiry timer.
-            if (state.imeAnimationRunning && userDrivenAnimations.isEmpty() && !expiryScheduled) {
-                val now = nowMillis()
-                val maxSpan = hardCapMillis.coerceAtLeast(endGraceMillis)
-                val effectiveCap = hardCapAtMs.takeIf { it > 0L } ?: (now + maxSpan)
-                hardCapAtMs = effectiveCap
-                if (effectiveCap <= now) {
-                    expireNow()
-                } else {
-                    val targetDeadline = minOf(maxOf(currentDeadlineAtMs, now + progressIdleGraceMillis), effectiveCap)
-                    armTimer(now, targetDeadline)
-                }
-            }
-            return null
-        }
-        if (wasRunning) {
-            val summary =
-                AndroidImeAnimationEndSummary(
+        val wasUserDriven = userDrivenAnimations.remove(token)
+        if (!wasPrepared && !wasRunning) {
+            if (
+                timedOutAnimations.remove(token) &&
+                    preparedAnimations.isEmpty() &&
+                    runningAnimations.isEmpty() &&
+                    timedOutAnimations.isEmpty()
+            ) {
+                val finalWindowImePx = resolveAuthoritativeWindowImePx()
+                writeImeBottomPx(finalWindowImePx)
+                return AndroidImeAnimationEndSummary(
                     durationMs = durationMillis,
                     elapsedMs = (nowMillis() - preparedAtMs).coerceAtLeast(0L),
                     progressFrames = progressFrames,
                     maxProgressImePx = maxProgressImePx,
-                    windowImePx = state.imeBottomPx,
-                    timedOut = false,
+                    windowImePx = finalWindowImePx,
+                    timedOut = true,
                 )
-            cancelPendingExpiry()
-            currentDeadlineAtMs = 0L
-            hardCapAtMs = 0L
-            state.imeAnimationRunning = false
-            return summary
+            }
+            return null
         }
-        if (timedOutAnimations.remove(token)) {
-            if (timedOutAnimations.isNotEmpty()) return null
-            return AndroidImeAnimationEndSummary(
+        if (preparedAnimations.isNotEmpty() || runningAnimations.isNotEmpty()) {
+            // A user-driven gesture may have just ended while a timed/prepared animation remains.
+            if (wasUserDriven && userDrivenAnimations.isEmpty()) {
+                sawProgressSinceLastFrame = true
+                consecutiveIdleFrames = 0
+                preparedIdleFrames = 0
+                armFrameWatcherIfNeeded()
+            }
+            return null
+        }
+        cancelFrameWatcher()
+        val finalWindowImePx = resolveAuthoritativeWindowImePx()
+        writeImeBottomPx(finalWindowImePx)
+        val summary =
+            AndroidImeAnimationEndSummary(
                 durationMs = durationMillis,
                 elapsedMs = (nowMillis() - preparedAtMs).coerceAtLeast(0L),
                 progressFrames = progressFrames,
                 maxProgressImePx = maxProgressImePx,
-                windowImePx = state.imeBottomPx,
-                timedOut = true,
+                windowImePx = finalWindowImePx,
+                timedOut = false,
             )
-        }
-        return null
+        resetIdleCounters()
+        return summary
     }
 
     fun dispose() {
         disposed = true
-        cancelPendingExpiry()
+        cancelFrameWatcher()
+        preparedAnimations.clear()
         runningAnimations.clear()
         userDrivenAnimations.clear()
         timedOutAnimations.clear()
-        currentDeadlineAtMs = 0L
-        hardCapAtMs = 0L
-        state.imeAnimationRunning = false
+        resetIdleCounters()
+        clearImeAnimationRunning()
     }
 
-    private fun armTimer(now: Long, targetDeadlineAtMs: Long) {
-        val delay = (targetDeadlineAtMs - now).coerceAtLeast(0L)
-        if (delay == 0L) {
-            expireNow()
+    private fun writeImeBottomPx(px: Int) {
+        if (state.imeBottomPx != px) {
+            state.imeBottomPx = px
+            onStateChanged()
+        }
+    }
+
+    private fun clearImeAnimationRunning() {
+        if (state.imeAnimationRunning) {
+            state.imeAnimationRunning = false
+            onStateChanged()
+        }
+    }
+
+    private fun resetBatchMetrics() {
+        timedOutAnimations.clear()
+        preparedAtMs = nowMillis()
+        progressFrames = 0
+        maxProgressImePx = 0
+        resetIdleCounters()
+    }
+
+    private fun resetIdleCounters() {
+        preparedIdleFrames = 0
+        consecutiveIdleFrames = 0
+        sawProgressSinceLastFrame = false
+    }
+
+    private fun resolveAuthoritativeWindowImePx(): Int {
+        val live = readSettledWindowImePx()?.coerceAtLeast(0)
+        if (live != null) {
+            settledWindowImePx = live
+            return live
+        }
+        return settledWindowImePx
+    }
+
+    private fun armFrameWatcherIfNeeded() {
+        if (disposed || frameScheduled || userDrivenAnimations.isNotEmpty()) return
+        if (preparedAnimations.isEmpty() && runningAnimations.isEmpty()) return
+        frameScheduled = true
+        val generation = ++frameGeneration
+        scheduleNextFrame {
+            if (disposed || generation != frameGeneration) return@scheduleNextFrame
+            frameScheduled = false
+            onVsyncFrame()
+        }
+    }
+
+    private fun cancelFrameWatcher() {
+        frameGeneration++
+        if (frameScheduled) {
+            frameScheduled = false
+            cancelNextFrame()
+        }
+    }
+
+    private fun onVsyncFrame() {
+        if (disposed || userDrivenAnimations.isNotEmpty()) return
+        if (preparedAnimations.isEmpty() && runningAnimations.isEmpty()) return
+
+        if (runningAnimations.isEmpty()) {
+            // Only prepared animations exist (onStart has not arrived yet).
+            preparedIdleFrames++
+            if (preparedIdleFrames >= preparedVsyncFramesToSettle.coerceAtLeast(1)) {
+                settleOrphaned()
+            } else {
+                armFrameWatcherIfNeeded()
+            }
             return
         }
-        currentDeadlineAtMs = targetDeadlineAtMs
-        expiryScheduled = true
-        val generation = ++timerGeneration
-        scheduleExpiry(delay) {
-            if (!disposed && generation == timerGeneration) {
-                expireNow()
-            }
+
+        if (sawProgressSinceLastFrame) {
+            sawProgressSinceLastFrame = false
+            consecutiveIdleFrames = 0
+            armFrameWatcherIfNeeded()
+            return
+        }
+
+        consecutiveIdleFrames++
+        if (consecutiveIdleFrames >= idleVsyncFramesToSettle.coerceAtLeast(1)) {
+            settleOrphaned()
+        } else {
+            armFrameWatcherIfNeeded()
         }
     }
 
-    private fun cancelPendingExpiry() {
-        timerGeneration++
-        if (expiryScheduled) {
-            expiryScheduled = false
-            cancelExpiry()
-        }
-    }
-
-    private fun expireNow() {
-        cancelPendingExpiry()
+    private fun settleOrphaned() {
+        cancelFrameWatcher()
+        timedOutAnimations.addAll(preparedAnimations)
         timedOutAnimations.addAll(runningAnimations)
+        preparedAnimations.clear()
         runningAnimations.clear()
         userDrivenAnimations.clear()
-        currentDeadlineAtMs = 0L
-        hardCapAtMs = 0L
-        state.imeAnimationRunning = false
+        resetIdleCounters()
+        writeImeBottomPx(resolveAuthoritativeWindowImePx())
     }
 }

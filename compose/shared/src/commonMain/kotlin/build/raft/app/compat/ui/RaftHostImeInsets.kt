@@ -30,24 +30,26 @@ import build.raft.designsystem.components.RaftToastBottomInsetProvider
  * placed from `WindowInsets.ime` (the composer's bottom padding, the shell's bar hiding) then sits
  * behind the keyboard.
  *
- * The Android host therefore also publishes the window's own IME inset from every inset dispatch,
- * plus whether a platform IME animation is currently driving `WindowInsets.ime`. While one is, the
- * animated Compose value is used (the composer rides the keyboard frame by frame); otherwise the
- * host's value is the truth and is used directly. Hosts that publish nothing (iOS, tests)
- * keep reading `WindowInsets.ime` alone.
+ * The Android host therefore drives `imeBottomPx` directly as the single authoritative IME height
+ * (settled heights from `onApplyWindowInsets`, per-frame interpolated heights directly from
+ * `WindowInsetsAnimation.Callback.onProgress`, and Choreographer vsync reconciliation if an OEM
+ * drops `onStart`/`onEnd`), keeping `imeAnimationRunning = false` so Compose never switches between
+ * two inset sources mid-animation. iOS drives `imeBottomPx` during its curve-matched keyboard
+ * animation and sets `imeAnimationRunning = true` once settled to hand back to `WindowInsets.ime`.
+ * Hosts that publish nothing (desktop, tests) keep reading `WindowInsets.ime` alone.
  */
 
 /** IME geometry reported by the native host for its window. Written on the main thread. */
 @Stable
 class RaftHostImeInsets {
-    /** Bottom IME inset of the window in px, from the latest platform inset dispatch. */
+    /** Bottom IME inset of the window in px, driven directly by the native host. */
     var imeBottomPx: Int by mutableIntStateOf(0)
 
     /**
-     * `WindowInsets.ime` is the value to use, not [imeBottomPx]. Android: a platform IME inset
-     * animation is running and feeding `WindowInsets.ime` frame by frame. iOS: no keyboard
-     * animation of the host's own is running (see [ProvideRaftPlatformImeInsets]); the settled
-     * keyboard is CMP's value.
+     * When `true`, `WindowInsets.ime` is used instead of [imeBottomPx]. Android keeps this `false`
+     * because `AndroidImeAnimationTracker` feeds both settled and animated heights directly into
+     * [imeBottomPx]. iOS sets this `true` when no host keyboard animation is running (see
+     * [ProvideRaftPlatformImeInsets]) so the settled keyboard falls back to CMP's value.
      */
     var imeAnimationRunning: Boolean by mutableStateOf(false)
 }
