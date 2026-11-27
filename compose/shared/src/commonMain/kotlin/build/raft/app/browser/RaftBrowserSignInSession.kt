@@ -781,6 +781,32 @@ internal class RaftBrowserSignInSession(
             )
         }
 
+        // Prefer the batch lookup endpoint (botiverse/slock #17196 / #17197): one request per 50
+        // servers with the preferred server ordered first. Older servers answer HTTP 400
+        // (Unsupported) and fall back to the concurrent single-server fast path below.
+        when (
+            val batch =
+                api.lookupClientsBatch(
+                    clientId = setupRequest.clientId,
+                    serverIds = orderedServers.map { it.id },
+                    scope = setupRequest.scope,
+                )
+        ) {
+            is RaftBrowserSignInBatchLookupResult.Completed -> {
+                val inOriginalOrder =
+                    candidateServers.map { server ->
+                        val result = batch.results[server.id] ?: RaftBrowserSignInLookupResult.Failed()
+                        server to result
+                    }
+                return LookupBatchResult(
+                    lookups = inOriginalOrder,
+                    resolvedServerIds = candidateServers.mapTo(HashSet(candidateServers.size)) { it.id },
+                    complete = true,
+                )
+            }
+            RaftBrowserSignInBatchLookupResult.Unsupported -> Unit
+        }
+
         val hasAgentInbound = setupQuery.scopes.any { it in RaftAgentInboundOAuthScopes }
         val resultsByServerId = LinkedHashMap<String, RaftBrowserSignInLookupResult>(orderedServers.size)
         var decidedEarly = false
