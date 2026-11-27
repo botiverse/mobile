@@ -1,9 +1,16 @@
 package build.raft.app
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
@@ -15,15 +22,31 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.changedToUp
+import androidx.compose.ui.input.pointer.isPrimaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.RaftSharedStoreProvider
 import build.raft.app.data.RaftShellStoreScope
@@ -31,6 +54,8 @@ import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
 import build.raft.app.data.RaftVoiceDictationV2PermitApi
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.VoiceDictationButtonGesture
+import build.raft.app.data.VoiceDictationGestureMode
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Error
 import build.raft.app.data.VoiceDictationV2ErrorCode
@@ -58,21 +83,27 @@ import build.raft.designsystem.components.RaftBannerStatus
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftIconButton
 import build.raft.designsystem.components.RaftIconButtonSize
-import build.raft.designsystem.components.RaftSpinner
-import build.raft.designsystem.components.RaftSpinnerSize
+import build.raft.designsystem.components.RaftTooltip
+import build.raft.designsystem.motion.rememberRaftReducedMotion
+import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftStroke
 import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.realtime.socket.KtorRaftWebSocketConnector
 import build.raft.realtime.socket.createRaftRealtimeHttpClient
 import kotlin.math.ceil
+import kotlin.time.Clock
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
+import kotlinx.coroutines.delay
 
-// Composer streaming voice dictation UI controls, gating, and localized feedback
-// (`#wg-mobile-sync:#334`). Mirrors web `ComposerVoiceDictationControls.tsx`,
-// `ComposerVoiceDictationNotice.tsx`, and `voiceDictationPresentation.ts`.
+// Composer streaming voice dictation UI controls, gating, dual-mode gesture, hold pill, and
+// localized feedback (`#wg-mobile-sync:#334`). Mirrors web `ComposerVoiceDictationControls.tsx`,
+// `ComposerVoiceDictationNotice.tsx`, `voiceDictationGesture.ts`, and `voiceDictationPresentation.ts`.
 
 internal const val ThreadVoiceDictationButtonTestTag: String = "composer-voice-dictation-button"
 internal const val ThreadVoiceDictationHaloTestTag: String = "composer-voice-dictation-halo"
-internal const val ThreadVoiceDictationStoppingTestTag: String = "composer-voice-dictation-stopping"
+internal const val ThreadVoiceDictationHoldPillTestTag: String = "composer-voice-dictation-hold-popover"
 internal const val ThreadVoiceDictationErrorTestTag: String = "composer-voice-dictation-error"
 internal const val ThreadVoiceDictationQuotaTestTag: String = "composer-voice-dictation-quota"
 
@@ -82,20 +113,36 @@ private const val VOICE_DICTATION_HALO_SCALE_MIN: Float = 28f / 24f
 /** Additional outward expansion at peak speech (+6 dp per side -> 40 dp outer). */
 private const val VOICE_DICTATION_HALO_SCALE_RANGE: Float = 12f / 24f
 
+/** Fixed still halo scale under reduced motion (matches web HALO_SCALE_REDUCED_MOTION). */
+private const val VOICE_DICTATION_HALO_SCALE_REDUCED_MOTION: Float = 1.25f
+
 /** Outer halo alpha range matching web Kirby spec (`0.25` at rest -> `0.60` at peak speech). */
 private const val VOICE_DICTATION_HALO_ALPHA_MIN: Float = 0.25f
 private const val VOICE_DICTATION_HALO_ALPHA_MAX: Float = 0.60f
 
+/** Fixed still halo alpha under reduced motion (matches web HALO_OPACITY_REDUCED_MOTION). */
+private const val VOICE_DICTATION_HALO_ALPHA_REDUCED_MOTION: Float = 0.35f
+
 /** Low-quota warning thresholds (in seconds): remaining > 0 and <= ~10% of limit, clamped to [150 s, 600 s]. */
 private const val VOICE_DICTATION_MIN_LOW_QUOTA_SECONDS: Int = 150
 private const val VOICE_DICTATION_MAX_LOW_QUOTA_SECONDS: Int = 600
+private const val VOICE_DICTATION_CRITICAL_LOW_QUOTA_SECONDS: Int = 120
+private const val VOICE_DICTATION_DEGRADED_FAIL_OPEN_CAP_SECONDS: Int = 180
 private const val VOICE_DICTATION_LOW_QUOTA_FRACTION: Double = 0.10
+
+private const val VOICE_DICTATION_HOLD_CLOCK_TICK_MS: Long = 250L
+private const val VOICE_DICTATION_MAX_RESET_TIMER_MS: Long = 86_400_000L
 
 // not a token: web ComposerVoiceDictationControls size-6 (24 px) active mic circle
 private val VoiceDictationActiveCircleSize = 24.dp
 
 // not a token: web ComposerVoiceDictationControls size-3.5 (14 px) mic glyph inside the active circle
 private val VoiceDictationActiveGlyphSize = 14.dp
+
+// not a token: web ComposerVoiceDictationControls hold popover dot (`size-2` = 8 px) & `sideOffset={10}`
+private val VoiceDictationHoldDotSize = 8.dp
+private val VoiceDictationHoldPillAnchorGap = 10.dp
+private val VoiceDictationHoldPillEdgeMargin = 8.dp
 
 /**
  * Pure visibility gate for the composer voice dictation mic button:
@@ -109,31 +156,76 @@ internal fun canShowComposerVoiceDictation(
     composerEditable: Boolean,
 ): Boolean = flagEnabled && !viewerIsGuest && recorderAvailable && composerEditable
 
-/** Computes outer-halo scale (`1.167..1.667`) from normalized audio level in `0f..1f`. */
-internal fun voiceDictationHaloScale(audioLevel: Float): Float {
+/** Formats an elapsed dictation duration (ms) as `m:ss`, e.g. `0:04` or `1:23`. */
+internal fun formatVoiceDictationClock(elapsedMs: Long): String {
+    val totalSeconds = elapsedMs.coerceAtLeast(0L) / 1_000L
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "$minutes:${if (seconds < 10L) "0" else ""}$seconds"
+}
+
+/**
+ * Computes rounded remaining minutes for the low-quota banner, matching web `voiceDictationLowQuotaMessage`:
+ * returns `null` when `< 60 s` (triggers `"Less than 1 minute"` copy), otherwise `max(1, round(remainingSeconds / 60))`
+ * using half-up rounding (`(remainingSeconds + 30) / 60`).
+ */
+internal fun voiceDictationLowQuotaRemainingMinutes(remainingSeconds: Int): Int? {
+    if (remainingSeconds < 60) return null
+    return ((remainingSeconds + 30) / 60).coerceAtLeast(1)
+}
+
+/** Computes outer-halo scale (`1.167..1.667`, or fixed `1.25` under reduced motion). */
+internal fun voiceDictationHaloScale(
+    audioLevel: Float,
+    reducedMotion: Boolean = false,
+): Float {
+    if (reducedMotion) return VOICE_DICTATION_HALO_SCALE_REDUCED_MOTION
     val clamped = if (audioLevel.isFinite()) audioLevel.coerceIn(0f, 1f) else 0f
     return VOICE_DICTATION_HALO_SCALE_MIN + clamped * VOICE_DICTATION_HALO_SCALE_RANGE
 }
 
-/** Computes outer-halo alpha (`0.25..0.60`) from normalized audio level in `0f..1f`. */
-internal fun voiceDictationHaloAlpha(audioLevel: Float): Float {
+/** Computes outer-halo alpha (`0.25..0.60`, or fixed `0.35` under reduced motion). */
+internal fun voiceDictationHaloAlpha(
+    audioLevel: Float,
+    reducedMotion: Boolean = false,
+): Float {
+    if (reducedMotion) return VOICE_DICTATION_HALO_ALPHA_REDUCED_MOTION
     val clamped = if (audioLevel.isFinite()) audioLevel.coerceIn(0f, 1f) else 0f
     return VOICE_DICTATION_HALO_ALPHA_MIN + clamped * (VOICE_DICTATION_HALO_ALPHA_MAX - VOICE_DICTATION_HALO_ALPHA_MIN)
 }
 
 /**
  * Returns true when daily dictation quota is nearly exhausted (remaining > 0 and <= ~10% of limit,
- * clamped to `[150 s, 600 s]`, matching web's 5..20 30-second permits).
+ * clamped to `[150 s, 600 s]`), suppressing degraded fail-open snapshots (`quotaDegraded == true`
+ * or `usedSeconds == 0 && remainingSeconds <= 180 && limitSeconds > remainingSeconds`).
  */
-internal fun isVoiceDictationV2QuotaLow(quota: VoiceDictationV2Quota?): Boolean {
-    if (quota == null) return false
+internal fun isVoiceDictationV2QuotaLow(
+    quota: VoiceDictationV2Quota?,
+    quotaDegraded: Boolean = false,
+): Boolean {
+    if (quota == null || quotaDegraded) return false
     val limit = quota.limitSeconds
     val remaining = quota.remainingSeconds
     if (limit <= 0 || remaining <= 0) return false
+    if (
+        quota.usedSeconds == 0 &&
+        remaining <= VOICE_DICTATION_DEGRADED_FAIL_OPEN_CAP_SECONDS &&
+        limit > remaining
+    ) {
+        return false
+    }
     val proportional = ceil(limit * VOICE_DICTATION_LOW_QUOTA_FRACTION).toInt()
     val threshold = proportional.coerceIn(VOICE_DICTATION_MIN_LOW_QUOTA_SECONDS, VOICE_DICTATION_MAX_LOW_QUOTA_SECONDS)
     return remaining <= threshold
 }
+
+/** Returns the banner status for a [VoiceDictationV2Error]: Info for session length limit, Warning otherwise. */
+internal fun voiceDictationErrorBannerStatus(error: VoiceDictationV2Error): RaftBannerStatus =
+    if (error is VoiceDictationV2Error.StreamError && error.code == VoiceDictationV2ErrorCode.SessionLimitReached) {
+        RaftBannerStatus.Info
+    } else {
+        RaftBannerStatus.Warning
+    }
 
 /** Formatted daily quota reset clock time + local today/tomorrow distinction. */
 internal data class VoiceDictationResetTimeDisplay(
@@ -201,6 +293,14 @@ internal class ThreadVoiceDictationHost(
 
 internal val LocalThreadVoiceDictationHost =
     compositionLocalOf<ThreadVoiceDictationHost?> { null }
+
+/** Observes [VoiceDictationV2State.awaitingSubmitFinal] cleanly without bloating [ThreadComposerContent]. */
+@Composable
+internal fun rememberVoiceDictationAwaitingSubmitFinal(host: ThreadVoiceDictationHost?): Boolean {
+    if (host == null) return false
+    val state by host.controller.state.collectAsState()
+    return state.awaitingSubmitFinal
+}
 
 /**
  * Creates and lifecycle-manages the conversation's [ThreadVoiceDictationHost]:
@@ -314,20 +414,33 @@ internal fun ThreadVoiceDictationNoticeSlot(
     val error = state.error
     val quota = state.quota
     var dismissedLowQuotaResetsAt by remember(host.controller) { mutableStateOf<String?>(null) }
+    var dismissedLowQuotaRemaining by remember(host.controller) { mutableStateOf<Int?>(null) }
 
     if (error == null && !host.canShow(composerEditable)) return
 
+    val currentResetsKey = quota?.resetsAtIso ?: ""
+    val dismissedForThisWindow =
+        dismissedLowQuotaResetsAt == currentResetsKey &&
+            dismissedLowQuotaRemaining != null &&
+            !(
+                quota != null &&
+                    quota.remainingSeconds <= VOICE_DICTATION_CRITICAL_LOW_QUOTA_SECONDS &&
+                    quota.remainingSeconds < (dismissedLowQuotaRemaining ?: 0)
+            )
     val showLowQuota =
         error == null &&
-            isVoiceDictationV2QuotaLow(quota) &&
-            dismissedLowQuotaResetsAt != (quota?.resetsAtIso ?: "")
+            isVoiceDictationV2QuotaLow(quota = quota, quotaDegraded = state.quotaDegraded) &&
+            !dismissedForThisWindow
 
     ThreadVoiceDictationNotice(
         error = error,
         quota = quota,
         showLowQuota = showLowQuota,
         onDismissError = host.controller::clearError,
-        onDismissLowQuota = { dismissedLowQuotaResetsAt = quota?.resetsAtIso ?: "" },
+        onDismissLowQuota = {
+            dismissedLowQuotaResetsAt = currentResetsKey
+            dismissedLowQuotaRemaining = quota?.remainingSeconds
+        },
         modifier = modifier,
     )
 }
@@ -353,7 +466,7 @@ internal fun ThreadVoiceDictationNotice(
         val validTraceId = raftValidTraceIdOrNull(voiceDictationErrorTraceId(error))
         RaftBanner(
             description = AnnotatedString(message),
-            status = RaftBannerStatus.Warning,
+            status = voiceDictationErrorBannerStatus(error),
             size = RaftBannerSize.Sm,
             showIcon = true,
             onDismiss = onDismissError,
@@ -409,23 +522,39 @@ internal fun ThreadVoiceDictationToolbarButton(
     if (!visible) return
 
     val state by host.controller.state.collectAsState()
+    val resetsAtEpochMs = state.quotaExhaustedResetsAtEpochMs
+    LaunchedEffect(host.controller, state.quotaExhausted, resetsAtEpochMs) {
+        if (!state.quotaExhausted || resetsAtEpochMs == null) return@LaunchedEffect
+        val remainingMs = resetsAtEpochMs - host.controller.currentEpochMillis()
+        if (remainingMs <= 0L) {
+            host.controller.refreshQuotaExhaustedState()
+        } else {
+            delay(remainingMs.coerceAtMost(VOICE_DICTATION_MAX_RESET_TIMER_MS))
+            host.controller.refreshQuotaExhaustedState()
+        }
+    }
+
     ThreadVoiceDictationButton(
         state = state,
         enabled = composerEditable,
         onStart = onStart,
         onStop = host.controller::stop,
-        onCancel = host.controller::cancel,
+        isActiveNow = { host.controller.state.value.isActive },
+        nowEpochMs = host.controller.currentEpochMillis(),
         modifier = modifier,
     )
 }
 
 /**
- * Pure presentation composable for the composer toolbar dictation button across all v2 phases:
- * - [VoiceDictationV2Phase.Idle]: quiet ghost Mic icon button.
+ * Pure presentation composable for the single-button dual-mode composer dictation control:
+ * - [VoiceDictationV2Phase.Idle]: quiet ghost Mic icon button (or greyed-out disabled Mic with
+ *   reset-time tooltip/tap feedback when daily quota is exhausted, even after dismissing banner).
  * - [VoiceDictationV2Phase.Connecting] / [VoiceDictationV2Phase.Listening]: active Raft-yellow
- *   circle with audio-level-driven halo; tap stops gracefully, long-press cancels immediately.
- * - [VoiceDictationV2Phase.Stopping]: compact non-blocking draining spinner while final refined
- *   transcript settles; tap cancels immediately.
+ *   circle with audio-reactive halo (static resting ring during `Connecting`, fixed ring under
+ *   reduced motion).
+ * - Dual-mode 350 ms gesture: short tap locks continuous listening (next tap stops); press & hold
+ *   >= 350 ms shows a non-modal floating pill (`red dot + "Release to stop" + m:ss`) and stops on
+ *   release. Non-blocking stop returns immediately to idle with no blocking spinner.
  */
 @Composable
 internal fun ThreadVoiceDictationButton(
@@ -433,126 +562,328 @@ internal fun ThreadVoiceDictationButton(
     enabled: Boolean,
     onStart: () -> Unit,
     onStop: () -> Unit,
-    onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    isActiveNow: (() -> Boolean)? = null,
+    timeContext: RaftTimeContext? = null,
+    nowEpochMs: Long? = null,
+    gestureModeOverride: VoiceDictationGestureMode? = null,
+    elapsedMsOverride: Long? = null,
 ) {
     val phase = state.phase
     val isConnecting = phase == VoiceDictationV2Phase.Connecting
     val isListening = phase == VoiceDictationV2Phase.Listening
-    val isStopping = phase == VoiceDictationV2Phase.Stopping
-    val isActiveMic = isConnecting || isListening
+    val isActive = isConnecting || isListening
+
+    val effectiveTimeContext = currentRaftEffectiveDateTimeContext(timeContext)
+    val effectiveNowMs = nowEpochMs ?: Clock.System.now().toEpochMilliseconds()
+    val isQuotaExhausted = !isActive && state.isQuotaExhaustedAt(effectiveNowMs)
+    val isDisabled = !isActive && (!enabled || isQuotaExhausted)
 
     val startLabel = stringResource(Res.string.thread_voice_dictation_start)
     val stopLabel = stringResource(Res.string.thread_voice_dictation_stop)
-    val cancelLabel = stringResource(Res.string.thread_voice_dictation_cancel)
     val connectingLabel = stringResource(Res.string.thread_voice_dictation_connecting)
     val listeningLabel = stringResource(Res.string.thread_voice_dictation_listening)
-    val finishingLabel = stringResource(Res.string.thread_voice_dictation_finishing)
+    val releaseToStopLabel = stringResource(Res.string.thread_voice_dictation_release_to_stop)
+    val exhaustedTooltip =
+        if (isQuotaExhausted) {
+            voiceDictationQuotaExhaustedTooltip(
+                resetsAtIso = state.quotaExhaustedResetsAtIso ?: state.quota?.resetsAtIso,
+                timeContext = effectiveTimeContext,
+            )
+        } else {
+            null
+        }
 
-    // Keep the halo still during Connecting until mic capture + `ready` are live.
+    val gestureScope = rememberCoroutineScope()
+    val currentIsActive by rememberUpdatedState(isActive)
+    val currentIsActiveNow by rememberUpdatedState(isActiveNow)
+    val currentIsDisabled by rememberUpdatedState(isDisabled)
+    val currentOnStart by rememberUpdatedState(onStart)
+    val currentOnStop by rememberUpdatedState(onStop)
+    var liveGestureMode by remember { mutableStateOf(VoiceDictationGestureMode.Idle) }
+    val gesture =
+        remember(gestureScope) {
+            VoiceDictationButtonGesture(
+                scope = gestureScope,
+                isActive = { currentIsActiveNow?.invoke() ?: currentIsActive },
+                onStart = { currentOnStart() },
+                onStop = { currentOnStop() },
+                onModeChange = { liveGestureMode = it },
+            )
+        }
+
+    LaunchedEffect(gesture, isActive) {
+        if (!isActive) {
+            gesture.syncSessionInactive()
+        }
+    }
+    DisposableEffect(gesture) {
+        onDispose { gesture.dispose() }
+    }
+
+    val effectiveGestureMode = gestureModeOverride ?: liveGestureMode
+    val isHolding = isActive && effectiveGestureMode == VoiceDictationGestureMode.Holding
+
+    var sessionStartMark by remember { mutableStateOf<TimeMark?>(null) }
+    var liveElapsedMs by remember { mutableStateOf(0L) }
+    LaunchedEffect(isActive) {
+        if (isActive) {
+            sessionStartMark = TimeSource.Monotonic.markNow()
+            liveElapsedMs = 0L
+        } else {
+            sessionStartMark = null
+            liveElapsedMs = 0L
+        }
+    }
+    LaunchedEffect(isActive, isHolding, elapsedMsOverride) {
+        if (!isActive || !isHolding || elapsedMsOverride != null) return@LaunchedEffect
+        val startMark = sessionStartMark ?: TimeSource.Monotonic.markNow().also { sessionStartMark = it }
+        while (true) {
+            liveElapsedMs = startMark.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+            delay(VOICE_DICTATION_HOLD_CLOCK_TICK_MS)
+        }
+    }
+    val effectiveElapsedMs = elapsedMsOverride ?: liveElapsedMs
+
+    val reducedMotion = rememberRaftReducedMotion()
+    // Keep the halo flat and still during Connecting until mic capture is live.
     val targetLevel = if (isListening) state.audioLevel else 0f
-    val targetScale = voiceDictationHaloScale(targetLevel)
-    val targetAlpha = voiceDictationHaloAlpha(targetLevel)
+    val targetScale = voiceDictationHaloScale(audioLevel = targetLevel, reducedMotion = reducedMotion)
+    val targetAlpha = voiceDictationHaloAlpha(audioLevel = targetLevel, reducedMotion = reducedMotion)
+    val haloAnimSpec = if (reducedMotion) snap<Float>() else tween(durationMillis = 100)
     val animatedHaloScale by animateFloatAsState(
         targetValue = targetScale,
-        animationSpec = tween(durationMillis = 100),
+        animationSpec = haloAnimSpec,
     )
     val animatedHaloAlpha by animateFloatAsState(
         targetValue = targetAlpha,
-        animationSpec = tween(durationMillis = 100),
+        animationSpec = haloAnimSpec,
     )
 
     val phaseStateDescription =
-        when (phase) {
-            VoiceDictationV2Phase.Idle -> null
-            VoiceDictationV2Phase.Connecting -> connectingLabel
-            VoiceDictationV2Phase.Listening -> listeningLabel
-            VoiceDictationV2Phase.Stopping -> finishingLabel
+        when {
+            isHolding -> releaseToStopLabel
+            isConnecting -> connectingLabel
+            isListening -> listeningLabel
+            exhaustedTooltip != null -> exhaustedTooltip
+            else -> null
         }
 
-    val buttonLabel =
-        when (phase) {
-            VoiceDictationV2Phase.Idle -> startLabel
-            VoiceDictationV2Phase.Connecting,
-            VoiceDictationV2Phase.Listening -> stopLabel
-            VoiceDictationV2Phase.Stopping -> finishingLabel
+    val buttonLabel = if (isActive) stopLabel else startLabel
+    val tooltipText =
+        when {
+            isActive -> stopLabel
+            exhaustedTooltip != null -> exhaustedTooltip
+            else -> startLabel
         }
 
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center,
-    ) {
-        if (isActiveMic) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(VoiceDictationActiveCircleSize)
-                        .testTag(ThreadVoiceDictationHaloTestTag)
-                        .graphicsLayer {
-                            scaleX = animatedHaloScale
-                            scaleY = animatedHaloScale
-                            alpha = animatedHaloAlpha
+    // Keep one persistent pointerInput + RaftTooltip tree across Idle -> PendingHold -> Holding ->
+    // Locked -> Idle so touch capture is never cancelled when transitioning into hold-to-talk at 350 ms.
+    val pointerGestureModifier =
+        Modifier.pointerInput(gesture) {
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                if (currentIsDisabled) return@awaitEachGesture
+                if (down.type == PointerType.Mouse && !currentEvent.buttons.isPrimaryPressed) {
+                    return@awaitEachGesture
+                }
+                val pointerId = down.id.value
+                if (!gesture.handlePointerDown(pointerId = pointerId, isPrimary = true)) {
+                    return@awaitEachGesture
+                }
+                var endedNormally = false
+                try {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                        if (!change.pressed) {
+                            if (change.changedToUp()) {
+                                gesture.handlePointerUp(pointerId = pointerId)
+                                endedNormally = true
+                            }
+                            break
                         }
-                        .background(RaftUiPalette.selected, CircleShape),
-            )
-            Box(
+                    }
+                } finally {
+                    if (!endedNormally) {
+                        gesture.handlePointerCancel(pointerId = pointerId)
+                    }
+                }
+            }
+        }
+
+    RaftTooltip(
+        text = tooltipText,
+        modifier = modifier,
+        openOnLongPress = isQuotaExhausted,
+        openOnTap = isQuotaExhausted,
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+        ) {
+            if (isActive) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(VoiceDictationActiveCircleSize)
+                            .testTag(ThreadVoiceDictationHaloTestTag)
+                            .graphicsLayer {
+                                scaleX = animatedHaloScale
+                                scaleY = animatedHaloScale
+                                alpha = animatedHaloAlpha
+                            }
+                            .background(RaftUiPalette.selected, CircleShape),
+                )
+                Box(
+                    modifier =
+                        Modifier
+                            .size(VoiceDictationActiveCircleSize)
+                            .background(RaftUiPalette.selected, CircleShape),
+                )
+            }
+            RaftIconButton(
+                onClick = {
+                    if (!isDisabled) {
+                        gesture.handleClick()
+                    }
+                },
+                tooltip = null,
+                contentDescription = buttonLabel,
                 modifier =
                     Modifier
-                        .size(VoiceDictationActiveCircleSize)
-                        .background(RaftUiPalette.selected, CircleShape),
-            )
-        }
-        RaftIconButton(
-            onClick = {
-                when (phase) {
-                    VoiceDictationV2Phase.Idle -> onStart()
-                    VoiceDictationV2Phase.Connecting,
-                    VoiceDictationV2Phase.Listening -> onStop()
-                    VoiceDictationV2Phase.Stopping -> onCancel()
-                }
-            },
-            tooltip = buttonLabel,
-            contentDescription = buttonLabel,
-            modifier =
-                Modifier
-                    .testTag(ThreadVoiceDictationButtonTestTag)
-                    .then(
-                        if (phaseStateDescription != null) {
-                            Modifier.semantics { stateDescription = phaseStateDescription }
-                        } else {
-                            Modifier
-                        },
-                    ),
-            variant = RaftButtonVariant.Ghost,
-            size = RaftIconButtonSize.Md,
-            enabled = enabled || isActiveMic || isStopping,
-            onLongClick = if (isActiveMic) onCancel else null,
-            longClickLabel = if (isActiveMic) cancelLabel else null,
-        ) {
-            when {
-                isStopping -> {
-                    RaftSpinner(
-                        modifier = Modifier.testTag(ThreadVoiceDictationStoppingTestTag),
-                        size = RaftSpinnerSize.Sm,
-                        color = RaftTheme.colors.foregroundMuted,
-                        contentDescription = finishingLabel,
-                    )
-                }
-                isActiveMic -> {
+                        .testTag(ThreadVoiceDictationButtonTestTag)
+                        .then(pointerGestureModifier)
+                        .then(
+                            if (phaseStateDescription != null) {
+                                Modifier.semantics { stateDescription = phaseStateDescription }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                variant = RaftButtonVariant.Ghost,
+                size = RaftIconButtonSize.Md,
+                enabled = !isDisabled,
+            ) {
+                if (isActive) {
                     RaftSlotIcon(
                         name = RaftLucideIconName.Mic,
                         size = VoiceDictationActiveGlyphSize,
                         color = RaftUiPalette.stickerInk,
                     )
-                }
-                else -> {
+                } else {
                     RaftSlotIcon(
                         name = RaftLucideIconName.Mic,
-                        color = RaftTheme.colors.foregroundMuted.takeIf { enabled },
+                        color = RaftTheme.colors.foregroundMuted.takeIf { !isDisabled },
                     )
                 }
             }
+
+            if (isHolding) {
+                ThreadVoiceDictationHoldPill(
+                    label = releaseToStopLabel,
+                    elapsedMs = effectiveElapsedMs,
+                )
+            }
         }
+    }
+}
+
+/**
+ * Non-modal floating pill anchored above the Mic button strictly during press-and-hold (`Holding`).
+ * Uses `focusable = false` so it never steals composer focus or touch release events.
+ */
+@Composable
+private fun ThreadVoiceDictationHoldPill(
+    label: String,
+    elapsedMs: Long,
+) {
+    val density = LocalDensity.current
+    val gapPx = with(density) { VoiceDictationHoldPillAnchorGap.roundToPx() }
+    val edgePx = with(density) { VoiceDictationHoldPillEdgeMargin.roundToPx() }
+    val positionProvider =
+        remember(gapPx, edgePx) {
+            ThreadVoiceDictationHoldPillPositionProvider(gapPx = gapPx, edgePx = edgePx)
+        }
+    val colors = RaftTheme.colors
+    val elevation = if (RaftTheme.isDark) 8.dp else 4.dp
+
+    Popup(
+        popupPositionProvider = positionProvider,
+        properties =
+            PopupProperties(
+                focusable = false,
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+            ),
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .testTag(ThreadVoiceDictationHoldPillTestTag)
+                    .shadow(elevation = elevation, shape = CircleShape)
+                    .background(colors.layerPopover, CircleShape)
+                    .border(RaftStroke.Hairline, colors.lineSeam, CircleShape)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(VoiceDictationHoldDotSize)
+                        .background(RaftUiPalette.danger, CircleShape),
+            )
+            RaftText(
+                text = label,
+                style = RaftTheme.typography.caption.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.foreground,
+                maxLines = 1,
+                softWrap = false,
+            )
+            RaftText(
+                text = formatVoiceDictationClock(elapsedMs),
+                style =
+                    RaftTheme.typography.caption.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontFeatureSettings = "tnum",
+                    ),
+                color = colors.foreground,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
+    }
+}
+
+/** Places the hold pill above and end-aligned with the Mic button, clamped within window bounds. */
+private class ThreadVoiceDictationHoldPillPositionProvider(
+    private val gapPx: Int,
+    private val edgePx: Int,
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize,
+    ): IntOffset {
+        val preferredX =
+            if (layoutDirection == LayoutDirection.Ltr) {
+                anchorBounds.right - popupContentSize.width
+            } else {
+                anchorBounds.left
+            }
+        val maxX = (windowSize.width - popupContentSize.width - edgePx).coerceAtLeast(edgePx)
+        val x = preferredX.coerceIn(edgePx, maxX)
+        val aboveY = anchorBounds.top - popupContentSize.height - gapPx
+        val y =
+            if (aboveY >= edgePx) {
+                aboveY
+            } else {
+                (anchorBounds.bottom + gapPx).coerceAtMost(
+                    (windowSize.height - popupContentSize.height - edgePx).coerceAtLeast(edgePx),
+                )
+            }
+        return IntOffset(x = x, y = y)
     }
 }
 
@@ -614,7 +945,9 @@ private fun voiceDictationErrorMessage(
                         timeContext = timeContext,
                     )
 
-                VoiceDictationV2ErrorCode.Busy,
+                VoiceDictationV2ErrorCode.Busy ->
+                    stringResource(Res.string.thread_voice_dictation_error_busy)
+
                 VoiceDictationV2ErrorCode.Unavailable ->
                     stringResource(Res.string.thread_voice_dictation_error_unavailable)
 
@@ -646,17 +979,68 @@ private fun voiceDictationQuotaExceededMessage(
 }
 
 @Composable
+private fun voiceDictationQuotaExhaustedTooltip(
+    resetsAtIso: String?,
+    timeContext: RaftTimeContext,
+): String {
+    val reset = formatVoiceDictationResetTime(resetsAtIso = resetsAtIso, timeContext = timeContext)
+    return when {
+        reset == null ->
+            stringResource(Res.string.thread_voice_dictation_quota_exhausted_tooltip_no_reset)
+        reset.isTomorrow ->
+            stringResource(Res.string.thread_voice_dictation_quota_exhausted_tooltip_tomorrow, reset.clockText)
+        else ->
+            stringResource(Res.string.thread_voice_dictation_quota_exhausted_tooltip, reset.clockText)
+    }
+}
+
+@Composable
 private fun voiceDictationLowQuotaMessage(
     quota: VoiceDictationV2Quota,
     timeContext: RaftTimeContext,
 ): String {
+    val minutes = voiceDictationLowQuotaRemainingMinutes(quota.remainingSeconds)
     val reset = formatVoiceDictationResetTime(resetsAtIso = quota.resetsAtIso, timeContext = timeContext)
+    if (minutes == null) {
+        return when {
+            reset == null ->
+                stringResource(Res.string.thread_voice_dictation_low_quota_under_minute_no_reset)
+            reset.isTomorrow ->
+                stringResource(Res.string.thread_voice_dictation_low_quota_under_minute_tomorrow, reset.clockText)
+            else ->
+                stringResource(Res.string.thread_voice_dictation_low_quota_under_minute, reset.clockText)
+        }
+    }
+    val one = minutes == 1
     return when {
         reset == null ->
-            stringResource(Res.string.thread_voice_dictation_low_quota_no_reset)
+            stringResource(
+                if (one) {
+                    Res.string.thread_voice_dictation_low_quota_no_reset_one
+                } else {
+                    Res.string.thread_voice_dictation_low_quota_no_reset_other
+                },
+                minutes,
+            )
         reset.isTomorrow ->
-            stringResource(Res.string.thread_voice_dictation_low_quota_tomorrow, reset.clockText)
+            stringResource(
+                if (one) {
+                    Res.string.thread_voice_dictation_low_quota_tomorrow_one
+                } else {
+                    Res.string.thread_voice_dictation_low_quota_tomorrow_other
+                },
+                minutes,
+                reset.clockText,
+            )
         else ->
-            stringResource(Res.string.thread_voice_dictation_low_quota, reset.clockText)
+            stringResource(
+                if (one) {
+                    Res.string.thread_voice_dictation_low_quota_one
+                } else {
+                    Res.string.thread_voice_dictation_low_quota_other
+                },
+                minutes,
+                reset.clockText,
+            )
     }
 }
