@@ -202,6 +202,7 @@ internal fun LazyListScope.threadMessageItems(
                 memberModelLabelResolver = memberModelLabelResolver,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
+                onOpenForwardBundle = onOpenForwardBundle,
                 shareSelectionActive = shareSelectionActive,
                 selectedShareMessageIds = selectedShareMessageIds,
                 onToggleShareSelection = onToggleShareSelection,

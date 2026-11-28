@@ -310,7 +310,7 @@ internal fun ThreadTabContent(
                     },
                     onOpenForwardBundle = { messageId ->
                         val serverId = forwardServerId?.value
-                        val channelId = payload.resolveThreadRouteIdentity().timelineChannelId
+                        val channelId = payload.forwardBundleChannelIdForMessage(messageId)
                         if (serverId != null && channelId != null) {
                             threadScreenPagerForForwardBundle.openThreadForwardBundlePage(
                                 ThreadForwardBundleRoute(

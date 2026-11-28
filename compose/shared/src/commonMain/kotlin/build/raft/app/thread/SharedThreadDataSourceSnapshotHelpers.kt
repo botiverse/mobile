@@ -39,10 +39,10 @@ internal fun ThreadSnapshot.withReplyThreadReplyCountOnParent(): ThreadSnapshot 
 }
 
 internal fun Message.needsReplyOriginContextHydration(): Boolean =
-    body.isBlank() && attachments.isEmpty()
+    body.isBlank() && attachments.isEmpty() && forwardBundle == null
 
 internal fun RaftThreadMessageItem.needsReplyOriginContextHydration(): Boolean =
-    body.isBlank() && attachments.isEmpty()
+    body.isBlank() && attachments.isEmpty() && forwardBundle == null
 
 internal fun Message.matchesReplyOriginParent(
     parentChannelId: ChannelId,
