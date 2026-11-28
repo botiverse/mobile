@@ -5018,6 +5018,7 @@
     <string name="action_card_question_asker_has_questions_other">%1$s 님의 질문 %2$d개</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
+    <string name="artifacts_card_version_behind">v%1$d · 최신 v%2$d</string>
     <string name="artifacts_card_latest_is">최신 버전은 v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s · %2$s 업데이트</string>
     <string name="message_card_updated">%1$s 업데이트</string>

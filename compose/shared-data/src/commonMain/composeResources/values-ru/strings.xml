@@ -4990,6 +4990,7 @@
     <string name="action_card_question_not_sent">Не отправлено: карточка изменилась. Ответьте ещё раз.</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
+    <string name="artifacts_card_version_behind">v%1$d · последняя v%2$d</string>
     <string name="artifacts_card_latest_is">Последняя версия — v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s · обновлено %2$s</string>
     <string name="message_card_updated">Обновлено %1$s</string>

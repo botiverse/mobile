@@ -76,11 +76,30 @@ import kotlin.math.roundToInt
 // the page's start. Its first blocks, small, with their hierarchy, or its plain text for a version
 // from before them or blocks this client can't read. Only ever text: no link, image or input.
 
-/** web `min-h-24`: four lines, about the smallest preview there is. */
-internal val ArtifactCardExcerptMinHeight: Dp = 96.dp
-
 /** web `max-h-48`: the picture's frame in a message. */
 internal val ArtifactCardExcerptMaxHeight: Dp = ArtifactCardScreenshotMaxHeight
+
+/**
+ * In a message the words follow their height, at most what the 192dp picture frame held less its
+ * padding (web `--excerpt-max: 168px`, slock #17371), and no minimum.
+ */
+internal val ArtifactCardExcerptMessageMaxHeight: Dp = ArtifactCardExcerptMaxHeight - 12.dp * 2
+
+/**
+ * On a phone a message card's excerpt is at most this many lines of its body type (#proj-mobile:#439,
+ * web `max-md:[--excerpt-max:72px]`); a Server flag may set it later, within
+ * [ArtifactCardExcerptLinesRange] (Kirby).
+ */
+internal const val ArtifactCardExcerptDefaultLines: Int = 4
+
+/** The lines a phone's excerpt may be set to ([ArtifactCardExcerptDefaultLines]). */
+internal val ArtifactCardExcerptLinesRange: IntRange = 2..8
+
+/** The excerpt's body line (`ExcerptType.body`, 18sp). */
+private val ArtifactCardExcerptLineHeight: Dp = 18.dp
+
+/** A phone's excerpt height for [lines] lines, clamped to [ArtifactCardExcerptLinesRange]. */
+internal fun artifactCardExcerptCompactMaxHeight(lines: Int): Dp = ArtifactCardExcerptLineHeight * lines.coerceIn(ArtifactCardExcerptLinesRange)
 
 /** web `mask-fade-b-edge-at-max`: the fade's length at the foot once the words reach the max. */
 private val ArtifactCardExcerptFade: Dp = 24.dp
@@ -113,9 +132,10 @@ private object ExcerptType {
 
 /**
  * The excerpt's frame:
- * - [fitFrame] = false (web `fit="content"`, message cards): height follows the words between
- *   [ArtifactCardExcerptMinHeight] and [ArtifactCardExcerptMaxHeight], fading at its foot once past
- *   the max, followed by a bottom hairline.
+ * - [fitFrame] = false (web `fit="content"`, message cards): no frame of its own (the card sets it
+ *   12dp in under the title); height follows the words up to [ArtifactCardExcerptMessageMaxHeight]
+ *   (on a phone, [compact]: [compactMaxLines] lines, [artifactCardExcerptCompactMaxHeight]), fading at its foot
+ *   once past the max.
  * - [fitFrame] = true (web `fit="frame"`, home tiles): fills its parent 16:10 frame on `layerCard`,
  *   clipped and fading at its foot; the caller's cover frame draws the hairline. When [corner] is
  *   supplied (web slock #16751), it sits at top-right (`6.dp` inset, matching screenshot covers),
@@ -128,6 +148,8 @@ internal fun ArtifactCardExcerpt(
     modifier: Modifier = Modifier,
     fitFrame: Boolean = false,
     corner: (@Composable () -> Unit)? = null,
+    compact: Boolean = false,
+    compactMaxLines: Int = ArtifactCardExcerptDefaultLines,
 ) {
     val colors = RaftTheme.colors
     val textStyle = ExcerptType.body.copy(color = colors.foreground, fontFamily = RaftTheme.typography.callout.fontFamily)
@@ -171,9 +193,42 @@ internal fun ArtifactCardExcerpt(
             .clearAndSetSemantics {}
             .testTag(if (excerpt.blocks != null) "artifact-card-excerpt-blocks" else "artifact-card-excerpt-text"),
     ) {
-        ArtifactCardExcerptFrame(Modifier.fillMaxWidth().background(colors.layerCard), padding = ArtifactCardExcerptPadding, content = content)
-        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
+        ArtifactCardExcerptFrame(
+            Modifier.fillMaxWidth(),
+            padding = 0.dp,
+            minHeight = 0.dp,
+            maxHeight = if (compact) artifactCardExcerptCompactMaxHeight(compactMaxLines) else ArtifactCardExcerptMessageMaxHeight,
+            content = content,
+        )
     }
+}
+
+/** A heading's words as compared with a title: whitespace collapsed, case folded (web `comparable`). */
+private fun String.comparableTitle(): String = trim().replace(Regex("\\s+"), " ").lowercase()
+
+/**
+ * The excerpt as a message card shows it under its title (#proj-mobile:#439, web slock #17371
+ * `excerptWithoutTitle`): the title row already says the title. With [ArtifactExcerpt.blocks], a
+ * level-1 heading at the start goes, whatever it says, and the first line of the text with it;
+ * plain text from before blocks has no headings, so its first line goes when it repeats [title].
+ * Null when nothing is left: the card then shows no excerpt.
+ */
+internal fun ArtifactExcerpt.withoutLeadingTitle(title: String): ArtifactExcerpt? {
+    val blocks = blocks
+    val first = blocks?.firstOrNull()
+    val dropFirstLine =
+        if (blocks != null) {
+            first is ArtifactExcerptBlock.Heading && first.level == 1
+        } else {
+            val comparable = title.comparableTitle()
+            comparable.isNotEmpty() && text.substringBefore('\n').comparableTitle() == comparable
+        }
+    val rest = if (!dropFirstLine) text else text.substringAfter('\n', "")
+    if (blocks != null) {
+        val kept = if (dropFirstLine) blocks.drop(1) else blocks
+        return if (kept.isEmpty()) null else if (dropFirstLine) ArtifactExcerpt(rest, kept) else this
+    }
+    return if (rest.isBlank()) null else if (dropFirstLine) ArtifactExcerpt(rest) else this
 }
 
 /**
@@ -1037,21 +1092,20 @@ private fun DrawScope.drawWrappedExcerptPlan(plan: ExcerptWrappedPlan) {
 }
 
 /**
- * Measures [content] at its own height and shows it, with [padding] all round, between
- * [ArtifactCardExcerptMinHeight] and [ArtifactCardExcerptMaxHeight]; past the max the words are
- * cut by the padding's edge and fade out at their foot.
+ * Measures [content] at its own height and shows it, with [padding] all round, between [minHeight]
+ * and [maxHeight]; past the max the words are cut by the padding's edge and fade out at their foot.
  */
 @Composable
-private fun ArtifactCardExcerptFrame(modifier: Modifier, padding: Dp, content: @Composable () -> Unit) {
+private fun ArtifactCardExcerptFrame(modifier: Modifier, padding: Dp, minHeight: Dp, maxHeight: Dp, content: @Composable () -> Unit) {
     Layout(content = { Box(Modifier.excerptFade().fillMaxWidth()) { content() } }, modifier = modifier) { measurables, constraints ->
         val pad = padding.roundToPx()
-        val minHeight = ArtifactCardExcerptMinHeight.roundToPx()
-        val maxHeight = ArtifactCardExcerptMaxHeight.roundToPx()
+        val minPx = minHeight.roundToPx()
+        val maxPx = maxHeight.roundToPx()
         val innerWidth = if (constraints.hasBoundedWidth) (constraints.maxWidth - 2 * pad).coerceAtLeast(0) else Constraints.Infinity
         // The words' box takes their own height between the bounds (less the padding), cut past the max.
         val placeable =
             measurables.first().measure(
-                Constraints(maxWidth = innerWidth, minHeight = (minHeight - 2 * pad).coerceAtLeast(0), maxHeight = (maxHeight - 2 * pad).coerceAtLeast(0)),
+                Constraints(maxWidth = innerWidth, minHeight = (minPx - 2 * pad).coerceAtLeast(0), maxHeight = (maxPx - 2 * pad).coerceAtLeast(0)),
             )
         val width = if (constraints.hasBoundedWidth) constraints.maxWidth else placeable.width + 2 * pad
         val height = placeable.height + 2 * pad
