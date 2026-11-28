@@ -40,7 +40,7 @@ enum class AssistantChangedSetting(val wireName: String) {
     ConversationMute("conversationMute"),
     NotificationLevel("notificationLevel"),
 
-    /** The owner's sidebar in this server, shown with the theme. */
+    /** The owner's sidebar in this server, shown with the assistant's own settings and Recent changes. */
     SidebarMove("sidebarMove"),
     SidebarPin("sidebarPin"),
     SidebarArrange("sidebarArrange"),
@@ -58,14 +58,11 @@ enum class AssistantChangedSetting(val wireName: String) {
     }
 }
 
-/** Settings › Theme (web ServerThemeSection `THEME_SETTINGS`). */
+/** Settings › Theme (web ServerThemeSection `THEME_SETTINGS`): the theme and its border art only. */
 val ASSISTANT_THEME_SETTINGS: Set<AssistantChangedSetting> =
     setOf(
         AssistantChangedSetting.Theme,
         AssistantChangedSetting.ThemeDecor,
-        AssistantChangedSetting.SidebarMove,
-        AssistantChangedSetting.SidebarPin,
-        AssistantChangedSetting.SidebarArrange,
     )
 
 /** Settings › Language & region (web LanguageRegionSection `LANGUAGE_REGION_ASSISTANT_SETTINGS`). */
@@ -76,9 +73,19 @@ val ASSISTANT_LANGUAGE_REGION_SETTINGS: Set<AssistantChangedSetting> =
 val ASSISTANT_NOTIFICATION_SETTINGS: Set<AssistantChangedSetting> =
     setOf(AssistantChangedSetting.ConversationMute, AssistantChangedSetting.NotificationLevel)
 
-/** What the assistant did on the owner's say-so, shown with its own settings (web `ASSISTANT_ACTION_SETTINGS`). */
+/**
+ * What the assistant did as the owner, outside any one settings page (an agent moved, a message
+ * saved, the sidebar rearranged or pinned): shown with the assistant's own settings and in its
+ * Recent changes (web `ASSISTANT_ACTION_SETTINGS`).
+ */
 val ASSISTANT_ACTION_SETTINGS: Set<AssistantChangedSetting> =
-    setOf(AssistantChangedSetting.AgentMove, AssistantChangedSetting.MessageSave)
+    setOf(
+        AssistantChangedSetting.AgentMove,
+        AssistantChangedSetting.MessageSave,
+        AssistantChangedSetting.SidebarMove,
+        AssistantChangedSetting.SidebarPin,
+        AssistantChangedSetting.SidebarArrange,
+    )
 
 /** A recorded value: the audit's `string | boolean`; a missing or null value is a null [AssistantSettingValue]. */
 sealed interface AssistantSettingValue {

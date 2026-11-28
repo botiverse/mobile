@@ -34,7 +34,7 @@ import org.robolectric.annotation.GraphicsMode
  *   the frame's pixel art (on / off), display language (a language's own name, made in another
  *   server), time zone (not set, in a server that's gone), mute and unmute, a notification level,
  *   a sidebar move (top, after), pin, rearrange, an agent move and a saved message, light and dark;
- * - `assistant.recent-changes`: the owner's Recent changes sheet (agent moves and saved messages);
+ * - `assistant.recent-changes`: the owner's Recent changes sheet (sidebar moves/pins/rearranges, agent moves, and saved messages);
  * - `assistant.owner-section.recent-changes`: the owner's section with the Recent changes row.
  * Goldens are CI's render (`test.yml` with `record_screenshots=true`).
  */
