@@ -938,8 +938,8 @@ private fun ThreadPageScreen(
     var quotedPermalinkServerPlan by remember(sharedStores, storeScope) {
         mutableStateOf(sharedStores.currentQuotedPermalinkViewer(storeScope)?.plan)
     }
-    LaunchedEffect(authStore, sharedStores, storeScope) {
-        authStore.sessionChanges.collect {
+    LaunchedEffect(sharedStores, storeScope) {
+        sharedStores.authStore.sessionChanges.collect {
             quotedPermalinkServerPlan = sharedStores.currentQuotedPermalinkViewer(storeScope)?.plan
         }
     }

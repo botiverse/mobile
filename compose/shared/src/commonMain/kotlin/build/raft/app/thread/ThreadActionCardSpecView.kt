@@ -598,7 +598,7 @@ internal fun ThreadActionCardContinueSetup(
         RaftButton(
             text = stringResource(Res.string.app_setup_continue),
             onClick = onClick,
-            variant = RaftButtonVariant.Outline,
+            variant = RaftButtonVariant.Default,
             size = RaftButtonSize.Md,
             trailingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
             modifier = Modifier.testTag("action-card-continue-setup"),
