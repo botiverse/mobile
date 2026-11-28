@@ -208,12 +208,21 @@ private val threadActionCardJson = Json {
      * `GET /api/actions/:messageId/external-invite-addresses`.
      */
     val externalInviteAddresses: Int? = null,
-    /**
-     * `external-invites` result (slock #16530, #16671): address count recorded when a
+    /** `external-invites` result (slock #16530, #16671): address count recorded when a
      * `channel:invite_external` card was marked executed (wire `result.addresses`). When 0, the
      * frame hides the result line so it never shows "0 addresses on the card".
      */
     val resultAddresses: Int? = null,
+    /**
+     * `marketplace-app-installation` result: post-install setup URL (wire `result.setupUrl`).
+     * Validated by the caller with `isSafeOAuthReturnUrl` before rendering "Continue setup".
+     */
+    val resultSetupUrl: String? = null,
+    /**
+     * `seats:add` outcome recorded on a completed seat request card (wire `seatOutcome`),
+     * shown on its own line under who executed it.
+     */
+    val seatOutcome: ThreadActionCardSeatOutcome? = null,
 ) {
     /**
      * The card described as data ([parseActionCardSpec]), or null: no `presentation.card`, or one
@@ -303,6 +312,95 @@ private val threadActionCardJson = Json {
 
 /** A seat request (web person card `seats:add`): no owner answered within its 7 days once expired. */
 @RaftCoreInternalApi const val SeatsAddActionCardType = "seats:add"
+
+/** A Pro plan upgrade request (wire `action.type`): auto-marks Done once the server leaves Free. */
+@RaftCoreInternalApi const val PlanUpgradeActionCardType = "plan:upgrade"
+
+/**
+ * What came of a completed `seats:add` request (wire `seatOutcome`, slock `SeatRequestOutcome`).
+ * Unknown kinds or purposes are ignored leniently so newer server outcomes never break the card.
+ */
+@Serializable
+@RaftCoreInternalApi sealed interface ThreadActionCardSeatOutcome {
+    @Serializable
+    @kotlinx.serialization.SerialName("invites")
+    data class Invites(val sent: Int, val failed: Int) : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("promoted")
+    data class Promoted(val name: String, val role: String) : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("ready_agent_create")
+    data class ReadyAgentCreate(val name: String) : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("ready_assistant_create")
+    data object ReadyAssistantCreate : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("ready_invite")
+    data class ReadyInvite(val count: Int) : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("ready_member_promote")
+    data class ReadyMemberPromote(val name: String, val role: String) : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("ready_join")
+    data object ReadyJoin : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("requester_cannot")
+    data object RequesterCannot : ThreadActionCardSeatOutcome
+
+    @Serializable
+    @kotlinx.serialization.SerialName("not_needed")
+    data object NotNeeded : ThreadActionCardSeatOutcome
+}
+
+/**
+ * Copy variant when a `plan:upgrade` card is already satisfied because the card's server left the
+ * Free plan (web `useUpgradeCardPastFree`).
+ */
+@RaftCoreInternalApi enum class UpgradeCardPastFreeLine {
+    /** Server is on `pro`: "Upgraded to Pro". */
+    Pro,
+
+    /** Server is on another non-free plan (e.g. founder/partner): "No longer limited by the Free plan". */
+    NotFree,
+}
+
+/**
+ * Pure frame derivation matching web `useUpgradeCardPastFree`: returns the satisfied-upgrade line
+ * when this is a `plan:upgrade` card on the viewer's own server (not cross-server read-only) and
+ * [currentServerPlan] is a known non-`free` plan. Nothing is written to the card; if the server
+ * returns to `free`, the card reverts to open automatically.
+ */
+@RaftCoreInternalApi fun ThreadActionCard.upgradeCardPastFreeLine(
+    viewerServerId: String?,
+    currentServerPlan: String?,
+): UpgradeCardPastFreeLine? {
+    if (!type.equals(PlanUpgradeActionCardType, ignoreCase = true)) return null
+    val source = sourceServerId?.trim()?.takeIf { it.isNotEmpty() }
+    val viewer = viewerServerId?.trim()?.takeIf { it.isNotEmpty() }
+    if (source != null && viewer != null && source != viewer) return null
+    val plan = currentServerPlan?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    if (plan == "free") return null
+    return if (plan == "pro") UpgradeCardPastFreeLine.Pro else UpgradeCardPastFreeLine.NotFree
+}
+
+/**
+ * Post-install setup URL for a completed `integration:install_marketplace_app` card (web
+ * `installedAppSetupUrl`): non-null only when executed with a `marketplace-app-installation` result
+ * whose `setupUrl` passes [isSafeUrl] (`isSafeOAuthReturnUrl`).
+ */
+@RaftCoreInternalApi fun ThreadActionCard.installedAppSetupUrl(isSafeUrl: (String) -> Boolean): String? {
+    if (!isExecuted || !isInstallMarketplaceAppAction()) return null
+    if (resultKind != "marketplace-app-installation") return null
+    val url = resultSetupUrl?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return url.takeIf(isSafeUrl)
+}
 
 /** Cindy's Pro free trial offer in the owner's DM (wire `action.type`); a phone shows it as one line. */
 @RaftCoreInternalApi const val PlanTrialActionCardType = "plan:trial"
@@ -472,6 +570,8 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
     val closedBy: JsonElement? = null,
     /** `question:ask`: the person's message it was withdrawn as handled by (`{ messageId, userId, handle, inCardThread }`), kept leniently as JSON (slock #17265). */
     val handledBy: JsonElement? = null,
+    /** `seats:add`: what came of a completed seat request (`SeatRequestOutcome`), kept leniently as JSON. */
+    val seatOutcome: JsonElement? = null,
     /*
      * A channel announcement's change line (`kind: "channel-announcement"`, ChannelAnnouncementApi.kt):
      * kept as JSON so a field of a type this client doesn't expect fails only the notice
@@ -624,6 +724,8 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
     val source: String? = null,
     /** `external-invites` (slock #16530): number of addresses recorded on the card (0 for connect-only). */
     val addresses: Int? = null,
+    /** `marketplace-app-installation`: optional post-install setup URL shown as "Continue setup". */
+    val setupUrl: String? = null,
 )
 
 @RaftCoreInternalApi fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
@@ -717,7 +819,60 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
                 ?.takeIf { it >= 0.0 && it % 1.0 == 0.0 && it <= Int.MAX_VALUE }
                 ?.toInt(),
         resultAddresses = meta.result?.addresses?.takeIf { it >= 0 },
+        resultSetupUrl = meta.result?.setupUrl?.trim()?.takeIf { it.isNotBlank() },
+        seatOutcome = meta.seatOutcome.parseActionCardSeatOutcome(),
     )
+}
+
+/**
+ * Parses wire `seatOutcome` (slock `SeatRequestOutcome`) leniently: unknown kinds, purposes, roles,
+ * or malformed numeric counts return `null` so a newer server never drops the card.
+ */
+private fun JsonElement?.parseActionCardSeatOutcome(): ThreadActionCardSeatOutcome? {
+    val obj = this as? JsonObject ?: return null
+    fun JsonObject.nonNegativeIntOrNull(key: String): Int? =
+        (this[key] as? JsonPrimitive)
+            ?.takeIf { !it.isString }
+            ?.content
+            ?.toDoubleOrNull()
+            ?.takeIf { it >= 0.0 && it % 1.0 == 0.0 && it <= Int.MAX_VALUE }
+            ?.toInt()
+    fun JsonObject.seatRoleOrNull(): String? =
+        actionCardStringOrNull("role")?.trim()?.takeIf { it == "member" || it == "admin" }
+    return when (obj.actionCardStringOrNull("kind")) {
+        "invites" -> {
+            val sent = obj.nonNegativeIntOrNull("sent") ?: return null
+            val failed = obj.nonNegativeIntOrNull("failed") ?: return null
+            ThreadActionCardSeatOutcome.Invites(sent = sent, failed = failed)
+        }
+        "promoted" -> {
+            val name = obj.actionCardStringOrNull("name")?.trim() ?: return null
+            val role = obj.seatRoleOrNull() ?: return null
+            ThreadActionCardSeatOutcome.Promoted(name = name, role = role)
+        }
+        "ready" ->
+            when (obj.actionCardStringOrNull("purpose")) {
+                "agent:create" -> {
+                    val name = obj.actionCardStringOrNull("name")?.trim() ?: return null
+                    ThreadActionCardSeatOutcome.ReadyAgentCreate(name = name)
+                }
+                "assistant:create" -> ThreadActionCardSeatOutcome.ReadyAssistantCreate
+                "invite" -> {
+                    val count = obj.nonNegativeIntOrNull("count")?.takeIf { it >= 1 } ?: return null
+                    ThreadActionCardSeatOutcome.ReadyInvite(count = count)
+                }
+                "member:promote" -> {
+                    val name = obj.actionCardStringOrNull("name")?.trim() ?: return null
+                    val role = obj.seatRoleOrNull() ?: return null
+                    ThreadActionCardSeatOutcome.ReadyMemberPromote(name = name, role = role)
+                }
+                "join" -> ThreadActionCardSeatOutcome.ReadyJoin
+                else -> null
+            }
+        "requester_cannot" -> ThreadActionCardSeatOutcome.RequesterCannot
+        "not_needed" -> ThreadActionCardSeatOutcome.NotNeeded
+        else -> null
+    }
 }
 
 /**
@@ -862,6 +1017,10 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         }
         putString("externalInviteAddresses", externalInviteAddresses?.toString())
         putString("resultAddresses", resultAddresses?.toString())
+        putString("resultSetupUrl", resultSetupUrl)
+        seatOutcome?.let {
+            put("${ActionCardMetadataPrefix}seatOutcome", threadActionCardJson.encodeToString(ThreadActionCardSeatOutcome.serializer(), it))
+        }
     }
 
 /** True when the projected message metadata carries an action card (any type). */
@@ -971,6 +1130,11 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
             },
         externalInviteAddresses = metadata["${ActionCardMetadataPrefix}externalInviteAddresses"]?.toIntOrNull()?.takeIf { it >= 0 },
         resultAddresses = metadata["${ActionCardMetadataPrefix}resultAddresses"]?.toIntOrNull()?.takeIf { it >= 0 },
+        resultSetupUrl = metadata["${ActionCardMetadataPrefix}resultSetupUrl"]?.trim()?.takeIf { it.isNotBlank() },
+        seatOutcome =
+            metadata["${ActionCardMetadataPrefix}seatOutcome"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(ThreadActionCardSeatOutcome.serializer(), raw) }.getOrNull()
+            },
     )
 }
 

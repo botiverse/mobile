@@ -12,7 +12,11 @@ import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.runsInApp
 import build.raft.app.raftArgbHex
 import build.raft.app.rememberActionCardDisplayLocale
+import build.raft.app.isSafeOAuthReturnUrl
+import build.raft.app.data.UpgradeCardPastFreeLine
+import build.raft.app.data.installedAppSetupUrl
 import build.raft.app.data.isInstallMarketplaceAppAction
+import build.raft.app.data.upgradeCardPastFreeLine
 import build.raft.app.data.InstallMarketplaceAppActionCardType
 import build.raft.app.data.ActionCardSpecEntityRef
 import build.raft.app.data.ConnectMcpActionCardType
@@ -76,30 +80,52 @@ internal fun ThreadActionCardView(
     executedTimeLabel: String? = null,
     modifier: Modifier = Modifier,
     onOpenInWeb: () -> Unit = {},
+    onOpenExternalUrl: (String) -> Unit = {},
     onCommit: () -> Unit
 ) {
     val title = card.localizedActionCardTitle()
     val verb = card.localizedActionCardVerb()
     val pendingLabel = card.localizedActionCardPendingLabel()
     val properties = card.localizedActionCardProperties()
-    val doneLine = if (card.isExecuted) card.localizedActionCardDoneLine(executedTimeLabel).takeIf { it.isNotBlank() } else null
     // web `isActionCardReadOnlyInServer`: a card prepared on another server runs only there.
     val viewerServerId = LocalThreadViewerServerId.current
+    val pastFree =
+        card.upgradeCardPastFreeLine(
+            viewerServerId = viewerServerId,
+            currentServerPlan = LocalThreadActionCardSpecHost.current.currentServerPlan,
+        )
+    val effectiveDone = card.isExecuted || pastFree != null
+    val doneLine =
+        if (pastFree != null) {
+            when (pastFree) {
+                UpgradeCardPastFreeLine.Pro -> stringResource(Res.string.action_card_upgrade_done)
+                UpgradeCardPastFreeLine.NotFree -> stringResource(Res.string.action_card_upgrade_done_not_free)
+            }
+        } else if (card.isExecuted) {
+            card.localizedActionCardDoneLine(executedTimeLabel).takeIf { it.isNotBlank() }
+        } else {
+            null
+        }
+    val continueSetupUrl = card.installedAppSetupUrl(::isSafeOAuthReturnUrl)
     // Expired (wire state, or past `expiresAt` as the caller drew it) or withdrawn: ended, folded, no button.
-    val ended = card.hasEnded
-    val endedLine = card.actionCardEndedLine()
+    val ended = !effectiveDone && card.hasEnded
+    val endedLine = if (pastFree != null) null else card.actionCardEndedLine()
     val blockedReason =
         when {
-            card.isExecuted || ended -> null
+            effectiveDone || ended -> null
             card.sourceServerId != null && viewerServerId != null && card.sourceServerId != viewerServerId ->
                 card.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
             else -> null
         }
-    val viewOnly = !card.isExecuted && !ended && (!commitEnabled || blockedReason != null)
+    val viewOnly = !effectiveDone && !ended && (!commitEnabled || blockedReason != null)
     // Web: a done card, an ended one, and a view-only one that says why, fold by default; a frozen or
-    // reconfirm card stays open (it waits on the reader). The fold then belongs to the reader.
-    val foldsByDefault = card.isExecuted || ended || (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
+    // reconfirm card stays open (it waits on the reader). A done install card with a safe setup URL
+    // stays unfolded so "Continue setup" is immediately visible without expanding.
+    val foldsByDefault =
+        (effectiveDone && continueSetupUrl == null) ||
+            ended ||
+            (blockedReason != null && !card.isFrozen && !card.needsReconfirmation)
     var expanded by remember(foldsByDefault) { mutableStateOf(!foldsByDefault) }
     val feedbackEntryEnabled = LocalThreadFeedbackCardEntryEnabled.current
     RaftDesignSystemTheme {
@@ -121,7 +147,7 @@ internal fun ThreadActionCardView(
                     ?: blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } },
             status =
                 when {
-                    card.isExecuted -> stringResource(Res.string.common_done)
+                    effectiveDone -> stringResource(Res.string.common_done)
                     card.isClosed -> stringResource(Res.string.thread_action_card_status_closed)
                     card.isExpired -> stringResource(Res.string.thread_action_card_status_expired)
                     card.isHandled -> stringResource(Res.string.action_card_question_status_handled)
@@ -134,14 +160,14 @@ internal fun ThreadActionCardView(
                 },
             statusTone =
                 when {
-                    card.isExecuted -> RaftMessageActionCardStatusTone.Success
+                    effectiveDone -> RaftMessageActionCardStatusTone.Success
                     // The card waits on the reader: the pink attention pixel.
                     card.needsReconfirmation -> RaftMessageActionCardStatusTone.Accent
                     else -> RaftMessageActionCardStatusTone.Neutral
                 },
             expanded = expanded,
             onExpandedChange =
-                if (card.isExecuted || ended || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
+                if (effectiveDone || ended || card.isFrozen || card.needsReconfirmation || viewOnly) ({ expanded = it }) else null,
             toggleLabel = stringResource(Res.string.thread_action_card_toggle_details),
         ) {
             card.actionCardNotice()?.let { notice -> RaftMessageActionCardNotice(notice) }
@@ -179,9 +205,12 @@ internal fun ThreadActionCardView(
                     ThreadActionCardFlatPermissions(scopes = scopes)
                 }
             }
+            if (continueSetupUrl != null) {
+                ThreadActionCardContinueSetup(onClick = { onOpenExternalUrl(continueSetupUrl) })
+            }
             // Web shows the button disabled beside the reason; with no reason to give (the
             // thread is read-only here) the card shows no button.
-            if (!card.isExecuted && !ended && commitEnabled) {
+            if (!effectiveDone && !ended && commitEnabled) {
                 // A card this app can't run opens on the web instead of showing a dead button.
                 val opensOnWeb = !card.isFrozen && blockedReason == null && !card.runsInApp(feedbackEntryEnabled)
                 RaftMessageActionCardActions(note = blockedReason?.takeUnless { foldsByDefault }) {

@@ -68,15 +68,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -85,10 +89,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import build.raft.designsystem.components.RaftHoverTier
+import build.raft.designsystem.components.RaftTextLink
+import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.raftPointerHover
 import build.raft.designsystem.components.RaftMessageItemToolbarDefaults
 import build.raft.designsystem.components.raftMessageItemToolbarHeaderMask
@@ -240,6 +249,14 @@ internal fun ThreadQuotedPermalinkCard(
                 text = stringResource(Res.string.message_delegated_retracted),
                 modifier = modifier
             )
+        is ThreadQuotedPermalinkUiState.Older ->
+            ThreadQuotedPermalinkOlderCard(
+                target = state.target,
+                permalink = target,
+                memberAvatarResolver = memberAvatarResolver,
+                onOpenUpgrade = LocalThreadQuotedPermalinkOpenUpgrade.current,
+                modifier = modifier,
+            )
         is ThreadQuotedPermalinkUiState.Loaded -> {
             val item = state.message.item
             val direct = target?.routeKind == ConversationKind.DirectMessage
@@ -329,6 +346,206 @@ internal fun ThreadQuotedPermalinkCard(
                 attachments = listOfNotNull(threadQuotedAttachmentLabel(item.attachments)),
                 onClick = onOpen
             )
+        }
+    }
+}
+
+/**
+ * A quoted message behind the Free plan's 30-day history window (`404 history_limited`, web
+ * `OlderQuoteCard` + `OlderMessageNotice`): matches `RaftMessageQuotedPreview`'s container and
+ * header using DS tokens directly, replacing the excerpt with the `History` notice and upgrade
+ * link. Non-clickable card shell so the inline permalink stays a normal link.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ThreadQuotedPermalinkOlderCard(
+    target: build.raft.app.data.MessageContextHiddenTarget,
+    permalink: ParsedRaftPermalink?,
+    memberAvatarResolver: RaftMemberAvatarResolver,
+    onOpenUpgrade: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    val hintPart = typography.footnote.copy(fontWeight = FontWeight.SemiBold)
+    val direct = permalink?.routeKind == ConversationKind.DirectMessage
+    val resolvedChannel = permalink?.let { LocalRaftMessagePermalinkLabelResolver.current(it) }
+    val loungeLabel = if (direct) null else agentLoungeLabelOrNull(permalink?.channelId?.value)
+    val channel =
+        loungeLabel ?: resolvedChannel?.trim()?.removePrefix("#")?.removePrefix("@")?.takeIf { it.isNotBlank() }
+            ?: if (direct) {
+                stringResource(Res.string.thread_quoted_permalink_direct_message)
+            } else {
+                stringResource(Res.string.thread_quoted_permalink_channel_fallback)
+            }
+    val senderKind = target.senderType.parsedMemberKindOrNull()
+    val jointAuthor =
+        rememberRaftJointActor(
+            memberAvatarResolver = memberAvatarResolver,
+            kind = senderKind,
+            memberId = target.senderId,
+            enabled = memberAvatarResolver.jointSurface,
+        )
+    val avatarWireValue =
+        resolveThreadRowAvatarWireValue(rememberRaftMemberAvatarWireValue(memberAvatarResolver, target.senderId))
+            ?: target.senderAvatarUrl?.appAvatarWireValueOrNull()
+            ?: jointAuthor?.explicitAvatarWireValue()?.appAvatarWireValueOrNull()
+    val quotedAvatarPending =
+        avatarWireValue.isNullOrBlank() &&
+            rememberRaftMemberAvatarPending(
+                memberAvatarResolver = memberAvatarResolver,
+                kind = senderKind,
+                memberId = target.senderId,
+                jointSurface = memberAvatarResolver.jointSurface,
+            )
+    val authorName = target.senderName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.thread_history_paywall_unknown_sender)
+    val threadLabel =
+        if (permalink?.threadParentMessageId != null) {
+            stringResource(Res.string.thread_quoted_permalink_thread)
+        } else {
+            null
+        }
+    val shape = RoundedCornerShape(build.raft.designsystem.tokens.RaftRadius.Container)
+    val headerLineHeight = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.HeaderLineHeight
+    Box(
+        modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(colors.layerCard, shape)
+            .border(build.raft.designsystem.tokens.RaftStroke.Hairline, colors.lineHairline, shape),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(bottom = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.HeaderGap),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                FlowRow(
+                    Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Row(
+                        Modifier.align(Alignment.CenterVertically).heightIn(min = headerLineHeight),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (!(direct && resolvedChannel != null) && loungeLabel == null) {
+                            build.raft.designsystem.components.RaftGlyphIcon(
+                                build.raft.designsystem.components.RaftGlyph.Hash,
+                                size = 14.dp,
+                                color = colors.foregroundHint,
+                            )
+                            Box(Modifier.width(4.dp))
+                        }
+                        build.raft.designsystem.text.RaftText(
+                            if (direct && resolvedChannel != null) "@$channel" else channel,
+                            style = hintPart,
+                            color = colors.foregroundHint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Row(
+                        Modifier.align(Alignment.CenterVertically).heightIn(min = headerLineHeight),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        build.raft.designsystem.text.RaftText(
+                            "·",
+                            modifier = Modifier.clearAndSetSemantics {},
+                            style = typography.footnote,
+                            color = colors.foregroundHint,
+                            maxLines = 1,
+                        )
+                        RaftAppAvatar(
+                            kind = raftAvatarKind(senderKind),
+                            avatarWireValue = avatarWireValue,
+                            label = authorName,
+                            avatarSize = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.AvatarSize.edge,
+                            cacheSubject = raftMemberAvatarCacheSubject(senderKind, target.senderId),
+                            avatarPending = quotedAvatarPending,
+                        )
+                        build.raft.designsystem.text.RaftText(
+                            authorName,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = typography.footnote.copy(fontWeight = FontWeight.Bold),
+                            color = colors.foregroundMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (threadLabel != null) {
+                        Row(
+                            Modifier.align(Alignment.CenterVertically).heightIn(min = headerLineHeight),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            build.raft.designsystem.text.RaftText(
+                                "·",
+                                modifier = Modifier.padding(end = 2.dp).clearAndSetSemantics {},
+                                style = typography.footnote,
+                                color = colors.foregroundHint,
+                                maxLines = 1,
+                            )
+                            build.raft.designsystem.components.RaftGlyphIcon(
+                                build.raft.designsystem.components.RaftGlyph.Thread,
+                                size = 14.dp,
+                                color = colors.foregroundHint,
+                            )
+                            build.raft.designsystem.text.RaftText(
+                                threadLabel,
+                                style = hintPart,
+                                color = colors.foregroundHint,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                }
+                val createdAt = target.createdAt?.takeIf { it.isNotBlank() }
+                if (createdAt != null) {
+                    RaftRelativeTimestampText(
+                        value = createdAt,
+                        displayGroup = RaftTimestampDisplayGroup.Conversation,
+                        style = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeStyle,
+                        color = build.raft.designsystem.components.RaftMessageQuotedPreviewDefaults.TimeInk,
+                        maxLines = 1,
+                        toggleEnabled = false,
+                    )
+                }
+            }
+            val offersUpgrade = build.raft.app.settings.settingsBillingOffersUpgrade()
+            val upgradeLabel =
+                if (offersUpgrade) {
+                    stringResource(Res.string.thread_history_paywall_upgrade)
+                } else {
+                    stringResource(Res.string.settings_billing_view_your_plan)
+                }
+            FlowRow(
+                modifier = Modifier.fillMaxWidth().testTag("quoted-message-older"),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                build.raft.app.RaftLucideIcon(
+                    name = build.raft.app.RaftLucideIconName.History,
+                    color = build.raft.app.raftArgbHex(colors.foregroundMuted),
+                    modifier = Modifier.size(14.dp),
+                )
+                build.raft.designsystem.text.RaftText(
+                    text = stringResource(Res.string.thread_quoted_permalink_older_message, ThreadHistoryPaywallDays),
+                    style = typography.callout,
+                    color = colors.foregroundMuted,
+                )
+                if (onOpenUpgrade != null) {
+                    RaftTextLink(
+                        text = upgradeLabel,
+                        onClick = onOpenUpgrade,
+                        variant = RaftTextLinkVariant.Strong,
+                        style = typography.callout,
+                        modifier = Modifier.testTag("quoted-message-older-upgrade"),
+                    )
+                }
+            }
         }
     }
 }
@@ -810,6 +1027,7 @@ private fun ThreadMessageCardContent(
             mutableStateOf<ThreadQuotedPermalinkUiState?>(
                 when (initialQuotedPermalinkLookup) {
                     is ThreadQuotedPermalinkCacheLookup.Hit -> initialQuotedPermalinkLookup.message.toQuotedPermalinkUiState()
+                    is ThreadQuotedPermalinkCacheLookup.Older -> ThreadQuotedPermalinkUiState.Older(initialQuotedPermalinkLookup.target)
                     ThreadQuotedPermalinkCacheLookup.KnownUnavailable -> ThreadQuotedPermalinkUiState.Unavailable
                     ThreadQuotedPermalinkCacheLookup.Miss ->
                         if (initialQuotedPermalinkTarget != null) ThreadQuotedPermalinkUiState.Loading else null
@@ -853,6 +1071,10 @@ private fun ThreadMessageCardContent(
                 quotedPermalinkState.value = cached.message.toQuotedPermalinkUiState()
                 return@LaunchedEffect
             }
+            is ThreadQuotedPermalinkCacheLookup.Older -> {
+                quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Older(cached.target)
+                return@LaunchedEffect
+            }
             ThreadQuotedPermalinkCacheLookup.KnownUnavailable -> {
                 quotedPermalinkState.value = ThreadQuotedPermalinkUiState.Unavailable
                 return@LaunchedEffect
@@ -864,8 +1086,7 @@ private fun ThreadMessageCardContent(
         }
         quotedPermalinkState.value =
             try {
-                loader(target)?.toQuotedPermalinkUiState()
-                    ?: ThreadQuotedPermalinkUiState.Unavailable
+                loader(target).toQuotedPermalinkUiState()
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -1623,6 +1844,7 @@ private fun ThreadMessageCardContent(
                                     executedTimeLabel = data.actionCardExecutedTimeLabel,
                                     modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
                                     onOpenInWeb = { specHost.openUnsupportedInWeb(message.id, shownActionCard.type) },
+                                    onOpenExternalUrl = specHost.openExternalUrl,
                                     onCommit = { onCommitActionCard(message.id) }
                                 )
                             }

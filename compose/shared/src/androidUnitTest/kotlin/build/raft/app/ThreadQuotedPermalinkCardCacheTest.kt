@@ -33,13 +33,16 @@ import build.raft.app.compat.pager.Pager
 import build.raft.app.compat.pager.PagerManager
 import build.raft.app.compat.pager.RaftPageActivity
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.data.MessageContextHiddenTarget
 import build.raft.app.data.RaftQuotedPermalinkViewer
 import build.raft.app.thread.LocalThreadQuotedPermalinkLoader
 import build.raft.app.thread.LocalThreadQuotedPermalinkLookup
+import build.raft.app.thread.LocalThreadQuotedPermalinkOpenUpgrade
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.ThreadMessageCard
 import build.raft.app.thread.ThreadQuotedPermalinkCache
 import build.raft.app.thread.ThreadQuotedPermalinkCacheLookup
+import build.raft.app.thread.ThreadQuotedPermalinkLoadResult
 import build.raft.app.thread.ThreadQuotedPermalinkLoader
 import build.raft.app.thread.ThreadQuotedPermalinkLookup
 import build.raft.app.thread.ThreadQuotedPermalinkMessage
@@ -90,7 +93,7 @@ class ThreadQuotedPermalinkCardCacheTest {
         cache.put(viewer.userId, viewer.serverId, QuotedChannelId, QuotedMessageId, LoadedQuote)
 
         var loaderCalls = 0
-        val neverFinishes = CompletableDeferred<ThreadQuotedPermalinkMessage?>()
+        val neverFinishes = CompletableDeferred<ThreadQuotedPermalinkLoadResult>()
         val loader: ThreadQuotedPermalinkLoader = {
             loaderCalls += 1
             neverFinishes.await()
@@ -129,7 +132,7 @@ class ThreadQuotedPermalinkCardCacheTest {
             ) {
                 networkFetches += 1
                 LoadedQuote
-            }
+            }?.let { ThreadQuotedPermalinkLoadResult.Loaded(it) } ?: ThreadQuotedPermalinkLoadResult.Unavailable
         }
         val lookup: ThreadQuotedPermalinkLookup = { target ->
             cache.peekLookup(viewer.userId, viewer.serverId, target.channelId.value, target.messageId.value)
@@ -172,7 +175,7 @@ class ThreadQuotedPermalinkCardCacheTest {
         cache.put(viewer.userId, viewer.serverId, QuotedChannelId, QuotedMessageId, retractedQuote)
 
         var loaderCalls = 0
-        val neverFinishes = CompletableDeferred<ThreadQuotedPermalinkMessage?>()
+        val neverFinishes = CompletableDeferred<ThreadQuotedPermalinkLoadResult>()
         val loader: ThreadQuotedPermalinkLoader = {
             loaderCalls += 1
             neverFinishes.await()
@@ -204,7 +207,7 @@ class ThreadQuotedPermalinkCardCacheTest {
         cache.putUnavailable(viewer.userId, viewer.serverId, QuotedChannelId, QuotedMessageId)
 
         var loaderCalls = 0
-        val neverFinishes = CompletableDeferred<ThreadQuotedPermalinkMessage?>()
+        val neverFinishes = CompletableDeferred<ThreadQuotedPermalinkLoadResult>()
         val loader: ThreadQuotedPermalinkLoader = {
             loaderCalls += 1
             neverFinishes.await()
@@ -250,6 +253,55 @@ class ThreadQuotedPermalinkCardCacheTest {
         val texts = root.textsUnder("throwing-row")
         assertEquals(1, loaderCalls)
         assertFalse(texts.any { "Loading message" in it }, "throwing loader must settle to Unavailable, not stay Loading: $texts")
+    }
+
+    @Test
+    fun olderQuotedPermalinkRendersOlderNoticeWithoutMarkingLinkUnavailable() {
+        val hiddenTarget =
+            MessageContextHiddenTarget(
+                messageId = QuotedMessageId,
+                senderType = "user",
+                senderId = "user-juno",
+                senderName = "Juno",
+                preview = "Older message",
+                createdAt = "2020-01-02T00:00:00Z",
+            )
+        var loaderCalls = 0
+        var upgradeOpened = 0
+        val loader: ThreadQuotedPermalinkLoader = {
+            loaderCalls += 1
+            ThreadQuotedPermalinkLoadResult.Older(hiddenTarget)
+        }
+        val lookup: ThreadQuotedPermalinkLookup = { ThreadQuotedPermalinkCacheLookup.Older(hiddenTarget) }
+
+        val root =
+            render {
+                CompositionLocalProvider(
+                    LocalThreadQuotedPermalinkLoader provides loader,
+                    LocalThreadQuotedPermalinkLookup provides lookup,
+                    LocalThreadQuotedPermalinkOpenUpgrade provides { upgradeOpened += 1 },
+                ) {
+                    MessageRow("older-row", RaftLinkMessage)
+                }
+            }
+
+        assertEquals(0, loaderCalls, "memoized Older lookup must invoke loader 0 times")
+        val olderNotice = root.textsUnder("quoted-message-older")
+        assertTrue(olderNotice.any { "30" in it }, "older notice must mention 30-day window: $olderNotice")
+        val upgradeTexts = root.textsUnder("quoted-message-older-upgrade")
+        assertTrue(upgradeTexts.isNotEmpty(), "older notice must render upgrade link: $olderNotice")
+        val upgradeNode =
+            (root as RootForTest).semanticsOwner.unmergedRootSemanticsNode.find {
+                it.config.getOrNull(SemanticsProperties.TestTag) == "quoted-message-older-upgrade"
+            }
+        assertNotNull(upgradeNode, "upgrade link node must exist")
+        val clickAction = upgradeNode.config.getOrNull(androidx.compose.ui.semantics.SemanticsActions.OnClick)
+        assertNotNull(clickAction, "upgrade link must have click action")
+        clickAction.action?.invoke()
+        assertEquals(1, upgradeOpened, "tapping upgrade link must invoke LocalThreadQuotedPermalinkOpenUpgrade")
+        val rowTexts = root.textsUnder("older-row")
+        assertTrue(rowTexts.any { "Juno" in it }, "older card header must show sender name: $rowTexts")
+        assertFalse(rowTexts.any { "Unavailable" in it }, "inline permalink must stay normal, not Unavailable: $rowTexts")
     }
 
     private fun render(content: @Composable () -> Unit): View {

@@ -41,6 +41,7 @@ private data class MessageContextHiddenMessageWire(
     val senderType: String = "",
     val senderId: String = "",
     val senderName: String? = null,
+    val senderAvatarUrl: String? = null,
     val preview: String? = null,
     val seq: Long? = null,
     val createdAt: String? = null,
@@ -48,9 +49,9 @@ private data class MessageContextHiddenMessageWire(
 
 /**
  * The message a `history_limited` answer points at, as far as the server shows it: who sent it
- * ([senderName], null when the server does not name them), its first words ([preview], at most
- * 80 characters on one line; null for a message with no text) and when it was sent ([createdAt],
- * the server's ISO time; null when the body has none).
+ * ([senderName], null when the server does not name them; [senderAvatarUrl], optional avatar wire
+ * URL), its first words ([preview], at most 80 characters on one line; null for a message with no
+ * text) and when it was sent ([createdAt], the server's ISO time; null when the body has none).
  */
 @Serializable
 data class MessageContextHiddenTarget(
@@ -60,6 +61,7 @@ data class MessageContextHiddenTarget(
     val senderName: String?,
     val preview: String?,
     val createdAt: String? = null,
+    val senderAvatarUrl: String? = null,
 )
 
 private val messageContextHistoryLimitedJson = Json { ignoreUnknownKeys = true }
@@ -84,5 +86,6 @@ fun parseMessageContextHiddenTarget(bodyText: String?): MessageContextHiddenTarg
         senderName = target.senderName?.trim()?.takeIf(String::isNotBlank),
         preview = target.preview?.takeIf(String::isNotBlank),
         createdAt = target.createdAt?.trim()?.takeIf(String::isNotBlank),
+        senderAvatarUrl = target.senderAvatarUrl?.trim()?.takeIf(String::isNotBlank),
     )
 }

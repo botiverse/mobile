@@ -28,6 +28,7 @@ import build.raft.app.data.ThreadActionCardHandledBy
 import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.model.ServerId
+import build.raft.app.settings.currentServerSummary
 import build.raft.app.settings.openRaftOwnWebPage
 import build.raft.app.settings.openSettingsBillingPage
 import build.raft.app.settings.openSettingsFeedbackPage
@@ -203,16 +204,24 @@ internal fun rememberThreadRouteActionCards(
                 onApproved = RaftRatingPrompt::onActionCardApproved,
             )
         }
+    val currentServerPlan =
+        remember(currentSession, currentServerId) {
+            val sid = currentServerId?.trim()?.takeIf { it.isNotEmpty() }
+            sid?.let { id -> currentSession?.servers?.firstOrNull { it.id == id }?.plan }
+                ?: currentSession?.currentServerSummary()?.plan
+        }
     // Not keyed on the store's state: each card selects its own slice of it.
     val actionCardSpecHost =
         remember(
             feedbackCardEntryEnabled,
             actionCardSpecStore,
             currentSession?.user?.id,
+            currentServerPlan,
             evaluateMigrateAgentAccess,
             evaluateInviteExternalAccess,
             mcpPersonalAccountsEnabled,
             mcpConnectCardHost,
+            bridge,
         ) {
             ThreadActionCardSpecHost(
                 capabilities = raftAppActionCardCapabilities(feedbackFormAvailable = feedbackCardEntryEnabled),
@@ -226,8 +235,10 @@ internal fun rememberThreadRouteActionCards(
                         )
                     )
                 },
+                openExternalUrl = { url -> bridge.hostCapabilities.openUrlInBrowser(url) },
                 isDirectMessageChannel = { channelId -> channelId in latestActionCardDirectMessageIds },
                 viewerUserId = currentSession?.user?.id,
+                currentServerPlan = currentServerPlan,
                 clientOs = featureFlagClientOs(),
                 openFeedbackTicket = { ticketId ->
                     bridge.log("thread_feedback_ticket_open hasTicket=${ticketId != null}")

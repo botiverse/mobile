@@ -57,7 +57,11 @@ import build.raft.app.data.toAdaptiveParentFocusRequestOrNull
 import build.raft.app.data.AdaptiveThreadOpenRoute
 import build.raft.app.data.routeThreadOpen
 import build.raft.app.base.Utils
+import build.raft.app.settings.RaftUpgradeGate
 import build.raft.app.settings.buildAppShellThreadPayload
+import build.raft.app.settings.openRaftUpgradeDialog
+import build.raft.app.settings.openSettingsBillingPage
+import build.raft.app.settings.settingsBillingOffersUpgrade
 import build.raft.app.canRetainThreadPageFor
 import build.raft.app.channelSettingsPageData
 import build.raft.app.data.PlatformFile
@@ -931,8 +935,16 @@ private fun ThreadPageScreen(
         }
     val selectedServerStore =
         remember(sharedStores, storeScope) { sharedStores.selectedServerStore(storeScope) }
+    var quotedPermalinkServerPlan by remember(sharedStores, storeScope) {
+        mutableStateOf(sharedStores.currentQuotedPermalinkViewer(storeScope)?.plan)
+    }
+    LaunchedEffect(authStore, sharedStores, storeScope) {
+        authStore.sessionChanges.collect {
+            quotedPermalinkServerPlan = sharedStores.currentQuotedPermalinkViewer(storeScope)?.plan
+        }
+    }
     val quotedPermalinkLookup: ThreadQuotedPermalinkLookup =
-        remember(sharedStores, storeScope) {
+        remember(sharedStores, storeScope, quotedPermalinkServerPlan) {
             { target ->
                 val viewer = sharedStores.currentQuotedPermalinkViewer(storeScope)
                 if (viewer == null) {
@@ -947,16 +959,18 @@ private fun ThreadPageScreen(
                         )
                     if (cached != ThreadQuotedPermalinkCacheLookup.Miss) {
                         cached
-                    } else if (
-                        RaftQuotedPermalinkHistoryLimitedMemo.App.answer(
-                            viewer = viewer,
-                            channelId = target.channelId.value,
-                            messageId = target.messageId.value,
-                        ) != null
-                    ) {
-                        ThreadQuotedPermalinkCacheLookup.KnownUnavailable
                     } else {
-                        ThreadQuotedPermalinkCacheLookup.Miss
+                        val olderTarget =
+                            RaftQuotedPermalinkHistoryLimitedMemo.App.answer(
+                                viewer = viewer,
+                                channelId = target.channelId.value,
+                                messageId = target.messageId.value,
+                            )
+                        if (olderTarget != null) {
+                            ThreadQuotedPermalinkCacheLookup.Older(olderTarget)
+                        } else {
+                            ThreadQuotedPermalinkCacheLookup.Miss
+                        }
                     }
                 }
             }
@@ -967,7 +981,7 @@ private fun ThreadPageScreen(
             val loader: ThreadQuotedPermalinkLoader = { target ->
                 val messageId = target.messageId.value
                 val channelId = target.channelId.value
-                sharedStores.quotedPermalinkCache.getOrFetchOutcome(
+                sharedStores.quotedPermalinkCache.getOrFetchResult(
                     viewerProvider = { authStore.readSession()?.quotedPermalinkViewer() },
                     channelId = channelId,
                     messageId = messageId,
@@ -1005,7 +1019,7 @@ private fun ThreadPageScreen(
                         // Behind the history window: already persisted in RaftQuotedPermalinkHistoryLimitedMemo
                         // (keyed by plan so a Free->Pro upgrade re-fetches immediately).
                         is RaftQuotedPermalinkContextRead.HistoryLimited ->
-                            ThreadQuotedPermalinkFetchOutcome.TransientFailure
+                            ThreadQuotedPermalinkFetchOutcome.Older(read.target)
                         RaftQuotedPermalinkContextRead.Unavailable ->
                             if (failureHttpCode == 403 || failureHttpCode == 404) {
                                 ThreadQuotedPermalinkFetchOutcome.DefinitiveUnavailable
@@ -1219,6 +1233,16 @@ private fun ThreadPageScreen(
     // The head's title and its parent link (ThreadHeaderOriginalTitle.kt): one per thread page.
     val headerOriginalState = remember(payload.instanceId) { ThreadHeaderOriginalState() }
     val threadRuntimeUsageAccess = rememberShellRuntimeAccountUsageAccess()
+    val openQuotedPermalinkUpgrade: () -> Unit =
+        remember(pager, storeScope) {
+            {
+                if (settingsBillingOffersUpgrade()) {
+                    pager.openRaftUpgradeDialog(RaftUpgradeGate.History30d, storeScope)
+                } else {
+                    pager.openSettingsBillingPage(storeScope)
+                }
+            }
+        }
     CompositionLocalProvider(
         LocalMembersRuntimeAccountUsageAccess provides threadRuntimeUsageAccess,
         LocalThreadHeaderOriginalState provides headerOriginalState,
@@ -1229,6 +1253,7 @@ private fun ThreadPageScreen(
         LocalThreadAdaptiveNativeEditingReader provides adaptiveNativeEditingStateReader,
         LocalThreadQuotedPermalinkLoader provides quotedPermalinkLoader,
         LocalThreadQuotedPermalinkLookup provides quotedPermalinkLookup,
+        LocalThreadQuotedPermalinkOpenUpgrade provides openQuotedPermalinkUpgrade,
         // Live quote replies read their resolved quotes here (ThreadQuoteReply.kt).
         LocalThreadResolvedQuotesStore provides sharedStores.resolvedQuotesStore,
     ) {

@@ -27,9 +27,11 @@ internal val THREAD_QUOTED_PERMALINK_NEGATIVE_CACHE_TTL: Duration = 60.seconds
 
 internal sealed interface ThreadQuotedPermalinkFetchOutcome {
     data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkFetchOutcome
+    /** Behind the Free plan's history window (404 `history_limited`): kept in `RaftQuotedPermalinkHistoryLimitedMemo`, never negative-cached here. */
+    data class Older(val target: build.raft.app.data.MessageContextHiddenTarget) : ThreadQuotedPermalinkFetchOutcome
     /** Definitive refusal (404/403/missing target) eligible for short negative caching. */
     data object DefinitiveUnavailable : ThreadQuotedPermalinkFetchOutcome
-    /** Transient failure (5xx/429/network/401) or already-memoized history_limited: never cached here. */
+    /** Transient failure (5xx/429/network/401): never cached here. */
     data object TransientFailure : ThreadQuotedPermalinkFetchOutcome
 }
 
@@ -205,7 +207,20 @@ internal class ThreadQuotedPermalinkCache(
         channelId: String?,
         messageId: String,
         fetch: suspend (RaftQuotedPermalinkViewer?) -> ThreadQuotedPermalinkFetchOutcome,
-    ): ThreadQuotedPermalinkMessage? {
+    ): ThreadQuotedPermalinkMessage? =
+        (getOrFetchResult(viewerProvider, channelId, messageId, fetch) as? ThreadQuotedPermalinkLoadResult.Loaded)?.message
+
+    /**
+     * Full-outcome resolver returning [ThreadQuotedPermalinkLoadResult.Loaded],
+     * [ThreadQuotedPermalinkLoadResult.Older] (404 `history_limited`, never negative-cached here),
+     * or [ThreadQuotedPermalinkLoadResult.Unavailable].
+     */
+    suspend fun getOrFetchResult(
+        viewerProvider: suspend () -> RaftQuotedPermalinkViewer?,
+        channelId: String?,
+        messageId: String,
+        fetch: suspend (RaftQuotedPermalinkViewer?) -> ThreadQuotedPermalinkFetchOutcome,
+    ): ThreadQuotedPermalinkLoadResult {
         val viewer = viewerProvider()
         if (viewer != null) {
             when (
@@ -217,8 +232,9 @@ internal class ThreadQuotedPermalinkCache(
                         messageId = messageId,
                     )
             ) {
-                is ThreadQuotedPermalinkCacheLookup.Hit -> return cached.message
-                ThreadQuotedPermalinkCacheLookup.KnownUnavailable -> return null
+                is ThreadQuotedPermalinkCacheLookup.Hit -> return ThreadQuotedPermalinkLoadResult.Loaded(cached.message)
+                is ThreadQuotedPermalinkCacheLookup.Older -> return ThreadQuotedPermalinkLoadResult.Older(cached.target)
+                ThreadQuotedPermalinkCacheLookup.KnownUnavailable -> return ThreadQuotedPermalinkLoadResult.Unavailable
                 ThreadQuotedPermalinkCacheLookup.Miss -> Unit
             }
         }
@@ -228,7 +244,7 @@ internal class ThreadQuotedPermalinkCache(
                 if (viewer != null) {
                     val currentViewer = viewerProvider()
                     if (currentViewer?.userId != viewer.userId || currentViewer?.serverId != viewer.serverId) {
-                        return null
+                        return ThreadQuotedPermalinkLoadResult.Unavailable
                     }
                     put(
                         accountUserId = viewer.userId,
@@ -239,7 +255,16 @@ internal class ThreadQuotedPermalinkCache(
                         expectedGeneration = startGeneration,
                     )
                 }
-                outcome.message
+                ThreadQuotedPermalinkLoadResult.Loaded(outcome.message)
+            }
+            is ThreadQuotedPermalinkFetchOutcome.Older -> {
+                if (viewer != null) {
+                    val currentViewer = viewerProvider()
+                    if (currentViewer?.userId != viewer.userId || currentViewer?.serverId != viewer.serverId) {
+                        return ThreadQuotedPermalinkLoadResult.Unavailable
+                    }
+                }
+                ThreadQuotedPermalinkLoadResult.Older(outcome.target)
             }
             ThreadQuotedPermalinkFetchOutcome.DefinitiveUnavailable -> {
                 if (viewer != null) {
@@ -254,9 +279,9 @@ internal class ThreadQuotedPermalinkCache(
                         )
                     }
                 }
-                null
+                ThreadQuotedPermalinkLoadResult.Unavailable
             }
-            ThreadQuotedPermalinkFetchOutcome.TransientFailure -> null
+            ThreadQuotedPermalinkFetchOutcome.TransientFailure -> ThreadQuotedPermalinkLoadResult.Unavailable
         }
     }
 

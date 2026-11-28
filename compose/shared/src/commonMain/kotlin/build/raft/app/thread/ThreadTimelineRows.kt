@@ -389,16 +389,24 @@ internal data class ThreadQuotedPermalinkMessage(
     val channelArchived: Boolean = false
 )
 
-internal typealias ThreadQuotedPermalinkLoader = suspend (ParsedRaftPermalink) -> ThreadQuotedPermalinkMessage?
+/** Result of loading a quoted message permalink asynchronously. */
+internal sealed interface ThreadQuotedPermalinkLoadResult {
+    data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkLoadResult
+    data class Older(val target: build.raft.app.data.MessageContextHiddenTarget) : ThreadQuotedPermalinkLoadResult
+    data object Unavailable : ThreadQuotedPermalinkLoadResult
+}
 
-/** Tri-state synchronous cache lookup for quoted permalinks (zero Frame 1 loading flash). */
+internal typealias ThreadQuotedPermalinkLoader = suspend (ParsedRaftPermalink) -> ThreadQuotedPermalinkLoadResult
+
+/** Synchronous cache lookup for quoted permalinks (zero Frame 1 loading flash). */
 internal sealed interface ThreadQuotedPermalinkCacheLookup {
     data class Hit(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkCacheLookup
+    data class Older(val target: build.raft.app.data.MessageContextHiddenTarget) : ThreadQuotedPermalinkCacheLookup
     data object KnownUnavailable : ThreadQuotedPermalinkCacheLookup
     data object Miss : ThreadQuotedPermalinkCacheLookup
 }
 
-/** Synchronous cache lookup for already-loaded or known-unavailable quoted permalinks. */
+/** Synchronous cache lookup for already-loaded, older-than-window, or known-unavailable quoted permalinks. */
 internal typealias ThreadQuotedPermalinkLookup = (ParsedRaftPermalink) -> ThreadQuotedPermalinkCacheLookup
 
 /**
@@ -411,12 +419,24 @@ internal val LocalThreadQuotedPermalinkLoader = compositionLocalOf<ThreadQuotedP
 /** Synchronous lookup paired with [LocalThreadQuotedPermalinkLoader] for instant cached rendering. */
 internal val LocalThreadQuotedPermalinkLookup = compositionLocalOf<ThreadQuotedPermalinkLookup?> { null }
 
+/** Opens the 30-day history upgrade dialog (or iOS view-only plan page) from an older quoted permalink card. */
+internal val LocalThreadQuotedPermalinkOpenUpgrade = compositionLocalOf<(() -> Unit)?> { null }
+
 internal fun ThreadQuotedPermalinkMessage.toQuotedPermalinkUiState(): ThreadQuotedPermalinkUiState =
     if (item.isRetracted) ThreadQuotedPermalinkUiState.Retracted else ThreadQuotedPermalinkUiState.Loaded(this)
+
+internal fun ThreadQuotedPermalinkLoadResult.toQuotedPermalinkUiState(): ThreadQuotedPermalinkUiState =
+    when (this) {
+        is ThreadQuotedPermalinkLoadResult.Loaded -> message.toQuotedPermalinkUiState()
+        is ThreadQuotedPermalinkLoadResult.Older -> ThreadQuotedPermalinkUiState.Older(target)
+        ThreadQuotedPermalinkLoadResult.Unavailable -> ThreadQuotedPermalinkUiState.Unavailable
+    }
 
 internal sealed interface ThreadQuotedPermalinkUiState {
     data object Loading : ThreadQuotedPermalinkUiState
     data class Loaded(val message: ThreadQuotedPermalinkMessage) : ThreadQuotedPermalinkUiState
+    /** Behind the Free plan's 30-day history window (`404 history_limited`, web `OlderQuoteCard`). */
+    data class Older(val target: build.raft.app.data.MessageContextHiddenTarget) : ThreadQuotedPermalinkUiState
     data object Unavailable : ThreadQuotedPermalinkUiState
     /** RFC 077 (web QuoteCardContent `unavailable`): the quoted message was retracted. */
     data object Retracted : ThreadQuotedPermalinkUiState
