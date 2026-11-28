@@ -38,6 +38,14 @@ class AppIdentityReceiptProviderManifestTest {
         assertEquals(setOf("alpha", "connectedTest"), overriding)
     }
 
+    @Test
+    fun mainManifestDeclaresProfileableShellForReleasePerfettoProfiling() {
+        val main = parse(File(src, "main/AndroidManifest.xml"))
+        val profileable = elements(main, "profileable").single()
+        assertEquals("true", profileable.getAttribute("android:shell"))
+        assertEquals("true", profileable.getAttribute("android:enabled"))
+    }
+
     private fun boolValue(file: File, name: String): String =
         elements(parse(file), "bool").single { it.getAttribute("name") == name }.textContent.trim()
 

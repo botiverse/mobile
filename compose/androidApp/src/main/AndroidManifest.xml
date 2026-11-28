@@ -38,6 +38,12 @@
     </queries>
 
     <application android:name=".RaftApplication" android:allowBackup="true" android:dataExtractionRules="@xml/data_extraction_rules" android:fullBackupContent="@xml/backup_rules" android:icon="@mipmap/ic_launcher" android:label="@string/app_name" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.Raft">
+        <!-- Allow Perfetto / Macrobenchmark shell profiling on non-debuggable release builds (#proj-mobile:#428). -->
+        <profileable
+            android:enabled="true"
+            android:shell="true"
+            tools:targetApi="30" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
