@@ -307,4 +307,98 @@ class ArtifactScreenshotsTest {
         val ok = assertIs<ArtifactScreenshotFetchResult.Ok>(fetcher.fetchOutcome(key("f")))
         assertContentEquals(byteArrayOf(7, 8), ok.bytes)
     }
+
+    @Test
+    fun publisherCoverPathAndUnseenMetadataParseSafely() {
+        val withCover = summaryOf("""{"kind":"image","path":"img/cover.png"}""")
+        assertEquals("img/cover.png", withCover.coverPath)
+        assertNull(withCover.screenshot)
+
+        assertNull(summaryOf("""{"kind":"image","path":"   "}""").coverPath)
+        assertNull(summaryOf("""{"kind":"image","path":42}""").coverPath)
+        assertNull(summaryOf("""{"kind":"screenshot","desktop":"of_1","path":"img/cover.png"}""").coverPath)
+
+        fun summaryWithUnseen(unseenField: String?): ArtifactSummary {
+            val extra = unseenField?.let { ""","unseen":$it""" }.orEmpty()
+            val cardJson =
+                """
+                {"id":"$cardId","url":"https://app.raft.build/artifacts/$cardId","title":"Q3 report","description":null,"kind":"html",
+                 "facts":{"sizeBytes":2048,"fileCount":1},"preview":null$extra,
+                 "version":3,"pinned":false,"latestVersion":3,
+                 "author":{"type":"agent","id":"a1","name":"lagoon","displayName":"Lagoon","avatarUrl":null},
+                 "createdAt":"2026-10-20T10:00:00.000Z","updatedAt":"2026-10-21T10:00:00.000Z","commentCount":4,
+                 "home":{"kind":"conversation","conversation":{"id":"c1","name":"proj-workspace","type":"channel"}}}
+                """.trimIndent()
+            val answers = parseArtifactSummariesAnswer("""{"kind":"artifact","summaries":[{"ref":{"id":"$cardId"},"ok":true,"summary":$cardJson}]}""")!!
+            return assertIs<ArtifactSummaryAnswer.Ok>(answers[cardId]).summary
+        }
+
+        assertEquals(
+            ArtifactCardUnseen(newerVersion = true, newComments = 2, firstNewComment = "c_first-1"),
+            summaryWithUnseen("""{"newerVersion":true,"newComments":2,"firstNewComment":"c_first-1"}""").unseen,
+        )
+        assertEquals(
+            ArtifactCardUnseen(newerVersion = false, newComments = 0, firstNewComment = null),
+            summaryWithUnseen("""{"newerVersion":false,"newComments":-3,"firstNewComment":"  "}""").unseen,
+        )
+        assertNull(summaryWithUnseen(null).unseen)
+        assertNull(summaryWithUnseen("null").unseen)
+        assertNull(summaryWithUnseen(""""malformed"""").unseen)
+    }
+
+    @Test
+    fun publisherCoverRouteMimeValidationAndFetcherContract() = runTest {
+        assertEquals("image/png", artifactCoverExpectedMimeType("img/cover.PNG"))
+        assertEquals("image/jpeg", artifactCoverExpectedMimeType("a/b/photo.jpg"))
+        assertEquals("image/jpeg", artifactCoverExpectedMimeType("photo.jpeg"))
+        assertEquals("image/webp", artifactCoverExpectedMimeType("hero.webp"))
+        assertEquals("image/gif", artifactCoverExpectedMimeType("anim.gif"))
+        assertNull(artifactCoverExpectedMimeType("vector.svg"))
+        assertNull(artifactCoverExpectedMimeType("noext"))
+
+        val coverKey = artifactCoverFileKey(3, "img/cover.png")
+        assertEquals(3 to "img/cover.png", parseArtifactCoverFileKey(coverKey))
+        assertNull(parseArtifactCoverFileKey("of_desktop"))
+        assertEquals(
+            "artifacts/$cardId/files/img%2Fcover.png?version=3",
+            artifactCoverFilePath(cardId, 3, "img/cover.png"),
+        )
+
+        val pngBytes = byteArrayOf(10, 20, 30)
+        val okNet = FakeBytesNetwork { HomeNetworkBytesResponse(200, pngBytes, "image/png; charset=binary") }
+        val ok = assertIs<ArtifactScreenshotFetchResult.Ok>(NetworkArtifactScreenshotFetcher(okNet).fetchOutcome(key(coverKey)))
+        assertContentEquals(pngBytes, ok.bytes)
+        assertEquals(
+            listOf<Triple<String, ServerId?, Int>>(
+                Triple("artifacts/$cardId/files/img%2Fcover.png?version=3", ServerId(server), ARTIFACT_SCREENSHOT_MAX_FILE_BYTES)
+            ),
+            okNet.reads,
+        )
+
+        // MIME mismatch with the file's extension is rejected as TransientFailure.
+        val mismatchNet = FakeBytesNetwork { HomeNetworkBytesResponse(200, pngBytes, "image/jpeg") }
+        assertEquals(ArtifactScreenshotFetchResult.TransientFailure, NetworkArtifactScreenshotFetcher(mismatchNet).fetchOutcome(key(coverKey)))
+
+        // Unsupported extension (e.g. `.svg`) returns Gone without issuing a network request.
+        val svgNet = FakeBytesNetwork { error("must not fetch unsupported cover extension") }
+        assertEquals(
+            ArtifactScreenshotFetchResult.Gone,
+            NetworkArtifactScreenshotFetcher(svgNet).fetchOutcome(key(artifactCoverFileKey(3, "img/vector.svg"))),
+        )
+        assertEquals(0, svgNet.reads.size)
+
+        // Malformed cover synthetic key (e.g. version <= 0) returns Gone without falling through to screenshot route.
+        assertEquals(
+            ArtifactScreenshotFetchResult.Gone,
+            NetworkArtifactScreenshotFetcher(svgNet).fetchOutcome(key(artifactCoverFileKey(0, "img/cover.png"))),
+        )
+        assertEquals(0, svgNet.reads.size)
+
+        // 403 / 404 on cover fetch returns Gone so stale disk copies are evicted.
+        val goneNet = FakeBytesNetwork { HomeNetworkBytesResponse(404, byteArrayOf(), "application/json") }
+        assertEquals(
+            ArtifactScreenshotFetchResult.Gone,
+            NetworkArtifactScreenshotFetcher(goneNet).fetchOutcome(key(coverKey)),
+        )
+    }
 }

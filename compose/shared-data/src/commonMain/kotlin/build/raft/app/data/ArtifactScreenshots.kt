@@ -48,6 +48,44 @@ const val ARTIFACT_SCREENSHOT_MAX_FILE_BYTES: Int = 8 * 1024 * 1024
 @RaftCoreInternalApi fun artifactScreenshotPath(cardId: String, fileId: String): String =
     "objects/artifact/${cardId.appLinkPathSegment()}/files/${fileId.appLinkPathSegment()}"
 
+private const val ARTIFACT_COVER_KEY_PREFIX = "cover:"
+
+/**
+ * Expected raster MIME type for a publisher cover path (web `artifactImageSrc.ts`, raster subset
+ * supported by Coil without an SVG decoder): null for unsupported/non-image extensions (e.g. `.svg`).
+ */
+@RaftCoreInternalApi fun artifactCoverExpectedMimeType(path: String): String? {
+    val segment = path.substringAfterLast('/').trim()
+    val dot = segment.lastIndexOf('.')
+    if (dot <= 0 || dot == segment.lastIndex) return null
+    return when (segment.substring(dot + 1).lowercase()) {
+        "png" -> "image/png"
+        "jpg", "jpeg" -> "image/jpeg"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        else -> null
+    }
+}
+
+/** Synthetic [ArtifactScreenshotKey.fileId] for a publisher cover image at [version] and [path]. */
+@RaftCoreInternalApi fun artifactCoverFileKey(version: Int, path: String): String =
+    "$ARTIFACT_COVER_KEY_PREFIX$version:$path"
+
+/** Parses a synthetic cover key produced by [artifactCoverFileKey]; null for ordinary screenshot file IDs. */
+@RaftCoreInternalApi fun parseArtifactCoverFileKey(fileId: String): Pair<Int, String>? {
+    if (!fileId.startsWith(ARTIFACT_COVER_KEY_PREFIX)) return null
+    val rest = fileId.removePrefix(ARTIFACT_COVER_KEY_PREFIX)
+    val colon = rest.indexOf(':')
+    if (colon <= 0) return null
+    val version = rest.substring(0, colon).toIntOrNull()?.takeIf { it > 0 } ?: return null
+    val path = rest.substring(colon + 1).takeIf { it.isNotBlank() } ?: return null
+    return version to path
+}
+
+/** webArtifactsContract `GET /api/artifacts/:id/files/:path?version=:v`, under the API base (no `/api`). */
+@RaftCoreInternalApi fun artifactCoverFilePath(cardId: String, version: Int, path: String): String =
+    "artifacts/${cardId.appLinkPathSegment()}/files/${path.appLinkPathSegment()}?version=$version"
+
 /** One screenshot, by whose read it is (web `artifactReaderScope`: the Server) and its file route. */
 data class ArtifactScreenshotKey(
     val serverId: String,
@@ -83,16 +121,37 @@ data class ArtifactScreenshotKey(
         (fetchOutcome(key) as? ArtifactScreenshotFetchResult.Ok)?.bytes
 
     override suspend fun fetchOutcome(key: ArtifactScreenshotKey): ArtifactScreenshotFetchResult {
+        val isCoverKey = key.fileId.startsWith(ARTIFACT_COVER_KEY_PREFIX)
+        val cover = if (isCoverKey) parseArtifactCoverFileKey(key.fileId) ?: return ArtifactScreenshotFetchResult.Gone else null
+        val expectedCoverMime =
+            if (cover != null) {
+                artifactCoverExpectedMimeType(cover.second) ?: return ArtifactScreenshotFetchResult.Gone
+            } else {
+                null
+            }
+        val requestPath =
+            if (cover != null) {
+                artifactCoverFilePath(key.cardId, cover.first, cover.second)
+            } else {
+                artifactScreenshotPath(key.cardId, key.fileId)
+            }
         val response =
             networkClient.requestBytes(
                 // An on-screen card's own picture, as App link previews and the summaries.
                 priority = DataRequestPriority.Visible,
-                path = artifactScreenshotPath(key.cardId, key.fileId),
+                path = requestPath,
                 serverIdOverride = ServerId(key.serverId),
                 maxBytes = ARTIFACT_SCREENSHOT_MAX_FILE_BYTES,
             )
         if (response.code == 403 || response.code == 404) return ArtifactScreenshotFetchResult.Gone
-        if (!response.isSuccessful || response.contentType !in ARTIFACT_SCREENSHOT_TYPES) {
+        val normalizedContentType = response.contentType?.substringBefore(';')?.trim()?.lowercase()
+        val mimeOk =
+            if (expectedCoverMime != null) {
+                normalizedContentType == expectedCoverMime
+            } else {
+                normalizedContentType in ARTIFACT_SCREENSHOT_TYPES
+            }
+        if (!response.isSuccessful || !mimeOk) {
             return ArtifactScreenshotFetchResult.TransientFailure
         }
         val bytes = response.bytes?.takeIf { it.isNotEmpty() } ?: return ArtifactScreenshotFetchResult.TransientFailure

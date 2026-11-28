@@ -260,4 +260,78 @@ class RaftArtifactViewerEmbedTest {
         assertFalse(externalOnlyPayload.has("browser"))
         assertTrue(externalOnlyPayload.optBoolean("externalBrowser", false))
     }
+
+    @Test
+    fun viewerOpeningAppendsValidatedPanelAndCommentParamsAndSupportsKeptHashOpen() {
+        val target = ArtifactLinkTarget(id)
+        val commentsWithAnchor = RaftArtifactViewerOpening(panel = "comments", commentId = "c_01234567-89ab-cdef")
+        assertEquals(
+            "$web/artifacts/$id?$embed&panel=comments&comment=c_01234567-89ab-cdef",
+            raftArtifactViewerEmbeddedPageUrl(web, target, opening = commentsWithAnchor),
+        )
+        val navScript = raftArtifactViewerNavigateScript(web, "", target, opening = commentsWithAnchor)
+        assertTrue("\"/artifacts/$id?$embed&panel=comments&comment=c_01234567-89ab-cdef\"" in navScript)
+        assertTrue("\"#panel=comments\"" in navScript)
+
+        // Malformed panel or comment id is dropped safely.
+        val malformed = RaftArtifactViewerOpening(panel = "evil", commentId = "javascript:alert(1)")
+        assertEquals("$web/artifacts/$id?$embed", raftArtifactViewerEmbeddedPageUrl(web, target, opening = malformed))
+        assertEquals(null, malformed.normalizedOrNull())
+
+        // PageData roundtrip preserves valid opening and drops malformed ones.
+        val data = raftArtifactViewerPageData(target, opening = commentsWithAnchor)
+        assertEquals(commentsWithAnchor, data.raftArtifactViewerOpeningOrNull())
+        assertEquals(null, raftArtifactViewerPageData(target, opening = malformed).raftArtifactViewerOpeningOrNull())
+
+        // Comment ID without explicit panel defaults panel to `comments`.
+        assertEquals(
+            RaftArtifactViewerOpening(panel = "comments", commentId = "c_1"),
+            RaftArtifactViewerOpening(panel = null, commentId = "c_1").normalizedOrNull(),
+        )
+
+        // Kept document hash-open script sets `#panel=comments` under webOrigin guard.
+        val openPanelScript = raftArtifactViewerOpenPanelScript(web, "comments")
+        assertTrue("\"#panel=comments\"" in openPanelScript)
+        assertEquals("", raftArtifactViewerOpenPanelScript(web, "unknown"))
+
+        // Comment opening drops a parked same-Artifact slot so ArtifactStandalonePage mounts with `?comment=`.
+        val scope = RaftArtifactViewerScope(webOrigin = web, environmentId = "prod", accountId = "acc-1", serverId = "srv-1")
+        val cache = RaftArtifactViewerCache()
+        val slotKey = raftArtifactViewerSlotKey(scope, target, conversationId = null, hostHead = null, langTag = null, useMultiSlot = true)
+        val parkedUrl = "$web/artifacts/$id?$embed&hostToolbar=1"
+        cache.rememberKeptDocument(scope, target, parkedUrl, accessToken = "tok-1", slotKey = slotKey, renderedArtifact = true)
+        val parkedDoc = RaftWebViewKeptDocument(src = parkedUrl, currentUrl = parkedUrl, loaded = true)
+        val dropped = mutableListOf<String>()
+        val reasons = mutableListOf<String>()
+        assertFalse(
+            raftArtifactViewerInitialWarmBarReady(
+                scope = scope,
+                target = target,
+                accessToken = "tok-1",
+                conversationId = null,
+                hostHead = null,
+                langTag = null,
+                useMultiSlot = true,
+                reloadIfShowsTarget = true,
+                cache = cache,
+                readKept = { key -> if (key == slotKey) parkedDoc else null },
+            ),
+        )
+        val resolution =
+            resolveRaftArtifactViewerKeptSlot(
+                scope = scope,
+                target = target,
+                accessToken = "tok-1",
+                useMultiSlot = true,
+                reloadIfShowsTarget = true,
+                cache = cache,
+                readKept = { key -> if (key == slotKey) parkedDoc else null },
+                dropKept = { dropped += it },
+                onDroppedReason = { reasons += it },
+            )
+        assertEquals(null, resolution.document)
+        assertFalse(resolution.showsTarget)
+        assertEquals(listOf(slotKey), dropped)
+        assertEquals(listOf("opening_comment_requires_mount"), reasons)
+    }
 }
