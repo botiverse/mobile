@@ -22,7 +22,7 @@ internal class ThreadChannelProfileUpdater(
     private val diagnosticsLogger: ((String) -> Unit)?,
     private val currentState: () -> SharedThreadState,
     private val currentRouteStaleToken: () -> MviStaleToken,
-    private val reduceState: (SharedThreadState) -> Boolean,
+    private val reduceState: ((SharedThreadState) -> SharedThreadState) -> Boolean,
     private val reducePayloadPatch: (
         cachePayload: Boolean,
         patch: (RaftThreadScreenPayload) -> RaftThreadScreenPayload
@@ -55,24 +55,24 @@ internal class ThreadChannelProfileUpdater(
             diagnosticsLogger?.invoke(
                 "thread_channel_profile_update_skip channelId=${intent.channelId} reason=unchanged"
             )
-            reduceState(
-                current.copy(
+            reduceState { latest ->
+                latest.copy(
                     channelProfileUpdateStatus = ChannelProfileUpdateStatus.Succeeded,
                     channelProfileUpdateErrorCode = null
                 )
-            )
+            }
             return
         }
         diagnosticsLogger?.invoke(
             "thread_channel_profile_update_start channelId=${intent.channelId} " +
                 "nameChanged=${name != originalName} descriptionChanged=${description != originalDescription}"
         )
-        reduceState(
-            current.copy(
+        reduceState { latest ->
+            latest.copy(
                 channelProfileUpdateStatus = ChannelProfileUpdateStatus.InFlight,
                 channelProfileUpdateErrorCode = null
             )
-        )
+        }
         val result = dataSource.updateChannelProfile(ChannelId(intent.channelId), name, description)
         if (!channelProfileUpdateStillCurrent(staleToken, routeIdentity, intent.channelId, "after_network")) {
             return
@@ -107,12 +107,12 @@ internal class ThreadChannelProfileUpdater(
                 diagnosticsLogger?.invoke(
                     "thread_channel_profile_update_success channelId=${canonical.channelId.value}"
                 )
-                reduceState(
-                    currentState().copy(
+                reduceState { latest ->
+                    latest.copy(
                         channelProfileUpdateStatus = ChannelProfileUpdateStatus.Succeeded,
                         channelProfileUpdateErrorCode = null
                     )
-                )
+                }
             }
             is DataResult.Error -> failChannelProfileUpdate(result.error.code)
             is DataResult.NoPermission -> failChannelProfileUpdate(result.blocker.code)
@@ -143,20 +143,20 @@ internal class ThreadChannelProfileUpdater(
 
     private fun failChannelProfileUpdate(errorCode: String) {
         diagnosticsLogger?.invoke("thread_channel_profile_update_failed errorCode=$errorCode")
-        reduceState(
-            currentState().copy(
+        reduceState { latest ->
+            latest.copy(
                 channelProfileUpdateStatus = ChannelProfileUpdateStatus.Failed,
                 channelProfileUpdateErrorCode = errorCode
             )
-        )
+        }
     }
 
     fun clearChannelProfileUpdateStatus() {
-        reduceState(
-            currentState().copy(
+        reduceState { latest ->
+            latest.copy(
                 channelProfileUpdateStatus = ChannelProfileUpdateStatus.Idle,
                 channelProfileUpdateErrorCode = null
             )
-        )
+        }
     }
 }

@@ -246,6 +246,8 @@ internal class ThreadRealtimeGapRecovery(
                     var appliedToCurrentRoute = false
                     var committedForCache: RaftThreadScreenPayload? = null
                     reducePayloadPatch(cachePayload = false) { latestPayload ->
+                        appliedToCurrentRoute = false
+                        committedForCache = null
                         if (
                             !staleTokenStillCurrent(staleToken, "thread_page", "newer_local_commit", initial, latestPayload) ||
                             !routeStillCurrent(initial, "thread_page", "newer_local_commit", latestPayload)
@@ -444,6 +446,7 @@ internal class ThreadRealtimeGapRecovery(
                         }
                     var appliedToCurrentRoute = false
                     reducePayloadPatch(cachePayload = !currentPayload.durableLastKnown) { latestPayload ->
+                        appliedToCurrentRoute = false
                         if (
                             !staleTokenStillCurrent(
                                 staleToken,
@@ -941,6 +944,7 @@ internal class ThreadRealtimeGapRecovery(
                                 .preserveStableTimelineFrom(currentPayload)
                         var applied = false
                         reducePayloadPatch { latestPayload ->
+                            applied = false
                             if (
                                 !staleTokenStillCurrent(
                                     staleToken,

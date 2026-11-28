@@ -924,26 +924,37 @@ internal class SharedThreadStore(
         releaseForegroundLoadLease(expected = null, reason = "cleared")
         loadOlderState = null
         advanceRouteStaleToken()
-        val currentState = _state.value
-        if (currentState.payload.newerMessagesStatus == "loading" || currentState.payload.olderMessagesStatus == "loading") {
-            val patchedPayload =
-                currentState.payload.copy(
-                    olderMessagesStatus =
-                        if (currentState.payload.olderMessagesStatus == "loading") "idle" else currentState.payload.olderMessagesStatus,
-                    newerMessagesStatus =
-                        if (currentState.payload.newerMessagesStatus == "loading") "idle" else currentState.payload.newerMessagesStatus,
-                )
-            val emitted =
-                reduceStateInternal(
-                    currentState.copy(payload = patchedPayload, loadingIndicatorRevealed = false),
-                    manageLoadingTimer = false,
-                )
-            if (emitted) {
-                dataSource.cachePayload(
-                    _state.value.payload,
-                    ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
-                )
+        val clearResult =
+            reduceStateTransition(manageLoadingTimer = false) { currentState ->
+                if (
+                    currentState.payload.newerMessagesStatus == "loading" ||
+                    currentState.payload.olderMessagesStatus == "loading"
+                ) {
+                    val patchedPayload =
+                        currentState.payload.copy(
+                            olderMessagesStatus =
+                                if (currentState.payload.olderMessagesStatus == "loading") {
+                                    "idle"
+                                } else {
+                                    currentState.payload.olderMessagesStatus
+                                },
+                            newerMessagesStatus =
+                                if (currentState.payload.newerMessagesStatus == "loading") {
+                                    "idle"
+                                } else {
+                                    currentState.payload.newerMessagesStatus
+                                },
+                        )
+                    currentState.copy(payload = patchedPayload, loadingIndicatorRevealed = false)
+                } else {
+                    currentState
+                }
             }
+        if (clearResult.emitted) {
+            dataSource.cachePayload(
+                clearResult.committed.payload,
+                ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
+            )
         }
         cancelLoadingRevealTimer()
         visiblePayloadOwnerScopeId = null
@@ -1350,7 +1361,7 @@ internal class SharedThreadStore(
                 val admitted =
                     dataSource.withCurrentReplyCacheProvenance(producerContext.provenance) {
                         visiblePayloadOwnerScopeId = payloadOwnerScopeId
-                        reduceState(
+                        reduceState {
                             SharedThreadState(
                                 payload = immediateVisiblePayload,
                                 highlightedMentions = emptySet(),
@@ -1368,7 +1379,7 @@ internal class SharedThreadStore(
                                         ),
                                 loadingIndicatorRevealed = false,
                             )
-                        )
+                        }
                         true
                     }
                 if (admitted == true) {
@@ -1523,17 +1534,16 @@ internal class SharedThreadStore(
                 val admitted =
                     producerContext?.let { context ->
                         dataSource.withCurrentReplyCacheProvenance(context.provenance) {
-                            val liveState = _state.value
-                            val livePayload = liveState.payload
+                            val livePayload = _state.value.payload
                             if (!shouldUpgradeImmediateFromDisk || durableLastKnownWithReplies == null) {
                                 // Disk is equal or older than the already-rendered Frame-1 memory copy:
                                 // keep the richer memory state intact (metadata, originMessage, older pages,
                                 // and any live realtime/access updates) and only enrich truncated seeds.
-                                val upgraded =
-                                    durableLastKnownWithReplies?.let { livePayload.withActivitySeedBodiesFrom(it) }
-                                        ?: livePayload
-                                if (upgraded !== livePayload) {
-                                    reduceState(liveState.copy(payload = upgraded))
+                                if (durableLastKnownWithReplies != null) {
+                                    reduceState { current ->
+                                        val upgraded = current.payload.withActivitySeedBodiesFrom(durableLastKnownWithReplies)
+                                        if (upgraded === current.payload) current else current.copy(payload = upgraded)
+                                    }
                                 }
                             } else {
                                 val liveSeq = livePayload.newestServerSeqOrNull() ?: Long.MIN_VALUE
@@ -1555,21 +1565,27 @@ internal class SharedThreadStore(
                                     if (!upgradedVisible.lacksFocusedAnchor()) {
                                         visiblePayloadOwnerScopeId = payloadOwnerScopeId
                                         adoptedDurableScope = durableLastKnownScope
-                                        reduceState(
-                                            liveState.copy(
-                                                payload = upgradedVisible,
+                                        reduceState { current ->
+                                            val nextPayload =
+                                                if (current.payload === livePayload) {
+                                                    upgradedVisible
+                                                } else {
+                                                    current.payload.withDurableTimelineOverlay(upgradedVisible)
+                                                }
+                                            current.copy(
+                                                payload = nextPayload,
                                                 loadingIndicatorRevealed = false,
                                             )
-                                        )
+                                        }
                                         diagnosticsLogger?.invoke(
                                             "thread_visible_payload threadId=${threadId.orEmpty()} status=${upgradedVisible.status} " +
                                                 "messages=${upgradedVisible.messages.size} " + upgradedVisible.originDiagnostics()
                                         )
                                     }
                                 } else {
-                                    val upgraded = livePayload.withActivitySeedBodiesFrom(durableLastKnownWithReplies)
-                                    if (upgraded !== livePayload) {
-                                        reduceState(liveState.copy(payload = upgraded))
+                                    reduceState { current ->
+                                        val upgraded = current.payload.withActivitySeedBodiesFrom(durableLastKnownWithReplies)
+                                        if (upgraded === current.payload) current else current.copy(payload = upgraded)
                                     }
                                 }
                             }
@@ -1579,7 +1595,7 @@ internal class SharedThreadStore(
                 if (admitted == null) {
                     visiblePayloadOwnerScopeId =
                         dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
-                    reduceState(
+                    reduceState {
                         SharedThreadState(
                             payload =
                                 if (threadId == null) {
@@ -1600,7 +1616,7 @@ internal class SharedThreadStore(
                             writeActionsEnabled = false,
                             loadingIndicatorRevealed = isLoadingRevealElapsedForCurrentGeneration(),
                         )
-                    )
+                    }
                 }
             }
             if (staleDropped) return
@@ -1729,7 +1745,7 @@ internal class SharedThreadStore(
                             if (durableCandidateSelected) {
                                 adoptedDurableScope = durableLastKnownScope
                             }
-                            reduceState(
+                            reduceState {
                                 SharedThreadState(
                                     payload = visiblePayload,
                                     highlightedMentions = emptySet(),
@@ -1751,13 +1767,13 @@ internal class SharedThreadStore(
                                             ),
                                     loadingIndicatorRevealed = isLoadingRevealElapsedForCurrentGeneration(),
                                 )
-                            )
+                            }
                         }
                     }
                 if (admitted == null) {
                     visiblePayloadOwnerScopeId =
                         dataSource.currentReplyCacheProvenance()?.threadPayloadOwnerScopeId
-                    reduceState(
+                    reduceState {
                         SharedThreadState(
                             payload =
                                 if (threadId == null) {
@@ -1778,7 +1794,7 @@ internal class SharedThreadStore(
                             writeActionsEnabled = false,
                             loadingIndicatorRevealed = isLoadingRevealElapsedForCurrentGeneration(),
                         )
-                    )
+                    }
                 }
             }
             if (staleDropped) return
@@ -1792,10 +1808,16 @@ internal class SharedThreadStore(
         delay(SharedThreadFirstFrameDelayMillis)
         if (
             staleTokenStillCurrent(staleToken, "thread_start", "highlight_mentions", routeContextPayload) &&
-            (threadId == null || _state.value.payload.sourceThreadId == threadId) &&
             producerContext?.provenance?.let(dataSource::isCurrentReplyCacheProvenance) == true
         ) {
-            reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
+            val mentions = session.threadSelfMentionNames()
+            reduceState { current ->
+                if (threadId == null || current.payload.sourceThreadId == threadId) {
+                    current.copy(highlightedMentions = mentions)
+                } else {
+                    current
+                }
+            }
         }
         // Process restart / page entry: adopt journaled sends whose owning attempt died and
         // resume automatic retries. Fire-and-forget; the drainer no-ops until provenance and a
@@ -2069,23 +2091,22 @@ internal class SharedThreadStore(
             initialAccessStateMutex.withLock {
                 val admitted =
                     dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
-                        val latest = _state.value
-                        val preservePositiveReplyCandidate =
-                            latest.payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
-                                latest.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
-                                latest.initialHomeAccessCandidate?.let { it.joined && it.permissions.canSend } == true
-                        reduceState(
-                            latest.copy(
-                                accessResolution = ThreadAccessResolution.Loading,
-                                canonicalAccessResolved = false,
-                                provisionalCanonicalAccess = false,
-                                initialHomeAccessLookupComplete =
-                                    if (preservePositiveReplyCandidate) latest.initialHomeAccessLookupComplete else false,
-                                initialHomeAccessCandidate =
-                                    if (preservePositiveReplyCandidate) latest.initialHomeAccessCandidate else null
-                            )
-                        )
-                        refreshStartState = _state.value
+                        refreshStartState =
+                            reduceStateTransition { latest ->
+                                val preservePositiveReplyCandidate =
+                                    latest.payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+                                        latest.replyParentAuthority == ReplyParentAuthorityStatus.Writable &&
+                                        latest.initialHomeAccessCandidate?.let { it.joined && it.permissions.canSend } == true
+                                latest.copy(
+                                    accessResolution = ThreadAccessResolution.Loading,
+                                    canonicalAccessResolved = false,
+                                    provisionalCanonicalAccess = false,
+                                    initialHomeAccessLookupComplete =
+                                        if (preservePositiveReplyCandidate) latest.initialHomeAccessLookupComplete else false,
+                                    initialHomeAccessCandidate =
+                                        if (preservePositiveReplyCandidate) latest.initialHomeAccessCandidate else null
+                                )
+                            }.committed
                     }
                 if (admitted == null) {
                     return
@@ -2363,165 +2384,191 @@ internal class SharedThreadStore(
                     acceptedReplies: Map<String, ThreadRepliesAcceptedProjection>,
                 ): Boolean? =
                     dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
-                        val currentState = _state.value
-                        val currentPayload = currentState.payload
+                        val initialPayload = _state.value.payload
                         if (
                             !staleTokenStillCurrent(
                                 staleToken,
                                 "thread_refresh",
                                 "access_apply",
                                 basePayload,
-                                currentPayload,
+                                initialPayload,
                             ) ||
-                            !routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)
+                            !routeStillCurrent(basePayload, "thread_refresh", "apply", initialPayload)
                         ) {
                             false
                         } else {
-                            // A positive Home candidate may resolve the footer before the canonical
-                            // fetch lands; the first canonical result still has to record itself.
-                            val resolvingInitialAccess =
-                                currentState.accessResolution != ThreadAccessResolution.Resolved ||
-                                    !currentState.canonicalAccessResolved
-                            val refreshStableNextPayload =
+                            // artin #110: fold held live events onto the canonical answer ONCE before the
+                            // CAS loop so reaction-guard consumption never repeats across CAS retries.
+                            val foldedNextPayload =
                                 if (result is DataResult.Content) {
-                                    // artin #110: the live events that arrived during the request, folded
-                                    // onto its answer before it replaces the live timeline.
-                                    nextPayload.withInFlightRealtimeFolded(realtimeFold).preserveStableTimelineFrom(
-                                        previous = currentPayload,
-                                        preserveAuxiliaryProjectionFromPrevious = true,
-                                        refreshObservedMessageIds = refreshObservedMessageIds,
-                                        sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId,
-                                    )
+                                    nextPayload.withInFlightRealtimeFolded(realtimeFold)
                                 } else {
                                     nextPayload
                                 }
-                            val commitNextPayload =
-                                refreshStableNextPayload.withAcceptedThreadRepliesProjection(
-                                    acceptedReplies,
-                                    currentPayload,
-                                )
-                            val projectedPayload =
-                                currentPayload
-                                    .withThreadContentProjectionFrom(commitNextPayload)
-                                    .let { payload ->
-                                        // Web #16398 (bug #555): when the focused target returned a final
-                                        // 404 / message_not_found and fell back quietly to the latest
-                                        // messages / replies, clear the stale focusedMessageId so the
-                                        // thread does not stay stuck waiting on a deleted message.
-                                        if (commitNextPayload.focusedTargetMissing) {
-                                            payload.copy(
-                                                focusedMessageId = null,
-                                                focusedMessageRequestNonce = 0,
-                                                focusedTargetMissing = true,
+                            var staleDropKind: String? = null
+                            var staleDropPayload: RaftThreadScreenPayload? = null
+                            var committedAccessResolution: ThreadAccessResolution? = null
+                            var committedCanonicalResolved = false
+                            val reduction =
+                                reduceStateTransition { currentState ->
+                                    staleDropKind = null
+                                    staleDropPayload = null
+                                    committedAccessResolution = null
+                                    committedCanonicalResolved = false
+                                    val currentPayload = currentState.payload
+                                    if (!staleToken.isCurrent(routeStaleToken)) {
+                                        staleDropKind = "stale_token"
+                                        staleDropPayload = currentPayload
+                                        return@reduceStateTransition currentState
+                                    }
+                                    if (!currentPayload.isUsableCachedPayloadForRoute(basePayload)) {
+                                        staleDropKind = "route_changed"
+                                        staleDropPayload = currentPayload
+                                        return@reduceStateTransition currentState
+                                    }
+                                    // A positive Home candidate may resolve the footer before the canonical
+                                    // fetch lands; the first canonical result still has to record itself.
+                                    val resolvingInitialAccess =
+                                        currentState.accessResolution != ThreadAccessResolution.Resolved ||
+                                            !currentState.canonicalAccessResolved
+                                    val refreshStableNextPayload =
+                                        if (result is DataResult.Content) {
+                                            foldedNextPayload.preserveStableTimelineFrom(
+                                                previous = currentPayload,
+                                                preserveAuxiliaryProjectionFromPrevious = true,
+                                                refreshObservedMessageIds = refreshObservedMessageIds,
+                                                sendEchoMatchPolicy = ThreadSendEchoMatchPolicy.ExactRandomId,
                                             )
                                         } else {
-                                            payload
+                                            foldedNextPayload
                                         }
-                                    }
-                                    .let { payload ->
-                                        if (
-                                            resolvingInitialAccess &&
-                                            result is DataResult.Content &&
-                                            payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
-                                            nextPayload.canonicalAccessKnown
-                                        ) {
-                                            payload.withCanonicalConversationAccessFrom(nextPayload)
-                                        } else {
-                                            payload
-                                        }
-                                    }
-                                    .withInitialHomeConversationAccessFallbackUnlessCanonical(
-                                        canonicalAccessResolved =
-                                            currentState.canonicalAccessResolved ||
-                                                currentState.provisionalCanonicalAccess ||
-                                                (resolvingInitialAccess && result is DataResult.Content && nextPayload.canonicalAccessKnown),
-                                        candidate = currentState.initialHomeAccessCandidate,
-                                    )
-                                    .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
-                                        homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                                        homeAccessCandidate = currentState.initialHomeAccessCandidate,
-                                    )
-                            // A reply thread's canonical stream carries synthetic `type = "thread"`
-                            // details (`canonicalAccessKnown = false`) because write authority
-                            // belongs to its parent channel in Home. Loading the reply stream
-                            // still proves canonical read access for the reply surface.
-                            val canonicalAccessFromResultKnown =
-                                when (result) {
-                                    is DataResult.Content ->
-                                        nextPayload.canonicalAccessKnown ||
-                                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread
-                                    is DataResult.Empty -> !projectedPayload.isTaskConversationSurface()
-                                    else -> true
-                                }
-                            val canonicalAccessResolved =
-                                currentState.canonicalAccessResolved ||
-                                    (resolvingInitialAccess && result.resolvesCanonicalConversationAccess() && canonicalAccessFromResultKnown)
-                            // When a non-reply canonical response could not attest membership (e.g.
-                            // task conversation whose parent channel detail fetch failed), keep the
-                            // timeline renderable without overwriting already-known membership or
-                            // falsely flashing "Join channel" (web tri-state parentJoined === undefined).
-                            val unknownCanonicalContentAccess =
-                                result is DataResult.Content &&
-                                    !nextPayload.canonicalAccessKnown &&
-                                    projectedPayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
-                                    !canonicalAccessResolved
-                            val projectedAccessResolution =
-                                if (
-                                    unknownCanonicalContentAccess &&
-                                    currentState.accessResolution != ThreadAccessResolution.NoPermission &&
-                                    currentState.accessResolution != ThreadAccessResolution.Error
-                                ) {
-                                    ThreadAccessResolution.Resolved
-                                } else {
-                                    currentState.accessResolution.afterRefreshResult(
-                                        result = result,
-                                        canonicalAccessResolved = canonicalAccessResolved,
-                                        homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                                        homeAccessCandidate = currentState.initialHomeAccessCandidate,
-                                        requiresParentAccessCandidate =
-                                            projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread,
-                                        hasReadableCanonicalReplyContent =
-                                            projectedPayload.hasReadableCanonicalReplyContent(),
-                                    )
-                                }
-                            val authorityProjectedPayload =
-                                projectedPayload.withTerminalAccessWriteAuthorityClosed(projectedAccessResolution)
-                            // If membership was never attested on a non-reply page (e.g. unknown task
-                            // parent followed by an offline DataResult.Error or empty task response),
-                            // preserve the existing writeActionsEnabled rather than letting Resolved
-                            // defaults turn writeActionsEnabled from false to true.
-                            val preserveUnresolvedNonReplyWriteAuthority =
-                                !canonicalAccessResolved &&
-                                    !currentState.provisionalCanonicalAccess &&
-                                    authorityProjectedPayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
-                                    (result is DataResult.Error || (result is DataResult.Empty && !canonicalAccessFromResultKnown)) &&
-                                    currentState.accessResolution == ThreadAccessResolution.Resolved &&
-                                    projectedAccessResolution == ThreadAccessResolution.Resolved
-                            val projectedWriteActionsEnabled =
-                                when {
-                                    unknownCanonicalContentAccess ->
-                                        when {
-                                            currentState.accessResolution == ThreadAccessResolution.Resolved ->
-                                                currentState.writeActionsEnabled
-                                            currentState.initialHomeAccessCandidate != null &&
-                                                authorityProjectedPayload.acceptsInitialConversationAccessCandidate(
-                                                    currentState.initialHomeAccessCandidate
-                                                ) &&
-                                                currentState.initialHomeAccessCandidate.joined &&
-                                                currentState.initialHomeAccessCandidate.permissions.canSend ->
-                                                true
-                                            else -> false
-                                        }
-                                    preserveUnresolvedNonReplyWriteAuthority -> currentState.writeActionsEnabled
-                                    else ->
-                                        authorityProjectedPayload.hasWriteAuthorityForAccess(
-                                            accessResolution = projectedAccessResolution,
-                                            homeLookupComplete = currentState.initialHomeAccessLookupComplete,
-                                            homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                                    val commitNextPayload =
+                                        refreshStableNextPayload.withAcceptedThreadRepliesProjection(
+                                            acceptedReplies,
+                                            currentPayload,
                                         )
-                                }
-                            val didEmit =
-                                reduceState(
+                                    val projectedPayload =
+                                        currentPayload
+                                            .withThreadContentProjectionFrom(commitNextPayload)
+                                            .let { payload ->
+                                                // Web #16398 (bug #555): when the focused target returned a final
+                                                // 404 / message_not_found and fell back quietly to the latest
+                                                // messages / replies, clear the stale focusedMessageId so the
+                                                // thread does not stay stuck waiting on a deleted message.
+                                                if (commitNextPayload.focusedTargetMissing) {
+                                                    payload.copy(
+                                                        focusedMessageId = null,
+                                                        focusedMessageRequestNonce = 0,
+                                                        focusedTargetMissing = true,
+                                                    )
+                                                } else {
+                                                    payload
+                                                }
+                                            }
+                                            .let { payload ->
+                                                if (
+                                                    resolvingInitialAccess &&
+                                                    result is DataResult.Content &&
+                                                    payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                                                    nextPayload.canonicalAccessKnown
+                                                ) {
+                                                    payload.withCanonicalConversationAccessFrom(nextPayload)
+                                                } else {
+                                                    payload
+                                                }
+                                            }
+                                            .withInitialHomeConversationAccessFallbackUnlessCanonical(
+                                                canonicalAccessResolved =
+                                                    currentState.canonicalAccessResolved ||
+                                                        currentState.provisionalCanonicalAccess ||
+                                                        (resolvingInitialAccess && result is DataResult.Content && nextPayload.canonicalAccessKnown),
+                                                candidate = currentState.initialHomeAccessCandidate,
+                                            )
+                                            .withReadOnlyReplyAccessWhenHomeCandidateUnavailable(
+                                                homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                                homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                                            )
+                                    // A reply thread's canonical stream carries synthetic `type = "thread"`
+                                    // details (`canonicalAccessKnown = false`) because write authority
+                                    // belongs to its parent channel in Home. Loading the reply stream
+                                    // still proves canonical read access for the reply surface.
+                                    val canonicalAccessFromResultKnown =
+                                        when (result) {
+                                            is DataResult.Content ->
+                                                nextPayload.canonicalAccessKnown ||
+                                                    projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread
+                                            is DataResult.Empty -> !projectedPayload.isTaskConversationSurface()
+                                            else -> true
+                                        }
+                                    val canonicalAccessResolved =
+                                        currentState.canonicalAccessResolved ||
+                                            (resolvingInitialAccess && result.resolvesCanonicalConversationAccess() && canonicalAccessFromResultKnown)
+                                    // When a non-reply canonical response could not attest membership (e.g.
+                                    // task conversation whose parent channel detail fetch failed), keep the
+                                    // timeline renderable without overwriting already-known membership or
+                                    // falsely flashing "Join channel" (web tri-state parentJoined === undefined).
+                                    val unknownCanonicalContentAccess =
+                                        result is DataResult.Content &&
+                                            !nextPayload.canonicalAccessKnown &&
+                                            projectedPayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                                            !canonicalAccessResolved
+                                    val projectedAccessResolution =
+                                        if (
+                                            unknownCanonicalContentAccess &&
+                                            currentState.accessResolution != ThreadAccessResolution.NoPermission &&
+                                            currentState.accessResolution != ThreadAccessResolution.Error
+                                        ) {
+                                            ThreadAccessResolution.Resolved
+                                        } else {
+                                            currentState.accessResolution.afterRefreshResult(
+                                                result = result,
+                                                canonicalAccessResolved = canonicalAccessResolved,
+                                                homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                                homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                                                requiresParentAccessCandidate =
+                                                    projectedPayload.surfaceKind == RaftThreadSurfaceKind.ReplyThread,
+                                                hasReadableCanonicalReplyContent =
+                                                    projectedPayload.hasReadableCanonicalReplyContent(),
+                                            )
+                                        }
+                                    val authorityProjectedPayload =
+                                        projectedPayload.withTerminalAccessWriteAuthorityClosed(projectedAccessResolution)
+                                    // If membership was never attested on a non-reply page (e.g. unknown task
+                                    // parent followed by an offline DataResult.Error or empty task response),
+                                    // preserve the existing writeActionsEnabled rather than letting Resolved
+                                    // defaults turn writeActionsEnabled from false to true.
+                                    val preserveUnresolvedNonReplyWriteAuthority =
+                                        !canonicalAccessResolved &&
+                                            !currentState.provisionalCanonicalAccess &&
+                                            authorityProjectedPayload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                                            (result is DataResult.Error || (result is DataResult.Empty && !canonicalAccessFromResultKnown)) &&
+                                            currentState.accessResolution == ThreadAccessResolution.Resolved &&
+                                            projectedAccessResolution == ThreadAccessResolution.Resolved
+                                    val projectedWriteActionsEnabled =
+                                        when {
+                                            unknownCanonicalContentAccess ->
+                                                when {
+                                                    currentState.accessResolution == ThreadAccessResolution.Resolved ->
+                                                        currentState.writeActionsEnabled
+                                                    currentState.initialHomeAccessCandidate != null &&
+                                                        authorityProjectedPayload.acceptsInitialConversationAccessCandidate(
+                                                            currentState.initialHomeAccessCandidate
+                                                        ) &&
+                                                        currentState.initialHomeAccessCandidate.joined &&
+                                                        currentState.initialHomeAccessCandidate.permissions.canSend ->
+                                                        true
+                                                    else -> false
+                                                }
+                                            preserveUnresolvedNonReplyWriteAuthority -> currentState.writeActionsEnabled
+                                            else ->
+                                                authorityProjectedPayload.hasWriteAuthorityForAccess(
+                                                    accessResolution = projectedAccessResolution,
+                                                    homeLookupComplete = currentState.initialHomeAccessLookupComplete,
+                                                    homeAccessCandidate = currentState.initialHomeAccessCandidate,
+                                                )
+                                        }
+                                    committedAccessResolution = projectedAccessResolution
+                                    committedCanonicalResolved = canonicalAccessResolved
                                     currentState.copy(
                                         payload = authorityProjectedPayload,
                                         accessResolution = projectedAccessResolution,
@@ -2537,17 +2584,40 @@ internal class SharedThreadStore(
                                                 (hasRenderableContent && result.isChannelAccessDenial()),
                                         writeActionsEnabled = projectedWriteActionsEnabled,
                                     )
-                                )
-                            if (didEmit && visiblePayload != null) {
-                                committedPayload = authorityProjectedPayload
+                                }
+                            when (staleDropKind) {
+                                "stale_token" -> {
+                                    staleTokenStillCurrent(
+                                        staleToken,
+                                        "thread_refresh",
+                                        "access_apply",
+                                        basePayload,
+                                        staleDropPayload ?: _state.value.payload,
+                                    )
+                                    false
+                                }
+                                "route_changed" -> {
+                                    routeStillCurrent(
+                                        basePayload,
+                                        "thread_refresh",
+                                        "apply",
+                                        staleDropPayload ?: _state.value.payload,
+                                    )
+                                    false
+                                }
+                                else -> {
+                                    if (reduction.emitted && visiblePayload != null) {
+                                        committedPayload = reduction.committed.payload
+                                    }
+                                    rememberRefreshedAccess(
+                                        routePayload = basePayload,
+                                        provenance = refreshProvenance,
+                                        accessResolution = committedAccessResolution ?: reduction.committed.accessResolution,
+                                        canonicalAccessResolved = committedCanonicalResolved,
+                                    )
+                                    true
+                                }
                             }
-                            rememberRefreshedAccess(
-                                routePayload = basePayload,
-                                provenance = refreshProvenance,
-                                accessResolution = projectedAccessResolution,
-                                canonicalAccessResolved = canonicalAccessResolved,
-                            )
-                            true
                         }
                     }
                 if (replyIdentities.isEmpty()) {
@@ -2794,20 +2864,36 @@ internal class SharedThreadStore(
         val canonical = (result as? DataResult.Content)?.data ?: return
         initialAccessStateMutex.withLock {
             dataSource.withCurrentReplyCacheProvenanceForLocalSend(refreshProvenance) {
-                val currentPayload = _state.value.payload
+                val initialPayload = _state.value.payload
                 if (
-                    !staleTokenStillCurrent(staleToken, "thread_superseded_seed", "apply", routePayload, currentPayload) ||
-                    !routeStillCurrent(routePayload, "thread_superseded_seed", "apply", currentPayload)
+                    !staleTokenStillCurrent(staleToken, "thread_superseded_seed", "apply", routePayload, initialPayload) ||
+                    !routeStillCurrent(routePayload, "thread_superseded_seed", "apply", initialPayload)
                 ) {
                     return@withCurrentReplyCacheProvenanceForLocalSend
                 }
-                val filled = currentPayload.withActivitySeedBodiesFrom(canonical)
-                if (filled === currentPayload) return@withCurrentReplyCacheProvenanceForLocalSend
-                diagnosticsLogger?.invoke(
-                    "thread_superseded_activity_seed_bodies threadId=${routePayload.sourceThreadId.orEmpty()} " +
-                        "stillCut=${filled.messages.count { it.activityPreviewTruncated }}"
-                )
-                reduceState(_state.value.copy(payload = filled))
+                var appliedStillCut: Int? = null
+                reducePayloadPatch { currentPayload ->
+                    appliedStillCut = null
+                    if (
+                        !staleToken.isCurrent(routeStaleToken) ||
+                        !currentPayload.isUsableCachedPayloadForRoute(routePayload)
+                    ) {
+                        return@reducePayloadPatch currentPayload
+                    }
+                    val filled = currentPayload.withActivitySeedBodiesFrom(canonical)
+                    if (filled === currentPayload) {
+                        currentPayload
+                    } else {
+                        appliedStillCut = filled.messages.count { it.activityPreviewTruncated }
+                        filled
+                    }
+                }
+                appliedStillCut?.let { stillCut ->
+                    diagnosticsLogger?.invoke(
+                        "thread_superseded_activity_seed_bodies threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                            "stillCut=$stillCut"
+                    )
+                }
             }
         }
     }
@@ -3153,7 +3239,32 @@ internal class SharedThreadStore(
                     )
                     return@withCurrentReplyCacheProvenance false
                 }
-                val emitted = reduceState(current.copy(payload = nextPayload))
+                val reduction =
+                    reduceStateTransition { latest ->
+                        if (
+                            !latest.canAdmitLocalSend() ||
+                            !latest.payload.resolveThreadRouteIdentity().isPendingSendEquivalentTo(expectedRoute)
+                        ) {
+                            latest
+                        } else {
+                            val latestPrepared =
+                                latest.payload.copy(
+                                    focusedMessageId = null,
+                                    canLoadMoreAfter = false,
+                                    newerMessagesStatus = "idle"
+                                )
+                            val latestWithLocalSend = latestPrepared.withLocalSendStarted(message)
+                            val latestNextPayload =
+                                composerSeed?.let { seed ->
+                                    latestWithLocalSend.consumeComposerSeedForSend(
+                                        sentBody = seed.sentBody,
+                                        sentAttachmentIds = seed.sentAttachmentIds
+                                    )
+                                } ?: latestWithLocalSend
+                            latest.copy(payload = latestNextPayload)
+                        }
+                    }
+                val emitted = reduction.emitted
                 if (!emitted) {
                     when (
                         dataSource.clearPendingLocalSend(
@@ -3171,7 +3282,7 @@ internal class SharedThreadStore(
                         ThreadPendingSendJournal.ConsumeResult.NotFound -> Unit
                     }
                 }
-                if (emitted) endConversationUnreadHoldOnSend(nextPayload)
+                if (emitted) endConversationUnreadHoldOnSend(reduction.committed.payload)
                 emitted
             }
         } ?: false
@@ -3664,15 +3775,14 @@ internal class SharedThreadStore(
         val nonce = nextThreadFocusedMessageRequestNonce()
         // Keep the parents of the threads loaded now, before the jump may replace the window: the
         // pill's next tap must still reach them (see toLoadedThreadParents).
-        val before = _state.value
-        val remembered = loadedChannelThreadParents(before.payload).filterKeys { it !in before.unreadThreadParents }
-        reduceState(
-            before.copy(
-                unreadThreadJumpFocusNonce = nonce,
-                unreadThreadParents = if (remembered.isEmpty()) before.unreadThreadParents else before.unreadThreadParents + remembered,
-            )
-        )
-        val initial = _state.value.payload
+        val initial =
+            reduceStateTransition { before ->
+                val remembered = loadedChannelThreadParents(before.payload).filterKeys { it !in before.unreadThreadParents }
+                before.copy(
+                    unreadThreadJumpFocusNonce = nonce,
+                    unreadThreadParents = if (remembered.isEmpty()) before.unreadThreadParents else before.unreadThreadParents + remembered,
+                )
+            }.committed.payload
         if (initial.messages.any { it.id == target }) {
             focusMessage(target, switchToTab, nonce)
             return
@@ -3707,13 +3817,15 @@ internal class SharedThreadStore(
         diagnosticsLogger?.invoke(
             "thread_jump_to_message result=requested target=${target.take(8)} visibleMessages=${initial.messages.size}"
         )
-        reduceState(_state.value.copy(unreadThreadJumpLoading = true))
+        reduceState { current -> current.copy(unreadThreadJumpLoading = true) }
         try {
             adoptDurableIslandForJumpIfAvailable(focusRoute = focusRoute, staleToken = staleToken)
             refresh(basePayload = focusRoute, staleToken = staleToken)
         } finally {
             // The parent landed, or the load ended without it: the pill can be pressed again.
-            if (_state.value.unreadThreadJumpLoading) reduceState(_state.value.copy(unreadThreadJumpLoading = false))
+            reduceState { current ->
+                if (current.unreadThreadJumpLoading) current.copy(unreadThreadJumpLoading = false) else current
+            }
         }
         val loaded = _state.value.payload.messages.any { it.id == target }
         val superseded = !loaded && !staleToken.isCurrent(routeStaleToken)
@@ -3829,13 +3941,23 @@ internal class SharedThreadStore(
         )
         var applied = false
         dataSource.withCurrentReplyCacheProvenance(context.provenance) {
-            if (!staleTokenStillCurrent(staleToken, "thread_jump", "durable_island_apply", focusRoute)) {
+            if (
+                !staleTokenStillCurrent(staleToken, "thread_jump", "durable_island_apply", focusRoute) ||
+                !routeStillCurrent(focusRoute, "thread_jump", "durable_island_apply")
+            ) {
                 return@withCurrentReplyCacheProvenance
             }
             if (visiblePayloadOwnerScopeId != null && visiblePayloadOwnerScopeId != ownerScopeId) {
                 return@withCurrentReplyCacheProvenance
             }
+            val restoredIsland =
+                dataSource.restorePendingLocalSends(
+                    provenance = context.provenance,
+                    route = routeIdentity,
+                    canonicalPayload = withReplies,
+                )
             reducePayloadPatch(cachePayload = false) { currentPayload ->
+                applied = false
                 if (
                     !staleTokenStillCurrent(staleToken, "thread_jump", "durable_island_apply", focusRoute, currentPayload) ||
                     !routeStillCurrent(focusRoute, "thread_jump", "durable_island_apply", currentPayload)
@@ -3843,35 +3965,29 @@ internal class SharedThreadStore(
                     return@reducePayloadPatch currentPayload
                 }
                 applied = true
-                val mergedCandidate =
-                    currentPayload.withContentSliceFrom(withReplies).copy(
-                        channelArchived = currentPayload.channelArchived,
-                        channelCanUnarchive = currentPayload.channelCanUnarchive,
-                        originMessage = withReplies.originMessage ?: currentPayload.originMessage,
-                        originPreview = withReplies.originPreview ?: currentPayload.originPreview,
-                        originParentMessageId = withReplies.originParentMessageId ?: currentPayload.originParentMessageId,
-                        originStatus =
-                            if (withReplies.originMessage != null) {
-                                withReplies.originStatus
-                            } else {
-                                currentPayload.originStatus
-                            },
-                        originErrorCode =
-                            if (withReplies.originMessage != null) {
-                                withReplies.originErrorCode
-                            } else {
-                                currentPayload.originErrorCode
-                            },
-                        focusedMessageId = focusRoute.focusedMessageId,
-                        focusedMessageRequestNonce = focusRoute.focusedMessageRequestNonce,
-                        selectedTab = focusRoute.selectedTab,
-                        backgroundRefreshing = true,
-                    )
-                dataSource.restorePendingLocalSends(
-                    provenance = context.provenance,
-                    route = routeIdentity,
-                    canonicalPayload = mergedCandidate,
-                )
+                currentPayload.withContentSliceFrom(restoredIsland).copy(
+                    channelArchived = currentPayload.channelArchived,
+                    channelCanUnarchive = currentPayload.channelCanUnarchive,
+                    originMessage = restoredIsland.originMessage ?: currentPayload.originMessage,
+                    originPreview = restoredIsland.originPreview ?: currentPayload.originPreview,
+                    originParentMessageId = restoredIsland.originParentMessageId ?: currentPayload.originParentMessageId,
+                    originStatus =
+                        if (restoredIsland.originMessage != null) {
+                            restoredIsland.originStatus
+                        } else {
+                            currentPayload.originStatus
+                        },
+                    originErrorCode =
+                        if (restoredIsland.originMessage != null) {
+                            restoredIsland.originErrorCode
+                        } else {
+                            currentPayload.originErrorCode
+                        },
+                    focusedMessageId = focusRoute.focusedMessageId,
+                    focusedMessageRequestNonce = focusRoute.focusedMessageRequestNonce,
+                    selectedTab = focusRoute.selectedTab,
+                    backgroundRefreshing = true,
+                ).withOriginReplyCountAtLeastLoadedReplies()
             }
         }
         if (applied) {
@@ -3888,80 +4004,85 @@ internal class SharedThreadStore(
 
     private fun clearChannelProfileUpdateStatus() = channelProfileUpdater.clearChannelProfileUpdateStatus()
 
-    private fun reduceState(nextState: SharedThreadState): Boolean =
-        reduceStateInternal(nextState, manageLoadingTimer = true)
+    private data class StateReductionResult(
+        val previous: SharedThreadState,
+        val committed: SharedThreadState,
+        val emitted: Boolean,
+    )
 
-    private fun reduceStateInternal(
-        nextState: SharedThreadState,
-        manageLoadingTimer: Boolean,
-    ): Boolean {
-        val previousState = _state.value
-        val projectedPayload =
-            if (nextState.payload === previousState.payload) {
-                nextState.payload
-            } else {
-                readStateProjection.project(nextState.payload, visiblePayloadOwnerScopeId)
+    private fun reduceState(transform: (SharedThreadState) -> SharedThreadState): Boolean =
+        reduceStateTransition(manageLoadingTimer = true, transform = transform).emitted
+
+    private fun reduceStateTransition(
+        manageLoadingTimer: Boolean = true,
+        transform: (SharedThreadState) -> SharedThreadState,
+    ): StateReductionResult {
+        while (true) {
+            val previousState = _state.value
+            val candidateState = transform(previousState)
+            val projectedPayload =
+                if (candidateState.payload === previousState.payload) {
+                    candidateState.payload
+                } else {
+                    readStateProjection.project(candidateState.payload, visiblePayloadOwnerScopeId)
+                }
+            val payloadUpdated =
+                if (projectedPayload === candidateState.payload) {
+                    candidateState
+                } else {
+                    candidateState.copy(payload = projectedPayload)
+                }
+            val awaitsLoadingIndicator = payloadUpdated.awaitsInitialLoadingIndicator()
+            val desiredLoadingIndicatorRevealed =
+                when {
+                    !awaitsLoadingIndicator -> false
+                    initialLoadingRevealDelayMillis <= 0L -> true
+                    else -> payloadUpdated.loadingIndicatorRevealed || isLoadingRevealElapsedForCurrentGeneration()
+                }
+            val normalizedState =
+                if (payloadUpdated.loadingIndicatorRevealed == desiredLoadingIndicatorRevealed) {
+                    payloadUpdated
+                } else {
+                    payloadUpdated.copy(loadingIndicatorRevealed = desiredLoadingIndicatorRevealed)
+                }
+            val synchronizedState = normalizedState.withSynchronizedTimelineSlice()
+            val emitted = synchronizedState != previousState
+            if (!_state.compareAndSet(previousState, synchronizedState)) {
+                continue
             }
-        val payloadUpdated =
-            if (projectedPayload === nextState.payload) nextState else nextState.copy(payload = projectedPayload)
-        val awaitsLoadingIndicator = payloadUpdated.awaitsInitialLoadingIndicator()
-        val desiredLoadingIndicatorRevealed =
-            when {
-                !awaitsLoadingIndicator -> false
-                initialLoadingRevealDelayMillis <= 0L -> true
-                else -> payloadUpdated.loadingIndicatorRevealed || isLoadingRevealElapsedForCurrentGeneration()
+            if (manageLoadingTimer) {
+                if (!awaitsLoadingIndicator) {
+                    cancelLoadingRevealTimer()
+                } else if (!synchronizedState.loadingIndicatorRevealed) {
+                    ensureLoadingRevealTimerArmed()
+                }
             }
-        val normalizedState =
-            if (payloadUpdated.loadingIndicatorRevealed == desiredLoadingIndicatorRevealed) {
-                payloadUpdated
-            } else {
-                payloadUpdated.copy(loadingIndicatorRevealed = desiredLoadingIndicatorRevealed)
+            if (
+                emitted &&
+                synchronizedState.accessResolution.refusesReferenceTarget() &&
+                !previousState.accessResolution.refusesReferenceTarget()
+            ) {
+                // This page could not be read (refused, or gone): a reference resolved to it, locally
+                // or by an earlier fetch, must ask the server again on its next tap.
+                val forgotten = dataSource.forgetReferenceTargetsOf(synchronizedState.payload)
+                if (forgotten > 0) {
+                    diagnosticsLogger?.invoke(
+                        "thread_markdown_ref_forget reason=${synchronizedState.accessResolution.name} count=$forgotten"
+                    )
+                }
             }
-        val synchronizedState = normalizedState.withSynchronizedTimelineSlice()
-        if (manageLoadingTimer && !awaitsLoadingIndicator) {
-            cancelLoadingRevealTimer()
+            return StateReductionResult(
+                previous = previousState,
+                committed = synchronizedState,
+                emitted = emitted,
+            )
         }
-        val emitted = synchronizedState != previousState
-        if (!emitted) {
-            if (manageLoadingTimer && awaitsLoadingIndicator && !synchronizedState.loadingIndicatorRevealed) {
-                ensureLoadingRevealTimerArmed()
-            }
-            return false
-        }
-        _state.value = synchronizedState
-        if (manageLoadingTimer && awaitsLoadingIndicator && !synchronizedState.loadingIndicatorRevealed) {
-            ensureLoadingRevealTimerArmed()
-        }
-        if (
-            synchronizedState.accessResolution.refusesReferenceTarget() &&
-            !previousState.accessResolution.refusesReferenceTarget()
-        ) {
-            // This page could not be read (refused, or gone): a reference resolved to it, locally
-            // or by an earlier fetch, must ask the server again on its next tap.
-            val forgotten = dataSource.forgetReferenceTargetsOf(synchronizedState.payload)
-            if (forgotten > 0) {
-                diagnosticsLogger?.invoke(
-                    "thread_markdown_ref_forget reason=${synchronizedState.accessResolution.name} count=$forgotten"
-                )
-            }
-        }
-        return true
     }
 
     private suspend fun reducePayloadPatchAndCache(
         cachePayload: Boolean = false,
         patch: (RaftThreadScreenPayload) -> RaftThreadScreenPayload
-    ): Boolean {
-        val nextPayload = patch(_state.value.payload)
-        val emitted = reduceState(_state.value.copy(payload = nextPayload))
-        if (emitted && cachePayload && !_state.value.payload.durableLastKnown) {
-            dataSource.cachePayload(
-                _state.value.payload,
-                ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
-            )
-        }
-        return emitted
-    }
+    ): Boolean = reducePayloadPatch(cachePayload = cachePayload, patch = patch)
 
     private fun advanceRouteStaleToken(): MviStaleToken {
         routeStaleTokenValue += 1L
@@ -4012,14 +4133,13 @@ internal class SharedThreadStore(
      * caller evicts it.
      */
     private fun markConversationAccessLost(errorCode: String) {
-        val current = _state.value
-        reduceState(
+        reduceState { current ->
             current.copy(
                 payload = current.payload.copy(newerMessagesStatus = "error", errorCode = errorCode),
                 conversationAccessLost = true,
                 channelAccessDenied = true,
             )
-        )
+        }
     }
 
     private fun RaftThreadScreenPayload.withoutInFlightPagingLoading(): RaftThreadScreenPayload =
@@ -4036,15 +4156,18 @@ internal class SharedThreadStore(
         cachePayload: Boolean = false,
         patch: (RaftThreadScreenPayload) -> RaftThreadScreenPayload
     ): Boolean {
-        val nextPayload = patch(_state.value.payload)
-        val emitted = reduceState(_state.value.copy(payload = nextPayload))
-        if (emitted && cachePayload && !_state.value.payload.durableLastKnown) {
+        val result =
+            reduceStateTransition { current ->
+                val nextPayload = patch(current.payload)
+                if (nextPayload === current.payload) current else current.copy(payload = nextPayload)
+            }
+        if (result.emitted && cachePayload && !result.committed.payload.durableLastKnown) {
             dataSource.cachePayload(
-                _state.value.payload,
+                result.committed.payload,
                 ownerScopeId = visiblePayloadOwnerScopeId.orEmpty()
             )
         }
-        return emitted
+        return result.emitted
     }
 }
 
