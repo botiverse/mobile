@@ -852,6 +852,10 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
     val deletedAt: String?,
     /** A personal assistant's owner (`assistantOwnerUserId`); null for a shared agent. */
     val assistantOwnerUserId: String? = null,
+    /** Personal assistant pause timestamp (`assistantPausedAt`, ISO-8601) from `GET /agents/:id`. */
+    val assistantPausedAt: String? = null,
+    /** Who paused this personal assistant (`assistantPausedBy.name`), sent to owner and server owners/admins. */
+    val assistantPausedByName: String? = null,
     /** Raftbench service agent (`raftbenchService`); false for ordinary agents. */
     val raftbenchService: Boolean = false,
     /** App Bots only (`agents.managedByAppInstallId`); null for ordinary agents and guest projections. */
@@ -948,6 +952,8 @@ enum class AgentArchiveWorkspaceChoice(val wireValue: String) {
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId,
+        assistantPausedAt = assistantPausedAt,
+        assistantPausedByName = assistantPausedByName,
         raftbenchService = raftbenchService,
         managedByAppInstallId = managedByAppInstallId,
         managedByAppClientId = managedByAppClientId,
@@ -1205,6 +1211,10 @@ private data class AgentWireDto(
     val deletedAt: String? = null,
     /** Personal assistant (botiverse/slock packages/shared agent `assistantOwnerUserId`): its owner, else null. */
     val assistantOwnerUserId: String? = null,
+    /** Personal assistant pause timestamp (`assistantPausedAt`, ISO-8601) from `projectAssistantPause`. */
+    val assistantPausedAt: String? = null,
+    /** Who paused this personal assistant (`assistantPausedBy`: `{ id, name }`), sent to owner and server admins. */
+    val assistantPausedBy: AgentAssistantPausedByWireDto? = null,
     /** Raftbench service agent (`routes/agents.ts` `raftbenchService`); false for ordinary agents. */
     val raftbenchService: Boolean = false,
     /** App Bots only (`routes/agents.ts` `managedByAppInstallId`). */
@@ -1249,6 +1259,12 @@ private data class AgentWireDto(
      */
     val modelLimits: AgentModelLimitsWireDto? = null,
     val hostedRuntime: AgentHostedRuntimeWireDto? = null
+)
+
+@Serializable
+private data class AgentAssistantPausedByWireDto(
+    val id: String? = null,
+    val name: String? = null,
 )
 
 @Serializable
@@ -1347,6 +1363,9 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         activityDetail = activityDetail,
         deletedAt = deletedAt,
         assistantOwnerUserId = assistantOwnerUserId?.takeIf { it.isNotBlank() },
+        assistantPausedAt = assistantPausedAt?.trim()?.takeIf { it.isNotEmpty() },
+        assistantPausedByName =
+            assistantPausedBy?.name?.trim()?.takeIf { it.isNotEmpty() && !assistantPausedAt.isNullOrBlank() },
         raftbenchService = raftbenchService,
         managedByAppInstallId = managedByAppInstallId?.trim()?.takeIf { it.isNotBlank() },
         managedByAppClientId = managedByApp?.clientId?.trim()?.takeIf { it.isNotBlank() },

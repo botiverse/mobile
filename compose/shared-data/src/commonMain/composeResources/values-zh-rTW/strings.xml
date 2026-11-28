@@ -5150,6 +5150,13 @@
     <string name="assistant_paused_start">啟動</string>
     <string name="assistant_paused_starting">啟動中…</string>
     <string name="assistant_paused_start_failed">無法啟動，請再試一次。</string>
+    <string name="assistant_paused_other_body">在擁有者啟動它之前，它不會回覆，也不會傳送簡報。</string>
+    <string name="assistant_pause_action">暫停助理</string>
+    <string name="assistant_pause_confirm">暫停</string>
+    <string name="assistant_pause_confirm_title">要暫停「%1$s」嗎？</string>
+    <string name="assistant_pause_confirm_body">它目前這一輪會停止；在擁有者重新啟動之前，它不會回覆，也不會傳送簡報。擁有者會收到通知，而且只有擁有者能讓它恢復運作。</string>
+    <string name="assistant_pause_pausing">正在暫停…</string>
+    <string name="assistant_pause_paused">已暫停，並已通知它的擁有者。</string>
     <string name="assistant_setting_reads_dms">讀取我的私訊</string>
     <string name="assistant_setting_reads_dms_description">讀你的私訊，告訴你哪些在等你。關掉立即停止。</string>
     <string name="assistant_setting_send_as_owner">以我的身分傳送訊息</string>

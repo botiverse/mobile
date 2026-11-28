@@ -5150,6 +5150,13 @@
     <string name="assistant_paused_start">시작</string>
     <string name="assistant_paused_starting">시작하는 중…</string>
     <string name="assistant_paused_start_failed">시작하지 못했어요. 다시 시도해 주세요.</string>
+    <string name="assistant_paused_other_body">소유자가 다시 시작하기 전까지는 답장하지 않고 브리핑도 보내지 않아요.</string>
+    <string name="assistant_pause_action">어시스턴트 일시 중지</string>
+    <string name="assistant_pause_confirm">일시 중지</string>
+    <string name="assistant_pause_confirm_title">‘%1$s’ 어시스턴트를 일시 중지할까요?</string>
+    <string name="assistant_pause_confirm_body">진행 중인 턴이 멈추고, 소유자가 다시 시작하기 전까지는 답장하지 않고 브리핑도 보내지 않아요. 소유자에게 알림이 가고, 소유자만 다시 시작할 수 있어요.</string>
+    <string name="assistant_pause_pausing">일시 중지하는 중…</string>
+    <string name="assistant_pause_paused">일시 중지했어요. 소유자에게 알림을 보냈어요.</string>
     <string name="assistant_setting_reads_dms">내 다이렉트 메시지 읽기</string>
     <string name="assistant_setting_reads_dms_description">DM을 읽고 나를 기다리는 일을 알려 줘요. 끄면 바로 멈춰요.</string>
     <string name="assistant_setting_send_as_owner">내 이름으로 메시지 보내기</string>

@@ -1358,6 +1358,24 @@ internal fun MemberDetailPageContent(
                         remoteControls = MembersAgentRemoteControls(
                             serverRole = current.server.role,
                             turnStopStore = agentTurnStopStore,
+                            pauseAssistant =
+                                provider.agentControlsApi?.let { api ->
+                                    { targetAgentId ->
+                                        val result = api.pauseAssistant(targetAgentId)
+                                        if (result is DataResult.Content && result.data.paused) {
+                                            routeScope.launch {
+                                                provider.serverMembersStore.refreshMembers(
+                                                    current.server.id,
+                                                    DataRequestPriority.Foreground,
+                                                    force = true,
+                                                    reason = "assistant_pause",
+                                                )
+                                            }
+                                            localAgentDetailRefreshKey += 1
+                                        }
+                                        result
+                                    }
+                                },
                             subagentStopStore = agentSubagentStopStore,
                             workersStore = if (workersPanelEnabled) agentWorkersStore else null,
                             workerTimelineStore = if (workersPanelEnabled) agentWorkerTimelineStore else null,

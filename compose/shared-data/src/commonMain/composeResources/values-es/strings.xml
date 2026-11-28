@@ -5150,6 +5150,13 @@
     <string name="assistant_paused_start">Iniciar</string>
     <string name="assistant_paused_starting">Iniciando…</string>
     <string name="assistant_paused_start_failed">No se pudo iniciar. Inténtalo de nuevo.</string>
+    <string name="assistant_paused_other_body">No responderá ni enviará su informe hasta que su propietario lo inicie.</string>
+    <string name="assistant_pause_action">Pausar asistente</string>
+    <string name="assistant_pause_confirm">Pausar</string>
+    <string name="assistant_pause_confirm_title">¿Pausar a %1$s?</string>
+    <string name="assistant_pause_confirm_body">Su turno actual se detendrá, y no responderá ni enviará su informe hasta que su propietario vuelva a iniciarlo. Se notificará a su propietario, y solo esa persona podrá reanudarlo.</string>
+    <string name="assistant_pause_pausing">Pausando…</string>
+    <string name="assistant_pause_paused">En pausa. Se notificó a su propietario.</string>
     <string name="assistant_setting_reads_dms">Leer mis mensajes directos</string>
     <string name="assistant_setting_reads_dms_description">Lee tus MD para decirte qué te espera. Desactívalo y para al instante.</string>
     <string name="assistant_setting_send_as_owner">Enviar mensajes en mi nombre</string>

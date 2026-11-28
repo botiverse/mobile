@@ -78,3 +78,33 @@ import build.raft.app.RaftCoreInternalApi
     if (cleanAssistantOwner != null && currentUserId?.trim() != cleanAssistantOwner) return false
     return serverRoleCanControlAgentRuntime(serverRole) || isCreator
 }
+
+/**
+ * Web `AgentDetailPanel` `canPauseAssistant` (`packages/web/src/features/agent/AgentDetailPanel.tsx`):
+ * server owner or admin may pause another member's active (not yet paused, not archived, not
+ * bounded public projection) personal assistant. The assistant's own owner never sees Pause.
+ */
+@RaftCoreInternalApi fun canPausePersonalAssistant(
+    serverRole: String?,
+    currentUserId: String?,
+    assistantOwnerUserId: String?,
+    assistantPausedAt: String?,
+    creatorType: String?,
+    creatorId: String?,
+    deleted: Boolean,
+    isBoundedPublicProjection: Boolean,
+): Boolean {
+    val cleanOwner = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() }
+    val isPaused = !assistantPausedAt.isNullOrBlank()
+    val isAssistant = cleanOwner != null || isPaused
+    if (!isAssistant || isPaused || deleted || isBoundedPublicProjection) return false
+    val cleanUser = currentUserId?.trim()?.takeIf { it.isNotEmpty() } ?: return false
+    val isAssistantOwner =
+        if (cleanOwner != null) {
+            cleanOwner == cleanUser
+        } else {
+            creatorType?.trim()?.equals("user", ignoreCase = true) == true && creatorId?.trim() == cleanUser
+        }
+    if (isAssistantOwner) return false
+    return serverRoleCanStopAgents(serverRole?.trim()?.lowercase())
+}

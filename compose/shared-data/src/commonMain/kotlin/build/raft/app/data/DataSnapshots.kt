@@ -1220,6 +1220,10 @@ data class AgentDetailSummary(
     val deletedAt: String? = null,
     /** A personal assistant's owner; null for a shared agent (Agent Lounge v0 hides the Lounge for it). */
     val assistantOwnerUserId: String? = null,
+    /** Personal assistant pause timestamp (`assistantPausedAt`, ISO-8601) from `GET /agents/:id`. */
+    val assistantPausedAt: String? = null,
+    /** Who paused this personal assistant (`assistantPausedBy.name`), sent to owner and server owners/admins. */
+    val assistantPausedByName: String? = null,
     /** Raftbench service agent (`raftbenchService`); false for ordinary agents. */
     val raftbenchService: Boolean = false,
     /** App Bots only (`agents.managedByAppInstallId`); null for ordinary agents and guest projections. */
