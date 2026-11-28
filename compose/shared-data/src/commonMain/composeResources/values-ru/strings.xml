@@ -3416,7 +3416,7 @@
     <string name="settings_computers_placeholder_description">Для чего используется этот компьютер?</string>
     <string name="settings_computers_state_no_description">Нет описания</string>
     <string name="settings_computers_section_info">Сведения</string>
-    <string name="settings_computers_section_usage">Использование</string>
+    <string name="settings_computers_section_resources">Ресурсы</string>
     <string name="settings_computers_label_os">ОС</string>
     <string name="settings_computers_label_version">Версия Raft Computer</string>
     <string name="settings_computers_label_created">Дата создания</string>

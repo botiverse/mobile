@@ -3420,7 +3420,7 @@
     <string name="settings_computers_placeholder_description">What should this computer be used for?</string>
     <string name="settings_computers_state_no_description">No description</string>
     <string name="settings_computers_section_info">Info</string>
-    <string name="settings_computers_section_usage">Usage</string>
+    <string name="settings_computers_section_resources">Resources</string>
     <string name="settings_computers_label_os">OS</string>
     <string name="settings_computers_label_version">Computer version</string>
     <string name="settings_computers_label_created">Created</string>

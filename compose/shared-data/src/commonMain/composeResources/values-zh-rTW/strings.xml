@@ -3416,7 +3416,7 @@
     <string name="settings_computers_placeholder_description">這台電腦要用來做什麼？</string>
     <string name="settings_computers_state_no_description">沒有說明</string>
     <string name="settings_computers_section_info">資訊</string>
-    <string name="settings_computers_section_usage">用量</string>
+    <string name="settings_computers_section_resources">資源</string>
     <string name="settings_computers_label_os">作業系統</string>
     <string name="settings_computers_label_version">電腦版本</string>
     <string name="settings_computers_label_created">建立時間</string>

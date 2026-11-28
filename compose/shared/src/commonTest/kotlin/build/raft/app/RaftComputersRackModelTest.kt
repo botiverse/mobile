@@ -201,17 +201,17 @@ class RaftComputersRackModelTest {
     }
 
     @Test
-    fun detailUsageSectionShowsOnlyForOnlineComputersWithDiskOrMemory() {
+    fun detailResourcesSectionShowsOnlyForOnlineComputersWithDiskOrMemory() {
         val onlineEmptyWithRuntimes = computer(online = true).copy(runtimes = listOf("claude", "codex")).toRaftComputerRow()
-        assertFalse(raftComputerDetailShowsUsageSection(onlineEmptyWithRuntimes))
+        assertFalse(raftComputerDetailShowsResourcesSection(onlineEmptyWithRuntimes))
 
         val onlineWithDisk =
             computer(online = true, disk = SettingsComputerSizeStatusSnapshot(availableBytes = 100 * gib, totalBytes = 500 * gib)).toRaftComputerRow()
-        assertTrue(raftComputerDetailShowsUsageSection(onlineWithDisk))
+        assertTrue(raftComputerDetailShowsResourcesSection(onlineWithDisk))
 
         val onlineWithMemory =
             computer(online = true, memory = SettingsComputerSizeStatusSnapshot(availableBytes = 4 * gib, totalBytes = 16 * gib)).toRaftComputerRow()
-        assertTrue(raftComputerDetailShowsUsageSection(onlineWithMemory))
+        assertTrue(raftComputerDetailShowsResourcesSection(onlineWithMemory))
 
         val offlineWithLowDiskAndMemory =
             computer(
@@ -219,7 +219,7 @@ class RaftComputersRackModelTest {
                 disk = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 500 * gib),
                 memory = SettingsComputerSizeStatusSnapshot(availableBytes = 4 * gib, totalBytes = 16 * gib),
             ).toRaftComputerRow()
-        assertFalse(raftComputerDetailShowsUsageSection(offlineWithLowDiskAndMemory))
+        assertFalse(raftComputerDetailShowsResourcesSection(offlineWithLowDiskAndMemory))
         assertFalse(offlineWithLowDiskAndMemory.diskLow)
     }
 

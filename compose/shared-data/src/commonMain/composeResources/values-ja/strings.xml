@@ -3419,7 +3419,7 @@
     <string name="settings_computers_placeholder_description">このコンピューターは何に使いますか？</string>
     <string name="settings_computers_state_no_description">説明はありません</string>
     <string name="settings_computers_section_info">情報</string>
-    <string name="settings_computers_section_usage">使用状況</string>
+    <string name="settings_computers_section_resources">リソース</string>
     <string name="settings_computers_label_os">OS</string>
     <string name="settings_computers_label_version">コンピューターのバージョン</string>
     <string name="settings_computers_label_created">作成日</string>

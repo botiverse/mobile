@@ -551,11 +551,11 @@ private fun RuntimeAccountUsageWindowScope.modelLineName(): String =
     }
 
 /**
- * Computer detail page Usage section visibility: shown only for an online Computer that reports
- * live disk or memory status (runtime account usage stays in the Info section's Detected runtimes
- * chips below).
+ * Computer detail page Resources section visibility (web `MachineResourcesSection`,
+ * botiverse/slock #17338): shown only for an online Computer that reports live disk or memory
+ * status (runtime account usage stays in the Info section's Detected runtimes chips below).
  */
-internal fun raftComputerDetailShowsUsageSection(computer: RaftComputerRowModel): Boolean =
+internal fun raftComputerDetailShowsResourcesSection(computer: RaftComputerRowModel): Boolean =
     computer.online && (computer.disk != null || computer.memory != null)
 
 /**

@@ -3416,7 +3416,7 @@
     <string name="settings_computers_placeholder_description">¿Para qué se usará esta computadora?</string>
     <string name="settings_computers_state_no_description">Sin descripción</string>
     <string name="settings_computers_section_info">Información</string>
-    <string name="settings_computers_section_usage">Uso</string>
+    <string name="settings_computers_section_resources">Recursos</string>
     <string name="settings_computers_label_os">Sistema operativo</string>
     <string name="settings_computers_label_version">Versión de la computadora</string>
     <string name="settings_computers_label_created">Fecha de creación</string>

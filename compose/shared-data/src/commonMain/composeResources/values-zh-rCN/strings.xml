@@ -3419,7 +3419,7 @@
     <string name="settings_computers_placeholder_description">这台计算机用于什么？</string>
     <string name="settings_computers_state_no_description">暂无描述</string>
     <string name="settings_computers_section_info">信息</string>
-    <string name="settings_computers_section_usage">用量</string>
+    <string name="settings_computers_section_resources">资源</string>
     <string name="settings_computers_label_os">OS</string>
     <string name="settings_computers_label_version">Computer 版本</string>
     <string name="settings_computers_label_created">创建时间</string>

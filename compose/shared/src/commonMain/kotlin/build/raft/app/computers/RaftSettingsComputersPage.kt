@@ -3591,7 +3591,7 @@ private fun RaftComputerDetailBody(
     }
     // Back leaves select mode first.
     RaftBackHandler(enabled = bulk != null && bulkState.selectionMode, label = "computer_agents_select") { bulkState.clearSelection() }
-    val showUsageSection = raftComputerDetailShowsUsageSection(computer)
+    val showResourcesSection = raftComputerDetailShowsResourcesSection(computer)
     LazyColumn(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding()) {
         item(key = "header") { RaftComputerDetailHeader(computer, model.sameMachinePeerNames, onOpenMigrationLog) }
         item(key = "version-notice") { RaftComputerVersionNotice(controls) }
@@ -3615,9 +3615,9 @@ private fun RaftComputerDetailBody(
             ?.let { failed ->
                 item(key = "action-error") { RaftComputerActionErrorBanner(failed) }
             }
-        // Web MachineDetailPanel order: Usage (Disk & Memory, online only), Name, Description, Info, Agents, Workspaces, Actions.
-        if (showUsageSection) {
-            item(key = "usage") { RaftComputerDetailUsageSection(computer) }
+        // Web MachineDetailPanel order: Resources (Disk & Memory, online only), Name, Description, Info, Agents, Workspaces, Actions.
+        if (showResourcesSection) {
+            item(key = "resources") { RaftComputerDetailResourcesSection(computer) }
         }
         item(key = "name") {
             RaftComputerEditableSection(
@@ -4211,7 +4211,7 @@ private fun raftComputerCreatedDate(createdAt: String?): String? {
 
 internal const val RAFT_COMPUTER_DETAIL_SAME_MACHINE_TAG = "machine-detail-same-machine"
 internal const val RAFT_COMPUTER_DETAIL_DISK_LOW_BANNER_TAG = "computer-detail-disk-low-banner"
-internal const val RAFT_COMPUTER_DETAIL_USAGE_TAG = "computer-detail-usage"
+internal const val RAFT_COMPUTER_DETAIL_RESOURCES_TAG = "computer-detail-resources"
 internal const val RAFT_COMPUTER_DETAIL_DISK_TAG = "computer-detail-disk"
 internal const val RAFT_COMPUTER_DETAIL_MEMORY_TAG = "computer-detail-memory"
 internal const val RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG = "computer-detail-disk-detail"
@@ -4231,13 +4231,13 @@ private fun RaftComputerDiskLowBanner(disk: RaftComputerResourceMeter) {
 }
 
 /**
- * Computer detail page Usage section: Disk and Memory progress meters with inline free/total sizes
- * in body ink directly under each bar (runtime account usage chips stay in the Info section below).
- * The label column starts at [RaftRackLineLabelWidth] (76dp) and widens for wider localized labels
- * so Disk/Memory labels never clip.
+ * Web `MachineResourcesSection` (botiverse/slock #17338): Disk and Memory progress meters with
+ * inline free/total sizes in body ink directly under each bar (runtime account usage chips stay in
+ * the Info section below). The label column starts at [RaftRackLineLabelWidth] (76dp) and widens
+ * for wider localized labels (e.g. Russian) so Disk/Memory labels never clip.
  */
 @Composable
-private fun RaftComputerDetailUsageSection(computer: RaftComputerRowModel) {
+private fun RaftComputerDetailResourcesSection(computer: RaftComputerRowModel) {
     val diskLabel = stringResource(Res.string.agent_migration_target_disk)
     val memoryLabel = stringResource(Res.string.agent_migration_target_memory)
     val disk =
@@ -4278,8 +4278,8 @@ private fun RaftComputerDetailUsageSection(computer: RaftComputerRowModel) {
             } + 1.dp
         }
     RaftSection(
-        title = stringResource(Res.string.settings_computers_section_usage),
-        modifier = Modifier.testTag(RAFT_COMPUTER_DETAIL_USAGE_TAG),
+        title = stringResource(Res.string.settings_computers_section_resources),
+        modifier = Modifier.testTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             resources.forEach { RaftRackLineRow(it, valueWidth, labelWidth = labelWidth) }

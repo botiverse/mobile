@@ -32,7 +32,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * Computer detail page Usage section (Disk & Memory only) and Low Disk warning banner parity.
+ * Computer detail page Resources section (Disk & Memory only) and Low Disk warning banner parity
+ * with web `MachineResourcesSection` / `MachineDetailPanel` (botiverse/slock #17335, #17338).
  * Runtime account usage stays in the Info section's Detected runtimes chips below.
  */
 @OptIn(ExperimentalTestApi::class)
@@ -118,12 +119,12 @@ class ComputerDetailUsageUiTest {
     }
 
     @Test
-    fun onlineComputerShowsDiskAndMemoryWithInlineDetailsAndNoRuntimeUsageRowsInUsageSection() = runRobolectricComposeUiTest {
+    fun onlineComputerShowsResourcesSectionWithDiskMemoryInlineDetailsAndNoRuntimeUsageRows() = runRobolectricComposeUiTest {
         showDetail(computer(runtimes = listOf("claude", "codex", "antigravity")))
 
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_LOW_BANNER_TAG).assertDoesNotExist()
-        onNodeWithTag(RAFT_COMPUTER_DETAIL_USAGE_TAG).assertIsDisplayed()
-        onNodeWithText("Usage").assertIsDisplayed()
+        onNodeWithTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG).assertIsDisplayed()
+        onNodeWithText("Resources").assertIsDisplayed()
 
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_TAG).assertIsDisplayed()
         onNodeWithText("Disk").assertIsDisplayed()
@@ -143,18 +144,18 @@ class ComputerDetailUsageUiTest {
         val detailBounds = onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG).fetchSemanticsNode().boundsInRoot
         assertTrue(detailBounds.left > diskBounds.left, "inline detail starts under the bar column, right of the label")
 
-        // Runtime usage rows are NOT duplicated inside the Usage section (Detected runtimes live in Info below).
+        // Runtime usage rows are NOT duplicated inside the Resources section (Detected runtimes live in Info below).
         assertEquals(
             0,
             onAllNodes(
-                hasAnyAncestor(hasTestTag(RAFT_COMPUTER_DETAIL_USAGE_TAG)) and hasText("Claude", substring = true),
+                hasAnyAncestor(hasTestTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG)) and hasText("Claude", substring = true),
                 useUnmergedTree = true,
             ).fetchSemanticsNodes().size,
         )
         assertEquals(
             0,
             onAllNodes(
-                hasAnyAncestor(hasTestTag(RAFT_COMPUTER_DETAIL_USAGE_TAG)) and hasText("Codex", substring = true),
+                hasAnyAncestor(hasTestTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG)) and hasText("Codex", substring = true),
                 useUnmergedTree = true,
             ).fetchSemanticsNodes().size,
         )
@@ -174,7 +175,7 @@ class ComputerDetailUsageUiTest {
             "Agents on this computer may fail to save work or start. Raft removes its own old migration data automatically; if space stays low, free up space on this computer.",
         ).assertIsDisplayed()
 
-        onNodeWithTag(RAFT_COMPUTER_DETAIL_USAGE_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG).assertIsDisplayed()
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_TAG).assertIsDisplayed()
         onNodeWithText("98% used").assertIsDisplayed()
         onNodeWithTag("$RAFT_COMPUTER_DETAIL_DISK_TAG-bar-warning").assertExists()
@@ -182,7 +183,7 @@ class ComputerDetailUsageUiTest {
     }
 
     @Test
-    fun offlineComputerHidesBothUsageSectionAndLowDiskBanner() = runRobolectricComposeUiTest {
+    fun offlineComputerHidesBothResourcesSectionAndLowDiskBanner() = runRobolectricComposeUiTest {
         showDetail(
             computer(
                 online = false,
@@ -193,11 +194,11 @@ class ComputerDetailUsageUiTest {
         )
 
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_LOW_BANNER_TAG).assertDoesNotExist()
-        onNodeWithTag(RAFT_COMPUTER_DETAIL_USAGE_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG).assertDoesNotExist()
     }
 
     @Test
-    fun onlineComputerWithoutDiskOrMemoryHidesUsageSectionEvenWhenUsageRuntimesInstalled() = runRobolectricComposeUiTest {
+    fun onlineComputerWithoutDiskOrMemoryHidesResourcesSectionEvenWhenUsageRuntimesInstalled() = runRobolectricComposeUiTest {
         showDetail(
             computer(
                 online = true,
@@ -208,7 +209,7 @@ class ComputerDetailUsageUiTest {
         )
 
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_LOW_BANNER_TAG).assertDoesNotExist()
-        onNodeWithTag(RAFT_COMPUTER_DETAIL_USAGE_TAG).assertDoesNotExist()
+        onNodeWithTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG).assertDoesNotExist()
     }
 
     @Test
@@ -221,7 +222,7 @@ class ComputerDetailUsageUiTest {
             ),
         )
 
-        onNodeWithTag(RAFT_COMPUTER_DETAIL_USAGE_TAG).assertIsDisplayed()
+        onNodeWithTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG).assertIsDisplayed()
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG).assertTextEquals("200.0 GB free of 500.0 GB")
         onNodeWithTag(RAFT_COMPUTER_DETAIL_MEMORY_TAG).assertIsDisplayed()
         onNodeWithTag(RAFT_COMPUTER_DETAIL_MEMORY_DETAIL_TAG).assertDoesNotExist()
@@ -229,7 +230,7 @@ class ComputerDetailUsageUiTest {
     }
 
     @Test
-    fun localizedLowDiskBannerAndUsageSectionRenderInKorean() = runRobolectricComposeUiTest {
+    fun localizedLowDiskBannerAndResourcesSectionRenderInKorean() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.Korean.stringDescLocaleType
         showDetail(
             computer(
@@ -239,12 +240,12 @@ class ComputerDetailUsageUiTest {
             ),
         )
         onNodeWithText("디스크 공간 부족: 500.0 GB 중 10.0 GB 남음").assertIsDisplayed()
-        onNodeWithText("사용량").assertIsDisplayed()
+        onNodeWithText("리소스").assertIsDisplayed()
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG).assertTextEquals("500.0 GB 중 10.0 GB 남음")
     }
 
     @Test
-    fun localizedLowDiskBannerAndUsageSectionRenderInRussian() = runRobolectricComposeUiTest {
+    fun localizedLowDiskBannerAndResourcesSectionRenderInRussian() = runRobolectricComposeUiTest {
         StringDesc.localeType = AppLocale.Russian.stringDescLocaleType
         showDetail(
             computer(
@@ -254,7 +255,7 @@ class ComputerDetailUsageUiTest {
             ),
         )
         onNodeWithText("Мало места на диске: свободно 10.0 GB из 500.0 GB").assertIsDisplayed()
-        onNodeWithText("Использование").assertIsDisplayed()
+        onNodeWithText("Ресурсы").assertIsDisplayed()
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG).assertTextEquals("Свободно 10.0 GB из 500.0 GB")
     }
 }

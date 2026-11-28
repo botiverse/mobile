@@ -3416,7 +3416,7 @@
     <string name="settings_computers_placeholder_description">이 컴퓨터를 어떤 용도로 사용하나요?</string>
     <string name="settings_computers_state_no_description">설명 없음</string>
     <string name="settings_computers_section_info">정보</string>
-    <string name="settings_computers_section_usage">사용량</string>
+    <string name="settings_computers_section_resources">리소스</string>
     <string name="settings_computers_label_os">OS</string>
     <string name="settings_computers_label_version">컴퓨터 버전</string>
     <string name="settings_computers_label_created">생성일</string>
