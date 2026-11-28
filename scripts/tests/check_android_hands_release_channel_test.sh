@@ -58,9 +58,13 @@ expect 1 one-fifteen-three-no-metadata 'main' '__absent__' 'records no channel'
 # A package built for a different channel must not be published to this one.
 expect 1 preview-to-main 'main' 'preview' "was built for channel 'preview'"
 expect 1 main-to-preview 'preview' 'main' "was built for channel 'main'"
+expect 1 beta-to-main 'main' 'beta' "was built for channel 'beta'"
+expect 1 alpha-to-beta 'beta' 'alpha' "was built for channel 'alpha'"
 
 # The ordinary case, and an uninteresting-but-valid one.
 expect 0 main-to-main 'main' 'main' 'recorded channel=main'
+expect 0 beta-to-beta 'beta' 'beta' 'recorded channel=beta'
+expect 0 alpha-to-alpha 'alpha' 'alpha' 'recorded channel=alpha'
 expect 0 preview-to-preview 'preview' 'preview' 'recorded channel=preview'
 
 # Nonsense targets are rejected before any comparison happens.

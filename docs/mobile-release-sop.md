@@ -29,8 +29,9 @@ decision, 2026-11-14). In this SOP, a **release go** is the mobile DRI's go. It 
 - Hands `main` activation;
 - TestFlight external (Beta App Review, tester notification);
 - App Store submission and release;
-- Google Play closed testing (`alpha`) and production. Open testing (`beta`) takes
-  every preview round without a go (§Hard rules 2).
+- Google Play closed testing (`alpha`) and production. Open testing (`beta`) and
+  Hands `beta` take vetted pre-release / RC rounds without a production `main`
+  go (§Hard rules 2), provided they carry human-readable changelogs.
 
 Release notes are **not** delegated: a person approves them (§4.1).
 
@@ -38,7 +39,7 @@ The DRI gives a go only when all three hold, and writes them in the release
 issue with the go:
 
 1. **No new crashes** on the exact build (smoke, §6.2; Hands/Play/TestFlight
-   crash reports for internal and preview).
+   crash reports for internal and beta/early-access rounds).
 2. **Related feedback fixed**: feedback this release claims to fix is fixed on
    the exact build, and no open feedback blocks it.
 3. **Server dependencies live**: every server change the release relies on is
@@ -61,14 +62,29 @@ never implies another.
    open testing, TestFlight external, Beta App Review, tester notification, App Store
    submission are separate mutations, each needing an
    explicit release go (§Release decisions) for that exact build.
-2. **No approval needed** for internal/preview channels: Hands `preview`, Play
-   internal testing (release rule 2026-10-29), Play open testing (`beta`) for
-   preview rounds (artin, 2026-11-22, #proj-mobile msg=13d01fb6; from 1.29),
-   TestFlight internal (Botiverse group). Every external release (Hands `main`,
-   Play closed testing and production, TestFlight external, App Store) needs a
-   release go for that version and a
-   smoke of the exact build first (artin, 2026-11-02; go delegated to the mobile
-   DRI by product owner decision, 2026-11-14).
+2. **Three-tier Android Hands channel policy & approval boundaries** (artin,
+   2026-11-28, `#proj-mobile:f8544a3e`):
+   - **No production release go needed** for:
+     - Hands `alpha` (`3e850962-33e1-47f3-b66d-51ec5c1c467d`) — agent &
+       engineering rapid testing, CI, staging E2E, and Zucchini delta-update
+       smoke. **Never guide human early-access users to `alpha`.**
+     - Hands `beta` (`85c5fafe-2e23-4b2d-88bc-3020ca274878`) — human
+       early-access / dogfooding channel (`Settings › About › Early access`,
+       matching iOS TestFlight External & Google Play Open Testing `beta`).
+       **Hard rule**: publish **only** vetted pre-release / RC builds with
+       human-readable changelogs — never raw commit dumps or ad-hoc agent test
+       builds.
+     - Play internal testing (release rule 2026-10-29) and Play open testing
+       (`beta`) for vetted pre-release / RC rounds (artin, 2026-11-22,
+       `#proj-mobile` msg=13d01fb6; from 1.29).
+     - TestFlight internal (Botiverse group).
+     - (`preview` is a retired transition channel normalizing to `main` from
+       1.31.0 onward.)
+   - **Release go required**: every public/external release (Hands `main`, Play
+     closed testing and production, TestFlight external, App Store) needs a
+     release go for that version and a smoke of the exact build first (artin,
+     2026-11-02; go delegated to the mobile DRI by product owner decision,
+     2026-11-14).
 3. **One branch per semantic version**, never reused, force-pushed or rewound.
 4. **One carrier source exact** (full 40-char SHA) for both platforms of a
    train. Marketing versions/build numbers may differ; embedded source may not.
@@ -78,8 +94,11 @@ never implies another.
 6. **Version numbers are dispatch inputs.** Source keeps placeholders (Android
    `1.0.0`/`1000000`; iOS `MARKETING_VERSION=1.0`/`CURRENT_PROJECT_VERSION=1`).
    Don't rewrite them; don't fail preflight on them. Verify the signed artifact.
-7. **Release notes come from reviewed files**, never commit subjects, and a
-   person approves them in an Artifact before they are applied (§4.1).
+7. **Release notes come from reviewed files**, never commit subjects. Both
+   Hands `main` and Hands `beta` require human-readable changelogs (never raw
+   commit dumps); for `main`, Play beyond internal, TestFlight external, and
+   App Store, a person approves the notes in an Artifact before they are
+   applied (§4.1).
 8. **Pinned private dependencies** (Hands SDK, KBA metadata) resolve only from
    Raft Artifacts via Gradle `exclusiveContent`. A version range, `latest`, or a
    fallback to gitlink/`mavenLocal`/local pod/source build for those coordinates
@@ -414,26 +433,44 @@ state (artin, 2026-11-17).
 ### 5.1 Android
 
 Hands app `raft-android` (id `a78f3891-f980-4f48-80d7-2a58e93a99aa`,
-`android-apk`). Channels: `main` (production), `preview` (**Insiders**
-prerelease — never use `preview` for feature or delta-update testing; artin,
-2026-11-24), `alpha` (internal feature & delta-update testing, channel id
-`3e850962-33e1-47f3-b66d-51ec5c1c467d`), `debug`, `nightly`. Clients update
-when the active release's versionCode is greater than theirs; drafts and
-cancelled releases are invisible.
+`android-apk`). Three-tier Hands Android channel hierarchy (artin, 2026-11-28,
+`#proj-mobile:f8544a3e`):
+
+| Channel | Hands Channel ID | Audience & Purpose | Policy & ABI Default |
+|---|---|---|---|
+| `main` | *(production)* | Public production release (matches Google Play 100% and App Store) | Always `arm64-v8a` default; requires release go + smoke + human-approved notes |
+| `beta` | `85c5fafe-2e23-4b2d-88bc-3020ca274878` | Human early-access / dogfooding (`Settings › About › Early access`; matches iOS TestFlight External & Google Play Open Testing `beta`) | `arm64-v8a` default; **hard rule**: publish **only** vetted pre-release / RC builds with human-readable changelogs (never raw commit dumps or ad-hoc agent test builds) |
+| `alpha` | `3e850962-33e1-47f3-b66d-51ec5c1c467d` | Agent & engineering rapid testing, CI, staging E2E, Zucchini delta-update smoke | `arm64-v8a` default (`arm64-v8a,x86_64` via explicit `android_abi_filters` when needed); **never guide human early-access users to `alpha`** |
+
+Legacy / CI-only channels:
+- `preview`: **retired** transition channel — normalizes to `main` at runtime
+  on 1.31.0+ so legacy `preview` installs automatically follow `main` with delta
+  updates; no longer used for active early-access rounds.
+- `debug`, `nightly`: internal CI/QA fixture carriers (e.g. `android-update-e2e.yml`).
+
+Clients update when the active release's `versionCode` is greater than theirs;
+drafts and cancelled releases are invisible. Production direct-install APKs
+(`build.raft.app` / `raft-android`) support runtime switching between `main`
+and `beta` without reinstalling (`Settings › About › Early access`, gated by
+`mobile_early_access_visible_v0` / `mobile_early_access_default_on_v0`), with
+Zucchini delta updates enabled on `main`, `beta`, and `alpha`. Legacy 1.31.0
+Early access overrides (`alpha`) migrate automatically to `beta` on upgrade.
 
 **One APK per Hands channel** (Lagoon, 2026-10-23). The channel is compiled in
 (`BuildConfig.HANDS_CHANNEL` from `SLOCK_HANDS_CHANNEL`, workflow input
-`hands_channel`). Build `preview` with `--channel preview` and `main` with
-`--channel main`, each with its own versionCode; never publish one APK to both.
-(1.15.3 shipped a preview-built APK on `main`; 1.14.0 shipped the Play build on
-`main`, whose installs can never update.) Ship every release to both channels.
+`hands_channel`). Build `beta` with `--channel beta`, `main` with
+`--channel main` (and `alpha` with `--channel alpha` for engineering/delta
+smoke), each with its own `versionCode`; never publish one APK to another
+channel. (1.15.3 shipped a preview-built APK on `main`; 1.14.0 shipped the Play
+build on `main`, whose installs can never update.) Ship every public release
+train to `beta` (vetted RC / early-access round) and `main` (production).
 
 Hands draft:
 
 ```bash
 export SLOCK_RELEASE_BRANCH=release/X.Y.Z
 scripts/release_android_hands_github.sh \
-  --version X.Y.Z --build <n> --channel <main|preview> --variant release \
+  --version X.Y.Z --build <n> --channel <main|beta> --variant release \
   --required-pr <N> [--required-pr <M>] \
   --preflight-report artifacts/release-preflight/X.Y.Z-<code>.md --wait
 ```
@@ -469,15 +506,15 @@ scripts/play_internal_promote.sh <hands_build_id>
 ```
 
 It creates the Hands draft carrying the promotion, writes the acceptance
-receipt and promotes to `internal`. A **preview round** (from 1.29) also goes to
-Play open testing: run it with `--open-testing`
+receipt and promotes to `internal`. A vetted **beta / pre-release round**
+(from 1.29) also goes to Play open testing: run it with `--open-testing`
 (`scripts/play_internal_promote.sh --open-testing <hands_build_id>`), which then
 promotes the same release to `beta` at full rollout. When Google already holds a
 change in review, the `beta` step fails closed after `internal` is done; retry
 only that step later with
 `hands releases play-promote raft-android <release_id> --track beta --note …`
 (CLI >= 0.5.67), or add `--changes-not-sent-for-review` to save it on Play
-unsent. Never cancel a review for a preview (§7.3). **Never publish that Hands draft**: it would
+unsent. Never cancel a review for a beta/pre-release round (§7.3). **Never publish that Hands draft**: it would
 put the Play carrier on a Hands channel. Record the Play receipt in the issue;
 a green run or GitHub artifact is not a Play receipt; if the binding is
 unavailable, record `AAB ready / Play upload NOT RUN`.
@@ -669,7 +706,7 @@ Fresh-read app, build, release, source, status, revision, scope, assets; write
 (`hands releases update <app> <id> --changelog-file zh-CN=… …`); fresh-read
 again and require byte equality, unchanged source/scope, `status=draft`.
 
-### 7.2 Android Hands activation (`preview`: no go needed; `main`: release go)
+### 7.2 Android Hands activation (`alpha` / `beta`: no `main` go needed; `main`: release go)
 
 Authenticate: `hands whoami` must show `publisher` on `raft-android`
 (`HANDS_BEARER_TOKEN` app deploy token, or `HANDS_SESSION_COOKIE` from
@@ -679,7 +716,7 @@ print). On a missing role, ask a Hands app admin for the named
 
 ```bash
 scripts/finalize_android_hands_release.sh --release <draft-id> \
-  --version X.Y.Z --build <n> --channel <main|preview> \
+  --version X.Y.Z --build <n> --channel <main|beta> \
   --zh-notes change-logs/X.Y.Z/android/zh-CN.md \
   --en-notes change-logs/X.Y.Z/android/en.md \
   --ja-notes change-logs/X.Y.Z/android/ja.md --confirm-publish
@@ -690,9 +727,18 @@ scripts/finalize_android_hands_release.sh --release <draft-id> \
   and `scripts/check_android_hands_release_channel.sh`, which fails on a
   missing or mismatched build channel (enforced in CI by `Android release
   contract`). If you must publish by hand, run that guard first.
-- `--confirm-publish` asserts the go was given; it is not the go.
-- It verifies the public update endpoint returns the new versionCode, and warns
-  if the other channel is still older.
+- **Channel rules** (artin, 2026-11-28, `#proj-mobile:f8544a3e`):
+  - `beta` (`85c5fafe-2e23-4b2d-88bc-3020ca274878`): vetted pre-release / RC
+    builds only, with human-readable `zh-CN`/`en`/`ja` changelogs (never raw
+    commit dumps or ad-hoc agent test builds).
+  - `alpha` (`3e850962-33e1-47f3-b66d-51ec5c1c467d`): engineering/agent rapid
+    testing, CI, staging E2E, and Zucchini delta-update smoke only; never guide
+    human early-access users to `alpha`.
+  - `main`: requires release go, smoke pass, and human-approved release notes
+    (§4.1).
+- `--confirm-publish` asserts the channel policy and required go were met; it
+  is not the go.
+- It verifies the public update endpoint returns the new versionCode.
 
 Then push the annotated **`vX.Y.Z` audit tag** on the verified source commit
 (required, artin 2026-09-27). Message: versionCode, Hands release id, APK
@@ -701,11 +747,13 @@ which makes the GitHub Release: the published `main` APK (never an AAB, artin
 2026-10-29), the iOS TestFlight build number, an unsigned Apple-silicon macOS
 dmg and an iOS Simulator `.app` built from the tag.
 
-### 7.2.1 Preview update test (every train, artin 2026-11-12)
+### 7.2.1 Beta / early-access update test (every train, artin 2026-11-12)
 
-Right after Hands `preview` is published and **before** `main` is published,
+Right after Hands `beta` is published and **before** `main` is published,
 test the in-app update path on a real device or emulator. That device must
-have the **previous** `preview` build installed and be signed in.
+have the **previous** `beta` build installed (or a prior `main` build opted
+into Early access) and be signed in. (Use `alpha` for rapid engineering
+delta-update smoke before cutting or vetting `beta`.)
 
 Before that, the automated `Android Update E2E` run (below) must be green on
 the carrier source exact; it is a required step before `main`. Record its run
@@ -722,8 +770,8 @@ Record the following in the release issue:
 - pass or fail, with a screenshot or recording of the prompt
 
 A fail blocks `main`. The fix is a new candidate (Hard rule 5): rebuild both
-platforms with higher build numbers, re-verify (§6) and republish `preview`.
-Then repeat this test, starting from the previous train's `preview` build:
+platforms with higher build numbers, re-verify (§6) and republish `beta`.
+Then repeat this test, starting from the previous train's `beta` build:
 reinstall it if the device already took the failed one.
 
 Checking only the public update endpoint does not count; the finalize script
@@ -750,7 +798,7 @@ stamp workflow run android-update-e2e.yml -R botiverse/mobile --ref main \
 The `android-update-e2e-evidence` artifact holds the screen recording, a
 screenshot and UI dump for every step, logcat, and `summary.json`. A failure
 names the step that broke. This run tests the update mechanics on fixture
-builds. It does not replace the `preview` → `preview` test above: that one
+builds. It does not replace the `beta` → `beta` test above: that one
 uses the real previous train build and the real channel.
 
 **Local state must survive restart and update.** Key local state (composer
@@ -766,7 +814,8 @@ without the fix.
 
 Track names are Play's own (Hands CLI >= 0.5.67): `internal`, `alpha` (closed
 testing), `beta` (open testing), `production`; `closed` and `open` still work as
-aliases. Open testing takes every preview round (§Google Play carrier above).
+aliases. Open testing (`beta`) takes every vetted pre-release / beta round
+(§Google Play carrier above).
 Closed testing and production each need a release go:
 `hands releases play-promote <app> <release> --track production --note …`. Read back
 `/distributions/play` and `/receipts`: receipt/edit id, package, versionCode,
@@ -950,7 +999,8 @@ a reminder is a process defect. The reminder authorizes nothing.
 - Artifact/hash/signing/UUID mismatch: stop; don't repair metadata around it.
 - versionCode not above the active version: raise the build or the version.
 - Malformed draft: supersede with a higher build; never touch the active
-  `main` release or Insiders `preview` to test features or visibility (use `alpha`).
+  `main` release or human early-access `beta` channel for ad-hoc feature or
+  visibility tests (use `alpha`).
 - Apple processing not `VALID`: stop before distribution.
 - Anything uncertain (deps, notes, smoke): stay draft-only.
 - Live material regression: stop rollout expansion; record the hold.

@@ -689,9 +689,9 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // 64-bit only (artin 2026-11-07): MMKV 2.x, which holds the sign-in, refuses a 32-bit process
         // (UnsupportedArchitectureException at launch, Hands 317d4e9a). Without armeabi-v7a a 32-bit-only
-        // phone can't install the app instead of crashing on open. Direct Hands preview/main APKs pass
-        // -PSLOCK_ANDROID_ABI_FILTERS=arm64-v8a to drop unused x86_64 native libs; Play AABs, debug/alpha,
-        // and emulator QA lanes keep the default arm64-v8a,x86_64.
+        // phone can't install the app instead of crashing on open. Direct Hands main/beta/preview/alpha
+        // release APKs pass -PSLOCK_ANDROID_ABI_FILTERS=arm64-v8a to drop unused x86_64 native libs;
+        // Play AABs, debug/standalone-alpha, and emulator QA lanes keep the default arm64-v8a,x86_64.
         ndk {
             abiFilters += raftAndroidAbiFilters
         }
@@ -776,7 +776,7 @@ android {
             val handsAppSlug = raftBuildConfigString("SLOCK_HANDS_APP_SLUG", "raft-android")
             val handsChannel = raftBuildConfigString("SLOCK_HANDS_CHANNEL", "main")
             val releaseDeltaEnabled =
-                handsAppSlug == "raft-android" && handsChannel in setOf("alpha", "preview", "main")
+                handsAppSlug == "raft-android" && handsChannel in setOf("alpha", "beta", "preview", "main")
             buildConfigField("Boolean", "HANDS_DELTA_UPDATE_ENABLED", releaseDeltaEnabled.toString())
             buildConfigField(
                 "String",

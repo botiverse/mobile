@@ -15,6 +15,7 @@ import build.raft.app.data.preservingChannelMetadataFrom
 import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION
 import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION
 import build.raft.app.settings.SettingsAboutEarlyAccessOption
+import build.raft.app.settings.settingsAboutEarlyAccessChannelForToggle
 import build.raft.app.settings.settingsAboutEarlyAccessOption
 import build.raft.app.settings.settingsAboutExternalUrl
 import build.raft.app.settings.toAboutPayload
@@ -41,13 +42,14 @@ class SettingsAboutEarlyAccessTest {
         )
 
     @Test
-    fun androidDirectInstallShowsAlphaToggleOnlyWhenServerVisibilityFlagIsEnabled() {
+    fun androidDirectInstallShowsBetaToggleOnlyWhenServerVisibilityFlagIsEnabled() {
         val mainUpdate =
             SharedSettingsUpdateCheckSnapshot(
                 supported = true,
                 updateChannel = "main",
                 updateChannelSwitchSupported = true
             )
+        val betaUpdate = mainUpdate.copy(updateChannel = "beta")
         val alphaUpdate = mainUpdate.copy(updateChannel = "alpha")
         val dev = developer(updateCheck = mainUpdate)
 
@@ -63,6 +65,14 @@ class SettingsAboutEarlyAccessTest {
         assertNull(
             settingsAboutEarlyAccessOption(
                 earlyAccessVisible = false,
+                developer = dev.copy(updateCheck = betaUpdate),
+                updateCheck = betaUpdate,
+                actionState = null
+            )
+        )
+        assertNull(
+            settingsAboutEarlyAccessOption(
+                earlyAccessVisible = false,
                 developer = dev.copy(updateCheck = alphaUpdate),
                 updateCheck = alphaUpdate,
                 actionState = null
@@ -71,7 +81,7 @@ class SettingsAboutEarlyAccessTest {
 
         // Visible + on main shows the toggle OFF.
         val offOption =
-            assertIs<SettingsAboutEarlyAccessOption.HandsAlphaToggle>(
+            assertIs<SettingsAboutEarlyAccessOption.HandsBetaToggle>(
                 settingsAboutEarlyAccessOption(
                     earlyAccessVisible = true,
                     developer = dev,
@@ -92,15 +102,16 @@ class SettingsAboutEarlyAccessTest {
         val offRow = offPayload.sections.first { it.title == "Actions" }.rows.single { it.key == SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION }
         assertEquals(false, offRow.toggleValue)
         assertEquals("", offRow.badgeLabel)
+        assertTrue(offRow.detail.contains("beta channel"))
         assertTrue(offRow.enabled)
 
-        // Visible + on alpha shows the toggle ON (and busy disables interaction during switch).
+        // Visible + on beta shows the toggle ON with Beta badge (and busy disables interaction during switch).
         val activeOption =
-            assertIs<SettingsAboutEarlyAccessOption.HandsAlphaToggle>(
+            assertIs<SettingsAboutEarlyAccessOption.HandsBetaToggle>(
                 settingsAboutEarlyAccessOption(
                     earlyAccessVisible = true,
-                    developer = dev.copy(updateCheck = alphaUpdate),
-                    updateCheck = alphaUpdate,
+                    developer = dev.copy(updateCheck = betaUpdate),
+                    updateCheck = betaUpdate,
                     actionState = SharedSettingsActionState(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL, inProgress = true)
                 )
             )
@@ -111,14 +122,31 @@ class SettingsAboutEarlyAccessTest {
             about.toAboutPayload(
                 webUrl = "https://app.raft.build",
                 errorStrings = englishErrorPresentationStringsForTest(),
-                updateCheck = alphaUpdate,
+                updateCheck = betaUpdate,
                 earlyAccessOption = activeOption
             )
         val activeRow = activePayload.sections.first { it.title == "Actions" }.rows.single { it.key == SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION }
         assertEquals(true, activeRow.toggleValue)
-        assertEquals("Alpha", activeRow.badgeLabel)
+        assertEquals("Beta", activeRow.badgeLabel)
+        assertTrue(activeRow.detail.contains("beta channel"))
         assertTrue(activeRow.loading)
         assertFalse(activeRow.enabled)
+
+        // Engineering alpha builds are not reported as opted into the human Beta channel.
+        val alphaOption =
+            assertIs<SettingsAboutEarlyAccessOption.HandsBetaToggle>(
+                settingsAboutEarlyAccessOption(
+                    earlyAccessVisible = true,
+                    developer = dev.copy(updateCheck = alphaUpdate),
+                    updateCheck = alphaUpdate,
+                    actionState = null
+                )
+            )
+        assertFalse(alphaOption.enabled)
+
+        // Toggling Early access ON writes "beta"; toggling OFF writes "main".
+        assertEquals("beta", settingsAboutEarlyAccessChannelForToggle(enableBeta = true))
+        assertEquals("main", settingsAboutEarlyAccessChannelForToggle(enableBeta = false))
     }
 
     @Test

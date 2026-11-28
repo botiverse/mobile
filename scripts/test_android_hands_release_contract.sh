@@ -42,6 +42,10 @@ ruby -e '
   raise "manual artifact upload must default off" unless upload_input.fetch("default") == false
   raise "workflow_call must expose optional android_abi_filters defaulting to empty" unless call_inputs.fetch("android_abi_filters").fetch("default") == ""
   raise "workflow_dispatch must expose optional android_abi_filters defaulting to empty" unless inputs.fetch("android_abi_filters").fetch("default") == ""
+  hands_channel_options = inputs.fetch("hands_channel").fetch("options")
+  %w[main beta preview alpha].each do |channel|
+    raise "workflow_dispatch hands_channel must include #{channel}" unless hands_channel_options.include?(channel)
+  end
 
   jobs = workflow.fetch("jobs")
   resolve_job = jobs.fetch("resolve")
@@ -81,6 +85,8 @@ ruby -e '
     .gsub("${{ github.event_name }}", "workflow_dispatch")
   abi_cases = [
     ["release", "main", "", "false", "arm64-v8a", "arm64-v8a"],
+    ["release", "beta", "", "false", "arm64-v8a", "arm64-v8a"],
+    ["release", "beta", "arm64-v8a,x86_64", "false", "arm64-v8a,x86_64", "universal"],
     ["release", "preview", "", "false", "arm64-v8a", "arm64-v8a"],
     ["release", "debug", "", "false", "arm64-v8a,x86_64", "universal"],
     ["release", "alpha", "", "false", "arm64-v8a", "arm64-v8a"],

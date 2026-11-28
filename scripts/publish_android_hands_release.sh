@@ -9,7 +9,7 @@ CHANNEL="${HANDS_CHANNEL:-${SLOCK_HANDS_CHANNEL:-main}}"
 VARIANT="${SLOCK_ANDROID_VARIANT:-release}"
 # Default stays universal for standalone/emulator callers (Hands CLI >= 0.5.64
 # stores `--arch universal` with no arch); android-release.yml passes
-# SLOCK_ANDROID_ARCH=arm64-v8a for direct preview/main phone APKs (#proj-mobile:386a49fa).
+# SLOCK_ANDROID_ARCH=arm64-v8a for direct main/beta/preview/alpha phone APKs (#proj-mobile:386a49fa).
 ARCH="${SLOCK_ANDROID_ARCH:-universal}"
 VERSION_X="${SLOCK_ANDROID_VERSION_MAJOR:-1}"
 VERSION_Y="${SLOCK_ANDROID_VERSION_MINOR:-0}"

@@ -245,17 +245,19 @@ const val MOBILE_FCM_PROBE_FEATURE_FLAG_KEY: String = "mobile_fcm_probe_v0"
 
 /**
  * Long-lived UI visibility gate for Early access enrollment in Settings › About
- * (`#proj-mobile:e48030bc`, artin 2026-11-26). Per server, default OFF (unresolved evaluates false).
- * Enabled on any joined server surfaces the Early access row (Android direct-install `alpha` toggle
- * or Google Play / iOS TestFlight enrollment link).
+ * (`#proj-mobile:e48030bc`, artin 2026-11-26; moved from `alpha` to `beta` in `#proj-mobile:#430`).
+ * Per server, default OFF (unresolved evaluates false). Enabled on any joined server surfaces the
+ * Early access row (Android direct-install `beta` toggle or Google Play / iOS TestFlight enrollment
+ * link).
  */
 const val MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY: String = "mobile_early_access_visible_v0"
 
 /**
- * Long-lived default-channel gate for Early access (`#proj-mobile:e48030bc`, artin 2026-11-26).
- * Per server, default OFF (unresolved evaluates false). When [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY]
- * is also enabled and the user has not explicitly toggled the local channel override, Android
- * direct-install defaults to the Hands `alpha` channel.
+ * Long-lived default-channel gate for Early access (`#proj-mobile:e48030bc`, artin 2026-11-26;
+ * moved from `alpha` to `beta` in `#proj-mobile:#430`). Per server, default OFF (unresolved
+ * evaluates false). When [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY] is also enabled and the
+ * user has not explicitly toggled the local channel override, Android direct-install defaults to
+ * the Hands `beta` channel (and any legacy 1.31.0 `"alpha"` override migrates to `"beta"`).
  */
 const val MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY: String = "mobile_early_access_default_on_v0"
 

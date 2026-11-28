@@ -21,10 +21,12 @@ internal const val HANDS_DELTA_PRODUCTION_APP_SLUG = "raft-android"
 internal const val HANDS_DELTA_PREVIEW_APPLICATION_ID = HANDS_DELTA_PRODUCTION_APPLICATION_ID
 internal const val HANDS_DELTA_PREVIEW_APP_SLUG = HANDS_DELTA_PRODUCTION_APP_SLUG
 internal const val HANDS_DELTA_RELEASE_ALPHA_CHANNEL = "alpha"
+internal const val HANDS_DELTA_BETA_CHANNEL = "beta"
 internal const val HANDS_DELTA_PREVIEW_CHANNEL = "preview"
 internal const val HANDS_DELTA_MAIN_CHANNEL = "main"
 internal const val HANDS_UPDATE_MODE_ALPHA_DELTA = "alpha_delta"
 internal const val HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA = "alpha_channel_delta"
+internal const val HANDS_UPDATE_MODE_BETA_DELTA = "beta_channel_delta"
 internal const val HANDS_UPDATE_MODE_PREVIEW_DELTA = "preview_delta"
 internal const val HANDS_UPDATE_MODE_MAIN_DELTA = "main_delta"
 internal const val HANDS_UPDATE_MODE_FULL_APK = "full_apk"
@@ -92,15 +94,24 @@ internal fun normalizeHandsReleaseChannel(channel: String): String {
     return if (trimmed == HANDS_DELTA_PREVIEW_CHANNEL) HANDS_DELTA_MAIN_CHANNEL else trimmed
 }
 
+/**
+ * Normalizes a persisted or user-requested runtime Early access override channel (#proj-mobile:#430).
+ *
+ * Legacy 1.31.0 installs that manually opted into Early access stored `"alpha"` in
+ * SharedPreferences; migrating `"alpha"` -> `"beta"` moves those installs seamlessly onto the
+ * dedicated human `beta` Early access channel instead of leaving them on the engineering `alpha`
+ * channel.
+ */
 internal fun normalizeHandsRuntimeOverrideChannel(overrideChannel: String?): String? =
     when (overrideChannel?.trim()?.lowercase()) {
         HANDS_DELTA_MAIN_CHANNEL -> HANDS_DELTA_MAIN_CHANNEL
-        HANDS_DELTA_RELEASE_ALPHA_CHANNEL -> HANDS_DELTA_RELEASE_ALPHA_CHANNEL
+        HANDS_DELTA_BETA_CHANNEL,
+        HANDS_DELTA_RELEASE_ALPHA_CHANNEL -> HANDS_DELTA_BETA_CHANNEL
         else -> null
     }
 
 /**
- * Whether this build supports switching between Hands `main` and `alpha` at runtime without
+ * Whether this build supports switching between Hands `main` and `beta` at runtime without
  * reinstalling: production direct-install APKs (`build.raft.app` / `raft-android`) only.
  * Play builds, standalone `build.raft.app.alpha`, debug, and connectedTest stay locked.
  */
@@ -117,6 +128,7 @@ internal fun handsRuntimeChannelSwitchSupported(
         defaultAppSlug == HANDS_DELTA_PRODUCTION_APP_SLUG &&
         defaultChannel.trim().lowercase() in setOf(
             HANDS_DELTA_MAIN_CHANNEL,
+            HANDS_DELTA_BETA_CHANNEL,
             HANDS_DELTA_PREVIEW_CHANNEL,
             HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
         )
@@ -132,7 +144,7 @@ internal fun resolveHandsEffectiveChannel(
     if (!switchSupported) return normalizedDefault
     if (!earlyAccessVisible) return normalizedDefault
     return normalizeHandsRuntimeOverrideChannel(overrideChannel)
-        ?: if (earlyAccessDefaultOn) HANDS_DELTA_RELEASE_ALPHA_CHANNEL else normalizedDefault
+        ?: if (earlyAccessDefaultOn) HANDS_DELTA_BETA_CHANNEL else normalizedDefault
 }
 
 internal class RaftHandsUpdateChannelStore(context: Context) {
@@ -292,6 +304,8 @@ internal fun handsDeltaUpdateMode(
             HANDS_UPDATE_MODE_ALPHA_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_RELEASE_ALPHA_CHANNEL ->
             HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA
+        appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_BETA_CHANNEL ->
+            HANDS_UPDATE_MODE_BETA_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_PREVIEW_CHANNEL ->
             HANDS_UPDATE_MODE_MAIN_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_MAIN_CHANNEL ->
@@ -386,6 +400,7 @@ internal fun handsDeltaUpdateAllowed(
             appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG &&
             (
                 channel == HANDS_DELTA_RELEASE_ALPHA_CHANNEL ||
+                    channel == HANDS_DELTA_BETA_CHANNEL ||
                     channel == HANDS_DELTA_PREVIEW_CHANNEL ||
                     channel == HANDS_DELTA_MAIN_CHANNEL
                 )
@@ -603,7 +618,7 @@ internal fun handsUpdateBridgeErrorCode(
 /** Reported for a waiting update when the build does not declare REQUEST_INSTALL_PACKAGES. */
 internal const val HANDS_DELTA_INSTALL_UNSUPPORTED = "install_unsupported"
 
-/** How the Hands delta route (Alpha, Preview, and Main) shows its transaction. */
+/** How the Hands delta route (Alpha, Beta, Preview, and Main) shows its transaction. */
 internal enum class HandsDeltaInstallPresentation {
     /** The state's own status and detail. */
     AsReported,
@@ -624,7 +639,7 @@ internal data class HandsDeltaInstallPermissionDecision(
 )
 
 /**
- * The Hands delta route (Alpha, Preview, and Main) while Android may block installs from Raft.
+ * The Hands delta route (Alpha, Beta, Preview, and Main) while Android may block installs from Raft.
  * Since hands-android-sdk 0.14
  * an update downloaded or patched without that permission stops at READY_TO_INSTALL with
  * [INSTALL_PERMISSION_REQUIRED] and the SDK opens nothing; another `install()` only checks Hands

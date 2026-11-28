@@ -3909,13 +3909,13 @@
     <string name="settings_about_action_copy_environment">Копировать сведения об окружении</string>
     <string name="settings_about_action_copy">Копировать</string>
     <string name="settings_about_early_access_title">Ранний доступ</string>
-    <string name="settings_about_early_access_alpha_off_detail">Получайте предварительные обновления Raft напрямую из канала alpha.</string>
-    <string name="settings_about_early_access_alpha_active_detail">Вы получаете предварительные обновления из канала alpha. Выключите, чтобы вернуться на стабильный канал со следующим релизом.</string>
+    <string name="settings_about_early_access_beta_off_detail">Получайте предварительные обновления Raft напрямую из канала beta.</string>
+    <string name="settings_about_early_access_beta_active_detail">Вы получаете предварительные обновления из канала beta. Выключите, чтобы вернуться на стабильный канал со следующим релизом.</string>
     <string name="settings_about_early_access_play_beta_detail">Присоединяйтесь к бета-программе Google Play, чтобы получать предварительные обновления Raft.</string>
     <string name="settings_about_early_access_ios_testflight_join_detail">Присоединяйтесь к Raft в TestFlight, чтобы получать предварительные сборки для iOS.</string>
     <string name="settings_about_early_access_ios_testflight_active_detail">Вы используете Raft через TestFlight и получаете предварительные сборки для iOS.</string>
     <string name="settings_about_early_access_action_join">Присоединиться</string>
-    <string name="settings_about_early_access_badge_alpha">Alpha</string>
+    <string name="settings_about_early_access_badge_beta">Beta</string>
     <string name="settings_about_early_access_badge_testflight">TestFlight</string>
     <string name="settings_about_source_code">Исходный код</string>
     <string name="settings_developer_title">Для разработчиков</string>

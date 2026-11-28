@@ -861,9 +861,11 @@ internal fun SettingsNativeDetailPageContent(
                     onOpenDiagnostics = onOpenDiagnosticsPage,
                     onOpenDeveloper = onOpenDeveloperPage,
                     earlyAccessVisible = earlyAccessVisible,
-                    onToggleEarlyAccessChannel = { enableAlpha ->
+                    onToggleEarlyAccessChannel = { enableBeta ->
                         onSettingsIntent(
-                            SharedSettingsIntent.SetHandsUpdateChannel(if (enableAlpha) "alpha" else "main")
+                            SharedSettingsIntent.SetHandsUpdateChannel(
+                                settingsAboutEarlyAccessChannelForToggle(enableBeta)
+                            )
                         )
                     },
                 )
