@@ -1,5 +1,6 @@
 package build.raft.app.shared
 
+import build.hands.update.HandsUpdateOffer
 import build.hands.update.HandsUpdateProgress
 import build.hands.update.HandsUpdateState
 import build.hands.update.HandsUpdateStatus
@@ -1463,6 +1464,59 @@ class HandsDeltaUpdateGateTest {
                 appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 channel = HANDS_DELTA_MAIN_CHANNEL
             ).handsUpdateDisplaySizes(deltaEnabled = false)
+        )
+        assertEquals(
+            HandsUpdateDisplaySizes(
+                patchSizeBytes = 4_718_592L,
+                fullSizeBytes = 31_457_280L,
+                downloadSizeBytes = 4_718_592L
+            ),
+            updateResponse(
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_BETA_CHANNEL,
+                patchAlgorithm = "archive-patcher-zucchini-v1+xz",
+                patchSizeBytes = 4_718_592L,
+                fullSizeBytes = 31_457_280L
+            ).handsUpdateDisplaySizes(deltaEnabled = true)
+        )
+    }
+
+    @Test
+    fun handsUpdateOfferDisplaySizesUseSdkDownloadSizeBytesForPatchAndFullFallback() {
+        val patchedOffer =
+            HandsUpdateOffer(
+                versionCode = 13_200_006L,
+                versionName = "1.32.0-beta1",
+                buildId = "build-13200006",
+                downloadSizeBytes = 4_718_592L,
+                fullSizeBytes = 31_457_280L,
+                patchSizeBytes = 4_718_592L,
+            )
+        assertEquals(
+            HandsUpdateDisplaySizes(
+                patchSizeBytes = 4_718_592L,
+                fullSizeBytes = 31_457_280L,
+                downloadSizeBytes = 4_718_592L,
+            ),
+            patchedOffer.handsUpdateDisplaySizes(),
+        )
+
+        val fullFallbackOffer =
+            HandsUpdateOffer(
+                versionCode = 13_200_006L,
+                versionName = "1.32.0-beta1",
+                buildId = "build-13200006",
+                downloadSizeBytes = 31_457_280L,
+                fullSizeBytes = 31_457_280L,
+                patchSizeBytes = null,
+            )
+        assertEquals(
+            HandsUpdateDisplaySizes(
+                patchSizeBytes = null,
+                fullSizeBytes = 31_457_280L,
+                downloadSizeBytes = 31_457_280L,
+            ),
+            fullFallbackOffer.handsUpdateDisplaySizes(),
         )
     }
 
