@@ -11,6 +11,7 @@ import build.raft.app.network.HEADER_AUTHORIZATION
 import build.raft.app.network.HEADER_SERVER_ID
 import build.raft.app.network.MultipartFile
 import build.raft.app.network.MultipartFileStreamOpener
+import build.raft.app.network.RAFT_ATTACHMENT_DRAFT_DISCARD_TIMEOUT_MILLIS
 import build.raft.app.network.RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS
 import build.raft.app.network.RAFT_DIRECT_UPLOAD_TOTAL_TIMEOUT_MILLIS
 import build.raft.app.network.RAFT_UPLOAD_TOTAL_TIMEOUT_MILLIS
@@ -591,6 +592,18 @@ import kotlin.time.TimeSource
         serverIdOverride: ServerId?,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
+    override suspend fun discardDraftAttachment(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        serverIdOverride: ServerId?,
+    ): HomeNetworkResponse =
+        discardDraftAttachmentInternal(
+            priority = priority,
+            attachmentId = attachmentId,
+            serverIdOverride = serverIdOverride,
+            expectedAuthority = null,
+        )
+
     override suspend fun putAttachmentUploadBytes(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
@@ -731,6 +744,43 @@ import kotlin.time.TimeSource
         ).also { answer ->
             uploadTiming?.controlCallFinished(RaftAttachmentUploadPhaseStatus, answer.raftRequestTimedOut())
         }
+    }
+
+    override suspend fun discardDraftAttachmentBound(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        expectedAuthority: RaftExpectedAuthBinding,
+    ): HomeNetworkResponse =
+        discardDraftAttachmentInternal(
+            priority = priority,
+            attachmentId = attachmentId,
+            serverIdOverride = ServerId(expectedAuthority.serverId),
+            expectedAuthority = expectedAuthority,
+        )
+
+    private suspend fun discardDraftAttachmentInternal(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        serverIdOverride: ServerId?,
+        expectedAuthority: RaftExpectedAuthBinding?,
+    ): HomeNetworkResponse {
+        val normalizedId = attachmentId.trim()
+        if (!isSafeDraftAttachmentIdSegment(normalizedId)) {
+            return HomeNetworkResponse(
+                code = 400,
+                bodyText = """{"code":"invalid_input","error":"Invalid attachment ID."}""",
+            )
+        }
+        return requestInternal(
+            priority = priority,
+            path = "attachments/$normalizedId/draft",
+            method = "DELETE",
+            query = emptyList(),
+            serverIdOverride = serverIdOverride,
+            bodyText = null,
+            expectedAuthority = expectedAuthority,
+            totalTimeoutMillis = RAFT_ATTACHMENT_DRAFT_DISCARD_TIMEOUT_MILLIS,
+        )
     }
 
     override suspend fun putAttachmentUploadBytesBound(

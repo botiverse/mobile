@@ -10,6 +10,8 @@ import build.raft.app.data.ThreadAttachmentCommentItem
 import build.raft.app.data.ThreadAttachmentCommentsPage
 import build.raft.app.data.normalizedOrNull
 import build.raft.app.data.runCatchingPreservingCancellation
+import build.raft.app.ThreadComposerAttachmentStatusDiscardFailed
+import build.raft.app.ThreadComposerAttachmentStatusRemoving
 import build.raft.app.displaySizeLabel
 import build.raft.app.get
 import build.raft.app.isReadyThreadAttachmentForSend
@@ -980,6 +982,12 @@ internal class ThreadRouteAttachmentActions(
     fun openComposerAttachmentPreview(attachmentId: String): Boolean {
         val composerPayload = currentComposerPayload()
         val attachment = composerPayload.pendingAttachments.firstOrNull { it.id == attachmentId } ?: return false
+        if (
+            attachment.status == ThreadComposerAttachmentStatusRemoving ||
+            attachment.status == ThreadComposerAttachmentStatusDiscardFailed
+        ) {
+            return false
+        }
         val currentDraftState = composerDraftViewModel.state.value
         val name = attachment.fileName.ifBlank { "Attachment" }
         val meta = attachment.displaySizeLabel()

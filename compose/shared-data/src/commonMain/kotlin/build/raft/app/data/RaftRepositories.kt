@@ -410,6 +410,18 @@ interface ConversationRepository {
     ): DataResult<AttachmentUploadSessionView> =
         DataResult.Error(ScreenError("attachment_upload_session_unavailable", retryable = false, traceId = null))
 
+    /**
+     * Release a completed, unsent draft attachment reservation (`DELETE /api/attachments/:id/draft`,
+     * botiverse/slock #17244). Treats `204`, `404` (`attachment_not_found`), and `409`
+     * (`attachment_already_consumed`) as already-gone success so the composer can remove the tile
+     * and refresh upload quota immediately.
+     */
+    suspend fun discardDraftAttachment(
+        serverId: ServerId?,
+        attachmentId: AttachmentId,
+    ): DataResult<Unit> =
+        DataResult.Error(ScreenError(code = "discard_draft_attachment_unavailable", retryable = true, traceId = null))
+
     suspend fun uploadAttachments(request: AttachmentUploadRequest): DataResult<AttachmentUploadResult>
     suspend fun getAttachmentOpenTarget(
         attachmentId: AttachmentId

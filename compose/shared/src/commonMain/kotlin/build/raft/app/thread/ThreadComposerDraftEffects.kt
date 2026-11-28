@@ -213,7 +213,8 @@ internal fun ThreadComposerDraftUploadEffects(
                 currentState = { composerDraftViewModel.state.value },
                 orchestrator = attachmentUploadOrchestrator,
                 log = { message -> bridge.logWarn(message) },
-                ownedByDraftUpload = { id -> attachmentUploads.ownsUpload(draftKey, id) }
+                ownedByDraftUpload = { id -> attachmentUploads.ownsUpload(draftKey, id) },
+                ownedByDraftDiscard = { id -> attachmentUploads.ownsDiscard(draftKey, id) }
             )
         }
     }
@@ -313,8 +314,8 @@ internal fun ThreadComposerDeferredSendEffects(
                         attachment.id !in draftState.removedAttachmentIds
                 }
             when {
-                externalAttachments.any { it.status == "failed" } -> externalShareSendRequested = false
-                externalAttachments.any { it.status == "queued" || it.status == "uploading" } -> Unit
+                externalAttachments.any { it.status == "failed" || it.status == "discard_failed" } -> externalShareSendRequested = false
+                externalAttachments.any { it.status == "queued" || it.status == "uploading" || it.status == "removing" } -> Unit
                 externalAttachments.isNotEmpty() -> {
                     val expected = externalShareExpectedAuthority
                     val authorityCurrent =

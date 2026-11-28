@@ -1,21 +1,28 @@
 package build.raft.app
 
+import build.raft.app.data.DataResult
 import build.raft.app.data.MviDispatchReceipt
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.RaftAttachmentUploadCancelReason
 import build.raft.app.data.RaftUploadCancelled
 import build.raft.app.data.SettingsBillingFileUploadQuotaSnapshot
+import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.diagnosticsLabel
 import build.raft.app.members.diagnosticsLabel
 import build.raft.app.thread.key
+import build.raft.app.thread.resolveThreadComposerAttachmentRemoval
 import build.raft.app.transfer.RaftTransferProgress
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 
 /** How many composer attachments upload at once, across every draft of the process. */
@@ -33,6 +40,32 @@ internal sealed interface RaftComposerDraftUploadOutcome {
         val traceId: String? = null,
         val monthlyUploadQuota: SettingsBillingFileUploadQuotaSnapshot? = null,
     ) : RaftComposerDraftUploadOutcome
+}
+
+/** Where one draft-owned discard of a completed server attachment (`DELETE /api/attachments/:id/draft`) is. */
+internal sealed interface RaftComposerDraftDiscardOutcome {
+    data object InFlight : RaftComposerDraftDiscardOutcome
+
+    /** Confirmed gone (`204`, `404 attachment_not_found`, or `409 attachment_already_consumed`). */
+    data object Succeeded : RaftComposerDraftDiscardOutcome
+
+    /** Network/server failure: keep the server attachment id and block Send until Remove retries it. */
+    data class Failed(
+        val errorCode: String,
+        val traceId: String? = null,
+        val noPermission: DataResult.NoPermission? = null,
+    ) : RaftComposerDraftDiscardOutcome
+}
+
+internal data class RaftComposerDraftDiscard(
+    val attachmentId: String,
+    val attemptToken: Long,
+    val fileRefToRetire: String? = null,
+    val outcome: RaftComposerDraftDiscardOutcome = RaftComposerDraftDiscardOutcome.InFlight,
+    /** A composer store surfaced the terminal [outcome]. */
+    val delivered: Boolean = false,
+) {
+    val inFlight: Boolean get() = outcome == RaftComposerDraftDiscardOutcome.InFlight
 }
 
 /**
@@ -73,15 +106,203 @@ internal data class RaftComposerDraftUpload(
 internal class RaftComposerServerUploads(
     val accountId: String,
     val serverId: String,
-    processScope: CoroutineScope,
+    private val processScope: CoroutineScope,
     /** Shared by every server: the process-wide concurrency bound. */
     val semaphore: Semaphore,
 ) {
     val orchestrator = ThreadAttachmentUploadOrchestrator(processScope)
     private val state = MutableStateFlow<Map<String, Map<String, RaftComposerDraftUpload>>>(emptyMap())
+    private val discardLock = SynchronizedObject()
+    private var nextDiscardAttemptToken = 0L
+    private var disposed = false
+    private val discardJobs = mutableMapOf<Pair<String, String>, Job>()
+    private val discardsState = MutableStateFlow<Map<String, Map<String, RaftComposerDraftDiscard>>>(emptyMap())
 
     /** Every draft's uploads (draft key -> local attachment id -> upload). */
     val byDraft: StateFlow<Map<String, Map<String, RaftComposerDraftUpload>>> = state.asStateFlow()
+
+    /** Every draft's completed-attachment discards (draft key -> server attachment id -> discard). */
+    val discardsByDraft: StateFlow<Map<String, Map<String, RaftComposerDraftDiscard>>> = discardsState.asStateFlow()
+
+    fun discards(draftKey: String?): Map<String, RaftComposerDraftDiscard> =
+        normalizeThreadAttachmentUploadDraftKey(draftKey)?.let { key -> discardsState.value[key] }.orEmpty()
+
+    fun discard(draftKey: String?, attachmentId: String): RaftComposerDraftDiscard? =
+        discards(draftKey)[attachmentId.trim()]
+
+    /**
+     * Whether this server upload owner still holds an active or undelivered discard for
+     * [attachmentId], so orphan recovery leaves a `removing` row alone.
+     */
+    fun ownsDiscard(draftKey: String?, attachmentId: String): Boolean {
+        val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return false
+        val id = attachmentId.trim()
+        val entry = discard(key, id) ?: return false
+        if (!entry.inFlight) return true
+        return synchronized(discardLock) { discardJobs[key to id]?.isActive == true }
+    }
+
+    /**
+     * Starts a draft-owned discard of a completed server attachment (`DELETE /api/attachments/:id/draft`)
+     * on [processScope]. Returns the attempt token if launched, or null when a discard for the same
+     * attachment is already in flight, the owner was disposed, or the draft/attachment id is blank.
+     */
+    fun startDiscard(
+        draftKey: String?,
+        attachmentId: String,
+        fileRefToRetire: String? = null,
+        discardCall: suspend () -> DataResult<Unit>,
+        onQuotaRefresh: suspend () -> Unit = {},
+    ): Long? {
+        val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return null
+        val id = attachmentId.trim().takeIf(String::isNotBlank) ?: return null
+        val started =
+            synchronized(discardLock) {
+                if (disposed) return null
+                val existing = discardsState.value[key]?.get(id)
+                if (existing != null && existing.inFlight) return null
+                val token = ++nextDiscardAttemptToken
+                discardsState.update { current ->
+                    current + (
+                        key to (
+                            current[key].orEmpty() + (
+                                id to RaftComposerDraftDiscard(
+                                    attachmentId = id,
+                                    attemptToken = token,
+                                    fileRefToRetire = fileRefToRetire,
+                                )
+                            )
+                        )
+                    )
+                }
+                val job =
+                    processScope.launch(start = CoroutineStart.LAZY) {
+                        var completed = false
+                        try {
+                            when (val result = discardCall()) {
+                                is DataResult.Content -> {
+                                    completed = true
+                                    finishDiscard(key, id, token, RaftComposerDraftDiscardOutcome.Succeeded)
+                                    runCatchingPreservingCancellation { onQuotaRefresh() }
+                                }
+                                is DataResult.NoPermission -> {
+                                    completed = true
+                                    finishDiscard(
+                                        key,
+                                        id,
+                                        token,
+                                        RaftComposerDraftDiscardOutcome.Failed(
+                                            errorCode = result.blocker.code,
+                                            traceId = result.blocker.traceId,
+                                            noPermission = result,
+                                        ),
+                                    )
+                                }
+                                is DataResult.Error -> {
+                                    completed = true
+                                    finishDiscard(
+                                        key,
+                                        id,
+                                        token,
+                                        RaftComposerDraftDiscardOutcome.Failed(
+                                            errorCode =
+                                                result.error.serverCode?.trim()?.takeIf(String::isNotBlank)
+                                                    ?: result.error.code,
+                                            traceId = result.error.traceId,
+                                        ),
+                                    )
+                                }
+                                is DataResult.Empty -> {
+                                    completed = true
+                                    finishDiscard(
+                                        key,
+                                        id,
+                                        token,
+                                        RaftComposerDraftDiscardOutcome.Failed(
+                                            errorCode = ThreadComposerAttachmentDiscardFailedErrorCode,
+                                        ),
+                                    )
+                                }
+                            }
+                        } catch (cancellation: CancellationException) {
+                            throw cancellation
+                        } catch (_: Throwable) {
+                            completed = true
+                            finishDiscard(
+                                key,
+                                id,
+                                token,
+                                RaftComposerDraftDiscardOutcome.Failed(
+                                    errorCode = ThreadComposerAttachmentDiscardFailedErrorCode,
+                                ),
+                            )
+                        } finally {
+                            synchronized(discardLock) {
+                                if (discardJobs[key to id] === coroutineContext[Job]) {
+                                    discardJobs.remove(key to id)
+                                }
+                            }
+                            if (!completed) {
+                                finishDiscard(
+                                    key,
+                                    id,
+                                    token,
+                                    RaftComposerDraftDiscardOutcome.Failed(
+                                        errorCode = ThreadComposerAttachmentDiscardFailedErrorCode,
+                                    ),
+                                )
+                            }
+                        }
+                    }
+                discardJobs[key to id] = job
+                token to job
+            }
+        started.second.start()
+        return started.first
+    }
+
+    fun markDiscardDelivered(draftKey: String, attachmentId: String, attemptToken: Long) {
+        val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return
+        val id = attachmentId.trim()
+        synchronized(discardLock) {
+            discardsState.update { current ->
+                val draft = current[key] ?: return@update current
+                val existing = draft[id]?.takeIf { it.attemptToken == attemptToken } ?: return@update current
+                if (existing.inFlight || existing.delivered) return@update current
+                current + (key to (draft + (id to existing.copy(delivered = true))))
+            }
+        }
+    }
+
+    fun clearDiscard(draftKey: String, attachmentId: String, attemptToken: Long) {
+        val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return
+        val id = attachmentId.trim()
+        synchronized(discardLock) {
+            discardsState.update { current ->
+                val draft = current[key] ?: return@update current
+                val existing = draft[id]?.takeIf { it.attemptToken == attemptToken } ?: return@update current
+                if (existing.inFlight) return@update current
+                val remaining = draft - id
+                if (remaining.isEmpty()) current - key else current + (key to remaining)
+            }
+        }
+    }
+
+    private fun finishDiscard(
+        draftKey: String,
+        attachmentId: String,
+        attemptToken: Long,
+        outcome: RaftComposerDraftDiscardOutcome,
+    ) {
+        synchronized(discardLock) {
+            discardsState.update { current ->
+                val draft = current[draftKey] ?: return@update current
+                val existing = draft[attachmentId]?.takeIf { it.attemptToken == attemptToken } ?: return@update current
+                if (!existing.inFlight) return@update current
+                current + (draftKey to (draft + (attachmentId to existing.copy(outcome = outcome))))
+            }
+        }
+    }
 
     fun uploads(draftKey: String?): Map<String, RaftComposerDraftUpload> =
         normalizeThreadAttachmentUploadDraftKey(draftKey)?.let { key -> state.value[key] }.orEmpty()
@@ -234,6 +455,13 @@ internal class RaftComposerServerUploads(
         val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return emptySet()
         val retired = orchestrator.retireDraft(key, RaftUploadCancelled(reason))
         state.update { current -> current - key }
+        val jobsToCancel =
+            synchronized(discardLock) {
+                discardsState.update { current -> current - key }
+                val matchingKeys = discardJobs.keys.filter { (jobDraftKey, _) -> jobDraftKey == key }
+                matchingKeys.mapNotNull(discardJobs::remove)
+            }
+        jobsToCancel.forEach(Job::cancel)
         return retired
     }
 
@@ -241,6 +469,13 @@ internal class RaftComposerServerUploads(
     fun dispose() {
         orchestrator.dispose(RaftUploadCancelled(RaftAttachmentUploadCancelReason.SessionEnded))
         state.value = emptyMap()
+        val jobsToCancel =
+            synchronized(discardLock) {
+                disposed = true
+                discardsState.value = emptyMap()
+                discardJobs.values.toList().also { discardJobs.clear() }
+            }
+        jobsToCancel.forEach(Job::cancel)
     }
 
     private fun put(draftKey: String, upload: RaftComposerDraftUpload) {
@@ -513,6 +748,149 @@ internal class RaftComposerDraftUploadApplier(
         onAdopted(upload)
         return admission
     }
+
+    fun applyDiscards(
+        draftKey: String?,
+        discards: Map<String, RaftComposerDraftDiscard>,
+        currentState: () -> SharedThreadComposerDraftState,
+        acceptWithState: (SharedThreadComposerDraftIntent) -> MviDispatchReceipt<SharedThreadComposerDraftState>,
+        onSucceeded: (RaftComposerDraftDiscard) -> Unit = {},
+        onFailed: (RaftComposerDraftDiscard, RaftComposerDraftDiscardOutcome.Failed) -> Unit = { _, _ -> },
+    ) {
+        val key = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return
+        discards.values.sortedBy { it.attemptToken }.forEach { discard ->
+            applyOneDiscard(key, discard, currentState, acceptWithState, onSucceeded, onFailed)
+        }
+    }
+
+    private fun applyOneDiscard(
+        draftKey: String,
+        discard: RaftComposerDraftDiscard,
+        currentState: () -> SharedThreadComposerDraftState,
+        acceptWithState: (SharedThreadComposerDraftIntent) -> MviDispatchReceipt<SharedThreadComposerDraftState>,
+        onSucceeded: (RaftComposerDraftDiscard) -> Unit,
+        onFailed: (RaftComposerDraftDiscard, RaftComposerDraftDiscardOutcome.Failed) -> Unit,
+    ) {
+        val id = discard.attachmentId
+        val state = currentState()
+        if (normalizeThreadAttachmentUploadDraftKey(state.draftKey) != draftKey) return
+        when (val outcome = discard.outcome) {
+            RaftComposerDraftDiscardOutcome.InFlight -> {
+                val row = state.uploadedAttachments.firstOrNull { it.id == id } ?: return
+                if (id in state.removedAttachmentIds || row.status == ThreadComposerAttachmentStatusRemoving) return
+                acceptWithState(
+                    SharedThreadComposerDraftIntent.MarkAttachmentRemoving(
+                        id = id,
+                        expectedDraftKey = draftKey,
+                    )
+                )
+            }
+            RaftComposerDraftDiscardOutcome.Succeeded -> {
+                if (id !in state.removedAttachmentIds) {
+                    val receipt =
+                        acceptWithState(
+                            SharedThreadComposerDraftIntent.RemoveAttachment(
+                                id = id,
+                                expectedDraftKey = draftKey,
+                            )
+                        )
+                    if (id !in receipt.state.removedAttachmentIds) return
+                }
+                onSucceeded(discard)
+            }
+            is RaftComposerDraftDiscardOutcome.Failed -> {
+                val row = state.uploadedAttachments.firstOrNull { it.id == id }
+                if (row == null || id in state.removedAttachmentIds) {
+                    if (!discard.delivered) onFailed(discard, outcome)
+                    return
+                }
+                if (row.status != ThreadComposerAttachmentStatusDiscardFailed) {
+                    val receipt =
+                        acceptWithState(
+                            SharedThreadComposerDraftIntent.MarkAttachmentDiscardFailed(
+                                id = id,
+                                errorCode = ThreadComposerAttachmentDiscardFailedErrorCode,
+                                expectedDraftKey = draftKey,
+                            )
+                        )
+                    val marked =
+                        receipt.state.uploadedAttachments.any { candidate ->
+                            candidate.id == id && candidate.status == ThreadComposerAttachmentStatusDiscardFailed
+                        }
+                    if (!marked) return
+                }
+                if (!discard.delivered) {
+                    onFailed(discard, outcome)
+                }
+            }
+        }
+    }
+}
+
+internal sealed interface ThreadComposerAttachmentRemovalDispatchResult {
+    data class Rejected(val reason: String) : ThreadComposerAttachmentRemovalDispatchResult
+    data object DiscardAlreadyInFlight : ThreadComposerAttachmentRemovalDispatchResult
+    data class DiscardStarted(val attachmentId: String, val attemptToken: Long) : ThreadComposerAttachmentRemovalDispatchResult
+    data class RemovedLocally(val attachmentId: String, val fileRefToRetire: String?) : ThreadComposerAttachmentRemovalDispatchResult
+}
+
+/**
+ * Decides and dispatches removal of one composer attachment tile:
+ * - Completed server draft attachment (`ready`, `removing`, `discard_failed`, non-`picked-` id):
+ *   starts a process-owned `DELETE /api/attachments/:id/draft` discard on [attachmentUploads],
+ *   transitions the row to `removing` (blocking Send), and retains the tile + reservation id until
+ *   confirmed gone.
+ * - In-flight / queued / upload-failed local attachment: cancels its upload on [attachmentUploads],
+ *   removes the row immediately, and returns any owned temporary file ref to retire.
+ */
+internal fun dispatchThreadComposerAttachmentRemoval(
+    attachmentId: String,
+    currentState: SharedThreadComposerDraftState,
+    attachmentUploads: RaftComposerServerUploads,
+    dispatch: (SharedThreadComposerDraftIntent) -> Unit,
+    discardCall: suspend (attachmentId: String) -> DataResult<Unit>,
+    onQuotaRefresh: suspend () -> Unit = {},
+): ThreadComposerAttachmentRemovalDispatchResult {
+    val draftKey = normalizeThreadAttachmentUploadDraftKey(currentState.draftKey)
+    val removal =
+        resolveThreadComposerAttachmentRemoval(
+            attachments = currentState.uploadedAttachments,
+            removedAttachmentIds = currentState.removedAttachmentIds,
+            attachmentId = attachmentId,
+            draftKey = draftKey,
+        )
+    if (!removal.accepted) {
+        return ThreadComposerAttachmentRemovalDispatchResult.Rejected(removal.reason ?: "rejected")
+    }
+    val normalizedId = attachmentId.trim()
+    val attachment = currentState.uploadedAttachments.firstOrNull { it.id.trim() == normalizedId }
+    if (attachment != null && attachment.isCompletedServerDraftAttachment()) {
+        val attemptToken =
+            attachmentUploads.startDiscard(
+                draftKey = draftKey,
+                attachmentId = attachment.id,
+                fileRefToRetire = removal.fileRefToRetire,
+                discardCall = { discardCall(attachment.id) },
+                onQuotaRefresh = onQuotaRefresh,
+            )
+                ?: return ThreadComposerAttachmentRemovalDispatchResult.DiscardAlreadyInFlight
+        dispatch(
+            SharedThreadComposerDraftIntent.MarkAttachmentRemoving(
+                id = attachment.id,
+                expectedDraftKey = draftKey,
+            )
+        )
+        return ThreadComposerAttachmentRemovalDispatchResult.DiscardStarted(
+            attachmentId = attachment.id,
+            attemptToken = attemptToken,
+        )
+    }
+    attachmentUploads.remove(draftKey, normalizedId)
+    dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(normalizedId, expectedDraftKey = draftKey))
+    return ThreadComposerAttachmentRemovalDispatchResult.RemovedLocally(
+        attachmentId = normalizedId,
+        fileRefToRetire = removal.fileRefToRetire,
+    )
 }
 
 private fun RaftComposerDraftUploadOutcome.diagnosticsLabel(): String =

@@ -54,6 +54,12 @@ import kotlin.random.Random
 @RaftCoreInternalApi const val RAFT_ATTACHMENT_UPLOAD_COMPLETE_TIMEOUT_MILLIS = 45_000L
 
 /**
+ * Releasing a completed draft attachment (`DELETE attachments/:id/draft`, botiverse/slock #17244)
+ * gets a 15 s whole-call budget, matching web `discardDraftAttachment.ts` (`timeout: 15_000`).
+ */
+@RaftCoreInternalApi const val RAFT_ATTACHMENT_DRAFT_DISCARD_TIMEOUT_MILLIS = 15_000L
+
+/**
  * Only multipart requests that stream a fileRef body get the upload budget;
  * a part without both an opener and a fileRef maps to NetworkBody.Bytes and
  * keeps the ordinary bound.

@@ -20,7 +20,9 @@ import build.raft.app.data.ThreadAttachmentOpenTarget
 import build.raft.app.data.map
 import build.raft.app.data.matchesExpectedAuthority
 import build.raft.app.data.normalizedEnvironmentId
+import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelId
+import build.raft.app.model.ServerId
 import build.raft.app.traceId
 
 /**
@@ -93,6 +95,35 @@ internal class ThreadAttachmentTransfers(
     suspend fun prefetchAttachmentUploadCapabilities() {
         val operation = captureDirectAttachmentUploadOperation() ?: return
         attachmentUploadCapabilities(operation)
+    }
+
+    /**
+     * Release a completed, unsent draft attachment reservation (`DELETE /api/attachments/:id/draft`,
+     * botiverse/slock #17244) and invalidate cached upload capabilities/quota when confirmed gone.
+     */
+    suspend fun discardDraftAttachment(
+        serverId: String?,
+        attachmentId: String,
+    ): DataResult<Unit> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "discard_draft_attachment_unavailable", retryable = true))
+        val normalizedAttachmentId = attachmentId.trim()
+        if (normalizedAttachmentId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "invalid_input", retryable = false))
+        }
+        val normalizedServerId = serverId?.trim()?.takeIf(String::isNotBlank)?.let(::ServerId)
+        val result = repository.discardDraftAttachment(normalizedServerId, AttachmentId(normalizedAttachmentId))
+        if (result is DataResult.Content) {
+            attachmentUploadCapabilitiesCache.clear()
+        }
+        return result
+    }
+
+    /** Drop cached upload limits/quota and best-effort re-fetch `attachments/upload-capabilities`. */
+    suspend fun refreshAttachmentUploadCapabilities() {
+        attachmentUploadCapabilitiesCache.clear()
+        prefetchAttachmentUploadCapabilities()
     }
 
     suspend fun attachmentUploadMaxBytes(

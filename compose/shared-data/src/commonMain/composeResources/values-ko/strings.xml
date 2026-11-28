@@ -895,6 +895,8 @@
     <string name="thread_composer_attachment_uploading">업로드 중</string>
     <string name="thread_composer_attachment_checking">파일 확인 중…</string>
     <string name="thread_composer_attachment_finishing">업로드 마무리 중…</string>
+    <string name="thread_composer_attachment_removing">첨부 파일을 제거하는 중…</string>
+    <string name="thread_composer_attachment_discard_failed">제거하지 못했습니다. 제거를 선택해 다시 시도하세요.</string>
     <string name="thread_composer_attachment_file">파일</string>
     <string name="thread_composer_attachment_move_left">왼쪽으로 이동</string>
     <string name="thread_composer_attachment_move_right">오른쪽으로 이동</string>

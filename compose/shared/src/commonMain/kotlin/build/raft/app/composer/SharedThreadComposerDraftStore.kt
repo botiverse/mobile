@@ -2093,6 +2093,9 @@ internal class SharedThreadComposerDraftPersistSlice(
             is SharedThreadComposerDraftIntent.AddUploadedAttachments,
             is SharedThreadComposerDraftIntent.MarkAttachmentsFailed,
             is SharedThreadComposerDraftIntent.MarkOrphanedAttachmentsInterrupted,
+            is SharedThreadComposerDraftIntent.MarkAttachmentRemoving,
+            is SharedThreadComposerDraftIntent.MarkAttachmentDiscardFailed,
+            is SharedThreadComposerDraftIntent.MarkOrphanedDiscardsFailed,
             is SharedThreadComposerDraftIntent.ReorderAttachments,
             is SharedThreadComposerDraftIntent.RemoveAttachment ->
                 next.draftKey?.let { key ->
@@ -2790,6 +2793,22 @@ private fun SharedThreadComposerDraftState.isAdmissibleUploadedAttachmentProject
 }
 
 internal const val ThreadComposerUploadInterruptedErrorCode = "upload_interrupted"
+internal const val ThreadComposerAttachmentStatusRemoving = "removing"
+internal const val ThreadComposerAttachmentStatusDiscardFailed = "discard_failed"
+internal const val ThreadComposerAttachmentDiscardFailedErrorCode = "discard_attachment_failed"
+
+/**
+ * Whether [this] row represents a completed server draft attachment reservation
+ * (`DELETE /api/attachments/:id/draft`, botiverse/slock #17244) rather than an in-flight or failed
+ * local upload placeholder (`picked-...`, `queued`, `uploading`, `failed`).
+ */
+internal fun SharedThreadComposerAttachment.isCompletedServerDraftAttachment(): Boolean {
+    val normalizedId = id.trim()
+    if (normalizedId.isBlank() || normalizedId.startsWith("picked-")) return false
+    return status == "ready" ||
+        status == ThreadComposerAttachmentStatusRemoving ||
+        status == ThreadComposerAttachmentStatusDiscardFailed
+}
 
 /**
  * Local rows still shown as uploading that nothing can finish any more.  Every upload attempt
@@ -2806,6 +2825,15 @@ internal fun SharedThreadComposerDraftState.orphanedThreadComposerUploadIds(): S
         .filter { attachment -> attachment.status == "uploading" || attachment.status == "queued" }
         .filterNot { attachment -> attachment.source == "external_share" && attachment.status == "queued" }
         .filter { attachment -> attachment.id !in attachmentAdmissionsByLocalId }
+        .map { attachment -> attachment.id }
+        .toSet()
+
+/** Completed draft rows restored as `removing` whose process-owned discard is no longer running. */
+internal fun SharedThreadComposerDraftState.orphanedThreadComposerDiscardIds(): Set<String> =
+    uploadedAttachments
+        .asSequence()
+        .filter { attachment -> attachment.id.isNotBlank() && attachment.id !in removedAttachmentIds }
+        .filter { attachment -> attachment.status == ThreadComposerAttachmentStatusRemoving }
         .map { attachment -> attachment.id }
         .toSet()
 
@@ -2866,6 +2894,9 @@ private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosti
         is SharedThreadComposerDraftIntent.AddLocalAttachments -> "AddLocalAttachments"
         is SharedThreadComposerDraftIntent.MarkAttachmentsFailed -> "MarkAttachmentsFailed"
         is SharedThreadComposerDraftIntent.MarkOrphanedAttachmentsInterrupted -> "MarkOrphanedAttachmentsInterrupted"
+        is SharedThreadComposerDraftIntent.MarkAttachmentRemoving -> "MarkAttachmentRemoving"
+        is SharedThreadComposerDraftIntent.MarkAttachmentDiscardFailed -> "MarkAttachmentDiscardFailed"
+        is SharedThreadComposerDraftIntent.MarkOrphanedDiscardsFailed -> "MarkOrphanedDiscardsFailed"
         is SharedThreadComposerDraftIntent.UpdateAttachmentUploadProgress -> "UpdateAttachmentUploadProgress"
         is SharedThreadComposerDraftIntent.RemoveAttachment -> "RemoveAttachment"
         is SharedThreadComposerDraftIntent.RetryAttachment -> "RetryAttachment"
@@ -2983,6 +3014,22 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val attachmentIds: Set<String>,
         val expectedDraftKey: String
     ) : SharedThreadComposerDraftIntent
+    /** Mark a completed draft attachment as `removing` while `DELETE /api/attachments/:id/draft` is in flight. */
+    data class MarkAttachmentRemoving(
+        val id: String,
+        val expectedDraftKey: String? = null,
+    ) : SharedThreadComposerDraftIntent
+    /** Retain a completed draft attachment in `discard_failed` (blocking Send) when discard fails so Remove retries it. */
+    data class MarkAttachmentDiscardFailed(
+        val id: String,
+        val errorCode: String = ThreadComposerAttachmentDiscardFailedErrorCode,
+        val expectedDraftKey: String? = null,
+    ) : SharedThreadComposerDraftIntent
+    /** Recover persisted `removing` rows that have no live discard attempt into `discard_failed`. */
+    data class MarkOrphanedDiscardsFailed(
+        val attachmentIds: Set<String>,
+        val expectedDraftKey: String,
+    ) : SharedThreadComposerDraftIntent
     /** The upload attempt's meter state ([transfer]), published by the attempt that owns the meter. */
     data class UpdateAttachmentUploadProgress(
         val attachmentId: String,
@@ -2991,7 +3038,10 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val expectedDraftKey: String? = null,
         val expectedAdmission: SharedThreadComposerAttachmentAdmission? = null
     ) : SharedThreadComposerDraftIntent
-    data class RemoveAttachment(val id: String) : SharedThreadComposerDraftIntent
+    data class RemoveAttachment(
+        val id: String,
+        val expectedDraftKey: String? = null,
+    ) : SharedThreadComposerDraftIntent
     data class RetryAttachment(val id: String) : SharedThreadComposerDraftIntent
     /**
      * The tray's tiles dragged (or moved by a screen reader) into [orderedIds] (web MessageInput
@@ -3638,27 +3688,140 @@ internal class SharedThreadComposerDraftStore(
                     )
                 }
             }
-            is SharedThreadComposerDraftIntent.RemoveAttachment ->
-                (current.removedAttachmentIds + intent.id).let { removedIds ->
+            is SharedThreadComposerDraftIntent.MarkAttachmentRemoving -> {
+                val expectedKey = intent.expectedDraftKey?.let(::normalizeThreadAttachmentUploadDraftKey)
+                val draftMatches =
+                    intent.expectedDraftKey == null ||
+                        (expectedKey != null && normalizeThreadAttachmentUploadDraftKey(current.draftKey) == expectedKey)
+                val targetId = intent.id.trim()
+                val canMark =
+                    draftMatches &&
+                        targetId.isNotBlank() &&
+                        targetId !in current.removedAttachmentIds &&
+                        current.uploadedAttachments.any { attachment ->
+                            attachment.id == targetId &&
+                                attachment.isCompletedServerDraftAttachment() &&
+                                attachment.status != ThreadComposerAttachmentStatusRemoving
+                        }
+                if (!canMark) {
+                    current
+                } else {
                     current.copy(
                         syncNonce = current.syncNonce + 1,
                         sending = false,
-                        removedAttachmentIds = removedIds,
-                        attachmentAdmissionsByLocalId =
-                            current.attachmentAdmissionsByLocalId - intent.id,
-                        externalShareSources =
-                            if (
-                                current.seedText.isBlank() &&
-                                current.uploadedAttachments.none { attachment ->
-                                    attachment.source == "external_share" && attachment.id !in removedIds
+                        uploadedAttachments =
+                            current.uploadedAttachments.map { attachment ->
+                                if (attachment.id == targetId) {
+                                    attachment.copy(
+                                        status = ThreadComposerAttachmentStatusRemoving,
+                                        errorCode = null,
+                                        uploadTransfer = null,
+                                    )
+                                } else {
+                                    attachment
                                 }
-                            ) {
-                                emptyList()
-                            } else {
-                                current.externalShareSources
                             }
                     )
                 }
+            }
+            is SharedThreadComposerDraftIntent.MarkAttachmentDiscardFailed -> {
+                val expectedKey = intent.expectedDraftKey?.let(::normalizeThreadAttachmentUploadDraftKey)
+                val draftMatches =
+                    intent.expectedDraftKey == null ||
+                        (expectedKey != null && normalizeThreadAttachmentUploadDraftKey(current.draftKey) == expectedKey)
+                val targetId = intent.id.trim()
+                val canMark =
+                    draftMatches &&
+                        targetId.isNotBlank() &&
+                        targetId !in current.removedAttachmentIds &&
+                        current.uploadedAttachments.any { attachment ->
+                            attachment.id == targetId &&
+                                attachment.isCompletedServerDraftAttachment() &&
+                                (
+                                    attachment.status != ThreadComposerAttachmentStatusDiscardFailed ||
+                                        attachment.errorCode != intent.errorCode
+                                    )
+                        }
+                if (!canMark) {
+                    current
+                } else {
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        sending = false,
+                        uploadedAttachments =
+                            current.uploadedAttachments.map { attachment ->
+                                if (attachment.id == targetId) {
+                                    attachment.copy(
+                                        status = ThreadComposerAttachmentStatusDiscardFailed,
+                                        errorCode = intent.errorCode,
+                                        uploadTransfer = null,
+                                    )
+                                } else {
+                                    attachment
+                                }
+                            }
+                    )
+                }
+            }
+            is SharedThreadComposerDraftIntent.MarkOrphanedDiscardsFailed -> {
+                val expectedKey = normalizeThreadAttachmentUploadDraftKey(intent.expectedDraftKey)
+                val orphanedIds =
+                    if (expectedKey == null || normalizeThreadAttachmentUploadDraftKey(current.draftKey) != expectedKey) {
+                        emptySet()
+                    } else {
+                        current.orphanedThreadComposerDiscardIds().intersect(intent.attachmentIds)
+                    }
+                if (orphanedIds.isEmpty()) {
+                    current
+                } else {
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        sending = false,
+                        uploadedAttachments =
+                            current.uploadedAttachments.map { attachment ->
+                                if (attachment.id in orphanedIds) {
+                                    attachment.copy(
+                                        status = ThreadComposerAttachmentStatusDiscardFailed,
+                                        errorCode = ThreadComposerAttachmentDiscardFailedErrorCode,
+                                        uploadTransfer = null,
+                                    )
+                                } else {
+                                    attachment
+                                }
+                            }
+                    )
+                }
+            }
+            is SharedThreadComposerDraftIntent.RemoveAttachment -> {
+                val expectedKey = intent.expectedDraftKey?.let(::normalizeThreadAttachmentUploadDraftKey)
+                val draftMatches =
+                    intent.expectedDraftKey == null ||
+                        (expectedKey != null && normalizeThreadAttachmentUploadDraftKey(current.draftKey) == expectedKey)
+                if (!draftMatches) {
+                    current
+                } else {
+                    (current.removedAttachmentIds + intent.id).let { removedIds ->
+                        current.copy(
+                            syncNonce = current.syncNonce + 1,
+                            sending = false,
+                            removedAttachmentIds = removedIds,
+                            attachmentAdmissionsByLocalId =
+                                current.attachmentAdmissionsByLocalId - intent.id,
+                            externalShareSources =
+                                if (
+                                    current.seedText.isBlank() &&
+                                    current.uploadedAttachments.none { attachment ->
+                                        attachment.source == "external_share" && attachment.id !in removedIds
+                                    }
+                                ) {
+                                    emptyList()
+                                } else {
+                                    current.externalShareSources
+                                }
+                        )
+                    }
+                }
+            }
             is SharedThreadComposerDraftIntent.ReorderAttachments -> {
                 val reordered = current.uploadedAttachments.reorderedThreadComposerAttachments(
                     orderedIds = intent.orderedIds,
@@ -3743,9 +3906,20 @@ private fun List<SharedThreadComposerAttachment>.persistableThreadComposerDraftA
         .filter { attachment ->
             when {
                 attachment.source in ThreadComposerOwnedTemporarySources ->
-                    attachment.status in setOf("ready", "queued", "uploading", "failed") &&
+                    attachment.status in setOf(
+                        "ready",
+                        "queued",
+                        "uploading",
+                        "failed",
+                        ThreadComposerAttachmentStatusRemoving,
+                        ThreadComposerAttachmentStatusDiscardFailed,
+                    ) &&
                         attachment.hasOwnedTemporaryFileRef()
-                attachment.status == "ready" -> true
+                attachment.status in setOf(
+                    "ready",
+                    ThreadComposerAttachmentStatusRemoving,
+                    ThreadComposerAttachmentStatusDiscardFailed,
+                ) -> true
                 attachment.isValidExternalShareQueuedAttachment() -> true
                 else -> false
             }

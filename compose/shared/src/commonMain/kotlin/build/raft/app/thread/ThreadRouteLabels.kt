@@ -31,6 +31,7 @@ internal data class ThreadRouteLabels(
     val attachmentSavedToPhotosLabel: String,
     val attachmentDownloadedLabel: String,
     val attachmentUploadFailedLabel: String,
+    val attachmentDiscardFailedLabel: String,
     val preparingAttachmentPreviewLabel: String,
     val attachmentUploadFailedDetailTemplate: String,
     val attachmentLimitUnavailableLabel: String,
@@ -136,6 +137,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
     val attachmentSavedToPhotosLabel = stringResource(Res.string.thread_image_preview_saved_to_photos)
     val attachmentDownloadedLabel = stringResource(Res.string.file_preview_private_download_saved)
     val attachmentUploadFailedLabel = stringResource(Res.string.thread_error_attachment_upload)
+    val attachmentDiscardFailedLabel = stringResource(Res.string.thread_composer_attachment_discard_failed)
     val preparingAttachmentPreviewLabel = stringResource(Res.string.thread_state_preparing_attachment)
     val attachmentUploadFailedDetailTemplate =
         stringResource(Res.string.thread_error_attachment_upload_detail, ThreadLocalizedFeedbackPlaceholder)
@@ -280,6 +282,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
         attachmentSavedToPhotosLabel = attachmentSavedToPhotosLabel,
         attachmentDownloadedLabel = attachmentDownloadedLabel,
         attachmentUploadFailedLabel = attachmentUploadFailedLabel,
+        attachmentDiscardFailedLabel = attachmentDiscardFailedLabel,
         preparingAttachmentPreviewLabel = preparingAttachmentPreviewLabel,
         attachmentUploadFailedDetailTemplate = attachmentUploadFailedDetailTemplate,
         attachmentLimitUnavailableLabel = attachmentLimitUnavailableLabel,

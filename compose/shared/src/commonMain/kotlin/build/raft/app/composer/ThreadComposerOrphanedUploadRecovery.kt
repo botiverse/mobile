@@ -31,10 +31,21 @@ internal fun recoverOrphanedThreadComposerUploads(
     orchestrator: ThreadAttachmentUploadOrchestrator,
     log: (String) -> Unit,
     /** A row whose upload the process still owns (the draft's upload, see [RaftComposerDraftUploads]) is not orphaned. */
-    ownedByDraftUpload: (String) -> Boolean = { false }
+    ownedByDraftUpload: (String) -> Boolean = { false },
+    /** A row whose completed-draft discard the process still owns is not orphaned. */
+    ownedByDraftDiscard: (String) -> Boolean = { false },
 ): Set<String> {
     val normalizedDraftKey = normalizeThreadAttachmentUploadDraftKey(draftKey) ?: return emptySet()
     if (normalizeThreadAttachmentUploadDraftKey(state.draftKey) != normalizedDraftKey) return emptySet()
+    val orphanedDiscards = state.orphanedThreadComposerDiscardIds().filterNot(ownedByDraftDiscard).toSet()
+    if (orphanedDiscards.isNotEmpty()) {
+        acceptWithState(
+            SharedThreadComposerDraftIntent.MarkOrphanedDiscardsFailed(
+                attachmentIds = orphanedDiscards,
+                expectedDraftKey = normalizedDraftKey,
+            )
+        )
+    }
     val candidates = state.orphanedThreadComposerUploadIds().filterNot(ownedByDraftUpload).toSet()
     if (candidates.isEmpty()) return emptySet()
     val receipt =

@@ -895,6 +895,8 @@
     <string name="thread_composer_attachment_uploading">Загрузка</string>
     <string name="thread_composer_attachment_checking">Проверка файла…</string>
     <string name="thread_composer_attachment_finishing">Завершение загрузки…</string>
+    <string name="thread_composer_attachment_removing">Удаляем вложение…</string>
+    <string name="thread_composer_attachment_discard_failed">Не удалось удалить вложение. Нажмите «Удалить», чтобы повторить попытку.</string>
     <string name="thread_composer_attachment_file">файл</string>
     <string name="thread_composer_attachment_move_left">Переместить влево</string>
     <string name="thread_composer_attachment_move_right">Переместить вправо</string>
