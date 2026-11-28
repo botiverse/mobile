@@ -478,7 +478,10 @@ jobs:
       #     classes in :shared; compose/build.gradle.kts) and runs :designsystem:desktopTest (unit +
       #     Compose UI logic tests only) when run_designsystem_tests=true instead of
       #     verifyRoborazziDesktop. On android_unit_scope=jvm, -Praft.unitTest.skipRobolectric=true
-      #     also skips every Robolectric class in :shared and :androidApp.
+      #     skips Robolectric classes by default; when changed-file selection matches a bounded set
+      #     (<= 25) of non-screenshot behavioral Robolectric UI tests, -Praft.unitTest.allowSelectedRobolectric=true
+      #     runs only those explicitly selected non-screenshot Robolectric classes while keeping all
+      #     unselected Robolectric and screenshot golden classes excluded.
       #   - run_roborazzi=true (main and release-* pushes, nightly schedule, full-ci PRs, scope=full,
       #     premerge into a release base, the merge-queue candidate, merge_group, record_screenshots):
       #     runs the whole suite and both golden sets (:designsystem:verifyRoborazziDesktop and
@@ -488,9 +491,11 @@ jobs:
       #   regression a deterministic empty Thread composer.
       # On ordinary PRs (`android_unit_scope=jvm`, no connected APKs, no screenshot recording),
       # narrow unit test execution to test classes impacted by changed files + the always-run smoke
-      # set (`scripts/ci/always_run_smoke_tests.txt`), and skip untouched leaf/upstream module test
-      # tasks. Strictly fail-closed to `mode=full` on any global/build/resource/deletion/wide-hub diff.
-      - name: Select changed Android JVM unit tests
+      # set (`scripts/ci/always_run_smoke_tests.txt`), include up to 25 impacted non-screenshot
+      # behavioral Robolectric UI tests, skip screenshot golden tests, and skip untouched leaf/upstream
+      # module test tasks. Strictly fail-closed to `mode=full` (plain JVM only, skipRobolectric=true)
+      # on any global/build/resource/deletion/wide-hub diff.
+      - name: Select changed Android unit tests
         id: test_selection
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -522,6 +527,12 @@ jobs:
           need_socketio_server=true
           selected_shared_count=0
           selected_android_app_count=0
+          run_selected_robolectric=false
+          robolectric_reason=tier-runs-full-suite
+          selected_jvm_count=0
+          selected_robolectric_count=0
+          candidate_robolectric_count=0
+          skipped_screenshot_count=0
           EOF
             echo "select_changed_tests: mode=full reason=tier-runs-full-suite"
           fi
@@ -563,6 +574,12 @@ jobs:
           RUN_WEB_CONTAINER_TESTS: ${{ steps.test_selection.outputs.run_web_container_tests }}
           RUN_SHARED_TESTS: ${{ steps.test_selection.outputs.run_shared_tests }}
           RUN_ANDROID_APP_TESTS: ${{ steps.test_selection.outputs.run_android_app_tests }}
+          RUN_SELECTED_ROBOLECTRIC: ${{ steps.test_selection.outputs.run_selected_robolectric }}
+          ROBOLECTRIC_REASON: ${{ steps.test_selection.outputs.robolectric_reason }}
+          SELECTED_JVM_COUNT: ${{ steps.test_selection.outputs.selected_jvm_count }}
+          SELECTED_ROBOLECTRIC_COUNT: ${{ steps.test_selection.outputs.selected_robolectric_count }}
+          CANDIDATE_ROBOLECTRIC_COUNT: ${{ steps.test_selection.outputs.candidate_robolectric_count }}
+          SKIPPED_SCREENSHOT_COUNT: ${{ steps.test_selection.outputs.skipped_screenshot_count }}
         run: |
           set -euo pipefail
           tasks=(
@@ -635,7 +652,9 @@ jobs:
           # - run_roborazzi=true: verify both golden sets with the full suite.
           # - run_roborazzi=false: PR CI never runs Roborazzi/vcase golden verification
           #   (-Praft.unitTest.skipScreenshots=true); run :designsystem:desktopTest (unit +
-          #   Compose UI logic tests only) when selected, and skip Robolectric when scope=jvm.
+          #   Compose UI logic tests only) when selected. On scope=jvm, skipRobolectric=true
+          #   excludes unselected Robolectric classes, and allowSelectedRobolectric=true runs
+          #   only the PR-selected non-screenshot behavioral Robolectric UI classes when <= cap.
           unit_tier=()
           if [ "$RECORD_SCREENSHOTS" = true ]; then
             test_tasks+=(:designsystem:recordRoborazziDesktop :shared:recordRoborazziDebug)
@@ -647,21 +666,31 @@ jobs:
               unit_tier+=(-Praft.unitTest.skipRobolectric=true)
               if [ "$SELECTION_MODE" = selected ] && [ -n "$INCLUDE_CLASSES_FILE" ]; then
                 unit_tier+=("-Praft.unitTest.includeClassesFile=${INCLUDE_CLASSES_FILE}")
+                if [ "$RUN_SELECTED_ROBOLECTRIC" = true ]; then
+                  unit_tier+=(-Praft.unitTest.allowSelectedRobolectric=true)
+                fi
               fi
             fi
             if [ "$RUN_DESIGNSYSTEM_TESTS" != false ]; then
               test_tasks+=(:designsystem:desktopTest)
             fi
           fi
-          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (selection: ${SELECTION_MODE}/${SELECTION_REASON}, design system tests: ${RUN_DESIGNSYSTEM_TESTS}, roborazzi: ${RUN_ROBORAZZI}) ${unit_tier[*]}"
+          echo "Android unit tier: ${ANDROID_UNIT_SCOPE} (selection: ${SELECTION_MODE}/${SELECTION_REASON}, jvm_selected: ${SELECTED_JVM_COUNT}, robolectric_ui: ${SELECTED_ROBOLECTRIC_COUNT}/${CANDIDATE_ROBOLECTRIC_COUNT} [${ROBOLECTRIC_REASON}], screenshots_skipped: ${SKIPPED_SCREENSHOT_COUNT}, design system tests: ${RUN_DESIGNSYSTEM_TESTS}, roborazzi: ${RUN_ROBORAZZI}) ${unit_tier[*]}"
           if [ "$BUILD_CONNECTED_APKS" != true ] && [ "$ANDROID_UNIT_SCOPE" = jvm ] && [ "$RECORD_SCREENSHOTS" != true ]; then
-            # Ordinary PR tier (no connected APKs, no Robolectric/Roborazzi forks): run compile
-            # and plain JVM tests in one Gradle invocation to skip a second cold JVM boot and
-            # 9-project configuration pass (~45-75 s). 7g in-process compile heap + at most 2
-            # plain JVM test forks (512m each) stays well within the 16 GB runner memory budget.
+            # Ordinary PR tier (no connected APKs, no Roborazzi goldens): run compile and unit
+            # tests in one Gradle invocation to skip a second cold JVM boot and 9-project
+            # configuration pass (~45-75 s). With 7g in-process compile heap (~8.5 GB RSS),
+            # cap test forks at 1 when selected non-screenshot Robolectric UI tests run
+            # (~1.5 GB RSS/fork, also avoiding a second cold Robolectric SDK boot for <=25
+            # classes) and 2 for plain JVM-only runs (~512m/fork) — staying safely within the
+            # 16 GB runner memory budget.
+            pr_unit_forks=2
+            if [ "$RUN_SELECTED_ROBOLECTRIC" = true ]; then
+              pr_unit_forks=1
+            fi
             "$GRADLE_HEAP" 7g
             ./gradlew "${tasks[@]}" "${test_tasks[@]}" "${unit_tier[@]}" \
-              -Praft.unitTest.maxParallelForks=2 \
+              "-Praft.unitTest.maxParallelForks=${pr_unit_forks}" \
               --continue \
               --no-daemon \
               --console=plain \
@@ -716,8 +745,9 @@ jobs:
         run: python3 scripts/ci/check_jvm_method_size.py compose/shared/build/tmp/kotlin-classes/debug
 
       # What the unit tier ran: test classes and cases per test task, from the JUnit XML reports
-      # (log and job summary). On the jvm tier :shared and :androidApp list no Robolectric class;
-      # when run_roborazzi=false :designsystem and :shared list no screenshot golden class.
+      # (log and job summary). On the jvm tier :shared and :androidApp run selected plain JVM tests
+      # plus up to 25 selected non-screenshot behavioral Robolectric UI tests (when within cap);
+      # when run_roborazzi=false :designsystem, :shared, and :androidApp list no screenshot golden class.
       - name: Summarize Android unit test results
         if: ${{ !cancelled() }}
         env:
@@ -725,6 +755,12 @@ jobs:
           RUN_ROBORAZZI: ${{ needs.plan.outputs.run_roborazzi }}
           SELECTION_MODE: ${{ steps.test_selection.outputs.selection_mode }}
           SELECTION_REASON: ${{ steps.test_selection.outputs.selection_reason }}
+          RUN_SELECTED_ROBOLECTRIC: ${{ steps.test_selection.outputs.run_selected_robolectric }}
+          ROBOLECTRIC_REASON: ${{ steps.test_selection.outputs.robolectric_reason }}
+          SELECTED_JVM_COUNT: ${{ steps.test_selection.outputs.selected_jvm_count }}
+          SELECTED_ROBOLECTRIC_COUNT: ${{ steps.test_selection.outputs.selected_robolectric_count }}
+          CANDIDATE_ROBOLECTRIC_COUNT: ${{ steps.test_selection.outputs.candidate_robolectric_count }}
+          SKIPPED_SCREENSHOT_COUNT: ${{ steps.test_selection.outputs.skipped_screenshot_count }}
         run: |
           python3 - <<'PY'
           import os, pathlib, xml.etree.ElementTree as ET
@@ -742,10 +778,20 @@ jobs:
           lines = [
               f"### Android unit tests ({os.environ['ANDROID_UNIT_SCOPE']} tier, selection={os.environ['SELECTION_MODE']} ({os.environ['SELECTION_REASON']}), roborazzi={os.environ['RUN_ROBORAZZI']})",
               "",
+          ]
+          if os.environ.get("SELECTION_MODE") == "selected":
+              lines.append(
+                  f"PR selection: **{os.environ.get('SELECTED_JVM_COUNT', '0')}** plain JVM classes, "
+                  f"**{os.environ.get('SELECTED_ROBOLECTRIC_COUNT', '0')}** behavioral Robolectric UI classes "
+                  f"(matched {os.environ.get('CANDIDATE_ROBOLECTRIC_COUNT', '0')}, `{os.environ.get('ROBOLECTRIC_REASON', 'unknown')}`), "
+                  f"**{os.environ.get('SKIPPED_SCREENSHOT_COUNT', '0')}** screenshot golden classes skipped."
+              )
+              lines.append("")
+          lines.extend([
               "| Task | Classes | Tests | Skipped | Failed |",
               "| --- | ---: | ---: | ---: | ---: |",
               *rows,
-          ]
+          ])
           print("\n".join(lines))
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
               summary.write("\n".join(lines) + "\n")

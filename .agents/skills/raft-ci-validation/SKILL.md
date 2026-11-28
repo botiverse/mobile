@@ -33,12 +33,15 @@ job (`scripts/ci/plan_test_tier.sh`) picks jobs:
 Android unit & Roborazzi tier (artin 2026-11-22 & 2026-11-24, `#proj-mobile:#340`;
 planner outputs `android_unit_scope`, `run_designsystem_tests`, `run_roborazzi`):
 where the table says "plain JVM unit tests only" (also premerge into `main` when
-it reruns Android), the Android job compiles everything it needs and runs only
-plain JVM unit tests and non-screenshot UI logic tests:
-`-Praft.unitTest.skipRobolectric=true` skips every Robolectric class in `:shared`
-and `:androidApp`, and `-Praft.unitTest.skipScreenshots=true` skips every
-Roborazzi / vcase screenshot golden class. `:designsystem:desktopTest` (unit +
-Compose UI logic tests only, no `DesignSystemVCases` goldens) runs only when the
+it reruns Android), the Android job compiles everything it needs, skips every
+Roborazzi / vcase screenshot golden class (`-Praft.unitTest.skipScreenshots=true`),
+and skips unselected Robolectric classes (`-Praft.unitTest.skipRobolectric=true`).
+On ordinary pull requests with a readable diff, `scripts/ci/select_changed_tests.py`
+narrows `:shared` / `:androidApp` to impacted classes plus the fast smoke set and,
+when `<= 25` impacted non-screenshot behavioral Robolectric UI classes match,
+passes `-Praft.unitTest.allowSelectedRobolectric=true` to run those UI tests on
+the PR (larger fan-out or `mode=full` keeps Robolectric skipped). `:designsystem:desktopTest`
+(unit + Compose UI logic tests only, no `DesignSystemVCases` goldens) runs only when the
 PR touches `compose/designsystem/` (always on `scope=pr`, which has no diff).
 Ordinary build/deps PRs run the full non-screenshot suite (`android_unit_scope=all`,
 `run_roborazzi=false`). Every post-merge / merge-queue / release / full /

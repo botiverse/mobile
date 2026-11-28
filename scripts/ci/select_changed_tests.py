@@ -1,17 +1,30 @@
 #!/usr/bin/env python3
-"""Select impacted Android JVM unit test classes and Gradle modules for ordinary PRs.
+"""Select impacted Android unit test classes and Gradle modules for ordinary PRs.
 
-Part of dm:@artin:#159 (PR CI round 3): on ordinary PRs (`android_unit_scope=jvm`),
-run only the unit test classes impacted by the PR's changed files plus a curated
-always-run smoke set (`scripts/ci/always_run_smoke_tests.txt`), and skip untouched
-leaf/upstream module test tasks (`:core`, `:realtime-socket`, `:ui-cmp`, `:web-container`).
+Part of dm:@artin:#159 (PR CI round 3 + PR-scoped non-screenshot UI test selection):
+on ordinary PRs (`android_unit_scope=jvm`), run the plain JVM unit test classes
+impacted by the PR's changed files plus a curated always-run smoke set
+(`scripts/ci/always_run_smoke_tests.txt`), AND up to MAX_SELECTED_ROBOLECTRIC_CLASSES
+impacted non-screenshot behavioral Robolectric UI test classes (`:shared` and
+`:androidApp`), while ALWAYS excluding Roborazzi / screenshot golden classes and
+skipping untouched leaf/upstream module test tasks (`:core`, `:realtime-socket`,
+`:ui-cmp`, `:web-container`).
 
-Safety model: strictly fail-closed to `mode=full` (the full `jvm` tier as before)
-whenever diff metadata is unavailable, a production file is deleted, build/config/
-resource/schema/workflow files change, a hub file with broad fan-out changes, or
-selected `:shared` tests exceed MAX_SHARED_RATIO of all `:shared` test classes.
-Post-merge `main`, `release-*`, nightly, merge-queue, `full-ci`, and `all`-tier PRs
-never consult this selector and always run the full suite.
+Safety model:
+- Screenshot golden tests (`*ScreenshotTest`, `RaftRobolectricScreenshot`,
+  `captureRoboImage`, `VCaseDesktopTest`, `VCaseRunner`, plus subclasses) are NEVER
+  included on ordinary PRs (enforced both here and by Gradle's `skipScreenshots` +
+  `skipRobolectric` defense-in-depth).
+- If impacted non-screenshot Robolectric UI classes exceed MAX_SELECTED_ROBOLECTRIC_CLASSES,
+  gracefully skip Robolectric (`run_selected_robolectric=false`, reason `cap-exceeded:...`)
+  while keeping narrowed plain JVM test selection so PR p50 stays fast.
+- Strictly fail-closed to `mode=full` (plain JVM full suite, `skipRobolectric=true`)
+  whenever diff metadata is unavailable, a production file is deleted, build/config/
+  resource/schema/workflow files change, a hub file with broad fan-out changes, or
+  selected `:shared` plain JVM tests exceed MAX_SHARED_RATIO of all `:shared` plain JVM
+  test classes.
+- Post-merge `main`, `release-*`, nightly, merge-queue, `full-ci`, and `all`-tier PRs
+  never consult this selector and always run the full suite.
 """
 
 from __future__ import annotations
@@ -30,9 +43,13 @@ from dataclasses import dataclass, field
 
 # Maximum number of changed paths handled before failing closed to full suite.
 MAX_CHANGED_PATHS = 200
-# If selected :shared test classes exceed this fraction of all :shared test classes,
-# running the full jvm suite avoids large filter lists for negligible savings.
+# If selected :shared plain JVM test classes exceed this fraction of all :shared plain
+# JVM test classes, running the full jvm suite avoids large filter lists for negligible savings.
 MAX_SHARED_RATIO = 0.40
+# Maximum total selected non-screenshot Robolectric UI classes (:shared + :androidApp)
+# executed on an ordinary PR (`android_unit_scope=jvm`). Above this cap, Robolectric stays
+# skipped (`run_selected_robolectric=false`) so wide UI refactors do not blow PR latency.
+MAX_SELECTED_ROBOLECTRIC_CLASSES = 25
 # A directly changed production file referenced by more than this many prod files
 # is a broad shared hub -> fail closed to full suite.
 DIRECT_HUB_FANOUT = 120
@@ -190,11 +207,162 @@ PROJECT_DEP_RE = re.compile(r'project\(\s*":([A-Za-z0-9_-]+)"\s*\)')
 ROBOLECTRIC_MARKER_RE = re.compile(r"\b(?:RobolectricTestRunner|ParameterizedRobolectricTestRunner|AndroidJUnit4)\b")
 SCREENSHOT_MARKER_RE = re.compile(r"\b(?:RaftRobolectricScreenshot|captureRoboImage|VCaseDesktopTest|VCaseRunner)\b")
 
+# Gradle-parity classification regexes (mirror compose/build.gradle.kts `raftCodeOnly`,
+# `raftRobolectricTestClasses`, and `raftScreenshotTestClasses` 1-to-1).
+GRADLE_ANNOTATIONS = r"(?:@[\w.]+(?:\([^)\n]*\))?[ \t]+)*"
+GRADLE_MODIFIERS = (
+    r"(?:(?:public|internal|private|protected|open|abstract|final|sealed|data|"
+    r"enum|annotation|value|inner|expect|actual)[ \t]+)*"
+)
+GRADLE_RUN_WITH_RE = re.compile(
+    rf"^{GRADLE_ANNOTATIONS}@(?:org\.junit\.runner\.)?RunWith\s*\(([^)]*)\)",
+    re.M,
+)
+GRADLE_DECL_RE = re.compile(
+    rf"^{GRADLE_ANNOTATIONS}{GRADLE_MODIFIERS}(?:class|interface|object)[ \t]+(\w+)",
+    re.M,
+)
+GRADLE_PARENS_RE = re.compile(r"\((?:[^()]|\([^()]*\))*\)")
+GRADLE_WORD_RE = re.compile(r"\w+")
+CODE_STRIP_NO_BLOCK_RE = re.compile(
+    r'//[^\n]*|"""[\s\S]*?(?:"""|$)|"(?:\\.|[^"\\\n])*"?|\'(?:\\.|[^\'\\\n])*\'?|`(?:\\.|[^`\\\n])*`?'
+)
+
 
 def strip_comments(text: str) -> str:
     text = BLOCK_COMMENT_RE.sub(" ", text)
     text = LINE_COMMENT_RE.sub("", text)
     return text
+
+
+def _strip_literal_match(match: re.Match[str]) -> str:
+    tok = match.group(0)
+    if tok.startswith("//"):
+        return ""
+    if tok.startswith('"""'):
+        return '""'
+    first = tok[0]
+    return first + first
+
+
+def strip_comments_and_literals(source: str) -> str:
+    """Mirror compose/build.gradle.kts `raftCodeOnly`: strip comments (including nested Kotlin
+    block comments, preserving newlines) and empty string, char, and backtick literals.
+    """
+    if "/*" not in source:
+        return CODE_STRIP_NO_BLOCK_RE.sub(_strip_literal_match, source)
+    out: list[str] = []
+    i = 0
+    n = len(source)
+    while i < n:
+        c = source[i]
+        if source.startswith("//", i):
+            nl = source.find("\n", i + 2)
+            i = n if nl < 0 else nl
+        elif source.startswith("/*", i):
+            depth = 0
+            while i < n:
+                if source.startswith("/*", i):
+                    depth += 1
+                    i += 2
+                elif source.startswith("*/", i):
+                    depth -= 1
+                    i += 2
+                    if depth == 0:
+                        break
+                else:
+                    if source[i] == "\n":
+                        out.append("\n")
+                    i += 1
+        elif source.startswith('"""', i):
+            end = source.find('"""', i + 3)
+            i = n if end < 0 else end + 3
+            out.append('""')
+        elif c in ('"', "'", "`"):
+            j = i + 1
+            while j < n and source[j] != c and source[j] != "\n":
+                j += 2 if source[j] == "\\" else 1
+            i = j + 1 if j < n and source[j] == c else j
+            out.append(c)
+            out.append(c)
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def classify_module_test_classes(
+    code_only_sources: list[str],
+) -> tuple[set[str], set[str]]:
+    """Return `(robolectric_fqcns, screenshot_fqcns)` matching compose/build.gradle.kts
+    `raftRobolectricTestClasses` and `raftScreenshotTestClasses`.
+    """
+    declared: list[tuple[str, str, str | None, set[str], str]] = []
+    for code in code_only_sources:
+        pkg_m = PACKAGE_RE.search(code)
+        pkg = pkg_m.group(1) if pkg_m else None
+        run_withs = list(GRADLE_RUN_WITH_RE.finditer(code))
+        classes = list(GRADLE_DECL_RE.finditer(code))
+        region_start = 0
+        for idx, match in enumerate(classes):
+            name = match.group(1)
+            header_start = match.end()
+            nxt = classes[idx + 1].start() if idx + 1 < len(classes) else len(code)
+            brace = code.find("{", header_start)
+            header_end = nxt if brace < 0 or brace > nxt else brace
+            header = GRADLE_PARENS_RE.sub(" ", code[header_start:header_end])
+            run_with: str | None = None
+            for rw_match in run_withs:
+                if region_start <= rw_match.start() <= match.start():
+                    run_with = rw_match.group(1)
+            fqcn = f"{pkg}.{name}" if pkg else name
+            declared.append(
+                (
+                    fqcn,
+                    name,
+                    run_with,
+                    set(GRADLE_WORD_RE.findall(header)),
+                    code[match.start():nxt],
+                )
+            )
+            region_start = header_start
+
+    robo_bases = {"RobolectricTestRunner", "ParameterizedRobolectricTestRunner", "AndroidJUnit4"}
+    robolectric: set[str] = set()
+    while True:
+        before = len(robolectric)
+        for fqcn, name, run_with, supertypes, _ in declared:
+            if fqcn in robolectric:
+                continue
+            runner = run_with is not None and any(
+                w in robo_bases for w in GRADLE_WORD_RE.findall(run_with)
+            )
+            if runner or (supertypes & robo_bases):
+                robolectric.add(fqcn)
+                robo_bases.add(name)
+        if len(robolectric) == before:
+            break
+
+    screenshot_bases = {"VCaseDesktopTest", "VCaseRunner"}
+    screenshot_helpers = {"RaftRobolectricScreenshot", "captureRoboImage"}
+    screenshots: set[str] = set()
+    while True:
+        before = len(screenshots)
+        for fqcn, name, run_with, supertypes, body in declared:
+            if fqcn in screenshots or name in screenshot_helpers:
+                continue
+            runner = run_with is not None and any(
+                w in screenshot_bases for w in GRADLE_WORD_RE.findall(run_with)
+            )
+            supertype = bool(supertypes & screenshot_bases)
+            calls_helper = bool(set(GRADLE_WORD_RE.findall(body)) & screenshot_helpers)
+            if runner or supertype or calls_helper or name.endswith("ScreenshotTest"):
+                screenshots.add(fqcn)
+                screenshot_bases.add(name)
+        if len(screenshots) == before:
+            break
+
+    return robolectric, screenshots
 
 
 def parse_module_deps(repo_root: pathlib.Path) -> tuple[dict[str, set[str]], dict[str, set[str]]]:
@@ -246,6 +414,7 @@ class IndexedFile:
     words: set[str]
     test_classes: list[str] = field(default_factory=list)
     raw_has_pkg_ref_cache: str = ""
+    code_only: str = ""
 
 
 def is_benign_path(path: str) -> bool:
@@ -349,7 +518,9 @@ def index_repository(repo_root: pathlib.Path) -> tuple[list[IndexedFile], dict[s
         words = set(WORD_RE.findall(code))
 
         test_classes: list[str] = []
+        code_only = ""
         if is_test:
+            code_only = strip_comments_and_literals(raw)
             has_test_annot = "@Test" in code or "@org.junit.Test" in code or "@kotlin.test.Test" in code
             for m in TEST_CLASS_DECL_RE.finditer(code):
                 cls_name = m.group(1)
@@ -371,6 +542,7 @@ def index_repository(repo_root: pathlib.Path) -> tuple[list[IndexedFile], dict[s
             words=words,
             test_classes=test_classes,
             raw_has_pkg_ref_cache=code,
+            code_only=code_only,
         )
         files.append(entry)
         by_rel[rel] = fid
@@ -459,7 +631,11 @@ def select_tests(
     repo_root: pathlib.Path,
     changed_entries: list[tuple[str, str]],
     smoke_file: pathlib.Path | None = None,
+    max_robolectric_classes: int = MAX_SELECTED_ROBOLECTRIC_CLASSES,
 ) -> dict:
+    if max_robolectric_classes < 0:
+        raise ValueError(f"max_robolectric_classes must be >= 0, got {max_robolectric_classes}")
+
     def full_result(reason: str) -> dict:
         return {
             "mode": "full",
@@ -471,7 +647,13 @@ def select_tests(
             "run_shared_tests": True,
             "run_android_app_tests": True,
             "need_socketio_server": True,
+            "run_selected_robolectric": False,
+            "robolectric_reason": "selection-mode-full",
             "selected_classes": {"shared": [], "androidApp": []},
+            "selected_jvm_classes": {"shared": [], "androidApp": []},
+            "selected_robolectric_classes": {"shared": [], "androidApp": []},
+            "skipped_robolectric_classes": {"shared": [], "androidApp": []},
+            "skipped_screenshot_classes": {"shared": [], "androidApp": []},
             "stats": {},
         }
 
@@ -542,8 +724,23 @@ def select_tests(
 
     files, by_rel, word_to_files, decl_counts = index_repository(repo_root)
 
+    robo_by_mod: dict[str, set[str]] = {}
+    screenshot_by_mod: dict[str, set[str]] = {}
+    for mod in ("shared", "androidApp"):
+        mod_sources = [f.code_only for f in files if f.is_test and f.module == mod]
+        robo_set, scr_set = classify_module_test_classes(mod_sources)
+        robo_by_mod[mod] = robo_set
+        screenshot_by_mod[mod] = scr_set
+
     total_shared_test_classes = sum(
         len(f.test_classes) for f in files if f.is_test and f.module == "shared"
+    )
+    total_shared_jvm_classes = sum(
+        1
+        for f in files
+        if f.is_test and f.module == "shared"
+        for cls in f.test_classes
+        if cls not in robo_by_mod["shared"] and cls not in screenshot_by_mod["shared"]
     )
 
     # Map changed paths to IndexedFiles
@@ -667,18 +864,53 @@ def select_tests(
             # OR running smoke only when impacted. Running when impacted keeps standalone PRs super fast!
             pass
 
-    if total_shared_test_classes > 0 and len(selected_by_mod["shared"]) > int(total_shared_test_classes * MAX_SHARED_RATIO):
+    # Partition selected classes into plain JVM, non-screenshot behavioral Robolectric UI,
+    # and screenshot goldens (which are ALWAYS excluded on ordinary PRs).
+    selected_jvm: dict[str, set[str]] = {"shared": set(), "androidApp": set()}
+    candidate_robolectric: dict[str, set[str]] = {"shared": set(), "androidApp": set()}
+    skipped_screenshots: dict[str, set[str]] = {"shared": set(), "androidApp": set()}
+    for mod in ("shared", "androidApp"):
+        mod_selected = selected_by_mod[mod]
+        mod_robo = robo_by_mod[mod]
+        mod_scr = screenshot_by_mod[mod]
+        skipped_screenshots[mod] = mod_selected & mod_scr
+        candidate_robolectric[mod] = (mod_selected & mod_robo) - mod_scr
+        selected_jvm[mod] = mod_selected - mod_robo - mod_scr
+
+    if total_shared_jvm_classes > 0 and len(selected_jvm["shared"]) > int(total_shared_jvm_classes * MAX_SHARED_RATIO):
         return full_result(
-            f"shared-fanout-exceeded:{len(selected_by_mod['shared'])}/{total_shared_test_classes}"
+            f"shared-fanout-exceeded:{len(selected_jvm['shared'])}/{total_shared_jvm_classes}"
         )
+
+    total_candidate_robo = len(candidate_robolectric["shared"]) + len(candidate_robolectric["androidApp"])
+    if total_candidate_robo == 0:
+        run_selected_robolectric = False
+        robolectric_reason = "none-selected"
+        included_robolectric = {"shared": set(), "androidApp": set()}
+        skipped_robolectric = {"shared": set(), "androidApp": set()}
+    elif total_candidate_robo <= max_robolectric_classes:
+        run_selected_robolectric = True
+        robolectric_reason = "selected-within-cap"
+        included_robolectric = {mod: set(candidate_robolectric[mod]) for mod in ("shared", "androidApp")}
+        skipped_robolectric = {"shared": set(), "androidApp": set()}
+    else:
+        run_selected_robolectric = False
+        robolectric_reason = f"cap-exceeded:{total_candidate_robo}/{max_robolectric_classes}"
+        included_robolectric = {"shared": set(), "androidApp": set()}
+        skipped_robolectric = {mod: set(candidate_robolectric[mod]) for mod in ("shared", "androidApp")}
+
+    final_selected: dict[str, list[str]] = {
+        mod: sorted(selected_jvm[mod] | included_robolectric[mod])
+        for mod in ("shared", "androidApp")
+    }
 
     run_core = "core" in impacted_modules
     run_realtime = "realtime-socket" in impacted_modules
     run_ui_cmp = "ui-cmp" in impacted_modules
     run_web_container = "web-container" in impacted_modules
-    run_shared_tests = bool(selected_by_mod["shared"])
-    run_android_app_tests = bool(selected_by_mod["androidApp"])
-    need_socketio = run_realtime or (SOCKETIO_INTEROP_TEST in selected_by_mod["androidApp"])
+    run_shared_tests = bool(final_selected["shared"])
+    run_android_app_tests = bool(final_selected["androidApp"])
+    need_socketio = run_realtime or (SOCKETIO_INTEROP_TEST in final_selected["androidApp"])
 
     return {
         "mode": "selected",
@@ -690,17 +922,40 @@ def select_tests(
         "run_shared_tests": run_shared_tests,
         "run_android_app_tests": run_android_app_tests,
         "need_socketio_server": need_socketio,
-        "selected_classes": {
-            "shared": sorted(selected_by_mod["shared"]),
-            "androidApp": sorted(selected_by_mod["androidApp"]),
+        "run_selected_robolectric": run_selected_robolectric,
+        "robolectric_reason": robolectric_reason,
+        "selected_classes": final_selected,
+        "selected_jvm_classes": {
+            "shared": sorted(selected_jvm["shared"]),
+            "androidApp": sorted(selected_jvm["androidApp"]),
+        },
+        "selected_robolectric_classes": {
+            "shared": sorted(included_robolectric["shared"]),
+            "androidApp": sorted(included_robolectric["androidApp"]),
+        },
+        "skipped_robolectric_classes": {
+            "shared": sorted(skipped_robolectric["shared"]),
+            "androidApp": sorted(skipped_robolectric["androidApp"]),
+        },
+        "skipped_screenshot_classes": {
+            "shared": sorted(skipped_screenshots["shared"]),
+            "androidApp": sorted(skipped_screenshots["androidApp"]),
         },
         "stats": {
             "changed_prod_files": len(seed_prod_ids),
             "changed_test_files": len(seed_test_ids),
             "impacted_prod_files": len(impacted_prod_ids),
-            "selected_shared_classes": len(selected_by_mod["shared"]),
+            "selected_shared_classes": len(final_selected["shared"]),
+            "selected_shared_jvm_classes": len(selected_jvm["shared"]),
+            "selected_shared_robolectric_classes": len(included_robolectric["shared"]),
             "total_shared_classes": total_shared_test_classes,
-            "selected_android_app_classes": len(selected_by_mod["androidApp"]),
+            "total_shared_jvm_classes": total_shared_jvm_classes,
+            "selected_android_app_classes": len(final_selected["androidApp"]),
+            "selected_android_app_jvm_classes": len(selected_jvm["androidApp"]),
+            "selected_android_app_robolectric_classes": len(included_robolectric["androidApp"]),
+            "candidate_robolectric_classes": total_candidate_robo,
+            "max_robolectric_classes": max_robolectric_classes,
+            "skipped_screenshot_classes": len(skipped_screenshots["shared"]) + len(skipped_screenshots["androidApp"]),
             "impacted_modules": sorted(impacted_modules),
         },
     }
@@ -721,6 +976,17 @@ def write_outputs(result: dict, output_dir: pathlib.Path, github_output: pathlib
     else:
         include_path.write_text("", encoding="utf-8")
 
+    selected_jvm_count = sum(
+        len(result.get("selected_jvm_classes", {}).get(mod, ())) for mod in ("shared", "androidApp")
+    )
+    selected_robo_count = sum(
+        len(result.get("selected_robolectric_classes", {}).get(mod, ())) for mod in ("shared", "androidApp")
+    )
+    candidate_robo_count = int(result.get("stats", {}).get("candidate_robolectric_classes", 0))
+    skipped_screenshot_count = sum(
+        len(result.get("skipped_screenshot_classes", {}).get(mod, ())) for mod in ("shared", "androidApp")
+    )
+
     kv = {
         "selection_mode": result["mode"],
         "selection_reason": result["reason"],
@@ -734,6 +1000,12 @@ def write_outputs(result: dict, output_dir: pathlib.Path, github_output: pathlib
         "need_socketio_server": str(result.get("need_socketio_server", True)).lower(),
         "selected_shared_count": str(len(result["selected_classes"].get("shared", ()))),
         "selected_android_app_count": str(len(result["selected_classes"].get("androidApp", ()))),
+        "run_selected_robolectric": str(result.get("run_selected_robolectric", False)).lower(),
+        "robolectric_reason": result.get("robolectric_reason", "selection-mode-full"),
+        "selected_jvm_count": str(selected_jvm_count),
+        "selected_robolectric_count": str(selected_robo_count),
+        "candidate_robolectric_count": str(candidate_robo_count),
+        "skipped_screenshot_count": str(skipped_screenshot_count),
     }
     if github_output is not None:
         with github_output.open("a", encoding="utf-8") as fh:
@@ -753,6 +1025,13 @@ def run_self_test(repo_root: pathlib.Path) -> None:
         if entry.is_test:
             for cls in entry.test_classes:
                 fqcn_to_file[(entry.module, cls)] = entry
+
+    repo_robo_by_mod: dict[str, set[str]] = {}
+    repo_scr_by_mod: dict[str, set[str]] = {}
+    for mod in ("shared", "androidApp"):
+        mod_sources = [f.code_only for f in files if f.is_test and f.module == mod]
+        repo_robo_by_mod[mod], repo_scr_by_mod[mod] = classify_module_test_classes(mod_sources)
+
     for mod, fqcns in smoke_map.items():
         for fqcn in fqcns:
             found = fqcn_to_file.get((mod, fqcn))
@@ -760,6 +1039,35 @@ def run_self_test(repo_root: pathlib.Path) -> None:
             code = found.raw_has_pkg_ref_cache
             assert not ROBOLECTRIC_MARKER_RE.search(code), f"Smoke test uses Robolectric: :{mod}:{fqcn}"
             assert not SCREENSHOT_MARKER_RE.search(code), f"Smoke test uses screenshots: :{mod}:{fqcn}"
+            assert fqcn not in repo_robo_by_mod[mod], f"Smoke test classified as Robolectric: :{mod}:{fqcn}"
+            assert fqcn not in repo_scr_by_mod[mod], f"Smoke test classified as screenshot: :{mod}:{fqcn}"
+
+    # 1b. Verify comment/literal stripping (including nested Kotlin block comments) and real-repo classification.
+    sample_nested = (
+        '/* outer /* inner RaftRobolectricScreenshot */ still comment */\n'
+        'val s = "captureRoboImage"\n'
+        'val raw = """RaftRobolectricScreenshot"""\n'
+        '// @RunWith(RobolectricTestRunner::class)\n'
+        'class PlainClass\n'
+    )
+    stripped = strip_comments_and_literals(sample_nested)
+    assert "RaftRobolectricScreenshot" not in stripped and "captureRoboImage" not in stripped, stripped
+    assert "RobolectricTestRunner" not in stripped and "class PlainClass" in stripped, stripped
+    # Real-repo sanity checks: KDoc-only mentions of RaftRobolectricScreenshot stay non-screenshot UI tests,
+    # whereas actual screenshot tests (name or helper call) are classified as screenshot tests — including
+    # when a behavioral UI test class and a screenshot test class share the same file.
+    assert "build.raft.app.ThreadShareCaptureModeTest" in repo_robo_by_mod["shared"]
+    assert "build.raft.app.ThreadShareCaptureModeTest" not in repo_scr_by_mod["shared"]
+    assert "build.raft.app.WideInlineSearchPanelTest" in repo_robo_by_mod["shared"]
+    assert "build.raft.app.WideInlineSearchPanelTest" not in repo_scr_by_mod["shared"]
+    assert "build.raft.app.AppShellSessionRestoreSplashTest" in repo_robo_by_mod["shared"]
+    assert "build.raft.app.AppShellSessionRestoreSplashTest" not in repo_scr_by_mod["shared"]
+    assert "build.raft.app.AppShellSessionRestoreSplashScreenshotTest" in repo_scr_by_mod["shared"]
+    assert "build.raft.app.ActionCardFormSheetScreenshotTest" in repo_scr_by_mod["shared"]
+    assert "build.raft.app.AppShellNewWindowRestoreFrameScreenshotTest" in repo_scr_by_mod["shared"]
+    assert "build.raft.app.ArtifactsHomeUiTest" in repo_scr_by_mod["shared"]
+    assert len(repo_robo_by_mod["shared"] - repo_scr_by_mod["shared"]) > 0
+    assert len(repo_scr_by_mod["shared"]) > 0
 
     # 2. Synthetic isolated repo tests
     with tempfile.TemporaryDirectory() as tmp:
@@ -934,10 +1242,225 @@ def run_self_test(repo_root: pathlib.Path) -> None:
             ],
         )
         assert res_ios_only["mode"] == "full" and res_ios_only["reason"] == "no-android-source-changes", res_ios_only
+        assert res_ios_only["run_selected_robolectric"] is False, res_ios_only
+        assert res_ios_only["robolectric_reason"] == "selection-mode-full", res_ios_only
+
+        # --- Robolectric behavioral UI vs screenshot golden selection cases ---
+        write(
+            "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/BaseLoungeUiTest.kt",
+            "package build.raft.app.lounge\n"
+            "import org.junit.runner.RunWith\n"
+            "import org.robolectric.RobolectricTestRunner\n"
+            "@RunWith(RobolectricTestRunner::class)\n"
+            "open class BaseLoungeUiTest\n",
+        )
+        write(
+            "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/LoungeScreenUiTest.kt",
+            "package build.raft.app.lounge\n"
+            "/* KDoc mention of [RaftRobolectricScreenshot] must not mark this as a screenshot test. */\n"
+            "import org.junit.runner.RunWith\n"
+            "import org.robolectric.RobolectricTestRunner\n"
+            "@RunWith(RobolectricTestRunner::class)\n"
+            "class LoungeScreenUiTest { @Test fun renders() { renderLounge(LoungeTabModel(1)) } }\n",
+        )
+        write(
+            "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/LoungeInheritedUiTest.kt",
+            "package build.raft.app.lounge\n"
+            "class LoungeInheritedUiTest : BaseLoungeUiTest() { @Test fun renders() { renderLounge(LoungeTabModel(2)) } }\n",
+        )
+        write(
+            "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/LoungeScreenScreenshotTest.kt",
+            "package build.raft.app.lounge\n"
+            "import org.junit.runner.RunWith\n"
+            "import org.robolectric.RobolectricTestRunner\n"
+            "@RunWith(RobolectricTestRunner::class)\n"
+            "class LoungeScreenScreenshotTest { @Test fun golden() { renderLounge(LoungeTabModel(1)) } }\n",
+        )
+        write(
+            "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/LoungeCaptureGoldenTest.kt",
+            "package build.raft.app.lounge\n"
+            "import org.junit.runner.RunWith\n"
+            "import org.robolectric.RobolectricTestRunner\n"
+            "@RunWith(RobolectricTestRunner::class)\n"
+            "class LoungeCaptureGoldenTest { @Test fun golden() { renderLounge(LoungeTabModel(1)); captureRoboImage() } }\n",
+        )
+        write(
+            "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/LoungeRaftScreenshotHelperTest.kt",
+            "package build.raft.app.lounge\n"
+            "import org.junit.runner.RunWith\n"
+            "import org.robolectric.RobolectricTestRunner\n"
+            "@RunWith(RobolectricTestRunner::class)\n"
+            "class LoungeRaftScreenshotHelperTest { @Test fun golden() { renderLounge(LoungeTabModel(1)); RaftRobolectricScreenshot.capture() } }\n",
+        )
+        write(
+            "compose/shared/src/androidUnitTest/kotlin/build/raft/app/other/OtherFeatureUiTest.kt",
+            "package build.raft.app.other\n"
+            "import org.junit.runner.RunWith\n"
+            "import org.robolectric.RobolectricTestRunner\n"
+            "@RunWith(RobolectricTestRunner::class)\n"
+            "class OtherFeatureUiTest { @Test fun renders() { OtherFeature() } }\n",
+        )
+        write(
+            "compose/androidApp/src/test/kotlin/build/raft/app/HostNotificationRoboTest.kt",
+            "package build.raft.app\n"
+            "import org.junit.runner.RunWith\n"
+            "import org.robolectric.RobolectricTestRunner\n"
+            "@RunWith(RobolectricTestRunner::class)\n"
+            "class HostNotificationRoboTest { @Test fun renders() {} }\n",
+        )
+
+        # Case J: PR modifying a UI screen selects non-screenshot *UiTest (direct + inherited @RunWith)
+        # and excludes *ScreenshotTest / captureRoboImage / RaftRobolectricScreenshot classes.
+        res_ui = select_tests(
+            root,
+            [("M", "compose/shared/src/commonMain/kotlin/build/raft/app/lounge/LoungeScreen.kt")],
+        )
+        assert res_ui["mode"] == "selected", res_ui
+        assert res_ui["run_selected_robolectric"] is True, res_ui
+        assert res_ui["robolectric_reason"] == "selected-within-cap", res_ui
+        assert "build.raft.app.lounge.LoungeScreenUiTest" in res_ui["selected_classes"]["shared"], res_ui
+        assert "build.raft.app.lounge.LoungeInheritedUiTest" in res_ui["selected_classes"]["shared"], res_ui
+        assert "build.raft.app.lounge.LoungeScreenUiTest" in res_ui["selected_robolectric_classes"]["shared"], res_ui
+        assert "build.raft.app.lounge.LoungeInheritedUiTest" in res_ui["selected_robolectric_classes"]["shared"], res_ui
+        assert "build.raft.app.lounge.LoungeScreenTest" in res_ui["selected_jvm_classes"]["shared"], res_ui
+        assert "build.raft.app.AlwaysSmokeTest" in res_ui["selected_jvm_classes"]["shared"], res_ui
+        for excluded_scr in (
+            "build.raft.app.lounge.LoungeScreenScreenshotTest",
+            "build.raft.app.lounge.LoungeCaptureGoldenTest",
+            "build.raft.app.lounge.LoungeRaftScreenshotHelperTest",
+        ):
+            assert excluded_scr not in res_ui["selected_classes"]["shared"], res_ui
+            assert excluded_scr not in res_ui["selected_robolectric_classes"]["shared"], res_ui
+            assert excluded_scr in res_ui["skipped_screenshot_classes"]["shared"], res_ui
+        assert "build.raft.app.other.OtherFeatureUiTest" not in res_ui["selected_classes"]["shared"], res_ui
+
+        # Case K: PR modifying a *UiTest directly runs that *UiTest (and skips unrelated & screenshot tests)
+        res_direct_ui = select_tests(
+            root,
+            [("M", "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/LoungeScreenUiTest.kt")],
+        )
+        assert res_direct_ui["mode"] == "selected", res_direct_ui
+        assert res_direct_ui["run_selected_robolectric"] is True, res_direct_ui
+        assert res_direct_ui["selected_robolectric_classes"]["shared"] == [
+            "build.raft.app.lounge.LoungeScreenUiTest"
+        ], res_direct_ui
+        assert "build.raft.app.lounge.LoungeScreenUiTest" in res_direct_ui["selected_classes"]["shared"], res_direct_ui
+        assert "build.raft.app.lounge.LoungeScreenScreenshotTest" not in res_direct_ui["selected_classes"]["shared"], res_direct_ui
+        assert res_direct_ui["run_android_app_tests"] is False, res_direct_ui
+
+        # Case L: PR modifying ONLY a *ScreenshotTest skips the screenshot class, does not enable Robolectric
+        res_scr_only = select_tests(
+            root,
+            [("M", "compose/shared/src/androidUnitTest/kotlin/build/raft/app/lounge/LoungeScreenScreenshotTest.kt")],
+        )
+        assert res_scr_only["mode"] == "selected", res_scr_only
+        assert res_scr_only["run_selected_robolectric"] is False, res_scr_only
+        assert res_scr_only["robolectric_reason"] == "none-selected", res_scr_only
+        assert "build.raft.app.lounge.LoungeScreenScreenshotTest" not in res_scr_only["selected_classes"]["shared"], res_scr_only
+        assert res_scr_only["skipped_screenshot_classes"]["shared"] == [
+            "build.raft.app.lounge.LoungeScreenScreenshotTest"
+        ], res_scr_only
+        assert "build.raft.app.AlwaysSmokeTest" in res_scr_only["selected_classes"]["shared"], res_scr_only
+
+        # Case M: PR exceeding the Robolectric cap gracefully falls back to skipping Robolectric
+        # while staying in selected mode for plain JVM tests.
+        res_cap = select_tests(
+            root,
+            [("M", "compose/shared/src/commonMain/kotlin/build/raft/app/lounge/LoungeScreen.kt")],
+            max_robolectric_classes=1,
+        )
+        assert res_cap["mode"] == "selected", res_cap
+        assert res_cap["run_selected_robolectric"] is False, res_cap
+        assert res_cap["robolectric_reason"].startswith("cap-exceeded:"), res_cap
+        assert res_cap["selected_robolectric_classes"]["shared"] == [], res_cap
+        assert "build.raft.app.lounge.LoungeScreenUiTest" not in res_cap["selected_classes"]["shared"], res_cap
+        assert "build.raft.app.lounge.LoungeInheritedUiTest" not in res_cap["selected_classes"]["shared"], res_cap
+        assert "build.raft.app.lounge.LoungeScreenUiTest" in res_cap["skipped_robolectric_classes"]["shared"], res_cap
+        assert "build.raft.app.lounge.LoungeScreenTest" in res_cap["selected_classes"]["shared"], res_cap
+        assert "build.raft.app.AlwaysSmokeTest" in res_cap["selected_classes"]["shared"], res_cap
+
+        # Also test default MAX_SELECTED_ROBOLECTRIC_CLASSES (25) with 26 impacted UI tests
+        write(
+            "compose/shared/src/commonMain/kotlin/build/raft/app/bulk/BulkUiSurface.kt",
+            "package build.raft.app.bulk\nfun renderBulkUiSurface() = 1\n",
+        )
+        for i in range(MAX_SELECTED_ROBOLECTRIC_CLASSES + 1):
+            write(
+                f"compose/shared/src/androidUnitTest/kotlin/build/raft/app/bulk/BulkSurface{i}UiTest.kt",
+                f"package build.raft.app.bulk\n"
+                f"import org.junit.runner.RunWith\n"
+                f"import org.robolectric.RobolectricTestRunner\n"
+                f"@RunWith(RobolectricTestRunner::class)\n"
+                f"class BulkSurface{i}UiTest {{ @Test fun t() {{ renderBulkUiSurface() }} }}\n",
+            )
+        res_default_cap = select_tests(
+            root,
+            [("M", "compose/shared/src/commonMain/kotlin/build/raft/app/bulk/BulkUiSurface.kt")],
+        )
+        assert res_default_cap["mode"] == "selected", res_default_cap
+        assert res_default_cap["run_selected_robolectric"] is False, res_default_cap
+        assert res_default_cap["robolectric_reason"] == (
+            f"cap-exceeded:{MAX_SELECTED_ROBOLECTRIC_CLASSES + 1}/{MAX_SELECTED_ROBOLECTRIC_CLASSES}"
+        ), res_default_cap
+        assert res_default_cap["selected_robolectric_classes"]["shared"] == [], res_default_cap
+        assert len(res_default_cap["skipped_robolectric_classes"]["shared"]) == MAX_SELECTED_ROBOLECTRIC_CLASSES + 1
+
+        # Case N: SELECTION_MODE=full (e.g. global config / unknown diff / non-strings resource) keeps
+        # run_selected_robolectric=False so fast plain-JVM PR guard is preserved.
+        res_global = select_tests(root, [("M", "compose/gradle.properties")])
+        assert res_global["mode"] == "full", res_global
+        assert res_global["run_selected_robolectric"] is False, res_global
+        assert res_global["robolectric_reason"] == "selection-mode-full", res_global
+
+        # Case O: :androidApp Robolectric test edited directly runs that test + :androidApp smoke only
+        res_app_robo = select_tests(
+            root,
+            [("M", "compose/androidApp/src/test/kotlin/build/raft/app/HostNotificationRoboTest.kt")],
+        )
+        assert res_app_robo["mode"] == "selected", res_app_robo
+        assert res_app_robo["run_selected_robolectric"] is True, res_app_robo
+        assert res_app_robo["run_shared_tests"] is False, res_app_robo
+        assert res_app_robo["run_android_app_tests"] is True, res_app_robo
+        assert res_app_robo["selected_robolectric_classes"]["androidApp"] == [
+            "build.raft.app.HostNotificationRoboTest"
+        ], res_app_robo
+        assert "build.raft.app.HostNotificationRoboTest" in res_app_robo["selected_classes"]["androidApp"], res_app_robo
+        assert "build.raft.app.HostSmokeTest" in res_app_robo["selected_classes"]["androidApp"], res_app_robo
+
+        # Case P: write_outputs emits expected GITHUB_OUTPUT keys and excludes screenshots from include-classes.txt
+        out_dir = root / "out-ui"
+        gh_out = root / "gh-output.txt"
+        write_outputs(res_ui, out_dir, gh_out)
+        include_lines = (out_dir / "include-classes.txt").read_text(encoding="utf-8").splitlines()
+        assert ":shared:build.raft.app.lounge.LoungeScreenUiTest" in include_lines, include_lines
+        assert ":shared:build.raft.app.lounge.LoungeInheritedUiTest" in include_lines, include_lines
+        assert ":shared:build.raft.app.lounge.LoungeScreenScreenshotTest" not in include_lines, include_lines
+        assert ":shared:build.raft.app.lounge.LoungeCaptureGoldenTest" not in include_lines, include_lines
+        assert ":shared:build.raft.app.lounge.LoungeRaftScreenshotHelperTest" not in include_lines, include_lines
+        gh_kv = dict(line.split("=", 1) for line in gh_out.read_text(encoding="utf-8").splitlines() if "=" in line)
+        assert gh_kv["run_selected_robolectric"] == "true", gh_kv
+        assert gh_kv["robolectric_reason"] == "selected-within-cap", gh_kv
+        assert int(gh_kv["selected_robolectric_count"]) >= 2, gh_kv
+        assert int(gh_kv["skipped_screenshot_count"]) == 3, gh_kv
+        assert int(gh_kv["selected_jvm_count"]) >= 2, gh_kv
+
+    # Case Q: Workflow & Gradle wiring contract check (against the actual repository files).
+    gradle_build = (repo_root / "compose/build.gradle.kts").read_text(encoding="utf-8")
+    assert 'raft.unitTest.allowSelectedRobolectric' in gradle_build
+    assert 'raft.unitTest.allowSelectedRobolectric=true requires raft.unitTest.includeClassesFile' in gradle_build
+    assert '(allRobolectric intersect selectedClasses) - screenshotClasses' in gradle_build
+    test_yml = (repo_root / ".github/workflows/test.yml").read_text(encoding="utf-8")
+    assert '-Praft.unitTest.allowSelectedRobolectric=true' in test_yml
+    assert '-Praft.unitTest.skipScreenshots=true' in test_yml
+    assert '-Praft.unitTest.skipRobolectric=true' in test_yml
+    assert 'pr_unit_forks=1' in test_yml
 
     print(
         f"select_changed_tests self-test: PASS "
-        f"(verified {len(smoke_map['shared'])} :shared + {len(smoke_map['androidApp'])} :androidApp smoke classes)"
+        f"(verified {len(smoke_map['shared'])} :shared + {len(smoke_map['androidApp'])} :androidApp smoke classes; "
+        f"{len(repo_robo_by_mod['shared'] - repo_scr_by_mod['shared'])} :shared + "
+        f"{len(repo_robo_by_mod['androidApp'] - repo_scr_by_mod['androidApp'])} :androidApp behavioral Robolectric UI classes; "
+        f"{len(repo_scr_by_mod['shared'])} :shared screenshot classes)"
     )
 
 
@@ -950,6 +1473,12 @@ def main() -> int:
     parser.add_argument("--audit-commit", help="Audit selection and recall against historical commit SHA^..SHA")
     parser.add_argument("--output-dir", help="Directory to write decision.json and include-classes.txt")
     parser.add_argument("--github-output", help="Optional path to append key=value step outputs")
+    parser.add_argument(
+        "--max-robolectric-classes",
+        type=int,
+        default=MAX_SELECTED_ROBOLECTRIC_CLASSES,
+        help="Maximum selected non-screenshot Robolectric classes to run on ordinary PRs (default: %(default)s)",
+    )
     parser.add_argument("--self-test", action="store_true", help="Run built-in self-test")
     args = parser.parse_args()
 
@@ -974,11 +1503,11 @@ def main() -> int:
                 if (repo_root / cand).exists():
                     p = cand
             entries.append((s, p))
-        res = select_tests(repo_root, entries)
+        res = select_tests(repo_root, entries, max_robolectric_classes=args.max_robolectric_classes)
         # Leave-one-out recall check: hide changed test files to see if prod->test graph still catches them.
         prod_only = [(s, p) for s, p in entries if not (classify_source_path(p) and classify_source_path(p)[2])]
         changed_test_paths = [p for s, p in entries if (classify_source_path(p) and classify_source_path(p)[2]) and not s.startswith("D")]
-        res_loo = select_tests(repo_root, prod_only) if prod_only else None
+        res_loo = select_tests(repo_root, prod_only, max_robolectric_classes=args.max_robolectric_classes) if prod_only else None
         # Compute how many changed test files' classes are covered by LOO
         loo_covered = 0
         loo_total_tests = 0
@@ -996,6 +1525,9 @@ def main() -> int:
             "commit": args.audit_commit,
             "mode": res["mode"],
             "reason": res["reason"],
+            "run_selected_robolectric": res.get("run_selected_robolectric", False),
+            "robolectric_reason": res.get("robolectric_reason"),
+            "selected_robolectric_classes": res.get("selected_robolectric_classes"),
             "stats": res["stats"],
             "run_modules": {
                 k: res.get(k) for k in (
@@ -1034,20 +1566,42 @@ def main() -> int:
             lines = ["__CI_CHANGED_PATHS_UNKNOWN__"]
 
     entries = parse_changed_status_lines(lines)
-    result = select_tests(repo_root, entries)
+    result = select_tests(repo_root, entries, max_robolectric_classes=args.max_robolectric_classes)
 
     if args.output_dir:
         gh_out = pathlib.Path(args.github_output) if args.github_output else None
         write_outputs(result, pathlib.Path(args.output_dir), gh_out)
 
+    selected_jvm_total = sum(
+        len(result.get("selected_jvm_classes", {}).get(mod, ())) for mod in ("shared", "androidApp")
+    )
+    selected_robo_total = sum(
+        len(result.get("selected_robolectric_classes", {}).get(mod, ())) for mod in ("shared", "androidApp")
+    )
+    candidate_robo_total = int(result.get("stats", {}).get("candidate_robolectric_classes", 0))
+    skipped_scr_total = sum(
+        len(result.get("skipped_screenshot_classes", {}).get(mod, ())) for mod in ("shared", "androidApp")
+    )
     print(
         f"select_changed_tests: mode={result['mode']} reason={result['reason']} "
         f"shared={len(result['selected_classes'].get('shared', ()))} "
         f"androidApp={len(result['selected_classes'].get('androidApp', ()))} "
+        f"jvm={selected_jvm_total} "
+        f"robolectric_ui={selected_robo_total}/{candidate_robo_total}({result.get('robolectric_reason', 'unknown')}) "
+        f"skipped_screenshots={skipped_scr_total} "
         f"modules=[core={result.get('run_core_tests', True)},realtime={result.get('run_realtime_socket_tests', True)},"
         f"ui_cmp={result.get('run_ui_cmp_tests', True)},web_container={result.get('run_web_container_tests', True)}] "
         f"socketio={result.get('need_socketio_server', True)}"
     )
+    if result.get("run_selected_robolectric"):
+        selected_robo_list = [
+            f":{mod}:{fqcn}"
+            for mod in ("shared", "androidApp")
+            for fqcn in result.get("selected_robolectric_classes", {}).get(mod, ())
+        ]
+        print(f"select_changed_tests: selected non-screenshot Robolectric UI classes ({len(selected_robo_list)}):")
+        for item in selected_robo_list:
+            print(f"  - {item}")
     return 0
 
 

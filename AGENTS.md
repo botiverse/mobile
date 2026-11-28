@@ -409,19 +409,25 @@ tests` runs:
   `full-ci` (not touching build/deps), `scope=pr`, and Stamp's premerge into
   `main` when it reruns Android. The job compiles every main and test source
   set it needs (skipping `:designsystem:compileTestKotlinDesktop` when
-  `run_designsystem_tests=false`), then runs only plain JVM unit tests and
-  non-screenshot UI logic tests: `-Praft.unitTest.skipRobolectric=true` makes
-  `:shared` and `:androidApp` skip every class JUnit runs on Robolectric
-  (found in the sources: its `@RunWith` names `RobolectricTestRunner`,
-  `ParameterizedRobolectricTestRunner` or `AndroidJUnit4`, or it extends such
-  a class; `compose/build.gradle.kts`), and
-  `-Praft.unitTest.skipScreenshots=true` skips every screenshot golden class.
-  When the change touches `compose/designsystem/` or has no readable diff (as
-  on `scope=pr`), `:designsystem:desktopTest` runs its `commonTest` unit tests
-  and `desktopTest` Compose UI logic/semantics/interaction tests without
-  `DesignSystemVCases` or `verifyRoborazziDesktop`. `commonTest`, `:core`,
-  `:realtime-socket` (socket.io interop server included), `:ui-cmp` host
-  tests, and `:shared:verifySqlDelightMigration` run as before.
+  `run_designsystem_tests=false`), passes `-Praft.unitTest.skipScreenshots=true`
+  to skip every screenshot golden class, and passes
+  `-Praft.unitTest.skipRobolectric=true` so `:shared` and `:androidApp` skip
+  unselected Robolectric classes (found in the sources via `@RunWith` or
+  inheritance; `compose/build.gradle.kts`). On pull requests with a readable
+  diff, `scripts/ci/select_changed_tests.py` narrows `:shared` and `:androidApp`
+  to impacted test classes plus the fast smoke set (`always_run_smoke_tests.txt`),
+  skips untouched leaf module tests, and — when impacted non-screenshot
+  behavioral Robolectric UI tests are within the PR cap (`<= 25` classes) —
+  passes `-Praft.unitTest.allowSelectedRobolectric=true` so those selected UI
+  tests run on the PR while screenshot goldens and unselected Robolectric
+  classes stay excluded (larger fan-out or `mode=full` keeps all Robolectric
+  skipped to preserve fast PR latency). When the change touches
+  `compose/designsystem/` or has no readable diff (as on `scope=pr`),
+  `:designsystem:desktopTest` runs its `commonTest` unit tests and `desktopTest`
+  Compose UI logic/semantics/interaction tests without `DesignSystemVCases` or
+  `verifyRoborazziDesktop`. `commonTest`, `:core`, `:realtime-socket`
+  (socket.io interop server included), `:ui-cmp` host tests, and
+  `:shared-data:verifySqlDelightMigration` run as selected.
 - `all` + `run_roborazzi=false`, build/deps ordinary PRs: a pull request that
   touches a build or dependency file (`compose/gradle/` including the version
   catalog, `compose/gradle.properties`, a `build.gradle.kts` or
