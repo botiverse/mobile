@@ -1,10 +1,18 @@
 package build.raft.app
 
+import android.view.View
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.platform.InterceptPlatformTextInput
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.PlatformTextInputInterceptor
+import androidx.compose.ui.platform.PlatformTextInputMethodRequest
+import androidx.compose.ui.platform.PlatformTextInputSession
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
@@ -67,6 +75,7 @@ import build.raft.app.thread.ThreadRouteScaffold
 import build.raft.app.thread.ThreadRouteScaffoldStage
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.ensureThreadComposerDraftStarted
+import build.raft.app.thread.optimisticComposerChannelId
 import build.raft.app.thread.rememberThreadDeferredLoadingScaffoldSlots
 import build.raft.app.thread.rememberThreadPageContentScaffoldSlots
 import build.raft.app.thread.resolvedAuxiliaryThreadId
@@ -80,6 +89,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.json.JsonObject
 import org.junit.Rule
@@ -88,6 +98,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadow.api.Shadow
+import org.robolectric.shadows.ShadowViewRootImpl
 
 /**
  * Robolectric Compose UI verification for optimistic first-frame composer rendering
@@ -103,7 +115,7 @@ import org.robolectric.annotation.GraphicsMode
  *   DMs) preserves BOTH live editor focus (`assertIsFocused()`) and typed draft without detaching
  *   the editor, and omits the composer when the route is known unjoined / archived / locked / error.
  */
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-xxhdpi")
@@ -745,6 +757,773 @@ class ThreadOptimisticComposerUiTest {
             onNode(hasSetTextAction(), useUnmergedTree = true).assertTextContains("hello agent")
             assertEquals("hello agent", draftViewModel.state.value.seedText)
         }
+
+    @Test
+    fun coldChannelWithSendKeyEnabledAndJointKeyRefinementKeepsImeSessionAliveOnLoad() =
+        runRobolectricComposeUiTest {
+            // Regression for dm:@artin:#178:
+            // - Passing `composerSendKeyEnabled = true` in both LoadingShell and FeatureSurfaces
+            //   avoids flipping `KeyboardOptions.imeAction` (`Default -> Send`) on load settle.
+            // - `Modifier.composerReportsFocus` keeps a single stable `onFocusChanged` node across
+            //   `autofocusOnOpen: null -> non-null` and registers the already-focused editor.
+            // - Reading `composerDraftViewModel.state.value` synchronously prevents a 1-frame
+            //   `collectAsState()` lag from flashing `ThreadComposerRestingHeightPlaceholder` when
+            //   `jointChannelId` refines `expectedDraftKey` mid-session.
+            RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
+            val persistSlice =
+                SharedThreadComposerDraftPersistSlice(
+                    SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+                )
+            val draftViewModel = SharedThreadComposerDraftViewModel(persistSlices = listOf(persistSlice))
+            val eventBus = noopEventBus()
+            val coldPayload =
+                RaftThreadScreenPayload(
+                    instanceId = ChannelId,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    sourceThreadId = ChannelId,
+                    streamChannelId = ChannelId,
+                    status = "loading",
+                    title = "general",
+                    joined = true,
+                    canSend = true,
+                    showComposer = true,
+                    composer = RaftThreadComposerPayload(instanceId = ChannelId, placeholder = ChannelPlaceholder),
+                )
+            var payloadState by mutableStateOf(coldPayload)
+            var accessState by mutableStateOf(ThreadAccessResolution.Loading)
+            var writeEnabled by mutableStateOf(false)
+            var jointChannelIdState by mutableStateOf<String?>(null)
+            var hostComposeView: View? = null
+            var focusHolders: ComposerFocusHolders? = null
+            var sessionStarts = 0
+            var sessionDisposals = 0
+            val countingInterceptor =
+                countingPlatformTextInputInterceptor(
+                    onStart = { sessionStarts += 1 },
+                    onDispose = { sessionDisposals += 1 },
+                )
+
+            setContent {
+                val view = LocalView.current
+                SideEffect { hostComposeView = view }
+                val timelineSlice = payloadState.toThreadTimelineSlice()
+                val mountPlan = payloadState.threadRouteMountPlan(timelineSlice, accessState)
+                val headerDisplay =
+                    ThreadHeaderDisplayModel(
+                        title = "general",
+                        subtitle = null,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                    )
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
+                    RaftTheme(appearance = RaftAppearance.Light) {
+                        RaftWindowFocusScope {
+                            val holders = LocalComposerFocusHolders.current
+                            SideEffect { focusHolders = holders }
+                            InterceptPlatformTextInput(interceptor = countingInterceptor) {
+                                ThreadRouteScaffoldStage(
+                                    isLoadingShell = mountPlan == ThreadRouteMountPlan.LoadingShell,
+                                    loadingSlots = {
+                                        rememberThreadDeferredLoadingScaffoldSlots(
+                                            payload = payloadState,
+                                            displayModel = headerDisplay,
+                                            memberAvatarResolver = EmptyRaftMemberAvatarResolver,
+                                            onBack = {},
+                                            showLoadingIndicator = true,
+                                            optimisticComposerHost =
+                                                ThreadLoadingOptimisticComposerHost(
+                                                    accessResolution = accessState,
+                                                    replyParentAuthority = ReplyParentAuthorityStatus.Writable,
+                                                    composerDraftViewModel = draftViewModel,
+                                                    composerInstanceId = ChannelId,
+                                                    jointChannelId = jointChannelIdState,
+                                                    composerSendKeyEnabled = true,
+                                                    onSendRequest = { ThreadComposerSendAdmission.Deferred },
+                                                    onEvent = { action, value, asTask, _ ->
+                                                        if (action == "change") {
+                                                            draftViewModel.dispatch(
+                                                                SharedThreadComposerDraftIntent.Change(
+                                                                    seedText = value,
+                                                                    seedAsTask = asTask,
+                                                                )
+                                                            )
+                                                        }
+                                                    },
+                                                ),
+                                        )
+                                    },
+                                    featureSlots = {
+                                        val resolvedAuxId = payloadState.resolvedAuxiliaryThreadId()
+                                        val effectiveChannelId =
+                                            resolvedAuxId ?: payloadState.optimisticComposerChannelId(resolvedAuxId)
+                                        val baseComposer =
+                                            remember(payloadState, effectiveChannelId, resolvedAuxId) {
+                                                payloadState
+                                                    .resolveThreadComposer(displayName = headerDisplay.title)
+                                                    .copy(
+                                                        instanceId = ChannelId,
+                                                        streamChannelId = effectiveChannelId,
+                                                        enabled = payloadState.canSend && resolvedAuxId != null,
+                                                    )
+                                            }
+                                        val composerSurface =
+                                            remember(baseComposer, effectiveChannelId, jointChannelIdState) {
+                                                baseComposer
+                                                    .toThreadComposerSurface(
+                                                        channelId = effectiveChannelId.orEmpty(),
+                                                        jointChannelId = jointChannelIdState,
+                                                    )
+                                                    .withTaskV2()
+                                            }
+                                        val draftKey = remember(composerSurface) { composerSurface.threadComposerDraftKey() }
+                                        remember(draftViewModel, baseComposer.instanceId, draftKey) {
+                                            ensureThreadComposerDraftStarted(draftViewModel, baseComposer, draftKey)
+                                        }
+                                        rememberThreadPageContentScaffoldSlots(
+                                            threadInstanceKey = ChannelId,
+                                            routeActive = true,
+                                            hostForeground = true,
+                                            payload = payloadState,
+                                            messageBodyTextStyle = TextStyle.Default,
+                                            timelineSlice = timelineSlice,
+                                            accessResolution = accessState,
+                                            canonicalAccessResolved = accessState == ThreadAccessResolution.Resolved,
+                                            replyParentAuthority = ReplyParentAuthorityStatus.Writable,
+                                            writeActionsEnabled = writeEnabled,
+                                            replyMetadataByParentId = emptyMap(),
+                                            headerDisplay = headerDisplay,
+                                            composerSurface = composerSurface,
+                                            baseComposerState = baseComposer,
+                                            composerDraftViewModel = draftViewModel,
+                                            composerDraftPersistSlice = persistSlice,
+                                            resolvedAuxiliaryThreadId = resolvedAuxId,
+                                            tasksViewModel = null,
+                                            taskChannelId = null,
+                                            taskIdentityOptions = emptyList(),
+                                            linkedTasksProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
+                                            filesViewModel = null,
+                                            memberSuggestionsFlow = flowOf(SharedMembersMemberSuggestionSlice()),
+                                            channelSuggestionsFlow = flowOf(SharedMembersChannelSuggestionSlice()),
+                                            selectedTab = RaftThreadTab.Chat,
+                                            availableTabs = listOf(RaftThreadTab.Chat),
+                                            onSelectedTabChanged = {},
+                                            onSuggestionDemandChanged = {},
+                                            forwardServerId = null,
+                                            forwardTargetRepository = null,
+                                            contentExtrasVisible = true,
+                                            onOpenTaskSummary = { _, _ -> },
+                                            onTasksIntent = {},
+                                            onFilesAuthRequired = {},
+                                            onOpenFilesAttachment = { _, _ -> },
+                                            onDownloadFilesAttachment = {},
+                                            onOpenMemberProfile = {},
+                                            highlightedMentions = emptySet(),
+                                            composerSendKeyEnabled = true,
+                                            onExportShareImage = { null },
+                                            onSaveShareImage = { null },
+                                            adaptiveStoreScope = RaftShellStoreScope.Legacy,
+                                            adaptiveEventBus = eventBus,
+                                            onLoadNewer = { ThreadNewerPageLoadOutcome.Empty },
+                                            onJumpToLatest = { ThreadLatestJumpOutcome.Landed },
+                                            onBack = {},
+                                            onThreadEvent = ThreadEventHandler { _, _, _, _, _, _ -> },
+                                            onComposerSendRequest = { ThreadComposerSendAdmission.Deferred },
+                                            onComposerEvent = { action, value, asTask, _ ->
+                                                if (action == "change") {
+                                                    draftViewModel.dispatch(
+                                                        SharedThreadComposerDraftIntent.Change(
+                                                            seedText = value,
+                                                            seedAsTask = asTask,
+                                                        )
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            // Open IME during cold LoadingShell and type a draft.
+            assertEquals(
+                ThreadRouteMountPlan.LoadingShell,
+                payloadState.threadRouteMountPlan(payloadState.toThreadTimelineSlice(), accessState),
+            )
+            onNode(hasSetTextAction(), useUnmergedTree = true).performClick()
+            waitForIdle()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            onNode(hasSetTextAction(), useUnmergedTree = true).performTextInput("typing before load")
+            waitForIdle()
+            assertEquals("typing before load", draftViewModel.state.value.seedText)
+
+            // Messages arrive + joint channel metadata refines expectedDraftKey + FeatureSurfaces mounts.
+            payloadState =
+                coldPayload.copy(
+                    status = "content",
+                    messages =
+                        listOf(
+                            RaftThreadMessageItem(
+                                id = "m1",
+                                authorId = "u1",
+                                authorName = "Artin",
+                                body = "refreshed message",
+                            )
+                        ),
+                )
+            jointChannelIdState = "joint-channel-1"
+            accessState = ThreadAccessResolution.Resolved
+            writeEnabled = true
+            waitForIdle()
+
+            assertEquals(
+                ThreadRouteMountPlan.FeatureSurfaces,
+                payloadState.threadRouteMountPlan(payloadState.toThreadTimelineSlice(), accessState),
+            )
+            onNodeWithTag(ThreadComposerRestingHeightPlaceholderTestTag).assertDoesNotExist()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts, "IME session must never restart on LoadingShell -> FeatureSurfaces")
+            assertEquals(0, sessionDisposals, "IME session must never be cancelled on message refresh")
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            assertTrue(checkNotNull(focusHolders).holders.isNotEmpty(), "composerReportsFocus must register already-focused editor")
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertTextContains("typing before load")
+            assertEquals("typing before load", draftViewModel.state.value.seedText)
+
+            // Continued typing works immediately on the surviving session.
+            onNode(hasSetTextAction(), useUnmergedTree = true).performTextInput(" and more")
+            waitForIdle()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertEquals("typing before load and more", draftViewModel.state.value.seedText)
+        }
+
+    @Test
+    fun coldReplyThreadPreservesImeSessionAcrossProgressiveLoadInstanceSwapAndDraftKeyRefinement() =
+        runRobolectricComposeUiTest {
+            // Regression for dm:@artin:#178 on reply threads:
+            // 1. Cold pending reply thread starts in LoadingShell with `instanceId = pending`,
+            //    `streamChannelId = null`, draft keyed on `parentChannelId`.
+            // 2. Access resolves early -> switches to progressive FeatureSurfaces while
+            //    `status == "loading"` (`resolvedAuxiliaryThreadId() == null`).
+            // 3. Messages finish loading with canonical `streamChannelId` and swapped
+            //    `payload.instanceId` -> refines `draftKey` (`parentChannelId -> streamChannelId`).
+            // Across EVERY step the live editor and its PlatformTextInputSession must stay alive.
+            RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
+            val persistSlice =
+                SharedThreadComposerDraftPersistSlice(
+                    SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+                )
+            val draftViewModel = SharedThreadComposerDraftViewModel(persistSlices = listOf(persistSlice))
+            val eventBus = noopEventBus()
+            val pendingInstanceId = "shared-shell-thread-pending-$ParentMessageId"
+            val stableComposerInstanceId = pendingInstanceId
+            val coldPendingReplyPayload =
+                RaftThreadScreenPayload(
+                    instanceId = pendingInstanceId,
+                    surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                    parentSurfaceKind = RaftThreadSurfaceKind.Channel,
+                    parentChannelId = ParentChannelId,
+                    parentMessageId = ParentMessageId,
+                    originParentMessageId = ParentMessageId,
+                    sourceThreadId = null,
+                    streamChannelId = null,
+                    status = "loading",
+                    title = "wg-mobile-feedback",
+                    joined = false,
+                    canSend = false,
+                    showComposer = true,
+                    composer = RaftThreadComposerPayload(instanceId = pendingInstanceId, placeholder = ReplyPlaceholder),
+                )
+            var payloadState by mutableStateOf(coldPendingReplyPayload)
+            var accessState by mutableStateOf(ThreadAccessResolution.Loading)
+            var writeEnabled by mutableStateOf(false)
+            var parentAuthority by mutableStateOf(ReplyParentAuthorityStatus.Resolving)
+            var hostComposeView: View? = null
+            var sessionStarts = 0
+            var sessionDisposals = 0
+            val countingInterceptor =
+                countingPlatformTextInputInterceptor(
+                    onStart = { sessionStarts += 1 },
+                    onDispose = { sessionDisposals += 1 },
+                )
+
+            setContent {
+                val view = LocalView.current
+                SideEffect { hostComposeView = view }
+                val timelineSlice = payloadState.toThreadTimelineSlice()
+                val mountPlan = payloadState.threadRouteMountPlan(timelineSlice, accessState)
+                val headerDisplay =
+                    ThreadHeaderDisplayModel(
+                        title = "wg-mobile-feedback",
+                        subtitle = null,
+                        surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                        channelKind = "channel",
+                    )
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
+                    RaftTheme(appearance = RaftAppearance.Light) {
+                        RaftWindowFocusScope {
+                            InterceptPlatformTextInput(interceptor = countingInterceptor) {
+                                ThreadRouteScaffoldStage(
+                                    isLoadingShell = mountPlan == ThreadRouteMountPlan.LoadingShell,
+                                    loadingSlots = {
+                                        rememberThreadDeferredLoadingScaffoldSlots(
+                                            payload = payloadState,
+                                            displayModel = headerDisplay,
+                                            memberAvatarResolver = EmptyRaftMemberAvatarResolver,
+                                            onBack = {},
+                                            showLoadingIndicator = true,
+                                            optimisticComposerHost =
+                                                ThreadLoadingOptimisticComposerHost(
+                                                    accessResolution = accessState,
+                                                    replyParentAuthority = parentAuthority,
+                                                    composerDraftViewModel = draftViewModel,
+                                                    composerInstanceId = stableComposerInstanceId,
+                                                    onSendRequest = { ThreadComposerSendAdmission.Deferred },
+                                                    onEvent = { action, value, asTask, _ ->
+                                                        if (action == "change") {
+                                                            draftViewModel.dispatch(
+                                                                SharedThreadComposerDraftIntent.Change(
+                                                                    seedText = value,
+                                                                    seedAsTask = asTask,
+                                                                )
+                                                            )
+                                                        }
+                                                    },
+                                                ),
+                                        )
+                                    },
+                                    featureSlots = {
+                                        val resolvedAuxId = payloadState.resolvedAuxiliaryThreadId()
+                                        val effectiveChannelId =
+                                            resolvedAuxId ?: payloadState.optimisticComposerChannelId(resolvedAuxId)
+                                        val baseComposer =
+                                            remember(payloadState, effectiveChannelId, resolvedAuxId) {
+                                                payloadState
+                                                    .resolveThreadComposer(displayName = headerDisplay.title)
+                                                    .copy(
+                                                        instanceId = stableComposerInstanceId,
+                                                        streamChannelId = effectiveChannelId,
+                                                        enabled = payloadState.canSend && resolvedAuxId != null,
+                                                    )
+                                            }
+                                        val composerSurface =
+                                            remember(baseComposer, effectiveChannelId) {
+                                                baseComposer
+                                                    .toThreadComposerSurface(
+                                                        channelId = effectiveChannelId.orEmpty(),
+                                                        parentChannelId = payloadState.parentChannelId,
+                                                    )
+                                                    .withTaskV2()
+                                            }
+                                        val draftKey = remember(composerSurface) { composerSurface.threadComposerDraftKey() }
+                                        remember(draftViewModel, baseComposer.instanceId, draftKey) {
+                                            ensureThreadComposerDraftStarted(draftViewModel, baseComposer, draftKey)
+                                        }
+                                        rememberThreadPageContentScaffoldSlots(
+                                            threadInstanceKey = pendingInstanceId,
+                                            routeActive = true,
+                                            hostForeground = true,
+                                            payload = payloadState,
+                                            messageBodyTextStyle = TextStyle.Default,
+                                            timelineSlice = timelineSlice,
+                                            accessResolution = accessState,
+                                            canonicalAccessResolved = payloadState.status == "content",
+                                            replyParentAuthority = parentAuthority,
+                                            writeActionsEnabled = writeEnabled,
+                                            replyMetadataByParentId = emptyMap(),
+                                            headerDisplay = headerDisplay,
+                                            composerSurface = composerSurface,
+                                            baseComposerState = baseComposer,
+                                            composerDraftViewModel = draftViewModel,
+                                            composerDraftPersistSlice = persistSlice,
+                                            resolvedAuxiliaryThreadId = resolvedAuxId,
+                                            tasksViewModel = null,
+                                            taskChannelId = null,
+                                            taskIdentityOptions = emptyList(),
+                                            linkedTasksProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
+                                            filesViewModel = null,
+                                            memberSuggestionsFlow = flowOf(SharedMembersMemberSuggestionSlice()),
+                                            channelSuggestionsFlow = flowOf(SharedMembersChannelSuggestionSlice()),
+                                            selectedTab = RaftThreadTab.Chat,
+                                            availableTabs = listOf(RaftThreadTab.Chat),
+                                            onSelectedTabChanged = {},
+                                            onSuggestionDemandChanged = {},
+                                            forwardServerId = null,
+                                            forwardTargetRepository = null,
+                                            contentExtrasVisible = true,
+                                            onOpenTaskSummary = { _, _ -> },
+                                            onTasksIntent = {},
+                                            onFilesAuthRequired = {},
+                                            onOpenFilesAttachment = { _, _ -> },
+                                            onDownloadFilesAttachment = {},
+                                            onOpenMemberProfile = {},
+                                            highlightedMentions = emptySet(),
+                                            onExportShareImage = { null },
+                                            onSaveShareImage = { null },
+                                            adaptiveStoreScope = RaftShellStoreScope.Legacy,
+                                            adaptiveEventBus = eventBus,
+                                            onLoadNewer = { ThreadNewerPageLoadOutcome.Empty },
+                                            onJumpToLatest = { ThreadLatestJumpOutcome.Landed },
+                                            onBack = {},
+                                            onThreadEvent = ThreadEventHandler { _, _, _, _, _, _ -> },
+                                            onComposerSendRequest = { ThreadComposerSendAdmission.Deferred },
+                                            onComposerEvent = { action, value, asTask, _ ->
+                                                if (action == "change") {
+                                                    draftViewModel.dispatch(
+                                                        SharedThreadComposerDraftIntent.Change(
+                                                            seedText = value,
+                                                            seedAsTask = asTask,
+                                                        )
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            // Stage 1: Cold LoadingShell -> open IME and start typing.
+            assertEquals(
+                ThreadRouteMountPlan.LoadingShell,
+                payloadState.threadRouteMountPlan(payloadState.toThreadTimelineSlice(), accessState),
+            )
+            onNode(hasSetTextAction(), useUnmergedTree = true).performClick()
+            waitForIdle()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            onNode(hasSetTextAction(), useUnmergedTree = true).performTextInput("reply before load")
+            waitForIdle()
+            assertEquals("reply before load", draftViewModel.state.value.seedText)
+
+            // Stage 2: Parent access resolves before replies arrive -> progressive FeatureSurfaces
+            // with `status == "loading"` and `resolvedAuxiliaryThreadId() == null`.
+            accessState = ThreadAccessResolution.Resolved
+            parentAuthority = ReplyParentAuthorityStatus.Writable
+            writeEnabled = true
+            payloadState = coldPendingReplyPayload.copy(joined = true, canSend = true)
+            waitForIdle()
+            assertEquals(
+                ThreadRouteMountPlan.FeatureSurfaces,
+                payloadState.threadRouteMountPlan(payloadState.toThreadTimelineSlice(), accessState),
+            )
+            onNodeWithTag(ThreadComposerRestingHeightPlaceholderTestTag).assertDoesNotExist()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertTextContains("reply before load")
+
+            // Stage 3: Replies finish loading with canonical streamChannelId and swapped payload.instanceId.
+            payloadState =
+                coldPendingReplyPayload.copy(
+                    instanceId = "shared-shell-thread-$ReplyThreadId",
+                    sourceThreadId = ReplyThreadId,
+                    streamChannelId = ReplyThreadId,
+                    status = "content",
+                    joined = true,
+                    canSend = true,
+                    messages =
+                        listOf(
+                            RaftThreadMessageItem(
+                                id = "r1",
+                                authorId = "u1",
+                                authorName = "Artin",
+                                body = "loaded reply",
+                            )
+                        ),
+                    composer =
+                        RaftThreadComposerPayload(
+                            instanceId = "shared-shell-thread-$ReplyThreadId",
+                            placeholder = ReplyPlaceholder,
+                        ),
+                )
+            waitForIdle()
+            onNodeWithTag(ThreadComposerRestingHeightPlaceholderTestTag).assertDoesNotExist()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts, "canonical reply resolution must not restart IME session")
+            assertEquals(0, sessionDisposals, "canonical reply resolution must not cancel IME session")
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertTextContains("reply before load")
+            assertEquals("reply before load", draftViewModel.state.value.seedText)
+
+            // Typing continues seamlessly without tapping again.
+            onNode(hasSetTextAction(), useUnmergedTree = true).performTextInput(" and after")
+            waitForIdle()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertEquals("reply before load and after", draftViewModel.state.value.seedText)
+        }
+
+    @Test
+    fun unresolvedNonReplyCanonicalAccessKeepsImeSessionAliveUntilWriteAuthorityResolves() =
+        runRobolectricComposeUiTest {
+            // Regression for dm:@artin:#178 (unknownCanonicalContentAccess):
+            // A non-reply conversation (such as a task conversation waiting on parent channel
+            // detail) can transition `accessResolution = Resolved` with
+            // `canonicalAccessResolved = false, writeActionsEnabled = false` once messages load.
+            // The optimistic composer must remain mounted across that pending-authority window so
+            // an already-focused editor is not unmounted and its IME is not dismissed.
+            RaftAndroidSqlDatabaseContext.init(RuntimeEnvironment.getApplication())
+            val persistSlice =
+                SharedThreadComposerDraftPersistSlice(
+                    SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+                )
+            val draftViewModel = SharedThreadComposerDraftViewModel(persistSlices = listOf(persistSlice))
+            val eventBus = noopEventBus()
+            val coldPayload =
+                RaftThreadScreenPayload(
+                    instanceId = ChannelId,
+                    surfaceKind = RaftThreadSurfaceKind.Channel,
+                    sourceThreadId = ChannelId,
+                    streamChannelId = ChannelId,
+                    status = "loading",
+                    title = "general",
+                    joined = true,
+                    canSend = false,
+                    showComposer = true,
+                    composer = RaftThreadComposerPayload(instanceId = ChannelId, placeholder = ChannelPlaceholder),
+                )
+            var payloadState by mutableStateOf(coldPayload)
+            var accessState by mutableStateOf(ThreadAccessResolution.Loading)
+            var canonicalAccessResolved by mutableStateOf(false)
+            var writeEnabled by mutableStateOf(false)
+            var hostComposeView: View? = null
+            var sessionStarts = 0
+            var sessionDisposals = 0
+            val countingInterceptor =
+                countingPlatformTextInputInterceptor(
+                    onStart = { sessionStarts += 1 },
+                    onDispose = { sessionDisposals += 1 },
+                )
+
+            setContent {
+                val view = LocalView.current
+                SideEffect { hostComposeView = view }
+                val timelineSlice = payloadState.toThreadTimelineSlice()
+                val mountPlan = payloadState.threadRouteMountPlan(timelineSlice, accessState)
+                val headerDisplay =
+                    ThreadHeaderDisplayModel(
+                        title = "general",
+                        subtitle = null,
+                        surfaceKind = RaftThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                    )
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(livePager)) {
+                    RaftTheme(appearance = RaftAppearance.Light) {
+                        RaftWindowFocusScope {
+                            InterceptPlatformTextInput(interceptor = countingInterceptor) {
+                                ThreadRouteScaffoldStage(
+                                    isLoadingShell = mountPlan == ThreadRouteMountPlan.LoadingShell,
+                                    loadingSlots = {
+                                        rememberThreadDeferredLoadingScaffoldSlots(
+                                            payload = payloadState,
+                                            displayModel = headerDisplay,
+                                            memberAvatarResolver = EmptyRaftMemberAvatarResolver,
+                                            onBack = {},
+                                            showLoadingIndicator = true,
+                                            optimisticComposerHost =
+                                                ThreadLoadingOptimisticComposerHost(
+                                                    accessResolution = accessState,
+                                                    replyParentAuthority = ReplyParentAuthorityStatus.Writable,
+                                                    composerDraftViewModel = draftViewModel,
+                                                    composerInstanceId = ChannelId,
+                                                    onSendRequest = { ThreadComposerSendAdmission.Deferred },
+                                                    onEvent = { action, value, asTask, _ ->
+                                                        if (action == "change") {
+                                                            draftViewModel.dispatch(
+                                                                SharedThreadComposerDraftIntent.Change(
+                                                                    seedText = value,
+                                                                    seedAsTask = asTask,
+                                                                )
+                                                            )
+                                                        }
+                                                    },
+                                                ),
+                                        )
+                                    },
+                                    featureSlots = {
+                                        val resolvedAuxId = payloadState.resolvedAuxiliaryThreadId()
+                                        val effectiveChannelId =
+                                            resolvedAuxId ?: payloadState.optimisticComposerChannelId(resolvedAuxId)
+                                        val baseComposer =
+                                            remember(payloadState, effectiveChannelId, resolvedAuxId) {
+                                                payloadState
+                                                    .resolveThreadComposer(displayName = headerDisplay.title)
+                                                    .copy(
+                                                        instanceId = ChannelId,
+                                                        streamChannelId = effectiveChannelId,
+                                                        enabled = payloadState.canSend && resolvedAuxId != null,
+                                                    )
+                                            }
+                                        val composerSurface =
+                                            remember(baseComposer, effectiveChannelId) {
+                                                baseComposer
+                                                    .toThreadComposerSurface(channelId = effectiveChannelId.orEmpty())
+                                                    .withTaskV2()
+                                            }
+                                        val draftKey = remember(composerSurface) { composerSurface.threadComposerDraftKey() }
+                                        remember(draftViewModel, baseComposer.instanceId, draftKey) {
+                                            ensureThreadComposerDraftStarted(draftViewModel, baseComposer, draftKey)
+                                        }
+                                        rememberThreadPageContentScaffoldSlots(
+                                            threadInstanceKey = ChannelId,
+                                            routeActive = true,
+                                            hostForeground = true,
+                                            payload = payloadState,
+                                            messageBodyTextStyle = TextStyle.Default,
+                                            timelineSlice = timelineSlice,
+                                            accessResolution = accessState,
+                                            canonicalAccessResolved = canonicalAccessResolved,
+                                            replyParentAuthority = ReplyParentAuthorityStatus.Writable,
+                                            writeActionsEnabled = writeEnabled,
+                                            replyMetadataByParentId = emptyMap(),
+                                            headerDisplay = headerDisplay,
+                                            composerSurface = composerSurface,
+                                            baseComposerState = baseComposer,
+                                            composerDraftViewModel = draftViewModel,
+                                            composerDraftPersistSlice = persistSlice,
+                                            resolvedAuxiliaryThreadId = resolvedAuxId,
+                                            tasksViewModel = null,
+                                            taskChannelId = null,
+                                            taskIdentityOptions = emptyList(),
+                                            linkedTasksProjection = ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()),
+                                            filesViewModel = null,
+                                            memberSuggestionsFlow = flowOf(SharedMembersMemberSuggestionSlice()),
+                                            channelSuggestionsFlow = flowOf(SharedMembersChannelSuggestionSlice()),
+                                            selectedTab = RaftThreadTab.Chat,
+                                            availableTabs = listOf(RaftThreadTab.Chat),
+                                            onSelectedTabChanged = {},
+                                            onSuggestionDemandChanged = {},
+                                            forwardServerId = null,
+                                            forwardTargetRepository = null,
+                                            contentExtrasVisible = true,
+                                            onOpenTaskSummary = { _, _ -> },
+                                            onTasksIntent = {},
+                                            onFilesAuthRequired = {},
+                                            onOpenFilesAttachment = { _, _ -> },
+                                            onDownloadFilesAttachment = {},
+                                            onOpenMemberProfile = {},
+                                            highlightedMentions = emptySet(),
+                                            onExportShareImage = { null },
+                                            onSaveShareImage = { null },
+                                            adaptiveStoreScope = RaftShellStoreScope.Legacy,
+                                            adaptiveEventBus = eventBus,
+                                            onLoadNewer = { ThreadNewerPageLoadOutcome.Empty },
+                                            onJumpToLatest = { ThreadLatestJumpOutcome.Landed },
+                                            onBack = {},
+                                            onThreadEvent = ThreadEventHandler { _, _, _, _, _, _ -> },
+                                            onComposerSendRequest = { ThreadComposerSendAdmission.Deferred },
+                                            onComposerEvent = { action, value, asTask, _ ->
+                                                if (action == "change") {
+                                                    draftViewModel.dispatch(
+                                                        SharedThreadComposerDraftIntent.Change(
+                                                            seedText = value,
+                                                            seedAsTask = asTask,
+                                                        )
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            // Open IME during LoadingShell and type a draft.
+            onNode(hasSetTextAction(), useUnmergedTree = true).performClick()
+            waitForIdle()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            onNode(hasSetTextAction(), useUnmergedTree = true).performTextInput("task draft")
+            waitForIdle()
+
+            // Stage 2: Timeline arrives with unattested membership (unknownCanonicalContentAccess).
+            payloadState =
+                coldPayload.copy(
+                    status = "content",
+                    joined = true,
+                    canSend = false,
+                    messages =
+                        listOf(
+                            RaftThreadMessageItem(
+                                id = "m-task-1",
+                                authorId = "u1",
+                                authorName = "Artin",
+                                body = "task body",
+                            )
+                        ),
+                )
+            accessState = ThreadAccessResolution.Resolved
+            canonicalAccessResolved = false
+            writeEnabled = false
+            waitForIdle()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertTextContains("task draft")
+
+            // Stage 3: Canonical access settles to writable.
+            payloadState = payloadState.copy(canSend = true)
+            canonicalAccessResolved = true
+            writeEnabled = true
+            waitForIdle()
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertIsFocused()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            onNode(hasSetTextAction(), useUnmergedTree = true).assertTextContains("task draft")
+            assertEquals("task draft", draftViewModel.state.value.seedText)
+        }
+
+    private fun countingPlatformTextInputInterceptor(
+        onStart: () -> Unit,
+        onDispose: () -> Unit,
+    ): PlatformTextInputInterceptor =
+        object : PlatformTextInputInterceptor {
+            override suspend fun interceptStartInputMethod(
+                request: PlatformTextInputMethodRequest,
+                nextHandler: PlatformTextInputSession,
+            ): Nothing {
+                onStart()
+                try {
+                    nextHandler.startInputMethod(request)
+                } finally {
+                    onDispose()
+                }
+            }
+        }
+
+    private fun dispatchWindowFocus(composeRoot: View, hasFocus: Boolean) {
+        val viewRoot = checkNotNull(composeRoot.rootView.parent) { "composeRoot must be attached to a ViewRootImpl" }
+        Shadow.extract<ShadowViewRootImpl>(viewRoot).callWindowFocusChanged(hasFocus)
+    }
 
     private fun noopEventBus(): RaftEventBus =
         object : RaftEventBus {

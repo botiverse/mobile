@@ -1343,12 +1343,14 @@ internal class ThreadLoadingOptimisticComposerHost(
     val accessResolution: ThreadAccessResolution,
     val replyParentAuthority: ReplyParentAuthorityStatus,
     val composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    val composerInstanceId: String? = null,
     val serverId: String? = null,
     val jointChannelId: String? = null,
     val composerLocked: Boolean = false,
     val externalFrozen: Boolean = false,
     val composerSendKeyEnabled: Boolean = false,
     val composerSendKey: build.raft.app.data.RaftComposerSendKey = build.raft.app.data.RaftComposerSendKey.Default,
+    val onKeyboardHeightChange: (Float) -> Unit = {},
     val onSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission = { ThreadComposerSendAdmission.Rejected },
     val onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit = { _, _, _, _ -> },
 )
@@ -1406,10 +1408,12 @@ internal fun rememberThreadDeferredLoadingScaffoldSlots(
     val loadingAssistantPanelContext = LocalThreadAssistantPanelEmbed.current?.context
     val composerDock =
         if (showOptimisticComposer && optimisticComposerHost != null && loadingOptimisticChannelId != null) {
+            val pinnedComposerInstanceId = optimisticComposerHost.composerInstanceId?.takeIf(String::isNotBlank)
             val loadingBaseComposerState =
                 remember(
                     payload.composer,
                     payload.instanceId,
+                    pinnedComposerInstanceId,
                     displayModel.title,
                     payload.surfaceKind,
                     payload.sourceThreadId,
@@ -1419,9 +1423,12 @@ internal fun rememberThreadDeferredLoadingScaffoldSlots(
                     payload.originParentMessageId,
                     loadingOptimisticChannelId,
                 ) {
-                    payload
-                        .resolveThreadComposer(displayName = displayModel.title)
-                        .copy(streamChannelId = loadingOptimisticChannelId, enabled = true)
+                    val resolved = payload.resolveThreadComposer(displayName = displayModel.title)
+                    resolved.copy(
+                        instanceId = pinnedComposerInstanceId ?: resolved.instanceId,
+                        streamChannelId = loadingOptimisticChannelId,
+                        enabled = true,
+                    )
                 }
             val loadingComposerSurface =
                 remember(
@@ -1479,7 +1486,7 @@ internal fun rememberThreadDeferredLoadingScaffoldSlots(
                     onSendRequest = optimisticComposerHost.onSendRequest,
                     composerSendKeyEnabled = optimisticComposerHost.composerSendKeyEnabled,
                     composerSendKey = optimisticComposerHost.composerSendKey,
-                    onKeyboardHeightChange = {},
+                    onKeyboardHeightChange = optimisticComposerHost.onKeyboardHeightChange,
                     adaptiveNativeEditingStateReader = LocalThreadAdaptiveNativeEditingReader.current,
                     optimisticPendingAccess = true,
                 )

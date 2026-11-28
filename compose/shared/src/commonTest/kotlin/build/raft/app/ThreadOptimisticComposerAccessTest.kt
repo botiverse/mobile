@@ -37,6 +37,7 @@ import build.raft.app.thread.allowsOptimisticSendWhileAccessLoading
 import build.raft.app.thread.canAdmitLocalSend
 import build.raft.app.thread.canDeferOptimisticSendWhileAccessLoading
 import build.raft.app.thread.captureThreadLocalSendAuthority
+import build.raft.app.thread.composerSendTargetChannelId
 import build.raft.app.thread.dispatch
 import build.raft.app.thread.ensureThreadComposerDraftStarted
 import build.raft.app.thread.optimisticComposerChannelId
@@ -795,5 +796,114 @@ class ThreadOptimisticComposerAccessTest {
         assertEquals("http_403", failedRow.pendingSendErrorCode)
         assertEquals("Join this channel to send messages", failedRow.pendingSendErrorMessage)
         scope.cancel()
+    }
+
+    @Test
+    fun composerSendTargetChannelIdNeverFallsBackToParentChannelForUnresolvedReplyThread() {
+        val coldChannel = RaftThreadScreenPayload(status = "loading", sourceThreadId = "c1", streamChannelId = "c1")
+        assertEquals("c1", coldChannel.composerSendTargetChannelId())
+
+        val coldReplyWithStream =
+            RaftThreadScreenPayload(
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "c1",
+                parentMessageId = "m1",
+            )
+        assertEquals("thread-m1", coldReplyWithStream.composerSendTargetChannelId())
+
+        val coldBrandNewReply =
+            RaftThreadScreenPayload(
+                status = "loading",
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                parentChannelId = "c1",
+                parentMessageId = "m1",
+            )
+        // Optimistic composer keeps the editor mounted under parentChannelId, but send/upload
+        // target resolution must stay null until the server assigns a concrete reply stream id.
+        assertEquals("c1", coldBrandNewReply.optimisticComposerChannelId())
+        assertNull(coldBrandNewReply.composerSendTargetChannelId())
+    }
+
+    @Test
+    fun draftStoreRefiningKeyOnSameComposerInstancePreservesTypedDraftWithoutSpuriousReplace() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemoryRaftKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val viewModel = SharedThreadComposerDraftViewModel(persistSlices = listOf(persistSlice))
+        val composer = RaftThreadComposerPayload(instanceId = "composer-stable-1")
+
+        // 1. Brand-new reply thread resolves `parentChannelId -> streamChannelId`.
+        val pendingReplyKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.ReplyThread,
+                channelId = "c1",
+                parentChannelId = "c1",
+                parentMessageId = "m1",
+                mentionChannelId = "c1",
+            ).threadComposerDraftKey()
+        val canonicalReplyKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.ReplyThread,
+                channelId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "c1",
+                parentMessageId = "m1",
+                mentionChannelId = "c1",
+            ).threadComposerDraftKey()
+        ensureThreadComposerDraftStarted(viewModel, composer, pendingReplyKey)
+        viewModel.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "fast reply"))
+        ensureThreadComposerDraftStarted(viewModel, composer, canonicalReplyKey)
+        assertEquals(canonicalReplyKey, viewModel.state.value.draftKey)
+        assertEquals("fast reply", viewModel.state.value.seedText)
+        assertNull(viewModel.state.value.editorCommand, "matching live editor must not receive a spurious Replace")
+
+        // 2. Reply thread opened by stream id only gains parent metadata (`isRootComposer: true -> false`).
+        val streamOnlyComposer = RaftThreadComposerPayload(instanceId = "composer-stream-only")
+        val streamOnlyKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.ReplyThread,
+                channelId = "thread-m2",
+                streamChannelId = "thread-m2",
+                mentionChannelId = "thread-m2",
+            ).threadComposerDraftKey()
+        val enrichedReplyKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.ReplyThread,
+                channelId = "thread-m2",
+                streamChannelId = "thread-m2",
+                parentChannelId = "c1",
+                parentMessageId = "m2",
+                mentionChannelId = "c1",
+            ).threadComposerDraftKey()
+        ensureThreadComposerDraftStarted(viewModel, streamOnlyComposer, streamOnlyKey)
+        viewModel.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "from activity"))
+        ensureThreadComposerDraftStarted(viewModel, streamOnlyComposer, enrichedReplyKey)
+        assertEquals(enrichedReplyKey, viewModel.state.value.draftKey)
+        assertEquals("from activity", viewModel.state.value.seedText)
+        assertNull(viewModel.state.value.editorCommand)
+
+        // 3. Joint channel resolves `jointChannelId: null -> joint-1`.
+        val jointComposer = RaftThreadComposerPayload(instanceId = "composer-joint")
+        val initialChannelKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.Channel,
+                channelId = "c2",
+                mentionChannelId = "c2",
+            ).threadComposerDraftKey()
+        val resolvedJointKey =
+            ThreadComposerSurface(
+                kind = RaftThreadSurfaceKind.Channel,
+                channelId = "c2",
+                mentionChannelId = "c2",
+                jointChannelId = "joint-1",
+            ).threadComposerDraftKey()
+        ensureThreadComposerDraftStarted(viewModel, jointComposer, initialChannelKey)
+        viewModel.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "joint msg"))
+        ensureThreadComposerDraftStarted(viewModel, jointComposer, resolvedJointKey)
+        assertEquals(resolvedJointKey, viewModel.state.value.draftKey)
+        assertEquals("joint msg", viewModel.state.value.seedText)
+        assertNull(viewModel.state.value.editorCommand)
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.input.TextFieldValue
 import build.raft.app.RaftComposerServerUploads
 import build.raft.app.RaftTextFieldNativeEditingStateReadResult
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.SharedThreadComposerDraftIntent
 import build.raft.app.SharedThreadComposerDraftViewModel
 import build.raft.app.ThreadAttachmentUploadAttemptIdentity
@@ -249,21 +250,25 @@ internal fun ThreadComposerDeferredSendEffects(
     val latestPerformComposerSend by latestPerformComposerSendState
     val latestHandleComposerSendRequest by latestHandleComposerSendRequestState
     val pendingOptimisticSend = pendingOptimisticSendState.value
+    val sendTargetChannelId = renderedThread.composerSendTargetChannelId()
     LaunchedEffect(
         pendingOptimisticSend,
         renderSlice.accessResolution,
+        renderSlice.canonicalAccessResolved,
         renderSlice.writeActionsEnabled,
         renderSlice.replyParentAuthority,
         threadLimitLocked,
+        renderedThread.status,
         renderedThread.channelArchived,
         renderedThread.joined,
         renderedThread.canSend,
-        composerSurface.sendChannelId,
+        sendTargetChannelId,
     ) {
         val pending = pendingOptimisticSend ?: return@LaunchedEffect
         val currentThreadState = threadViewModel.state.value
         val canFlushNow =
             !threadLimitLocked &&
+                sendTargetChannelId != null &&
                 (
                     (
                         renderSlice.accessResolution == ThreadAccessResolution.Resolved &&
@@ -273,7 +278,7 @@ internal fun ThreadComposerDeferredSendEffects(
                             renderedThread.canSend
                     ) ||
                         currentThreadState.allowsOptimisticSendWhileAccessLoading(
-                            sendChannelId = composerSurface.sendChannelId,
+                            sendChannelId = sendTargetChannelId,
                             limitLocked = threadLimitLocked,
                         )
                 )
@@ -288,7 +293,25 @@ internal fun ThreadComposerDeferredSendEffects(
             latestHandleComposerSendRequest(resolvedRequest)
             return@LaunchedEffect
         }
-        if (currentThreadState.canDeferOptimisticSendWhileAccessLoading(limitLocked = threadLimitLocked)) {
+        val keepWaitingForTargetOrAccess =
+            currentThreadState.canDeferOptimisticSendWhileAccessLoading(limitLocked = threadLimitLocked) ||
+                (
+                    !threadLimitLocked &&
+                        !renderedThread.channelArchived &&
+                        renderedThread.status != "error" &&
+                        renderedThread.status != "no_permission" &&
+                        (
+                            (sendTargetChannelId == null && renderedThread.status == "loading") ||
+                                (
+                                    renderSlice.accessResolution == ThreadAccessResolution.Resolved &&
+                                        !renderSlice.canonicalAccessResolved &&
+                                        !renderSlice.writeActionsEnabled &&
+                                        renderedThread.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                                        renderedThread.joined
+                                )
+                        )
+                )
+        if (keepWaitingForTargetOrAccess) {
             delay(10_000L)
             if (pendingOptimisticSendState.value === pending) {
                 pendingOptimisticSendState.value = null
