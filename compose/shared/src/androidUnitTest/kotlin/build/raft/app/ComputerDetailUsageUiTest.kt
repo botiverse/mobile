@@ -226,7 +226,9 @@ class ComputerDetailUsageUiTest {
         onNodeWithTag(RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG).assertTextEquals("200.0 GB free of 500.0 GB")
         onNodeWithTag(RAFT_COMPUTER_DETAIL_MEMORY_TAG).assertIsDisplayed()
         onNodeWithTag(RAFT_COMPUTER_DETAIL_MEMORY_DETAIL_TAG).assertDoesNotExist()
-        onNodeWithText("—").assertIsDisplayed()
+        onNode(
+            hasAnyAncestor(hasTestTag(RAFT_COMPUTER_DETAIL_MEMORY_TAG)) and hasText("—"),
+        ).assertIsDisplayed()
     }
 
     @Test
