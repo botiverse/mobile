@@ -1417,6 +1417,15 @@ private fun RaftComputerRackCard(
             row.cardFacts(),
             Modifier.padding(start = RaftComputerCardIconSize + RaftComputerCardTitleGap, top = 2.dp),
         )
+        // slock #17228 (web ComputerRackRow cards): description sits under the facts from the card's left edge; no line without one.
+        row.description?.let { description ->
+            RaftComputerRackDescriptionLine(
+                computerId = row.id,
+                description = description,
+                tooltipOnOverflow = true,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         // Computer owner v1 (web ComputerOwnerLabel): "Owner: <name>" or "Public (no owner)".
         RaftComputerOwnerLine(row.owner, Modifier.padding(start = RaftComputerCardIconSize + RaftComputerCardTitleGap, top = 2.dp))
         Spacer(Modifier.height(12.dp))
@@ -1439,6 +1448,42 @@ private fun RaftComputerRackCard(
             Spacer(Modifier.weight(1f))
             RaftComputerRackActionRow(action, onUpgrade, onCopyCommand, install = install)
         }
+    }
+}
+
+/**
+ * Single-line Computer description on the Computers page (`slock #17228` web `ComputerRackRow`
+ * `RACK_DESCRIPTION_TYPE`: `text-footnote font-normal text-foreground`, truncated to one line).
+ * Cards show a plain [RaftTooltip] only when truncated; phone blocks render plain text without one.
+ */
+@Composable
+private fun RaftComputerRackDescriptionLine(
+    computerId: String,
+    description: String,
+    tooltipOnOverflow: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    var truncated by remember(description) { mutableStateOf(false) }
+    val textNode: @Composable (Modifier) -> Unit = { textModifier ->
+        RaftText(
+            text = description,
+            modifier = textModifier.fillMaxWidth().testTag("rack-row-description-$computerId"),
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foreground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout =
+                if (tooltipOnOverflow) {
+                    { layoutResult -> truncated = layoutResult.hasVisualOverflow }
+                } else {
+                    null
+                },
+        )
+    }
+    if (tooltipOnOverflow && truncated) {
+        RaftTooltip(text = description, modifier = modifier) { textNode(Modifier) }
+    } else {
+        textNode(modifier)
     }
 }
 
@@ -1838,6 +1883,15 @@ private fun RaftComputerRackBlock(
                     )
                 },
             )
+            // slock #17228 (web ComputerRackRow phone block): plain single-line description under name/version, no tooltip.
+            row.description?.let { description ->
+                RaftComputerRackDescriptionLine(
+                    computerId = row.id,
+                    description = description,
+                    tooltipOnOverflow = false,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
             RaftComputerOwnerLine(row.owner, Modifier.padding(top = 4.dp))
             if (agents.isNotEmpty()) {
                 RaftComputerAgentStripRow(

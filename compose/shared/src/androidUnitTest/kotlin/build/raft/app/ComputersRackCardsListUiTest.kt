@@ -3,8 +3,10 @@ package build.raft.app
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import build.raft.app.data.ComputersRackSort
 import build.raft.app.data.ComputersRackView
 import build.raft.app.data.RuntimeAccountUsageAccount
@@ -131,5 +133,33 @@ class ComputersRackCardsListUiTest {
         show(ComputersRackView.Cards)
         onNode(hasContentDescription("Disk 69% used, 332.9 GB free of 1067.3 GB"), useUnmergedTree = true).assertExists()
         onNode(hasContentDescription("Memory 72% used, 18.0 GB free of 64.0 GB"), useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun cardsShowTrimmedDescriptionAndOmitBlankOnes() = runRobolectricComposeUiTest {
+        val described =
+            listOf(
+                fleet[0].copy(description = "  Build farm Mac Studio in Tokyo  "),
+                fleet[1].copy(description = "   "),
+            )
+        show(ComputersRackView.Cards, computers = described)
+        onNodeWithTag("rack-row-description-m-studio", useUnmergedTree = true)
+            .assertExists()
+            .assertTextEquals("Build farm Mac Studio in Tokyo")
+        onNodeWithTag("rack-row-description-m-laptop", useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun phoneListBlocksShowTrimmedDescriptionAndOmitBlankOnes() = runRobolectricComposeUiTest {
+        val described =
+            listOf(
+                fleet[0].copy(description = "  Build farm Mac Studio in Tokyo  "),
+                fleet[1].copy(description = null),
+            )
+        show(ComputersRackView.List, computers = described)
+        onNodeWithTag("rack-row-description-m-studio", useUnmergedTree = true)
+            .assertExists()
+            .assertTextEquals("Build farm Mac Studio in Tokyo")
+        onNodeWithTag("rack-row-description-m-laptop", useUnmergedTree = true).assertDoesNotExist()
     }
 }
