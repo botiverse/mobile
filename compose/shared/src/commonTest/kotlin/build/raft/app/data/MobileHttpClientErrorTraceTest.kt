@@ -87,6 +87,19 @@ class MobileHttpClientErrorTraceTest {
         assertFalse(
             recorder.recordFailure(
                 method = "POST",
+                url = "https://api-aws-staging.botiverse.dev/__trace/api/web-traces",
+                requestHeaders = mapOf(HEADER_SERVER_ID to "srv-1"),
+                sentTraceId = sentTraceId,
+                statusCode = 401,
+                errorBodyText = """{"error":"unauthorized"}""",
+                transportDiagnostics = null,
+                durationMs = 30L,
+                redactSensitive = false,
+            ),
+        )
+        assertFalse(
+            recorder.recordFailure(
+                method = "POST",
                 url = "https://api.raft.build/api/servers/srv-1/scope-attestation",
                 requestHeaders = mapOf(HEADER_SERVER_ID to "srv-1"),
                 sentTraceId = sentTraceId,

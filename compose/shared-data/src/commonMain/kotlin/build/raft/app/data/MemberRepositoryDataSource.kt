@@ -63,6 +63,13 @@ class HomeNetworkBytesResponse(
 }
 
 interface RaftNetworkClient {
+    /**
+     * Current API base URL this client targets (e.g. `https://api.raft.build/api/` or
+     * `https://api-aws-staging.botiverse.dev/api/`), read dynamically so runtime environment
+     * switches take effect immediately. Null when a test double does not declare one.
+     */
+    fun currentApiBaseUrl(): String? = null
+
     suspend fun request(
         priority: DataRequestPriority,
         path: String,
@@ -332,6 +339,10 @@ interface RaftNetworkClient {
 @RaftCoreInternalApi fun RaftNetworkClient.boundTo(expectedAuthority: RaftExpectedAuthBinding): RaftNetworkClient {
     val bound = this as? AuthorityBoundRaftNetworkClient
     return object : RaftNetworkClient {
+        override fun currentApiBaseUrl(): String? =
+            expectedAuthority.environmentId?.trim()?.takeIf { it.isNotEmpty() }
+                ?: this@boundTo.currentApiBaseUrl()
+
         override suspend fun request(
             priority: DataRequestPriority,
             path: String,
