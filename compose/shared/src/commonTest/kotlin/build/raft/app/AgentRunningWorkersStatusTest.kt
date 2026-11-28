@@ -1,6 +1,5 @@
 package build.raft.app
 
-import build.raft.app.composer.resolveComposerMentionAgentStatusIndicatorState
 import build.raft.app.data.AgentActivityDetailKindIdle
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.data.AgentDetailSummary
@@ -495,7 +494,7 @@ class AgentRunningWorkersStatusTest {
             raftProfilePreviewCardModel(
                 profile = agentProfile,
                 status = singleWorkerStatus,
-                avatar = null,
+                avatarWireValue = null,
                 viewerServerId = "server-1",
                 viewerIsGuest = true,
             )
@@ -510,7 +509,7 @@ class AgentRunningWorkersStatusTest {
             raftProfilePreviewCardModel(
                 profile = agentProfile,
                 status = multiWorkerStatus,
-                avatar = null,
+                avatarWireValue = null,
                 viewerServerId = "server-1",
                 viewerIsGuest = true,
             )
