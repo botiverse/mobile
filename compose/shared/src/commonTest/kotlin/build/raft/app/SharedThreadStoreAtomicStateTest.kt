@@ -217,7 +217,7 @@ class SharedThreadStoreAtomicStateTest {
                         )
                         add(
                             launch(Dispatchers.Default) {
-                                store.accept(SharedThreadIntent.SetAddMemberStatus(status = "done", errorCode = null))
+                                store.accept(SharedThreadIntent.FocusMessage(messageId = "m1"))
                             }
                         )
                         add(
@@ -261,7 +261,7 @@ class SharedThreadStoreAtomicStateTest {
             assertEquals(ThreadAccessResolution.Resolved, finalState.accessResolution)
             assertEquals(LoadMembersStatus.Loaded, finalState.membersLoadStatus)
             assertEquals(listOf("u1"), finalState.payload.members.map { it.id })
-            assertEquals("done", finalState.payload.addMemberStatus)
+            assertEquals("m1", finalState.payload.focusedMessageId)
             assertEquals("tasks", finalState.payload.selectedTab)
             assertTrue(finalState.payload.messages.any { it.id == "m-live" })
         } finally {
