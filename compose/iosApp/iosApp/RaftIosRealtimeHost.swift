@@ -395,6 +395,12 @@ final class RaftIosRealtimeHost: NSObject {
             log("notification_retract_rejected reason=invalid_payload")
             return
         }
+        RaftIosPushDeliveryTraceBridge.shared.recordRetract(
+            groupKey: retract.groupKey,
+            throughSeq: retract.throughSeq ?? 0,
+            hasThroughSeq: retract.throughSeq != nil,
+            retractedAtMs: Int64(Date().timeIntervalSince1970 * 1000.0)
+        )
         RaftIosNotificationRetraction.apply(retract, completion: { [weak self] removed in
             self?.log("notification_retract_applied removed=\(removed) wholeGroup=\(retract.throughSeq == nil)")
         })

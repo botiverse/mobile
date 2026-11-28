@@ -172,6 +172,16 @@ enum RaftIosNotificationRetraction {
         guard let value = int64(value) else { return nil }
         return Int(clamping: max(0, value))
     }
+
+    /// Extracts `aps.badge` from an APNs `userInfo` dictionary, or nil when absent/non-numeric.
+    static func apsBadge(_ userInfo: [AnyHashable: Any]) -> Int? {
+        badge((userInfo["aps"] as? [AnyHashable: Any])?["badge"])
+    }
+
+    /// Extracts message `seq` from an APNs `userInfo` dictionary, or nil when absent/non-numeric.
+    static func seq(_ userInfo: [AnyHashable: Any]) -> Int64? {
+        int64(userInfo["seq"])
+    }
 }
 
 /// "Retracted through" mark of one group (review N1): alert and retract pushes can arrive out of order
@@ -256,6 +266,31 @@ enum RaftIosRetractWatermarks {
             watermarks: watermarks,
             now: now
         )
+    }
+
+    /// `#proj-mobile:#437`: returns true when a retract push covering this notification arrived
+    /// before the user tapped it (`read_before_open` on `mobile.push.opened`).
+    ///
+    /// Mirrors [isCovered], except that when `postedAt` is unavailable (e.g. cold launch via
+    /// `launchOptions[.remoteNotification]`) and the watermark is whole-group (no `throughSeq`),
+    /// a live watermark for the group still classifies as `read_before_open = true`.
+    static func isReadBeforeOpen(
+        userInfo: [AnyHashable: Any],
+        postedAt: Date?,
+        watermarks: [String: RaftIosRetractWatermark],
+        now: Date
+    ) -> Bool {
+        guard let groupKey = RaftIosNotificationRetraction.notificationGroupKey(userInfo),
+              let mark = watermarks[groupKey],
+              isLive(mark, now: now)
+        else { return false }
+        if let through = mark.throughSeq, let seq = RaftIosNotificationRetraction.int64(userInfo["seq"]) {
+            return seq <= through
+        }
+        if let postedAt {
+            return postedAt <= mark.recordedAt.addingTimeInterval(lateArrivalGrace)
+        }
+        return true
     }
 
     /// Identifiers of [delivered] notifications a watermark covers.
@@ -518,6 +553,40 @@ enum RaftIosNotificationOpen {
             ]
         }
         return parts.joined(separator: "|")
+    }
+
+    /// `#proj-mobile:#437`: in-memory landing target identity extracted from an APNs tap payload so
+    /// deferred `mobile.push.opened` settles when the destination conversation/Activity first loads.
+    struct LandingTarget: Equatable {
+        let conversationId: String?
+        let channelId: String?
+        let threadId: String?
+        let parentMessageId: String?
+        let taskConversationChannelId: String?
+        let isActivityTarget: Bool
+    }
+
+    static func landingTarget(
+        userInfo: [AnyHashable: Any],
+        categoryIdentifier: String? = nil
+    ) -> LandingTarget {
+        let payload = sanitizedPayload(userInfo: userInfo, categoryIdentifier: categoryIdentifier)
+        let conversationId = RaftIosNotificationRetraction.string(userInfo["conversationId"])
+        let channelId = payload?["slockNotificationChannelId"] ?? RaftIosNotificationRetraction.string(userInfo["channelId"])
+        let threadId = payload?["slockNotificationThreadId"] ?? RaftIosNotificationRetraction.string(userInfo["threadId"])
+        let parentMessageId = payload?["slockNotificationParentMessageId"] ?? RaftIosNotificationRetraction.string(userInfo["parentMessageId"])
+        let taskConversationChannelId =
+            payload?["slockNotificationTaskConversationChannelId"]
+                ?? RaftIosNotificationRetraction.string(userInfo["taskConversationChannelId"])
+        let isActivityTarget = payload?["slockNotificationTarget"] == activityTarget
+        return LandingTarget(
+            conversationId: conversationId,
+            channelId: channelId,
+            threadId: threadId,
+            parentMessageId: parentMessageId,
+            taskConversationChannelId: taskConversationChannelId,
+            isActivityTarget: isActivityTarget
+        )
     }
 }
 

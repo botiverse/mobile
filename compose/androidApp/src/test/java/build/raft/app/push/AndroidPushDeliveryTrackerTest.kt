@@ -195,4 +195,77 @@ class AndroidPushDeliveryTrackerTest {
         )
         assertEquals("", resolveAndroidPushServerId(null, null))
     }
+
+    @Test
+    fun resolveAndroidPushLandingSpecExtractsConversationTaskAndActivityTargets() {
+        val dmRequest =
+            org.json.JSONObject()
+                .put("serverId", "s1")
+                .put("conversationId", "dm-1")
+                .put("channelId", "dm-1")
+                .put("seq", "42")
+                .put("deliveryOccurredAtMs", 1_700_000_000_000L)
+        val dmSpec = resolveAndroidPushLandingSpec(dmRequest)
+        assertEquals("s1:dm-1", dmSpec.groupKey)
+        assertEquals(42L, dmSpec.seq)
+        assertEquals(1_700_000_000_000L, dmSpec.pushOccurredAtMs)
+        assertEquals("dm-1", dmSpec.conversationId)
+        assertEquals("dm-1", dmSpec.channelId)
+        assertFalse(dmSpec.isActivityTarget)
+
+        val threadRequest =
+            org.json.JSONObject()
+                .put("serverId", "s1")
+                .put("groupKey", "s1:th-1")
+                .put("route", """{"type":"thread","serverId":"s1","parentChannelId":"ch-1","parentChannelType":"channel","parentMessageId":"pm-1","messageId":"m-9"}""")
+        val threadSpec = resolveAndroidPushLandingSpec(threadRequest)
+        assertEquals("s1:th-1", threadSpec.groupKey)
+        assertEquals("pm-1", threadSpec.parentMessageId)
+        assertFalse(threadSpec.isActivityTarget)
+
+        val taskRequest =
+            org.json.JSONObject()
+                .put("serverId", "s1")
+                .put("taskConversationChannelId", "task-ch-7")
+                .put("groupKey", "s1:task-ch-7")
+                .put("seq", "5")
+        val taskSpec = resolveAndroidPushLandingSpec(taskRequest)
+        assertEquals("task-ch-7", taskSpec.taskConversationId)
+        assertEquals(5L, taskSpec.seq)
+        assertFalse(taskSpec.isActivityTarget)
+
+        val reminderRequest =
+            org.json.JSONObject()
+                .put("serverId", "s1")
+                .put("category", "reminder")
+                .put("groupKey", "s1:reminder")
+        val reminderSpec = resolveAndroidPushLandingSpec(reminderRequest)
+        assertEquals("s1:reminder", reminderSpec.groupKey)
+        assertTrue(reminderSpec.isActivityTarget)
+
+        val appRouteRequest =
+            org.json.JSONObject()
+                .put("serverId", "s1")
+                .put("route", """{"type":"app","serverId":"s1","appId":"app-42"}""")
+        val appSpec = resolveAndroidPushLandingSpec(appRouteRequest)
+        assertFalse(appSpec.isActivityTarget)
+    }
+
+    @Test
+    fun fcmUnreadNotificationRequestCarriesDeliveryOccurredAtMs() {
+        val request =
+            raftFcmUnreadNotificationRequest(
+                data =
+                    mapOf(
+                        "deliveryId" to "550e8400-e29b-41d4-a716-446655440000",
+                        "serverId" to "s1",
+                        "channelId" to "c1",
+                        "groupKey" to "s1:c1",
+                        "seq" to "12",
+                    ),
+                pushOccurredAtMs = 1_700_000_012_345L,
+            )
+        assertEquals("fcm", request.optString("deliveryTransport"))
+        assertEquals(1_700_000_012_345L, request.optLong("deliveryOccurredAtMs"))
+    }
 }

@@ -593,6 +593,32 @@ internal class SharedThreadDataSource(
 
     suspend fun readSession(): StoredAuthSession? = readReplyResolutionScope()?.session
 
+    /**
+     * #proj-mobile:#437: synchronous pre-read unread lookup from the in-memory Home snapshot
+     * (used as fallback when `MarkVisibleRead` races ahead on a warm cache frame or when `GET
+     * /api/channels/:id` carries no `maxReadSeq`).
+     */
+    internal fun immediateHomeUnreadCountOrNull(
+        serverId: String?,
+        routeIdentity: ThreadRouteIdentity,
+    ): Int? {
+        val cleanServerId = serverId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val snapshot = immediateHomeSnapshotLookupProvider?.invoke(ServerId(cleanServerId))?.snapshot ?: return null
+        val targetId = routeIdentity.timelineChannelId ?: routeIdentity.timelineKey ?: return null
+        if (routeIdentity.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+            return snapshot.followedThreadUnread[targetId]?.unreadCount?.coerceAtLeast(0)
+        }
+        snapshot.channels
+            .firstOrNull { row -> row.channelId?.value == targetId || row.threadId.value == targetId }
+            ?.takeIf { it.unreadCountKnown }
+            ?.let { return it.unreadCount.coerceAtLeast(0) }
+        snapshot.directMessages
+            .firstOrNull { row -> row.channelId?.value == targetId || row.threadId.value == targetId }
+            ?.takeIf { it.unreadCountKnown }
+            ?.let { return it.unreadCount.coerceAtLeast(0) }
+        return null
+    }
+
     internal suspend fun captureReplyCacheProducerContext(): ReplyCacheProducerContext? =
         readReplyResolutionScope()?.let { scope ->
             ReplyCacheProducerContext(scope.session, scope.provenance)

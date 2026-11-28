@@ -8461,15 +8461,7 @@ private fun AppShellBannerAndExternalShareHosts(
             currentServerStore = sharedStores.localDataStore,
             currentServerIdOverride = readySession?.currentServerId?.let(::ServerId),
             onBannerClick = { target ->
-                target.deliveryId?.let { deliveryId ->
-                    build.raft.app.data.RaftPushDeliveryTrace.recordOpened(
-                        deliveryId = deliveryId,
-                        serverId = target.serverId,
-                        transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
-                        appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
-                        openSurface = build.raft.app.data.RaftPushDeliveryOpenSurface.InAppBanner,
-                    )
-                }
+                target.beginDeferredPushOpen()
                 foregroundBannerStore.dismiss(target.id)
                 val crossServerSource = target.crossServerSource
                 if (crossServerSource != null) {

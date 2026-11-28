@@ -363,6 +363,9 @@ internal class SharedThreadStore(
      */
     private var anchorPendingStandIn: RaftThreadScreenPayload? = null
     private var visiblePayloadOwnerScopeId: String? = null
+    // #proj-mobile:#437: pre-read unread fallback captured before Frame 1 commits / MarkVisibleRead runs.
+    @kotlin.concurrent.Volatile private var markVisibleReadDispatchedForRoute: Boolean = false
+    @kotlin.concurrent.Volatile private var preReadFallbackUnreadForRoute: Int? = null
     private var routeStaleToken = MviStaleToken.Initial
     private var routeStaleTokenValue = MviStaleToken.Initial.value
     private var nextThreadRepliesRebaselineGeneration: Long = 0L
@@ -648,6 +651,7 @@ internal class SharedThreadStore(
                 }
             }
             is SharedThreadIntent.MarkVisibleRead -> {
+                markVisibleReadDispatchedForRoute = true
                 // Opened here, not in the launched block: a VisibleReadHidden dispatched right after
                 // must not be undone by this read starting later.
                 threadVisibleRead.showVisibleRead()
@@ -1169,6 +1173,12 @@ internal class SharedThreadStore(
         pendingSecondaryTimelineApply = null
         val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey
+        markVisibleReadDispatchedForRoute = false
+        preReadFallbackUnreadForRoute =
+            dataSource.immediateHomeUnreadCountOrNull(
+                serverId = session?.currentServerId,
+                routeIdentity = routeIdentity,
+            )
         anchorPendingStandIn = null
         dataSource.onReplyCacheFirstFrameAdmissionForTest?.invoke()
         // Hands 7e198cab: a realtime write of this conversation was refused (`poisoned`), so later messages
@@ -1828,6 +1838,20 @@ internal class SharedThreadStore(
                 "thread_start_access_failure_reused route=${routeIdentity.instanceKey} " +
                     "code=${rememberedAccessFailure.code}"
             )
+            val candidateIds =
+                listOfNotNull(
+                    routeIdentity.timelineChannelId,
+                    routeIdentity.timelineKey,
+                    routeContextPayload.sourceThreadId,
+                    routeContextPayload.streamChannelId,
+                ).mapNotNull { it.trim().takeIf { id -> id.isNotEmpty() } }.toSet()
+            build.raft.app.data.RaftPushDeliveryTrace.completeDeferredOpenForConversation(
+                serverId = session?.currentServerId,
+                candidateConversationIds = candidateIds,
+                parentMessageId = routeContextPayload.parentMessageId,
+                landingLoadOk = false,
+                landingUnread = null,
+            )
             return
         }
         refresh(routeContextPayload, staleToken, reusePrewarm = true)
@@ -2372,6 +2396,43 @@ internal class SharedThreadStore(
                     )
                 }
             }
+        // #proj-mobile:#437: settle any pending deferred `mobile.push.opened` BEFORE committing state
+        // so `landing_unread` reflects pre-read-advance state before `MarkVisibleRead` runs.
+        run {
+            val contentData = (result as? DataResult.Content)?.data
+            val landingOk =
+                result is DataResult.Content ||
+                    (result is DataResult.Empty && result.reason == EmptyReason.NoMessages)
+            val witness = contentData?.landingUnreadWitness ?: ThreadLandingUnreadWitness.None
+            val fallbackUnread = preReadFallbackUnreadForRoute
+            val landingUnread =
+                when {
+                    !landingOk -> null
+                    result is DataResult.Empty -> 0
+                    markVisibleReadDispatchedForRoute -> fallbackUnread ?: witness.unreadCount
+                    witness.unreadCount != null ->
+                        if (witness.truncatedWindow && fallbackUnread != null && fallbackUnread > witness.unreadCount) {
+                            fallbackUnread
+                        } else {
+                            witness.unreadCount
+                        }
+                    else -> fallbackUnread
+                }
+            val candidateIds =
+                listOfNotNull(
+                    basePayload.sourceThreadId,
+                    basePayload.streamChannelId,
+                    contentData?.sourceThreadId,
+                    contentData?.streamChannelId,
+                ).mapNotNull { it.trim().takeIf { id -> id.isNotEmpty() } }.toSet()
+            build.raft.app.data.RaftPushDeliveryTrace.completeDeferredOpenForConversation(
+                serverId = refreshProducerContext.session.currentServerId,
+                candidateConversationIds = candidateIds,
+                parentMessageId = basePayload.parentMessageId ?: contentData?.parentMessageId,
+                landingLoadOk = landingOk,
+                landingUnread = landingUnread,
+            )
+        }
         var committedPayload: RaftThreadScreenPayload? = null
         val committed =
             initialAccessStateMutex.withLock<Boolean?> {

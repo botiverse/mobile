@@ -1,6 +1,8 @@
 package build.raft.app.push
 
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.data.RaftBadgeSource
+import build.raft.app.data.RaftBadgeTelemetry
 import build.raft.app.data.RaftNotificationTestAck
 import build.raft.app.data.RaftPushDeliveryAppState
 import build.raft.app.data.RaftPushDeliverySuppressReason
@@ -56,12 +58,18 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
                 val retract = parseRaftFcmNotificationRetract(data)
                 val closed = retract?.let { AndroidUnreadNotificationPoster.retract(applicationContext, it) } ?: 0
                 applyServerBadge(data)
+                parseRaftPushBadge(data["badge"])?.let { badge ->
+                    RaftBadgeTelemetry.recordBadgeSet(count = badge, source = RaftBadgeSource.Retract)
+                }
                 RaftAppLog.i(TAG, "fcm_message_handled type=retract parsed=${retract != null} closed=$closed")
             }
             RaftFcmMessageDecision.Sync -> {
                 AndroidFcmReachabilityController.onRealFcmDelivered(applicationContext, source = "sync")
                 // The launcher badge follows the tray (setNumber); a per-server sync updates that server's summary.
                 applyServerBadge(data)
+                parseRaftPushBadge(data["badge"])?.let { badge ->
+                    RaftBadgeTelemetry.recordBadgeSet(count = badge, source = RaftBadgeSource.Sync)
+                }
                 RaftAppLog.i(TAG, "fcm_message_handled type=sync")
             }
             RaftFcmMessageDecision.DropUnknownType ->
@@ -97,7 +105,8 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             }
             RaftFcmMessageDecision.Alert -> {
                 AndroidFcmReachabilityController.onRealFcmDelivered(applicationContext, source = "alert")
-                postAlert(data)
+                val pushSentAtMs = message.sentTime.takeIf { it > 0L }
+                postAlert(data, pushSentAtMs = pushSentAtMs)
             }
         }
     }
@@ -109,12 +118,14 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
         AndroidUnreadNotificationPoster.applyServerBadge(applicationContext, serverId, serverBadge)
     }
 
-    private fun postAlert(data: Map<String, String>) {
+    private fun postAlert(data: Map<String, String>, pushSentAtMs: Long? = null) {
         val foreground = raftProcessIsForeground()
         val deliveryId = normalizePushDeliveryId(data["deliveryId"])
         val serverId = resolveAndroidPushServerId(data["serverId"], data["route"])
         val appState =
             if (foreground) RaftPushDeliveryAppState.Foreground else RaftPushDeliveryAppState.Background
+        val receivedAtMs = System.currentTimeMillis()
+        val pushOccurredAtMs = pushSentAtMs ?: receivedAtMs
         if (deliveryId != null) {
             AndroidPushDeliveryTracker.recordReceived(
                 context = applicationContext,
@@ -123,7 +134,11 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
                 transport = RaftPushDeliveryTransport.Fcm,
                 appState = appState,
                 category = normalizePushDeliveryCategory(category = data["category"], kind = data["kind"]),
+                occurredAtMs = receivedAtMs,
             )
+            if (pushSentAtMs != null) {
+                RaftBadgeTelemetry.recordPushTimestamp(deliveryId = deliveryId, occurredAtMs = pushSentAtMs)
+            }
         }
         if (raftFcmAlertSuppressedInForeground(data["category"], foreground = foreground)) {
             // In the foreground only the in-app banner shows (it gets the same notification over the
@@ -169,8 +184,13 @@ class RaftFirebaseMessagingService : FirebaseMessagingService() {
             RaftAppLog.i(TAG, "fcm_message_suppressed reason=visible_conversation")
             return
         }
-        val request = raftFcmUnreadNotificationRequest(data)
+        val request = raftFcmUnreadNotificationRequest(data, pushOccurredAtMs = pushOccurredAtMs)
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(applicationContext, request)
+        if (result["status"] == "ok" && result["code"] != "already_retracted") {
+            parseRaftPushBadge(data["badge"])?.let { badge ->
+                RaftBadgeTelemetry.recordBadgeSet(count = badge, source = RaftBadgeSource.Alert)
+            }
+        }
         if (deliveryId != null) {
             AndroidPushDeliveryTracker.recordPosterOutcome(
                 context = applicationContext,
@@ -234,13 +254,17 @@ internal fun raftFcmMessageDecision(data: Map<String, String>, alertsEnabled: ()
  * of key set 3 the title / subtitle / body keys of the banner copy too, and `subtitle` is the context
  * line (the plain `title` then carries no ` · subtitle`).
  */
-internal fun raftFcmUnreadNotificationRequest(data: Map<String, String>): JSONObject =
+internal fun raftFcmUnreadNotificationRequest(
+    data: Map<String, String>,
+    pushOccurredAtMs: Long? = null,
+): JSONObject =
     JSONObject().apply {
         for (key in FCM_UNREAD_NOTIFICATION_KEYS) {
             put(key, data[key].orEmpty())
         }
         if (!data["deliveryId"].isNullOrBlank()) {
             put("deliveryTransport", RaftPushDeliveryTransport.Fcm.wire)
+            pushOccurredAtMs?.takeIf { it > 0L }?.let { put("deliveryOccurredAtMs", it) }
         }
     }
 

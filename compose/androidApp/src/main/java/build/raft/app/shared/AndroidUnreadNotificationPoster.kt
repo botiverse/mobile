@@ -234,7 +234,13 @@ internal object AndroidUnreadNotificationPoster {
     @SuppressLint("MissingPermission") // Only cancels, or re-posts a summary over posted conversations.
     fun retract(context: Context, retract: RaftNotificationRetract): Int {
         val appContext = context.applicationContext
-        retractWatermarks.record(retract, System.currentTimeMillis())
+        val nowMs = System.currentTimeMillis()
+        retractWatermarks.record(retract, nowMs)
+        build.raft.app.data.RaftBadgeTelemetry.recordRetract(
+            groupKey = retract.groupKey,
+            throughSeq = retract.throughSeq,
+            retractedAtMs = nowMs,
+        )
         return runCatching {
             synchronized(groupingLock) {
                 val fromTray =
@@ -1077,6 +1083,7 @@ internal object AndroidUnreadNotificationPoster {
             .apply {
                 if (!deliveryId.isNullOrBlank()) {
                     put("deliveryTransport", RaftPushDeliveryTransport.MobileSocket.wire)
+                    put("deliveryOccurredAtMs", System.currentTimeMillis())
                 }
             }
             .putRaftNotificationLocalization(localization)

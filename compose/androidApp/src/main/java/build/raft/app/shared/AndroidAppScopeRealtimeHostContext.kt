@@ -554,6 +554,7 @@ internal class AndroidAppScopeRealtimeHostContext private constructor(
                     .apply {
                         if (!event.deliveryId.isNullOrBlank()) {
                             put("deliveryTransport", RaftPushDeliveryTransport.MobileSocket.wire)
+                            put("deliveryOccurredAtMs", System.currentTimeMillis())
                         }
                     }
                     .let { with(AndroidUnreadNotificationPoster) { it.putRaftNotificationLocalization(event.localization) } }

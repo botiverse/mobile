@@ -220,9 +220,33 @@ internal data class RaftThreadScreenPayload(
      */
     @Transient
     val canonicalAccessKnown: Boolean = true,
+    /** #proj-mobile:#437: pre-read-advance unread witness for `mobile.push.opened` (`landing_unread`). */
+    @Transient
+    val landingUnreadWitness: ThreadLandingUnreadWitness = ThreadLandingUnreadWitness.None,
 ) {
     /** Derived from [surfaceKind] and [channelKind]; never stored, so no constructor can forget it. */
     val showReplyActions: Boolean get() = RaftThreadSurfaceKind.allowsReplyInThread(surfaceKind, channelKind)
+}
+
+/**
+ * #proj-mobile:#437: non-equality-affecting carrier for pre-read-advance unread count observed on
+ * initial canonical load (before `MarkVisibleRead` runs). Mirrors [build.raft.app.data.RawMessagePageWitness].
+ */
+internal class ThreadLandingUnreadWitness(
+    val unreadCount: Int?,
+    val serverMaxReadSeq: Long?,
+    val truncatedWindow: Boolean,
+) {
+    override fun equals(other: Any?): Boolean = other is ThreadLandingUnreadWitness
+
+    override fun hashCode(): Int = 0
+
+    override fun toString(): String =
+        "ThreadLandingUnreadWitness(unreadCount=$unreadCount, serverMaxReadSeq=$serverMaxReadSeq, truncatedWindow=$truncatedWindow)"
+
+    companion object {
+        val None: ThreadLandingUnreadWitness = ThreadLandingUnreadWitness(null, null, false)
+    }
 }
 
 internal data class ThreadActivityMuteUiState(

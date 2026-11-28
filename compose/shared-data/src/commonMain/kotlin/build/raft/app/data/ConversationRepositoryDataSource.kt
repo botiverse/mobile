@@ -930,7 +930,7 @@ class RealConversationRepository private constructor(
             expectedConversationId
                 ?.takeIf { includeConversationDetail }
                 ?.let { expected ->
-                    expected to async { loadConversationDetail(expected, priority, context.server.id) }
+                    expected to async { loadConversationDetailWithReadSeq(expected, priority, context.server.id) }
                 }
         var canonicalTargetKind: String? = null
         val result = executeConversation(
@@ -975,26 +975,38 @@ class RealConversationRepository private constructor(
                     earlyDetail?.second?.cancel()
                     return@coroutineScope result
                 }
-        val detail =
+        val detailResult =
             if (earlyDetail != null && earlyDetail.first == detailChannelId) {
                 earlyDetail.second.await()
             } else {
                 earlyDetail?.second?.cancel()
-                loadConversationDetail(detailChannelId, priority, context.server.id)
+                loadConversationDetailWithReadSeq(detailChannelId, priority, context.server.id)
             }
         DataResult.Content(
             snapshot.withConversationDetail(
-                detail = detail,
-                canonicalReplyThread = canonicalTargetKind == RaftThreadSurfaceKind.ReplyThread
+                detail = detailResult?.summary,
+                canonicalReplyThread = canonicalTargetKind == RaftThreadSurfaceKind.ReplyThread,
+                serverMaxReadSeq = detailResult?.serverMaxReadSeq,
             )
         )
     }
+
+    private data class LoadedConversationDetail(
+        val summary: ConversationSummary,
+        val serverMaxReadSeq: Long?,
+    )
 
     private suspend fun loadConversationDetail(
         channelId: ChannelId,
         priority: DataRequestPriority,
         serverId: ServerId,
-    ): ConversationSummary? {
+    ): ConversationSummary? = loadConversationDetailWithReadSeq(channelId, priority, serverId)?.summary
+
+    private suspend fun loadConversationDetailWithReadSeq(
+        channelId: ChannelId,
+        priority: DataRequestPriority,
+        serverId: ServerId,
+    ): LoadedConversationDetail? {
         val authorityStore = resolvedChannelAuthorityStore()
         val authorityToken = authorityStore?.captureRequestToken(serverId.value)
         val response =
@@ -1023,19 +1035,24 @@ class RealConversationRepository private constructor(
                 authorityStore.writeSingleAnswer(authorityToken, parsedChannelId, authority)
             }
         }
-        val parsedDetail = parseRaftChannelDetail(bodyText, warningLogger)?.toConversationSummary()
+        val parsedDetailRow = parseRaftChannelDetail(bodyText, warningLogger)
+        val parsedDetail = parsedDetailRow?.toConversationSummary()
         if (parsedDetail == null) {
             warningLogger("conversation_detail_parse_failed channelId=${channelId.value}")
             return null
         }
+        val serverMaxReadSeq = parsedDetailRow.readStateV1Hydrate?.maxReadSeq ?: parsedDetailRow.readStateMaxReadSeq
         // Server `GET /channels/:id` computes `joined = isChannelHuman(channel.id, userId)` which
         // is always false for `type = "thread"` and `type = "task"` channels (they carry no
         // `channel_humans` rows; write authority belongs to the parent channel). Mark membership
         // unknown so synthetic channel details never stamp `joined = false` onto snapshots or caches.
         val detail = parsedDetail.normalizeSyntheticChannelMembership()
         val taskConversation = parseTaskConversationChannelDetail(bodyText)
-            ?: return detail
-        return loadTaskConversationDetail(detail, taskConversation, priority, serverId)
+            ?: return LoadedConversationDetail(detail, serverMaxReadSeq)
+        return LoadedConversationDetail(
+            summary = loadTaskConversationDetail(detail, taskConversation, priority, serverId),
+            serverMaxReadSeq = serverMaxReadSeq,
+        )
     }
 
     /**
@@ -1839,7 +1856,7 @@ class RealConversationRepository private constructor(
         val conversationDetailDeferred =
             if (hydrateConversationDetail) {
                 async {
-                    loadConversationDetail(
+                    loadConversationDetailWithReadSeq(
                         channelId = ChannelId(threadId.value),
                         priority = DataRequestPriority.Foreground,
                         serverId = context.server.id,
@@ -1934,7 +1951,8 @@ class RealConversationRepository private constructor(
             }
         val threadSummaries = threadSummariesDeferred?.await()
         val followedSummaries = followedSummariesDeferred?.await()
-        val canonicalDetail = conversationDetailDeferred?.await()
+        val canonicalDetailLoaded = conversationDetailDeferred?.await()
+        val canonicalDetail = canonicalDetailLoaded?.summary
         if (
             messagesResult is DataResult.Empty &&
             messagesResult.reason == EmptyReason.NoMessages &&
@@ -1966,6 +1984,9 @@ class RealConversationRepository private constructor(
                     conversation = emptyConversation,
                     canonicalConversationDetail = canonicalDetail,
                     messages = emptyList(),
+                    preReadMaxReadSeq =
+                        canonicalDetailLoaded.serverMaxReadSeq?.let(::PreReadMaxReadSeqWitness)
+                            ?: PreReadMaxReadSeqWitness.None,
                 )
             )
         } else if (messagesResult !is DataResult.Content) {
@@ -1982,6 +2003,7 @@ class RealConversationRepository private constructor(
                 messagesResult.data.withConversationDetail(
                     detail = canonicalDetail,
                     canonicalReplyThread = false,
+                    serverMaxReadSeq = canonicalDetailLoaded?.serverMaxReadSeq,
                 )
             val channelThreads = if (threadSummaries is DataResult.Content) threadSummaries.data.threads else emptyList()
             val followedForChannel =
@@ -2396,9 +2418,14 @@ private fun ConversationSummary.normalizeSyntheticChannelMembership(): Conversat
 
 private fun ThreadSnapshot.withConversationDetail(
     detail: ConversationSummary?,
-    canonicalReplyThread: Boolean
+    canonicalReplyThread: Boolean,
+    serverMaxReadSeq: Long? = null,
 ): ThreadSnapshot {
-    if (detail == null) return this
+    val nextPreReadMaxReadSeq =
+        if (serverMaxReadSeq != null) PreReadMaxReadSeqWitness(serverMaxReadSeq) else preReadMaxReadSeq
+    if (detail == null) {
+        return if (serverMaxReadSeq != null) copy(preReadMaxReadSeq = nextPreReadMaxReadSeq) else this
+    }
     val snapshotChannelId = conversation.channelId?.value ?: return this
     val detailChannelId = detail.channelId?.value ?: return this
     if (snapshotChannelId != detailChannelId) return this
@@ -2409,6 +2436,7 @@ private fun ThreadSnapshot.withConversationDetail(
         val threadDetail = detail.channelType.equals("thread", ignoreCase = true) || detail.kind == ConversationKind.Thread
         return copy(
             canonicalConversationDetail = detail,
+            preReadMaxReadSeq = nextPreReadMaxReadSeq,
             conversation =
                 conversation.copy(
                     kind = if (!canonicalReplyThread && threadDetail) ConversationKind.Thread else conversation.kind,
@@ -2429,6 +2457,7 @@ private fun ThreadSnapshot.withConversationDetail(
     }
     return copy(
         canonicalConversationDetail = detail,
+        preReadMaxReadSeq = nextPreReadMaxReadSeq,
         conversation =
             detail.copy(
                 lastMessageId = conversation.lastMessageId ?: detail.lastMessageId,

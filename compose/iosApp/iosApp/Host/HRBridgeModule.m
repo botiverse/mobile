@@ -4040,6 +4040,7 @@ NSString *const RaftBridgeCallbackKey = @"callback";
             [UIApplication sharedApplication].applicationIconBadgeNumber = count;
 #pragma clang diagnostic pop
         }
+        [RaftIosBadgeTelemetryBridge recordAppBadgeSet:count];
         NSLog(@"[%@][info] appBadge count=%ld source=%@ stale=%@",
               RaftBridgeDefaultLogTag,
               (long)count,
