@@ -106,9 +106,9 @@ data class ArtifactFactsWireDto(
 )
 
 /**
- * `ArtifactCard`: what a card shows wherever it is drawn. Of `preview`, the excerpt's text and the
- * publish check's screenshot are read (a publisher cover is a file of the Artifact, fetched with the
- * viewer's credentials: not read by this client yet).
+ * `ArtifactCard`: what a card shows wherever it is drawn. Of `preview`, the excerpt's text, the
+ * publish check's screenshot, and the publisher cover image path (fetched via
+ * `GET /api/artifacts/:id/files/:path?version=:v` with the viewer's credentials) are read.
  */
 @Serializable
 data class ArtifactCardWireDto(
@@ -151,6 +151,26 @@ data class ArtifactCardWireDto(
      * with [JsonNull] otherwise, [ArtifactOptionalJson.Absent] when omitted.
      */
     val reopened: ArtifactOptionalJson = ArtifactOptionalJson.Absent,
+    /**
+     * Unseen activity since the viewer last looked (`ArtifactCard.unseen`, web `NewSticker`):
+     * `{ newerVersion, newComments, firstNewComment? }`. Kept raw so malformed payloads never fail
+     * the card.
+     */
+    val unseen: JsonElement? = null,
+)
+
+@Serializable
+data class ArtifactCardUnseenWireDto(
+    val newerVersion: Boolean = false,
+    val newComments: Int = 0,
+    val firstNewComment: String? = null,
+)
+
+/** Unseen updates since the viewer last looked (web `ArtifactCardUnseen`). */
+data class ArtifactCardUnseen(
+    val newerVersion: Boolean,
+    val newComments: Int,
+    val firstNewComment: String? = null,
 )
 
 /**
@@ -216,6 +236,7 @@ data class ArtifactPreviewWireDto(
     val blocks: JsonElement? = null,
     val desktop: JsonElement? = null,
     val phone: JsonElement? = null,
+    val path: JsonElement? = null,
 )
 
 /**
@@ -246,6 +267,10 @@ private fun JsonElement?.nonBlankStringOrNull(): String? =
     val desktop = desktop.nonBlankStringOrNull() ?: return null
     return ArtifactScreenshot(desktop = desktop, phone = phone.nonBlankStringOrNull())
 }
+
+/** web `coverPathOf`: a publisher cover image file path (`preview: { kind: "image", path }`). */
+@RaftCoreInternalApi fun ArtifactPreviewWireDto.coverPathOrNull(): String? =
+    if (kind == "image") path.nonBlankStringOrNull() else null
 
 /** `ArtifactKind`; an unknown one reads as [Other]. */
 enum class ArtifactKind(val wire: String) {
@@ -329,11 +354,15 @@ data class ArtifactSummary(
     val facts: ArtifactFacts = ArtifactFacts(),
     /** The publish check's screenshot (card `preview` of kind `screenshot`), drawn above the header. */
     val screenshot: ArtifactScreenshot? = null,
+    /** A publisher-provided cover image path (`preview` of kind `image`), used when [screenshot] is absent. */
+    val coverPath: String? = null,
     /**
      * A Markdown version's excerpt (card `preview` of kind `excerpt`): a message card draws it where
      * a screenshot goes, as rich text from its blocks or its plain text (web #13445, #13472).
      */
     val excerpt: ArtifactExcerpt? = null,
+    /** Unseen updates since the viewer last looked (`ArtifactCard.unseen`, web `NewSticker`). */
+    val unseen: ArtifactCardUnseen? = null,
     /**
      * Settled (#334): who settled it, when and at which version, while it is settled now (an older
      * message's card follows it). Null while it is Working and wherever the card says nothing of
@@ -547,7 +576,9 @@ private fun JsonElement.toArtifactSummaryOrNull(): ArtifactSummary? {
                 height = facts?.height,
             ),
         screenshot = card.preview?.screenshotOrNull(),
+        coverPath = card.preview?.coverPathOrNull(),
         excerpt = card.preview?.excerptOrNull(),
+        unseen = card.unseenOrNull(),
         settled = card.settledOrNull(),
         settledShown = card.settled.isPresent,
         following = card.following,
@@ -571,6 +602,20 @@ private fun JsonElement.toArtifactSummaryOrNull(): ArtifactSummary? {
                 return null
             }
     return ArtifactSettled(by = wire.by.toArtifactsHomeActor(), at = wire.at, version = wire.version)
+}
+
+/** Leniently parses [ArtifactCardWireDto.unseen]; null when absent, JSON null, or unreadable. */
+@RaftCoreInternalApi fun ArtifactCardWireDto.unseenOrNull(): ArtifactCardUnseen? {
+    val raw = unseen?.takeUnless { it is JsonNull } ?: return null
+    val wire =
+        runCatching { artifactSummariesJson.decodeFromJsonElement(ArtifactCardUnseenWireDto.serializer(), raw) }
+            .getOrNull() ?: return null
+    val count = wire.newComments.coerceAtLeast(0)
+    return ArtifactCardUnseen(
+        newerVersion = wire.newerVersion,
+        newComments = count,
+        firstNewComment = wire.firstNewComment?.trim()?.takeIf { it.isNotEmpty() },
+    )
 }
 
 @RaftCoreInternalApi interface RaftArtifactSummariesApi {

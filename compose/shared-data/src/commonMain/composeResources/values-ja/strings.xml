@@ -5784,6 +5784,9 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d / %2$d 件の Artifact</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d 件の新しいコメント</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d 件の新しいコメント</string>
+    <string name="artifacts_card_new_version_label">前回の閲覧以降に新しいバージョンがあります</string>
+    <string name="artifacts_card_new_comments_one">前回の閲覧以降、新しいコメント %1$d 件</string>
+    <string name="artifacts_card_new_comments_many">前回の閲覧以降、新しいコメント %1$d 件</string>
     <string name="artifacts_dashboard_status_label">ステータス: %1$s</string>
     <string name="artifacts_dashboard_status_unsettled">未確定</string>
     <string name="artifacts_dashboard_status_all">すべて</string>

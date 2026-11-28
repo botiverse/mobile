@@ -88,6 +88,8 @@ internal const val RAFT_ARTIFACT_VIEWER_PAGE = "compose_artifact_viewer"
 private const val VIEWER_ARTIFACT_ID = "artifactId"
 private const val VIEWER_VERSION = "artifactVersion"
 private const val VIEWER_CONVERSATION_ID = "conversationId"
+private const val VIEWER_OPENING_PANEL = "openingPanel"
+private const val VIEWER_OPENING_COMMENT_ID = "openingCommentId"
 
 @Page(RAFT_ARTIFACT_VIEWER_PAGE, supportInLocal = true)
 internal class ComposeRaftArtifactViewerPage : AuthenticatedProductPager(AuthenticatedProductRoute.ArtifactViewer) {
@@ -103,17 +105,32 @@ internal class ComposeRaftArtifactViewerPage : AuthenticatedProductPager(Authent
  * The header the page paints at once comes from [RaftArtifactViewerMemory], where the opener put its
  * card, read only in the same scope.
  */
-internal fun raftArtifactViewerPageData(target: ArtifactLinkTarget, conversationId: String? = null): JSONObject =
+internal fun raftArtifactViewerPageData(
+    target: ArtifactLinkTarget,
+    conversationId: String? = null,
+    opening: RaftArtifactViewerOpening? = null,
+): JSONObject =
     JSONObject().apply {
         put("pageName", RAFT_ARTIFACT_VIEWER_PAGE)
         put(VIEWER_ARTIFACT_ID, target.id)
         target.version?.let { put(VIEWER_VERSION, it) }
         raftArtifactViewerHostConversationOrNull(conversationId)?.let { put(VIEWER_CONVERSATION_ID, it) }
+        opening.normalizedOrNull()?.let { clean ->
+            clean.panel?.let { put(VIEWER_OPENING_PANEL, it) }
+            clean.commentId?.let { put(VIEWER_OPENING_COMMENT_ID, it) }
+        }
     }
 
 /** The conversation the viewer was opened from ([raftArtifactViewerPageData]); null: none. */
 internal fun JSONObject.raftArtifactViewerConversationOrNull(): String? =
     raftArtifactViewerHostConversationOrNull(optString(VIEWER_CONVERSATION_ID))
+
+/** Optional initial panel/comment opening from [raftArtifactViewerPageData]; null: default view. */
+internal fun JSONObject.raftArtifactViewerOpeningOrNull(): RaftArtifactViewerOpening? =
+    RaftArtifactViewerOpening(
+        panel = optString(VIEWER_OPENING_PANEL),
+        commentId = optString(VIEWER_OPENING_COMMENT_ID),
+    ).normalizedOrNull()
 
 internal fun JSONObject.raftArtifactViewerTargetOrNull(): ArtifactLinkTarget? {
     // `pt_…` or a short id, as the link wrote it.
@@ -293,10 +310,11 @@ internal fun Pager.openRaftArtifactViewerPage(
     target: ArtifactLinkTarget,
     storeScope: RaftShellStoreScope?,
     conversationId: String? = null,
+    opening: RaftArtifactViewerOpening? = null,
 ): Boolean =
     openRaftPage(
         pageName = RAFT_ARTIFACT_VIEWER_PAGE,
-        pageData = raftArtifactViewerPageData(target, conversationId),
+        pageData = raftArtifactViewerPageData(target, conversationId, opening),
         storeScopeOverride = storeScope,
     )
 
@@ -320,9 +338,19 @@ private fun rememberRaftArtifactViewerHost(openStoreScope: RaftShellStoreScope? 
 
 /** Opens Artifacts in the in-app viewer (the chat card's Open, an Activity row). */
 internal class RaftArtifactOpener(
-    private val openTarget: (target: ArtifactLinkTarget, header: RaftArtifactViewerHeader?, source: String) -> Unit,
+    private val openTarget: (
+        target: ArtifactLinkTarget,
+        header: RaftArtifactViewerHeader?,
+        source: String,
+        opening: RaftArtifactViewerOpening?,
+    ) -> Unit,
 ) {
-    fun open(target: ArtifactLinkTarget, header: RaftArtifactViewerHeader?, source: String) = openTarget(target, header, source)
+    fun open(
+        target: ArtifactLinkTarget,
+        header: RaftArtifactViewerHeader?,
+        source: String,
+        opening: RaftArtifactViewerOpening? = null,
+    ) = openTarget(target, header, source, opening)
 }
 
 /**
@@ -350,7 +378,8 @@ internal fun rememberRaftArtifactOpener(
     val currentHostHead by rememberUpdatedState(raftArtifactViewerHostHead(openInColumn, RaftTheme.controls.headHeight))
     val useMultiSlot = rememberRaftWebContainerV1Enabled()
     return remember(host, coroutineScope, conversation, useMultiSlot) {
-        RaftArtifactOpener { target, header, source ->
+        RaftArtifactOpener { target, header, source, opening ->
+            val cleanOpening = opening.normalizedOrNull()
             RaftArtifactOpenTrace.tap(source, target.id)
             if (host == null) {
                 if (currentOpenPageOverride?.invoke(target, currentStoreScope, conversation) == true) {
@@ -396,12 +425,13 @@ internal fun rememberRaftArtifactOpener(
                                         conversation,
                                         hostHead,
                                         langTag,
+                                        cleanOpening,
                                     )
                                 if (raftWebViewEvaluateInKept(slotKey, scope.webOrigin, script)) {
                                     RaftArtifactViewerMemory.cache.rememberKeptDocument(
                                         scope,
                                         target,
-                                        raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, langTag),
+                                        raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, langTag, cleanOpening),
                                         session.accessToken,
                                         slotKey = slotKey,
                                         renderedArtifact = false,
@@ -427,12 +457,13 @@ internal fun rememberRaftArtifactOpener(
                                 conversation,
                                 hostHead,
                                 langTag,
+                                cleanOpening,
                             )
                         if (raftWebViewEvaluateInKept(scope.keepAliveKey, scope.webOrigin, script)) {
                             RaftArtifactViewerMemory.cache.rememberKeptDocument(
                                 scope,
                                 target,
-                                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, langTag),
+                                raftArtifactViewerEmbeddedPageUrl(host.webBaseUrl, target, conversation, hostHead, langTag, cleanOpening),
                                 session.accessToken,
                             )
                             RaftArtifactOpenTrace.mark("viewer_nav_started", "where=tap")
@@ -442,7 +473,7 @@ internal fun rememberRaftArtifactOpener(
             }
             val opened =
                 currentOpenPageOverride?.invoke(target, host.openStoreScope, conversation)
-                    ?: host.pager.openRaftArtifactViewerPage(target, host.openStoreScope, conversation)
+                    ?: host.pager.openRaftArtifactViewerPage(target, host.openStoreScope, conversation, cleanOpening)
             if (opened && scope != null) {
                 val recentTitle = header?.title?.trim()?.takeIf { it.isNotEmpty() }
                 if (recentTitle != null) {
@@ -677,6 +708,7 @@ private fun RaftArtifactViewerScreen() {
     // The conversation it was opened from (`hostConversation`): the page's title then lists the Artifacts
     // recently opened there, and picking one moves the page in place ([raftArtifactViewerSwitchesInPlace]).
     val conversationId = remember(params.toString()) { params.raftArtifactViewerConversationOrNull() }
+    val opening = remember(params.toString()) { params.raftArtifactViewerOpeningOrNull() }
     // The Artifact shown: the one opened, then the one the page moved to in place (its title, Open in
     // Browser, Copy link, the summary read). The WebView's document is not reloaded for it ([bodyTarget]).
     var shown by remember(params.toString()) { mutableStateOf<ArtifactLinkTarget>(target) }
@@ -715,10 +747,14 @@ private fun RaftArtifactViewerScreen() {
     val useMultiSlot = rememberRaftWebContainerV1Enabled()
     val langTag = remember(params.toString()) { raftEmbeddedWebLangTag() }
     val initialSession = remember(params.toString(), host, scope) { scope?.let(host::inMemorySessionForScope) }
+    val activeOpening = opening.takeIf { bodyTarget.key == target.key }
     // With Desktop Mode's state and the head height at open; the App keeps both current in the address afterwards.
     val embeddedPageUrl =
-        remember(webBaseUrl, bodyTarget, conversationId, langTag) {
-            raftArtifactViewerWithHostDesktop(raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId, hostHead, langTag), hostDesktop)
+        remember(webBaseUrl, bodyTarget, conversationId, langTag, activeOpening) {
+            raftArtifactViewerWithHostDesktop(
+                raftArtifactViewerEmbeddedPageUrl(webBaseUrl, bodyTarget, conversationId, hostHead, langTag, activeOpening),
+                hostDesktop,
+            )
         }
     var freshReloadUsed by remember(params.toString()) { mutableStateOf(false) }
     // #300: one session recovery reload a minute at most ([RaftArtifactViewerSessionRecoveryGuard]).
@@ -746,7 +782,7 @@ private fun RaftArtifactViewerScreen() {
     // When returning to an already-loaded parked Artifact slot that drew its own bar (`hostToolbar=1`),
     // start with `pageDrawsBar = true` on Frame 1 so neither the native header nor a loading cover flashes.
     val initialWarmBarReady =
-        remember(params.toString(), scope, target, initialSession?.accessToken, conversationId, hostHead, langTag, useMultiSlot) {
+        remember(params.toString(), scope, target, initialSession?.accessToken, conversationId, hostHead, langTag, useMultiSlot, activeOpening) {
             raftArtifactViewerInitialWarmBarReady(
                 scope = scope,
                 target = target,
@@ -755,6 +791,7 @@ private fun RaftArtifactViewerScreen() {
                 hostHead = hostHead,
                 langTag = langTag,
                 useMultiSlot = useMultiSlot,
+                reloadIfShowsTarget = activeOpening?.normalizedOrNull()?.commentId != null,
             )
         }
     // The page draws the only bar (`hostToolbar=1`, shown, no load error): this one is left out.
@@ -1011,6 +1048,7 @@ private fun RaftArtifactViewerScreen() {
                             scope = scope,
                             target = bodyTarget,
                             conversationId = conversationId,
+                            opening = activeOpening,
                             hostHead = hostHead,
                             langTag = langTag,
                             useMultiSlot = useMultiSlot,
@@ -1112,6 +1150,8 @@ private fun RaftArtifactViewerWebBody(
     target: ArtifactLinkTarget,
     /** The conversation it was opened from (`hostConversation` in [pageUrl]); null: none. */
     conversationId: String?,
+    /** Optional initial panel/comment opening (`?panel=comments&comment=...` / `#panel=comments`). */
+    opening: RaftArtifactViewerOpening? = null,
     /**
      * The head the page's toolbar lines up with, now (`hostHead`, [raftArtifactViewerHostHeadHere]: the Artifact
      * column's, by the input in use; null: a page of its own). The one at open is in [pageUrl]; the address keeps
@@ -1180,8 +1220,9 @@ private fun RaftArtifactViewerWebBody(
     // Resolve this Artifact's keep-alive slot (or promote a compatible shared prewarm slot in
     // multi-slot mode). A stale/unusable slot is dropped surgically without disturbing other parked
     // Artifacts in the LRU pool.
+    val normalizedOpening = opening.normalizedOrNull()
     val keptResolution =
-        remember(scope, target, useMultiSlot) {
+        remember(scope, target, useMultiSlot, normalizedOpening) {
             resolveRaftArtifactViewerKeptSlot(
                 scope = scope,
                 target = target,
@@ -1190,6 +1231,7 @@ private fun RaftArtifactViewerWebBody(
                 hostHead = hostHead,
                 langTag = langTag,
                 useMultiSlot = useMultiSlot,
+                reloadIfShowsTarget = normalizedOpening?.commentId != null,
                 onDroppedReason = { reason ->
                     if (reason.contains("embed_contract_missing")) {
                         raftLogWarn(RAFT_ARTIFACT_VIEWER_DIAGNOSTICS_TAG, "artifact_viewer_kept_dropped reason=$reason")
@@ -1459,6 +1501,7 @@ private fun RaftArtifactViewerWebBody(
                 conversationId,
                 hostHead,
                 langTag,
+                opening,
             )
         if (controller.evaluateJavaScript(script)) {
             // The kept page routes to this Artifact now: its splash counts from here, so the App's does too.
@@ -1475,6 +1518,15 @@ private fun RaftArtifactViewerWebBody(
                 renderedArtifact = false,
             )
             RaftArtifactOpenTrace.mark("viewer_nav_started", "where=page")
+        }
+    }
+    var appliedKeptOpening by remember { mutableStateOf(false) }
+    LaunchedEffect(documentReady, navigated, kept, showsTarget, normalizedOpening) {
+        val panel = normalizedOpening?.takeIf { it.commentId == null }?.panel ?: return@LaunchedEffect
+        if (appliedKeptOpening || kept == null || !showsTarget || !documentReady || !navigated) return@LaunchedEffect
+        val script = raftArtifactViewerOpenPanelScript(scope.webOrigin, panel)
+        if (script.isNotEmpty() && controller.evaluateJavaScript(script)) {
+            appliedKeptOpening = true
         }
     }
     LaunchedEffect(navigated) { if (navigated && kept != null) visible = true }

@@ -2,15 +2,19 @@ package build.raft.app.thread
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -28,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.isShiftPressed
@@ -40,6 +45,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -56,6 +62,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import build.raft.app.ArtifactCardExcerpt
 import build.raft.app.RaftArtifactViewerHeader
+import build.raft.app.RaftArtifactViewerOpening
+import build.raft.app.raftArtifactViewerCommentIdOrNull
 import build.raft.app.RaftLucideIcon
 import build.raft.app.RaftLucideIconName
 import build.raft.app.artifactsHomeAuthorText
@@ -71,6 +79,8 @@ import build.raft.app.data.ArtifactSettled
 import build.raft.app.data.ArtifactSummary
 import build.raft.app.data.ArtifactSummaryAnswer
 import build.raft.app.data.ArtifactsHomeLoad
+import build.raft.app.data.artifactCoverExpectedMimeType
+import build.raft.app.data.artifactCoverFileKey
 import build.raft.app.data.artifactFollowKey
 import build.raft.app.data.artifactScreenshotFile
 import build.raft.app.data.artifactWebUrl
@@ -173,6 +183,39 @@ internal fun threadArtifactMessageRefsView(
 
 /** What a card's tap opens (web `openArtifactCardInPlace`): the card's id, at its version only when pinned. */
 internal fun ArtifactSummary.openTarget(): ArtifactLinkTarget = ArtifactLinkTarget(id, if (pinned) version else null)
+
+/** Initial panel/comment opening when tapping the card body (web `openArtifactCardInPlace` unseen first comment). */
+internal fun ArtifactSummary.cardOpenOpening(): RaftArtifactViewerOpening? {
+    val firstComment = unseen?.takeIf { it.newComments > 0 && commentCount > 0 }?.firstNewComment
+    val validCommentId = raftArtifactViewerCommentIdOrNull(firstComment) ?: return null
+    return RaftArtifactViewerOpening(panel = "comments", commentId = validCommentId)
+}
+
+/** Initial panel/comment opening when tapping the footer comment count (web `toComments = true`). */
+internal fun ArtifactSummary.commentsOpening(): RaftArtifactViewerOpening =
+    RaftArtifactViewerOpening(
+        panel = "comments",
+        commentId = raftArtifactViewerCommentIdOrNull(unseen?.takeIf { it.newComments > 0 && commentCount > 0 }?.firstNewComment),
+    )
+
+/** web `ArtifactMessageCard.tsx` `unseenMarks`: unseen version and comment counts shown on the New sticker. */
+internal data class ArtifactCardUnseenMarks(
+    val newerVersion: Boolean,
+    val newComments: Int,
+) {
+    val isEmpty: Boolean get() = !newerVersion && newComments <= 0
+}
+
+/**
+ * web `unseenMarks`: suppressed on preview cards; a pinned card never advertises a newer version
+ * (its card shows that pinned version), and `newComments` is clamped to `commentCount`.
+ */
+internal fun artifactMessageCardUnseenMarks(summary: ArtifactSummary, preview: Boolean): ArtifactCardUnseenMarks {
+    val unseen = summary.unseen?.takeUnless { preview } ?: return ArtifactCardUnseenMarks(false, 0)
+    val newerVersion = unseen.newerVersion && !summary.pinned
+    val newComments = if (summary.commentCount > 0) unseen.newComments.coerceIn(0, summary.commentCount) else 0
+    return ArtifactCardUnseenMarks(newerVersion = newerVersion, newComments = newComments)
+}
 
 /** One part of a card's fact line (web `artifactFacts.ts`), localized by [localized]. */
 internal sealed interface ArtifactFactPart {
@@ -353,7 +396,11 @@ internal fun ThreadArtifactMessageRefs(
                 view = view,
                 onOpen = { summary ->
                     val target = summary.openTarget()
-                    opener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_card")
+                    opener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_card", summary.cardOpenOpening())
+                },
+                onOpenComments = { summary ->
+                    val target = summary.openTarget()
+                    opener.open(target, RaftArtifactViewerHeader.of(summary, target), "message_card_comments", summary.commentsOpening())
                 },
                 onCopyLink = { summary ->
                     host.copyText(artifactWebUrl(webBaseUrl, summary.openTarget()))
@@ -383,6 +430,7 @@ internal fun ThreadArtifactMessageRefsContent(
     skeletonAnimated: Boolean = true,
     readerId: String? = null,
     onCopyLink: (ArtifactSummary) -> Unit = {},
+    onOpenComments: ((ArtifactSummary) -> Unit)? = null,
     contextMenuEnabled: Boolean = true,
     followingOf: (ArtifactSummary) -> Boolean? = { it.following },
     followPendingOf: (ArtifactSummary) -> Boolean = { false },
@@ -404,6 +452,7 @@ internal fun ThreadArtifactMessageRefsContent(
                                     onOpen = { onOpen(ref.summary) },
                                     readerId = readerId,
                                     onCopyLink = { onCopyLink(ref.summary) },
+                                    onOpenComments = onOpenComments?.let { cb -> { cb(ref.summary) } },
                                     contextMenuEnabled = contextMenuEnabled,
                                     followingOverride = followingOf(ref.summary),
                                     followPending = followPendingOf(ref.summary),
@@ -551,7 +600,17 @@ internal fun rememberArtifactMessageCardScreenshot(
 @Composable
 internal fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactCardScreenshotView {
     val reader = LocalArtifactScreenshotReader.current ?: return ArtifactCardScreenshotView.None
-    val fileId = artifactScreenshotFile(summary.screenshot, artifactScreenshotPhoneLayout(raftWindowWidth())) ?: return ArtifactCardScreenshotView.None
+    val screenshotFileId = artifactScreenshotFile(summary.screenshot, artifactScreenshotPhoneLayout(raftWindowWidth()))
+    val coverPath = if (screenshotFileId == null) summary.coverPath else null
+    val fileId =
+        when {
+            screenshotFileId != null -> screenshotFileId
+            coverPath != null -> {
+                if (summary.version <= 0 || artifactCoverExpectedMimeType(coverPath) == null) return ArtifactCardScreenshotView.Unreadable
+                artifactCoverFileKey(summary.version, coverPath)
+            }
+            else -> return ArtifactCardScreenshotView.None
+        }
     val cardId = summary.id
     var bytes by remember(reader, cardId, fileId) { mutableStateOf(reader.kept(cardId, fileId)) }
     var failed by remember(reader, cardId, fileId) { mutableStateOf(false) }
@@ -660,16 +719,17 @@ private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
  * place). Header: the kind's glyph and badge; the title (`subhead` bold, 2 lines) with its version
  * Badge; the fact line (`footnote` muted, 1 line); the description (`callout` muted, 1 line under
  * a fact line, else 2) or the start of its text (2 lines). Footer: where it lives, who updated it
- * when (Space Mono hint), and its comment count. Above them, the publish check's screenshot when
- * the card has one ([ArtifactCardScreenshot]), else a Markdown version's excerpt
- * ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the description; no
- * publisher cover yet.
+ * when (Space Mono hint), and its comment count. Above them, the publish check's screenshot or
+ * publisher cover image when the card has one ([ArtifactCardScreenshot]), else a Markdown version's
+ * excerpt ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the
+ * description.
  *
  * Settled (botiverse/slock #15654, `artifact_settled_v0`): while the Artifact is settled now, the
  * Settled tag after the version tag ([ArtifactSettledTag]; [readerId] names the reader's own settle
  * "You"), the two going under the title rather than leave it under 128dp ([ArtifactCardTitleLine]).
  * Nothing where the card says nothing of it ([ArtifactSummary.settled] null: Working, or the flag off).
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ArtifactMessageCard(
     summary: ArtifactSummary,
@@ -677,6 +737,7 @@ internal fun ArtifactMessageCard(
     modifier: Modifier = Modifier,
     readerId: String? = null,
     onCopyLink: () -> Unit = {},
+    onOpenComments: (() -> Unit)? = null,
     contextMenuEnabled: Boolean = true,
     preview: Boolean = false,
     followingOverride: Boolean? = null,
@@ -701,8 +762,8 @@ internal fun ArtifactMessageCard(
             onRereadLatest = if (preview) null else onRereadLatest,
             isPageVisible = isPageVisible,
         )
-    // web `useArtifactCardPicture`: a screenshot, else a Markdown version's excerpt (one kind at a
-    // time from the server, so an excerpt never waits for or replaces a picture).
+    // web `useArtifactCardPicture`: a screenshot or publisher cover, else a Markdown version's excerpt
+    // (one kind at a time from the server, so an excerpt never waits for or replaces a picture).
     val excerpt = summary.excerpt.takeIf { screenshot == ArtifactCardScreenshotView.None }
     // web `ArtifactCardMenu.tsx` (botiverse/slock #16110): right-click or Shift+F10/ContextMenu on
     // a live card opens the Artifact's own menu; preview cards and select mode leave it off.
@@ -791,7 +852,8 @@ internal fun ArtifactMessageCard(
                         )
                     }
                     val settled = summary.settled
-                    if (settled == null) {
+                    val unseenMarks = artifactMessageCardUnseenMarks(summary, preview)
+                    if (settled == null && unseenMarks.isEmpty) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
                             title(Modifier.weight(1f, fill = false))
                             version(Modifier.padding(top = 1.dp))
@@ -799,15 +861,25 @@ internal fun ArtifactMessageCard(
                     } else {
                         ArtifactCardTitleLine(
                             title = { title(Modifier) },
-                            // web: the version tag, then the Settled tag (`gap-1 pt-px`).
+                            // web: the version tag, then optional Settled tag and New sticker (`gap-1 pt-px flex-wrap`).
                             tags = {
-                                Row(Modifier.padding(top = 1.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                FlowRow(
+                                    Modifier.padding(top = 1.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                                    itemVerticalAlignment = Alignment.CenterVertically,
+                                ) {
                                     version(Modifier)
-                                    ArtifactSettledTag(
-                                        settled,
-                                        readerId,
-                                        modifier = Modifier.onGloballyPositioned { tooltipRegions.settledTag = it },
-                                    )
+                                    if (settled != null) {
+                                        ArtifactSettledTag(
+                                            settled,
+                                            readerId,
+                                            modifier = Modifier.onGloballyPositioned { tooltipRegions.settledTag = it },
+                                        )
+                                    }
+                                    if (!unseenMarks.isEmpty) {
+                                        ArtifactCardNewSticker(unseenMarks)
+                                    }
                                 }
                             },
                         )
@@ -846,8 +918,23 @@ internal fun ArtifactMessageCard(
                         } else {
                             stringResource(Res.string.artifacts_card_comments_many, summary.commentCount)
                         }
+                    val commentsClick = if (!preview) onOpenComments else null
+                    val commentsModifier =
+                        Modifier
+                            .testTag(ArtifactCardCommentsButtonTestTag)
+                            .let { base ->
+                                if (commentsClick != null) {
+                                    base
+                                        .clip(RoundedCornerShape(build.raft.designsystem.tokens.RaftRadius.Control))
+                                        .clickable(role = Role.Button, onClickLabel = label, onClick = commentsClick)
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                } else {
+                                    base
+                                }
+                            }
+                            .semantics(mergeDescendants = true) { contentDescription = label }
                     Row(
-                        Modifier.semantics(mergeDescendants = true) { contentDescription = label },
+                        commentsModifier,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -876,6 +963,57 @@ internal fun ArtifactMessageCard(
 
 /** web's `artifact-settled-tag`: the Settled tag's test tag. */
 internal const val ArtifactSettledTagTestTag = "artifact-settled-tag"
+
+/** web's `artifact-card-new`: the unseen updates / new comments sticker's test tag. */
+internal const val ArtifactCardNewStickerTestTag = "artifact-card-new"
+
+/** web's `artifact-card-comments`: the footer comment count button's test tag. */
+internal const val ArtifactCardCommentsButtonTestTag = "artifact-card-comments"
+
+/**
+ * web `ArtifactMessageCard` `NewSticker`: accent badge combining unseen version and unseen comment
+ * counts (`" · "` separated) with a screen-reader label (`"; "` separated).
+ */
+@Composable
+internal fun ArtifactCardNewSticker(marks: ArtifactCardUnseenMarks, modifier: Modifier = Modifier) {
+    if (marks.isEmpty) return
+    val visibleParts =
+        buildList {
+            if (marks.newerVersion) add(stringResource(Res.string.artifacts_dashboard_new_version))
+            if (marks.newComments > 0) {
+                add(
+                    if (marks.newComments == 1) {
+                        stringResource(Res.string.artifacts_dashboard_new_comments_one, marks.newComments)
+                    } else {
+                        stringResource(Res.string.artifacts_dashboard_new_comments_many, marks.newComments)
+                    },
+                )
+            }
+        }
+    val spokenParts =
+        buildList {
+            if (marks.newerVersion) add(stringResource(Res.string.artifacts_card_new_version_label))
+            if (marks.newComments > 0) {
+                add(
+                    if (marks.newComments == 1) {
+                        stringResource(Res.string.artifacts_card_new_comments_one, marks.newComments)
+                    } else {
+                        stringResource(Res.string.artifacts_card_new_comments_many, marks.newComments)
+                    },
+                )
+            }
+        }
+    val spoken = spokenParts.joinToString("; ")
+    RaftBadge(
+        text = visibleParts.joinToString(" · "),
+        variant = RaftBadgeVariant.Accent,
+        modifier =
+            modifier.clearAndSetSemantics {
+                contentDescription = spoken
+                testTag = ArtifactCardNewStickerTestTag
+            },
+    )
+}
 
 /** web `flex-[1_1_8rem]`: the room a card's title keeps before its tags go under it (Kirby, #12873). */
 private val ArtifactCardTitleMinWidth: Dp = 128.dp

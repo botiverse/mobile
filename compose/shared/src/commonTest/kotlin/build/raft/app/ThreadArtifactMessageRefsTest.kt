@@ -6,6 +6,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import build.raft.app.data.ArtifactCardUnseen
 import build.raft.app.data.ArtifactDeletedShown
 import build.raft.app.data.ArtifactFacts
 import build.raft.app.data.ArtifactHome
@@ -19,6 +20,7 @@ import build.raft.app.resources.*
 import build.raft.app.thread.ArtifactCardMenuAction
 import build.raft.app.thread.ArtifactCardMenuItemSpec
 import build.raft.app.thread.ArtifactCardMenuTags
+import build.raft.app.thread.ArtifactCardUnseenMarks
 import build.raft.app.thread.ArtifactFactPart
 import build.raft.app.thread.ThreadArtifactMessageRef
 import build.raft.app.thread.ThreadArtifactMessageRefsView
@@ -28,6 +30,9 @@ import build.raft.app.thread.artifactCardMenuItems
 import build.raft.app.thread.artifactCardOpensContextMenuForKey
 import build.raft.app.thread.artifactCardOpensContextMenuForPointer
 import build.raft.app.thread.artifactCardPointerMenuAnchorPx
+import build.raft.app.thread.artifactMessageCardUnseenMarks
+import build.raft.app.thread.cardOpenOpening
+import build.raft.app.thread.commentsOpening
 import build.raft.app.thread.icon
 import build.raft.app.thread.key
 import build.raft.app.thread.openTarget
@@ -36,6 +41,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -196,5 +202,53 @@ class ThreadArtifactMessageRefsTest {
             "https://staging.raft.build/artifacts/$a/v/2",
             artifactWebUrl("https://staging.raft.build", summary(version = 2, pinned = true).openTarget()),
         )
+    }
+
+    @Test
+    fun unseenMarksAndCommentOpeningsFollowWebRules() {
+        val unpinnedWithUnseen =
+            summary(pinned = false).copy(
+                commentCount = 2,
+                unseen = ArtifactCardUnseen(newerVersion = true, newComments = 5, firstNewComment = "c_first-1"),
+            )
+        assertEquals(
+            ArtifactCardUnseenMarks(newerVersion = true, newComments = 2),
+            artifactMessageCardUnseenMarks(unpinnedWithUnseen, preview = false),
+            "newComments clamps to commentCount",
+        )
+        assertEquals(
+            ArtifactCardUnseenMarks(newerVersion = false, newComments = 0),
+            artifactMessageCardUnseenMarks(unpinnedWithUnseen, preview = true),
+            "preview cards suppress New sticker",
+        )
+        assertEquals(
+            RaftArtifactViewerOpening(panel = "comments", commentId = "c_first-1"),
+            unpinnedWithUnseen.cardOpenOpening(),
+        )
+        assertEquals(
+            RaftArtifactViewerOpening(panel = "comments", commentId = "c_first-1"),
+            unpinnedWithUnseen.commentsOpening(),
+        )
+
+        val pinnedWithUnseen = unpinnedWithUnseen.copy(pinned = true)
+        assertEquals(
+            ArtifactCardUnseenMarks(newerVersion = false, newComments = 2),
+            artifactMessageCardUnseenMarks(pinnedWithUnseen, preview = false),
+            "pinned cards suppress newerVersion",
+        )
+
+        val seenCard = summary().copy(commentCount = 3, unseen = null)
+        assertTrue(artifactMessageCardUnseenMarks(seenCard, preview = false).isEmpty)
+        assertNull(seenCard.cardOpenOpening())
+        assertEquals(RaftArtifactViewerOpening(panel = "comments", commentId = null), seenCard.commentsOpening())
+
+        // Malformed firstNewComment does not open comments on plain card-body tap and is stripped on comment-count tap.
+        val malformedCommentCard =
+            summary().copy(
+                commentCount = 2,
+                unseen = ArtifactCardUnseen(newerVersion = false, newComments = 1, firstNewComment = "javascript:alert(1)"),
+            )
+        assertNull(malformedCommentCard.cardOpenOpening())
+        assertEquals(RaftArtifactViewerOpening(panel = "comments", commentId = null), malformedCommentCard.commentsOpening())
     }
 }

@@ -5546,6 +5546,9 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d из %2$d Artifact</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d новый комментарий</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d новых комментариев</string>
+    <string name="artifacts_card_new_version_label">Новая версия с вашего последнего просмотра</string>
+    <string name="artifacts_card_new_comments_one">%1$d новый комментарий с вашего последнего просмотра</string>
+    <string name="artifacts_card_new_comments_many">%1$d новых комментариев с вашего последнего просмотра</string>
     <string name="artifacts_dashboard_status_label">Статус: %1$s</string>
     <string name="artifacts_dashboard_status_unsettled">Незавершённые</string>
     <string name="artifacts_dashboard_status_all">Все</string>
