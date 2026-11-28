@@ -12,18 +12,21 @@ import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Testable PCM16 mono audio line seam for Desktop JVM capture. */
 @RaftCoreInternalApi
 interface DesktopVoiceDictationPcmLine {
     fun openAndStart(bufferBytes: Int)
     fun read(buffer: ByteArray, offset: Int, length: Int): Int
+    fun stopRecording() = stopAndClose()
     fun stopAndClose()
 }
 
@@ -36,7 +39,9 @@ private class TargetDataLineAdapter(
     private val line: TargetDataLine,
     private val format: AudioFormat,
 ) : DesktopVoiceDictationPcmLine {
-    private val closed = AtomicBoolean(false)
+    private val stateLock = Any()
+    private var stopped = false
+    private var closed = false
 
     override fun openAndStart(bufferBytes: Int) {
         line.open(format, bufferBytes)
@@ -46,11 +51,26 @@ private class TargetDataLineAdapter(
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
         line.read(buffer, offset, length)
 
+    override fun stopRecording() {
+        synchronized(stateLock) {
+            if (closed || stopped) return
+            stopped = true
+            // Stop capture without flush()/close() so an in-flight read() returns buffered tail bytes.
+            runCatching { line.stop() }
+        }
+    }
+
     override fun stopAndClose() {
-        if (!closed.compareAndSet(false, true)) return
-        runCatching { line.stop() }
-        runCatching { line.flush() }
-        runCatching { line.close() }
+        synchronized(stateLock) {
+            if (closed) return
+            if (!stopped) {
+                stopped = true
+                runCatching { line.stop() }
+            }
+            closed = true
+            runCatching { line.flush() }
+            runCatching { line.close() }
+        }
     }
 }
 
@@ -67,9 +87,12 @@ class DesktopVoiceDictationAudioRecorder(
         },
     private val captureDispatcher: CoroutineDispatcher = Dispatchers.IO,
     override val sampleRateHz: Int = VOICE_DICTATION_DEFAULT_SAMPLE_RATE_HZ,
+    private val stopJoinTimeoutMs: Long = DEFAULT_STOP_JOIN_TIMEOUT_MS,
 ) : RaftVoiceDictationAudioRecorder {
     private class ActiveCapture(
         val line: DesktopVoiceDictationPcmLine,
+        val stopRequested: AtomicBoolean = AtomicBoolean(false),
+        val discardTail: AtomicBoolean = AtomicBoolean(false),
         var readJob: Job? = null,
     )
 
@@ -81,7 +104,7 @@ class DesktopVoiceDictationAudioRecorder(
         onPcmChunk: (ByteArray) -> Unit,
         onAudioLevel: (Float) -> Unit,
     ): VoiceDictationAudioStartResult {
-        stop()
+        stopCapture(discardTail = true)
 
         val format =
             AudioFormat(
@@ -119,17 +142,13 @@ class DesktopVoiceDictationAudioRecorder(
             }
 
         val capture = ActiveCapture(line = line)
-        synchronized(lock) {
-            activeCapture = capture
-        }
-
         val job =
-            captureScope.launch {
+            captureScope.launch(start = CoroutineStart.LAZY) {
                 val chunkBuffer = ByteArray(chunkBytes)
                 var filled = 0
                 val audioLevelMeter = VoiceDictationAudioLevelMeter()
                 try {
-                    while (isActive && isCurrentCapture(capture)) {
+                    while (isActive && !capture.stopRequested.get()) {
                         val read =
                             try {
                                 line.read(chunkBuffer, filled, chunkBytes - filled)
@@ -141,14 +160,14 @@ class DesktopVoiceDictationAudioRecorder(
                         if (filled >= chunkBytes) {
                             val emit = chunkBuffer.copyOf(chunkBytes)
                             filled = 0
-                            if (!isCurrentCapture(capture)) break
+                            if (capture.discardTail.get()) break
                             val visualLevel = audioLevelMeter.processPcm16Le(emit)
                             onAudioLevel(visualLevel)
                             onPcmChunk(emit)
                         }
                     }
                     val remainingEven = filled - (filled % VOICE_DICTATION_PCM16_BYTES_PER_SAMPLE)
-                    if (remainingEven > 0 && isCurrentCapture(capture)) {
+                    if (remainingEven > 0 && !capture.discardTail.get()) {
                         val tail = chunkBuffer.copyOf(remainingEven)
                         val visualLevel = audioLevelMeter.processPcm16Le(tail)
                         onAudioLevel(visualLevel)
@@ -165,31 +184,52 @@ class DesktopVoiceDictationAudioRecorder(
             }
 
         synchronized(lock) {
-            if (activeCapture === capture) {
-                capture.readJob = job
-            } else {
-                job.cancel()
-                line.stopAndClose()
-            }
+            capture.readJob = job
+            activeCapture = capture
         }
+        job.start()
 
         return VoiceDictationAudioStartResult.Started
     }
 
     override suspend fun stop() {
+        stopCapture(discardTail = false)
+    }
+
+    private suspend fun stopCapture(discardTail: Boolean) {
         val previous =
             synchronized(lock) {
                 activeCapture.also { activeCapture = null }
             } ?: return
-        previous.line.stopAndClose()
-        previous.readJob?.cancel()
-        runCatching { previous.readJob?.join() }
+        if (discardTail) {
+            previous.discardTail.set(true)
+        }
+        previous.stopRequested.set(true)
+        val joinTimeout = stopJoinTimeoutMs.coerceAtLeast(1L)
+        if (discardTail) {
+            previous.line.stopAndClose()
+            previous.readJob?.cancel()
+            runCatching { withTimeoutOrNull(joinTimeout) { previous.readJob?.join() } }
+            return
+        }
+        previous.line.stopRecording()
+        val joined =
+            withTimeoutOrNull(joinTimeout) {
+                previous.readJob?.join()
+                true
+            } == true
+        if (!joined) {
+            previous.discardTail.set(true)
+            previous.line.stopAndClose()
+            previous.readJob?.cancel()
+            runCatching { withTimeoutOrNull(STOP_FALLBACK_JOIN_TIMEOUT_MS) { previous.readJob?.join() } }
+        }
     }
 
-    private fun isCurrentCapture(capture: ActiveCapture): Boolean =
-        synchronized(lock) { activeCapture === capture }
-
     companion object {
+        private const val DEFAULT_STOP_JOIN_TIMEOUT_MS = 500L
+        private const val STOP_FALLBACK_JOIN_TIMEOUT_MS = 250L
+
         @Volatile
         private var installed = false
 

@@ -52,6 +52,7 @@ import build.raft.app.data.RaftAndroidSqlDatabaseContext
 import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.VoiceDictationAudioStartResult
 import build.raft.app.data.VoiceDictationGestureMode
+import build.raft.app.data.VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS
 import build.raft.app.data.VoiceDictationTextRange
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Error
@@ -337,9 +338,13 @@ class ThreadVoiceDictationUiTest {
             waitForIdle()
             assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
             assertTrue(controller.state.value.hasBackgroundDrain)
+            onNodeWithContentDescription("Voice dictation").assertIsDisplayed().assertIsEnabled()
+
+            // Post-roll (300 ms) finishes in background before stopping the recorder and sending WS `stop`
+            mainClock.advanceTimeBy(VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS + 32L)
+            waitForIdle()
             assertTrue(connection.stopSent)
             assertTrue(recorder.stopCount >= 1)
-            onNodeWithContentDescription("Voice dictation").assertIsDisplayed().assertIsEnabled()
 
             // Final refined `text` + `done` still apply silently in background
             connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "it today.", stableLen = 9, refined = true))

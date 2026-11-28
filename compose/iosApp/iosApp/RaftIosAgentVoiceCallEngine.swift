@@ -562,22 +562,74 @@ enum RaftIosVoiceDictationPolicy {
         return min(1, max(0, smoothed))
     }
 
-    /// Splits incoming PCM16 bytes into fixed `chunkByteSize` frames and meters visual levels
-    /// without ever mutating the raw PCM bytes forwarded to ASR.
+    /// Splits incoming PCM16 bytes into fixed `chunkSize` frames (and optionally flushes the final
+    /// even-byte `< chunkSize` PCM16 tail) while metering visual levels without ever mutating the
+    /// raw PCM bytes forwarded to ASR.
     static func drainPcm16Chunks(
         pendingBytes: inout Data,
-        appending incoming: Data,
-        meter: inout RaftIosVoiceDictationAudioLevelMeter
+        appending incoming: Data = Data(),
+        meter: inout RaftIosVoiceDictationAudioLevelMeter,
+        chunkSize: Int = chunkByteSize,
+        includeTail: Bool = false
     ) -> [(Data, Float)] {
-        pendingBytes.append(incoming)
+        if !incoming.isEmpty {
+            pendingBytes.append(incoming)
+        }
+        let sampleBytes = MemoryLayout<Int16>.size
+        let safeChunkSize = max(sampleBytes, chunkSize - (chunkSize % sampleBytes))
         var emitted: [(Data, Float)] = []
-        while pendingBytes.count >= chunkByteSize {
-            let chunk = Data(pendingBytes.prefix(chunkByteSize))
-            pendingBytes.removeFirst(chunkByteSize)
+        while pendingBytes.count >= safeChunkSize {
+            let chunk = Data(pendingBytes.prefix(safeChunkSize))
+            pendingBytes.removeFirst(safeChunkSize)
             let level = meter.processPcm16(data: chunk)
             emitted.append((chunk, level))
         }
+        if includeTail {
+            let evenCount = pendingBytes.count - (pendingBytes.count % sampleBytes)
+            if evenCount > 0 {
+                let tail = Data(pendingBytes.prefix(evenCount))
+                pendingBytes.removeFirst(evenCount)
+                let level = meter.processPcm16(data: tail)
+                emitted.append((tail, level))
+            }
+            pendingBytes.removeAll(keepingCapacity: false)
+        }
         return emitted
+    }
+
+    /// Flushes remaining buffered frames from an `AVAudioConverter` via `.endOfStream` into
+    /// little-endian signed 16-bit mono PCM bytes.
+    static func drainConverterEndOfStreamPcm16(
+        converter: AVAudioConverter,
+        targetFormat: AVAudioFormat,
+        maxIterations: Int = 16
+    ) -> Data {
+        let frameCapacity = AVAudioFrameCount(max(64, chunkByteSize / MemoryLayout<Int16>.size))
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCapacity) else {
+            return Data()
+        }
+        var drained = Data()
+        for _ in 0..<max(1, maxIterations) {
+            outputBuffer.frameLength = 0
+            var convertError: NSError?
+            let status = converter.convert(to: outputBuffer, error: &convertError) { _, outStatus in
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            if status == .error || convertError != nil {
+                break
+            }
+            if outputBuffer.frameLength > 0, let channelData = outputBuffer.int16ChannelData {
+                let byteCount = Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
+                if byteCount > 0 {
+                    drained.append(Data(bytes: channelData[0], count: byteCount))
+                }
+            }
+            if status == .endOfStream || outputBuffer.frameLength == 0 {
+                break
+            }
+        }
+        return drained
     }
 }
 
@@ -654,11 +706,19 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
     private final class ActiveCapture: @unchecked Sendable {
         let generation: UInt64
         let listener: RaftIosVoiceDictationRecorderListener
+        /// Serializes `converter`, `targetFormat`, `pendingBytes`, `audioLevelMeter`, `audioClosed`,
+        /// and `discardChunks` between audio tap callbacks and `teardown(_:flushTail:)`.
+        /// Never nested with `RaftIosVoiceDictationAudioRecorder.lock` and never held across listener callbacks.
+        let audioLock = NSLock()
         var startTask: Task<Void, Never>?
         var engine: AVAudioEngine?
+        var converter: AVAudioConverter?
+        var targetFormat: AVAudioFormat?
         var sessionActivated: Bool = false
         var pendingBytes = Data()
         var audioLevelMeter = RaftIosVoiceDictationAudioLevelMeter()
+        var audioClosed: Bool = false
+        var discardChunks: Bool = false
 
         init(generation: UInt64, listener: RaftIosVoiceDictationRecorderListener) {
             self.generation = generation
@@ -682,7 +742,7 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
 
     func startCapture(listener: RaftIosVoiceDictationRecorderListener) {
         let previous = detachActiveCapture()
-        teardown(previous)
+        teardown(previous, flushTail: false)
 
         let capture: ActiveCapture
         lock.lock()
@@ -707,7 +767,7 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
 
     func stopCapture() {
         let previous = detachActiveCapture()
-        teardown(previous)
+        teardown(previous, flushTail: true)
     }
 
     private func runStart(capture: ActiveCapture) async {
@@ -761,7 +821,7 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
               ),
               let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
             let detached = clearIfCurrent(capture)
-            teardown(detached ?? capture)
+            teardown(detached ?? capture, flushTail: false)
             capture.listener.onStarted(
                 status: RaftIosVoiceDictationStartStatus.shared.DEVICE_UNAVAILABLE,
                 detail: "Audio input format unavailable"
@@ -769,10 +829,17 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
             return
         }
 
+        capture.audioLock.lock()
+        if !capture.audioClosed {
+            capture.converter = converter
+            capture.targetFormat = targetFormat
+        }
+        capture.audioLock.unlock()
+
         let tapBufferFrames = AVAudioFrameCount(max(512, Int(inputFormat.sampleRate * 0.1)))
         inputNode.installTap(onBus: 0, bufferSize: tapBufferFrames, format: inputFormat) { [weak self] buffer, _ in
             guard let self else { return }
-            self.handleTapBuffer(buffer, capture: capture, converter: converter, targetFormat: targetFormat)
+            self.handleTapBuffer(buffer, capture: capture)
         }
 
         lock.lock()
@@ -782,7 +849,7 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
             lock.unlock()
             inputNode.removeTap(onBus: 0)
             engine.stop()
-            try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+            teardown(capture, flushTail: false)
             return
         }
         lock.unlock()
@@ -792,7 +859,7 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
             try engine.start()
         } catch {
             let detached = clearIfCurrent(capture)
-            teardown(detached ?? capture)
+            teardown(detached ?? capture, flushTail: false)
             capture.listener.onStarted(
                 status: RaftIosVoiceDictationStartStatus.shared.FAILED,
                 detail: error.localizedDescription
@@ -801,7 +868,7 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
         }
 
         guard isCurrent(capture) else {
-            teardown(capture)
+            teardown(capture, flushTail: false)
             return
         }
 
@@ -813,56 +880,53 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
 
     private func handleTapBuffer(
         _ buffer: AVAudioPCMBuffer,
-        capture: ActiveCapture,
-        converter: AVAudioConverter,
-        targetFormat: AVAudioFormat
+        capture: ActiveCapture
     ) {
         guard isCurrent(capture), buffer.frameLength > 0 else { return }
-        let ratio = targetFormat.sampleRate / max(1.0, buffer.format.sampleRate)
-        let estimatedFrames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 64
-        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: max(64, estimatedFrames)) else {
-            return
-        }
 
-        var convertError: NSError?
-        var providedInput = false
-        let status = converter.convert(to: outputBuffer, error: &convertError) { _, outStatus in
-            if providedInput {
-                outStatus.pointee = .noDataNow
-                return nil
+        var chunksToEmit: [(Data, Float)] = []
+        capture.audioLock.lock()
+        if !capture.audioClosed,
+           let converter = capture.converter,
+           let targetFormat = capture.targetFormat {
+            let ratio = targetFormat.sampleRate / max(1.0, buffer.format.sampleRate)
+            let estimatedFrames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio)) + 64
+            if let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: max(64, estimatedFrames)) {
+                var convertError: NSError?
+                var providedInput = false
+                let status = converter.convert(to: outputBuffer, error: &convertError) { _, outStatus in
+                    if providedInput {
+                        outStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    providedInput = true
+                    outStatus.pointee = .haveData
+                    return buffer
+                }
+
+                if status != .error,
+                   convertError == nil,
+                   outputBuffer.frameLength > 0,
+                   let channelData = outputBuffer.int16ChannelData {
+                    let byteCount = Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
+                    if byteCount > 0 {
+                        chunksToEmit = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+                            pendingBytes: &capture.pendingBytes,
+                            appending: Data(bytes: channelData[0], count: byteCount),
+                            meter: &capture.audioLevelMeter,
+                            includeTail: false
+                        )
+                    }
+                }
             }
-            providedInput = true
-            outStatus.pointee = .haveData
-            return buffer
         }
-
-        guard status != .error,
-              convertError == nil,
-              outputBuffer.frameLength > 0,
-              let channelData = outputBuffer.int16ChannelData else {
-            return
-        }
-
-        let byteCount = Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size
-        guard byteCount > 0 else { return }
-        let convertedData = Data(bytes: channelData[0], count: byteCount)
-
-        let chunksToEmit: [(Data, Float)]
-
-        lock.lock()
-        guard activeCapture === capture else {
-            lock.unlock()
-            return
-        }
-        chunksToEmit = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
-            pendingBytes: &capture.pendingBytes,
-            appending: convertedData,
-            meter: &capture.audioLevelMeter
-        )
-        lock.unlock()
+        capture.audioLock.unlock()
 
         for (chunk, level) in chunksToEmit {
-            guard isCurrent(capture) else { return }
+            capture.audioLock.lock()
+            let shouldDiscard = capture.discardChunks
+            capture.audioLock.unlock()
+            guard !shouldDiscard else { return }
             capture.listener.onPcmChunk(data: chunk, audioLevel: level)
         }
     }
@@ -889,16 +953,63 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
         return activeCapture === capture
     }
 
-    private func teardown(_ capture: ActiveCapture?) {
+    private func teardown(_ capture: ActiveCapture?, flushTail: Bool) {
         guard let capture else { return }
-        capture.startTask?.cancel()
-        if let engine = capture.engine {
-            engine.inputNode.removeTap(onBus: 0)
-            engine.stop()
-            capture.engine = nil
+
+        let taskToCancel: Task<Void, Never>?
+        let engineToStop: AVAudioEngine?
+        let shouldDeactivateSession: Bool
+        lock.lock()
+        taskToCancel = capture.startTask
+        capture.startTask = nil
+        engineToStop = capture.engine
+        capture.engine = nil
+        shouldDeactivateSession = capture.sessionActivated
+        capture.sessionActivated = false
+        lock.unlock()
+
+        taskToCancel?.cancel()
+        if let engineToStop {
+            engineToStop.inputNode.removeTap(onBus: 0)
+            engineToStop.stop()
         }
-        if capture.sessionActivated {
-            capture.sessionActivated = false
+
+        var chunksToEmit: [(Data, Float)] = []
+        capture.audioLock.lock()
+        if !flushTail {
+            capture.discardChunks = true
+        }
+        if !capture.audioClosed {
+            capture.audioClosed = true
+            if flushTail {
+                let eosBytes: Data
+                if let converter = capture.converter, let targetFormat = capture.targetFormat {
+                    eosBytes = RaftIosVoiceDictationPolicy.drainConverterEndOfStreamPcm16(
+                        converter: converter,
+                        targetFormat: targetFormat
+                    )
+                } else {
+                    eosBytes = Data()
+                }
+                chunksToEmit = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+                    pendingBytes: &capture.pendingBytes,
+                    appending: eosBytes,
+                    meter: &capture.audioLevelMeter,
+                    includeTail: true
+                )
+            } else {
+                capture.pendingBytes.removeAll(keepingCapacity: false)
+            }
+            capture.converter = nil
+            capture.targetFormat = nil
+        }
+        capture.audioLock.unlock()
+
+        for (chunk, level) in chunksToEmit {
+            capture.listener.onPcmChunk(data: chunk, audioLevel: level)
+        }
+
+        if shouldDeactivateSession {
             try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         }
     }

@@ -29,6 +29,10 @@ import kotlinx.coroutines.withContext
 @RaftCoreInternalApi
 const val VOICE_DICTATION_DEFAULT_STOP_DRAIN_TIMEOUT_MS: Long = 10_500L
 
+/** Default post-roll capture window after `stop()` before stopping the mic (captures release-tail / Bluetooth latency). */
+@RaftCoreInternalApi
+const val VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS: Long = 300L
+
 /** Strict fail-closed pre-ready PCM chunk cap (100 * 100 ms = 10 s; mirrors web MAX_PRE_READY_CHUNKS). */
 @RaftCoreInternalApi
 const val VOICE_DICTATION_MAX_PRE_READY_CHUNKS: Int = 100
@@ -484,6 +488,7 @@ class VoiceDictationV2Controller(
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
     private val stopDrainTimeoutMs: Long = VOICE_DICTATION_DEFAULT_STOP_DRAIN_TIMEOUT_MS,
     private val submitFinalWaitMs: Long = VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS,
+    private val stopPostRollMs: Long = VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS,
     private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val onOutcomeReport: ((VoiceDictationOutcomeReport) -> Unit)? = null,
     private val privacyModeProvider: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
@@ -523,6 +528,7 @@ class VoiceDictationV2Controller(
         var stopDispatchStarted: Boolean = false
         var postStopFinalReceived: Boolean = false
         var recorderNeedsStop: Boolean = false
+        var recorderStopStarted: Boolean = false
         var recorderStopped: Boolean = false
         var micFlushed: Boolean = false
         var sessionId: String? = null
@@ -566,23 +572,30 @@ class VoiceDictationV2Controller(
         suspend fun stopRecorderOnce() {
             val target =
                 synchronized(stateLock) {
-                    if (recorderNeedsStop && !recorderStopped) {
-                        recorderStopped = true
+                    if (recorderNeedsStop && !recorderStopStarted) {
+                        recorderStopStarted = true
                         recorder
                     } else {
                         null
                     }
                 }
             if (target != null) {
-                try {
-                    runCatching { target.stop() }
-                } finally {
-                    recorderReleased.complete(Unit)
+                withContext(NonCancellable) {
+                    try {
+                        runCatching { target.stop() }
+                    } finally {
+                        synchronized(stateLock) {
+                            recorderStopped = true
+                        }
+                        recorderReleased.complete(Unit)
+                    }
                 }
             } else {
                 val shouldComplete = synchronized(stateLock) { !recorderNeedsStop || recorderStopped }
                 if (shouldComplete) {
                     recorderReleased.complete(Unit)
+                } else {
+                    recorderReleased.await()
                 }
             }
         }
@@ -1120,6 +1133,11 @@ class VoiceDictationV2Controller(
             }
         val stopJob =
             scope.launch {
+                val postRoll = stopPostRollMs.coerceAtLeast(0L)
+                if (postRoll > 0L) {
+                    delay(postRoll)
+                }
+                if (!isLive(session)) return@launch
                 session.stopRecorderOnce()
                 val shouldSendStopNow =
                     synchronized(stateLock) {
@@ -1423,7 +1441,7 @@ class VoiceDictationV2Controller(
         val copy = bytes.copyOf()
         var overflow = false
         synchronized(stateLock) {
-            if (session.aborted || session.recorderStopped || session.micFlushed || !isLiveLocked(session)) return
+            if (session.aborted || session.micFlushed || !isLiveLocked(session)) return
             if (session.transportReady) {
                 session.liveAudioChannel.trySend(QueuedAudioChunk(copy, preReady = false))
             } else if (session.preReadyQueue.size >= VOICE_DICTATION_MAX_PRE_READY_CHUNKS) {

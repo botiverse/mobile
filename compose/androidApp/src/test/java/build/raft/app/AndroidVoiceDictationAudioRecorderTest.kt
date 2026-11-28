@@ -6,8 +6,13 @@ import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
 import build.raft.app.data.VoiceDictationAudioStartResult
 import build.raft.app.data.computeVoiceDictationPcm16LeLevel
 import build.raft.app.data.voiceDictationChunkByteSize
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -182,6 +187,213 @@ class AndroidVoiceDictationAudioRecorderTest {
             emittedLevels[8] < emittedLevels[7] - 0.05f,
         )
         recorder.stop()
+    }
+
+    @Test
+    fun stopFlushesPartialSub100msTailChunkViaStopRecordingBeforeRelease() = runBlocking<Unit> {
+        val fullChunk = pcm16LeChunk(sample = 3_500, byteSize = 3_200)
+        // Odd byte count (1,201) verifies PCM16 2-byte alignment -> flushes 1,200 bytes.
+        val tailBytes = pcm16LeChunk(sample = 4_200, byteSize = 1_201)
+        val events = CopyOnWriteArrayList<String>()
+        val blockingReadEntered = CountDownLatch(1)
+        val unblockRead = CountDownLatch(1)
+
+        val blockingSource =
+            object : AndroidVoiceDictationPcmSource {
+                private var step = 0
+
+                override fun startRecording(): Boolean = true
+
+                override fun read(buffer: ByteArray, offset: Int, size: Int): Int {
+                    return when (step++) {
+                        0 -> {
+                            fullChunk.copyInto(buffer, destinationOffset = offset, startIndex = 0, endIndex = fullChunk.size)
+                            fullChunk.size
+                        }
+                        1 -> {
+                            val count = minOf(size, tailBytes.size)
+                            tailBytes.copyInto(buffer, destinationOffset = offset, startIndex = 0, endIndex = count)
+                            count
+                        }
+                        else -> {
+                            blockingReadEntered.countDown()
+                            unblockRead.await(2, TimeUnit.SECONDS)
+                            0
+                        }
+                    }
+                }
+
+                override fun stopRecording() {
+                    events += "stopRecording"
+                    unblockRead.countDown()
+                }
+
+                override fun stopAndRelease() {
+                    events += "stopAndRelease"
+                    unblockRead.countDown()
+                }
+            }
+
+        val recorder =
+            AndroidVoiceDictationAudioRecorder(
+                permissionRequester = { AndroidRecordAudioPermissionOutcome.Granted },
+                sourceFactory = { _, _ -> blockingSource },
+                captureDispatcher = Dispatchers.IO,
+                logWarning = {},
+            )
+
+        val chunks = CopyOnWriteArrayList<ByteArray>()
+        val levels = CopyOnWriteArrayList<Float>()
+        val result =
+            recorder.start(
+                onPcmChunk = { chunks += it },
+                onAudioLevel = { levels += it },
+            )
+        assertEquals(VoiceDictationAudioStartResult.Started, result)
+        assertTrue(blockingReadEntered.await(2, TimeUnit.SECONDS))
+        assertEquals(1, chunks.size)
+
+        recorder.stop()
+
+        assertEquals(2, chunks.size)
+        assertArrayEquals(fullChunk, chunks[0])
+        assertEquals(1_200, chunks[1].size)
+        assertArrayEquals(tailBytes.copyOf(1_200), chunks[1])
+        assertEquals(2, levels.size)
+        assertTrue(levels[1] > 0.2f && levels[1] <= 1f)
+        assertEquals(listOf("stopRecording", "stopAndRelease"), events.toList())
+    }
+
+    @Test
+    fun stopTimesOutAndForcesReleaseWithoutLeakingTailWhenReadIgnoresStopRecording() = runBlocking<Unit> {
+        val partialTail = pcm16LeChunk(sample = 4_000, byteSize = 800)
+        val blockingReadEntered = CountDownLatch(1)
+        val unblockOnRelease = CountDownLatch(1)
+        val releaseCalls = AtomicInteger(0)
+
+        val stubbornSource =
+            object : AndroidVoiceDictationPcmSource {
+                private var step = 0
+
+                override fun startRecording(): Boolean = true
+
+                override fun read(buffer: ByteArray, offset: Int, size: Int): Int {
+                    return if (step++ == 0) {
+                        partialTail.copyInto(buffer, destinationOffset = offset, startIndex = 0, endIndex = partialTail.size)
+                        partialTail.size
+                    } else {
+                        blockingReadEntered.countDown()
+                        unblockOnRelease.await(2, TimeUnit.SECONDS)
+                        0
+                    }
+                }
+
+                override fun stopRecording() {
+                    // Simulate a buggy HAL whose read() ignores stop() until release().
+                }
+
+                override fun stopAndRelease() {
+                    releaseCalls.incrementAndGet()
+                    unblockOnRelease.countDown()
+                }
+            }
+
+        val recorder =
+            AndroidVoiceDictationAudioRecorder(
+                permissionRequester = { AndroidRecordAudioPermissionOutcome.Granted },
+                sourceFactory = { _, _ -> stubbornSource },
+                captureDispatcher = Dispatchers.IO,
+                logWarning = {},
+                stopJoinTimeoutMs = 50L,
+            )
+
+        val chunks = CopyOnWriteArrayList<ByteArray>()
+        assertEquals(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { chunks += it }, onAudioLevel = {}),
+        )
+        assertTrue(blockingReadEntered.await(2, TimeUnit.SECONDS))
+
+        recorder.stop()
+
+        assertTrue(releaseCalls.get() >= 1)
+        assertTrue("timed-out stop fallback must discard stale tail", chunks.isEmpty())
+    }
+
+    @Test
+    fun startSupersedingActiveCaptureDiscardsOrphanedTailFromPreviousSession() = runBlocking<Unit> {
+        val partialFirst = pcm16LeChunk(sample = 3_800, byteSize = 600)
+        val fullSecond = pcm16LeChunk(sample = 3_900, byteSize = 3_200)
+        val firstReadBlocked = CountDownLatch(1)
+        val firstReleased = CountDownLatch(1)
+        val secondReadDone = CountDownLatch(1)
+        val sourceCount = AtomicInteger(0)
+
+        val recorder =
+            AndroidVoiceDictationAudioRecorder(
+                permissionRequester = { AndroidRecordAudioPermissionOutcome.Granted },
+                sourceFactory = { _, _ ->
+                    if (sourceCount.getAndIncrement() == 0) {
+                        object : AndroidVoiceDictationPcmSource {
+                            private var step = 0
+
+                            override fun startRecording(): Boolean = true
+
+                            override fun read(buffer: ByteArray, offset: Int, size: Int): Int =
+                                if (step++ == 0) {
+                                    partialFirst.copyInto(buffer, destinationOffset = offset)
+                                    partialFirst.size
+                                } else {
+                                    firstReadBlocked.countDown()
+                                    firstReleased.await(2, TimeUnit.SECONDS)
+                                    0
+                                }
+
+                            override fun stopAndRelease() {
+                                firstReleased.countDown()
+                            }
+                        }
+                    } else {
+                        object : AndroidVoiceDictationPcmSource {
+                            private var step = 0
+
+                            override fun startRecording(): Boolean = true
+
+                            override fun read(buffer: ByteArray, offset: Int, size: Int): Int =
+                                if (step++ == 0) {
+                                    fullSecond.copyInto(buffer, destinationOffset = offset)
+                                    fullSecond.size
+                                } else {
+                                    secondReadDone.countDown()
+                                    0
+                                }
+
+                            override fun stopAndRelease() = Unit
+                        }
+                    }
+                },
+                captureDispatcher = Dispatchers.IO,
+                logWarning = {},
+            )
+
+        val firstChunks = CopyOnWriteArrayList<ByteArray>()
+        val secondChunks = CopyOnWriteArrayList<ByteArray>()
+        assertEquals(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { firstChunks += it }, onAudioLevel = {}),
+        )
+        assertTrue(firstReadBlocked.await(2, TimeUnit.SECONDS))
+
+        assertEquals(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { secondChunks += it }, onAudioLevel = {}),
+        )
+        assertTrue(secondReadDone.await(2, TimeUnit.SECONDS))
+        recorder.stop()
+
+        assertTrue("superseded capture must discard orphaned tail", firstChunks.isEmpty())
+        assertEquals(1, secondChunks.size)
+        assertArrayEquals(fullSecond, secondChunks[0])
     }
 
     @Test

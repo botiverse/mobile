@@ -20,12 +20,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal fun interface AndroidVoiceDictationPermissionRequester {
     suspend fun requestRecordAudioPermission(): AndroidRecordAudioPermissionOutcome
@@ -34,6 +36,7 @@ internal fun interface AndroidVoiceDictationPermissionRequester {
 internal interface AndroidVoiceDictationPcmSource {
     fun startRecording(): Boolean
     fun read(buffer: ByteArray, offset: Int, size: Int): Int
+    fun stopRecording() = stopAndRelease()
     fun stopAndRelease()
 }
 
@@ -44,7 +47,9 @@ internal fun interface AndroidVoiceDictationPcmSourceFactory {
 private class AudioRecordPcmSource(
     private val audioRecord: AudioRecord,
 ) : AndroidVoiceDictationPcmSource {
-    private val released = AtomicBoolean(false)
+    private val stateLock = Any()
+    private var stopped = false
+    private var released = false
 
     override fun startRecording(): Boolean =
         runCatching {
@@ -55,14 +60,32 @@ private class AudioRecordPcmSource(
     override fun read(buffer: ByteArray, offset: Int, size: Int): Int =
         audioRecord.read(buffer, offset, size)
 
-    override fun stopAndRelease() {
-        if (!released.compareAndSet(false, true)) return
-        runCatching {
-            if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
-                audioRecord.stop()
+    override fun stopRecording() {
+        synchronized(stateLock) {
+            if (released || stopped) return
+            stopped = true
+            runCatching {
+                if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord.stop()
+                }
             }
         }
-        runCatching { audioRecord.release() }
+    }
+
+    override fun stopAndRelease() {
+        synchronized(stateLock) {
+            if (released) return
+            if (!stopped) {
+                stopped = true
+                runCatching {
+                    if (audioRecord.recordingState == AudioRecord.RECORDSTATE_RECORDING) {
+                        audioRecord.stop()
+                    }
+                }
+            }
+            released = true
+            runCatching { audioRecord.release() }
+        }
     }
 }
 
@@ -116,6 +139,7 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
     private val captureDispatcher: CoroutineDispatcher = Dispatchers.IO,
     override val sampleRateHz: Int = VOICE_DICTATION_DEFAULT_SAMPLE_RATE_HZ,
     private val logWarning: (String) -> Unit = { message -> RaftAppLog.w(LOG_TAG, message) },
+    private val stopJoinTimeoutMs: Long = DEFAULT_STOP_JOIN_TIMEOUT_MS,
 ) : RaftVoiceDictationAudioRecorder {
 
     constructor(appContext: Context) : this(
@@ -128,6 +152,8 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
 
     private class ActiveCapture(
         val source: AndroidVoiceDictationPcmSource,
+        val stopRequested: AtomicBoolean = AtomicBoolean(false),
+        val discardTail: AtomicBoolean = AtomicBoolean(false),
         var readJob: Job? = null,
     )
 
@@ -139,7 +165,7 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
         onPcmChunk: (ByteArray) -> Unit,
         onAudioLevel: (Float) -> Unit,
     ): VoiceDictationAudioStartResult {
-        stop()
+        stopCapture(discardTail = true)
 
         val permissionOutcome =
             try {
@@ -189,17 +215,13 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
         }
 
         val capture = ActiveCapture(source = source)
-        synchronized(lock) {
-            activeCapture = capture
-        }
-
         val job =
-            captureScope.launch {
+            captureScope.launch(start = CoroutineStart.LAZY) {
                 val chunkBuffer = ByteArray(chunkBytes)
                 var filled = 0
                 val audioLevelMeter = VoiceDictationAudioLevelMeter()
                 try {
-                    while (isActive && isCurrentCapture(capture)) {
+                    while (isActive && !capture.stopRequested.get()) {
                         val read =
                             try {
                                 source.read(chunkBuffer, filled, chunkBytes - filled)
@@ -211,14 +233,14 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
                         if (filled >= chunkBytes) {
                             val emit = chunkBuffer.copyOf(chunkBytes)
                             filled = 0
-                            if (!isCurrentCapture(capture)) break
+                            if (capture.discardTail.get()) break
                             val visualLevel = audioLevelMeter.processPcm16Le(emit)
                             onAudioLevel(visualLevel)
                             onPcmChunk(emit)
                         }
                     }
                     val remainingEven = filled - (filled % VOICE_DICTATION_PCM16_BYTES_PER_SAMPLE)
-                    if (remainingEven > 0 && isCurrentCapture(capture)) {
+                    if (remainingEven > 0 && !capture.discardTail.get()) {
                         val tail = chunkBuffer.copyOf(remainingEven)
                         val visualLevel = audioLevelMeter.processPcm16Le(tail)
                         onAudioLevel(visualLevel)
@@ -235,32 +257,52 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
             }
 
         synchronized(lock) {
-            if (activeCapture === capture) {
-                capture.readJob = job
-            } else {
-                job.cancel()
-                source.stopAndRelease()
-            }
+            capture.readJob = job
+            activeCapture = capture
         }
+        job.start()
 
         return VoiceDictationAudioStartResult.Started
     }
 
     override suspend fun stop() {
+        stopCapture(discardTail = false)
+    }
+
+    private suspend fun stopCapture(discardTail: Boolean) {
         val previous =
             synchronized(lock) {
                 activeCapture.also { activeCapture = null }
             } ?: return
-        previous.source.stopAndRelease()
-        previous.readJob?.cancel()
-        runCatching { previous.readJob?.join() }
+        if (discardTail) {
+            previous.discardTail.set(true)
+        }
+        previous.stopRequested.set(true)
+        val joinTimeout = stopJoinTimeoutMs.coerceAtLeast(1L)
+        if (discardTail) {
+            previous.source.stopAndRelease()
+            previous.readJob?.cancel()
+            runCatching { withTimeoutOrNull(joinTimeout) { previous.readJob?.join() } }
+            return
+        }
+        previous.source.stopRecording()
+        val joined =
+            withTimeoutOrNull(joinTimeout) {
+                previous.readJob?.join()
+                true
+            } == true
+        if (!joined) {
+            previous.discardTail.set(true)
+            previous.source.stopAndRelease()
+            previous.readJob?.cancel()
+            runCatching { withTimeoutOrNull(STOP_FALLBACK_JOIN_TIMEOUT_MS) { previous.readJob?.join() } }
+        }
     }
-
-    private fun isCurrentCapture(capture: ActiveCapture): Boolean =
-        synchronized(lock) { activeCapture === capture }
 
     companion object {
         private const val LOG_TAG = "RaftVoiceDictation"
+        private const val DEFAULT_STOP_JOIN_TIMEOUT_MS = 500L
+        private const val STOP_FALLBACK_JOIN_TIMEOUT_MS = 250L
 
         @Volatile
         private var installed = false
