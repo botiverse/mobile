@@ -492,12 +492,6 @@ Checked with `git diff v0.7.1 v0.8.0` in raft-design:
 
 ## Differences from raft-ui and its docs
 
-- **Phone dialog sheet fits its content; its footer link is a button.** `RaftDialogSheet` on a
-  phone is as tall as its content, up to 90% of the window, and slides to a new height (200ms,
-  `ease-slide`) when a step or its body changes; a `footerLink` ends the body as a full-width
-  outline button. Ahead of raft-ui (which still has a fixed `h-[90dvh]` sheet and a muted footer
-  link at the end of the body): the rule was agreed in #proj-mobile:c2a6f94a (Kirby, 2026-11-27)
-  and raft-design / raft-ui follow it in #proj-mobile:#421.
 - **Menus: no pinned footer, a 480dp cap.** raft-ui 0.106.0's `DropdownMenuPinnedFooter` (wip) is
   not ported: no menu in the app has an action on the whole list below its items. A
   `RaftDropdownMenu` is also at most 480dp tall (inside the room raft-ui gives it), so a long
