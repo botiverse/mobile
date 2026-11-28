@@ -153,10 +153,101 @@ enum class ActivityAuditNotJudgedCause(val wireValue: String) {
     val inboxRowsApplied: Int,
     val syncedOk: Boolean,
     val timestampMillis: Long,
+    /** Failure code from [RaftSyncPullResult.Failed.code] (e.g. `timeout`, `http_0`, `snapshot_failed`), null on success. */
+    val failureCode: String? = null,
+    /** Whether a failed pull kept the stored cursor for a transient retry, null on success. */
+    val cursorKept: Boolean? = null,
+    /** Time waiting on the scope's sync pull mutex before starting (ms), null when unavailable. */
+    val mutexWaitMillis: Long? = null,
+    /** Time spent sleeping in `snapshotJitterDelay` (0–20 s on reset / rebootstrap), null when unavailable. */
+    val snapshotJitterMillis: Long? = null,
+    /** Wall time spent inside the locked sync pull (ms), null when unavailable. */
+    val pullDurationMillis: Long? = null,
+    /** Pages read on a synced pull, null when failed or unavailable. */
+    val pages: Int? = null,
+    /** Whether a synced pull ran a first-sync bootstrap, null when failed or unavailable. */
+    val firstSync: Boolean? = null,
+    /** Server reset reason on a synced pull, null when none. */
+    val resetReason: String? = null,
+    /** Server `inboxReset` reason on a synced pull, null when none. */
+    val inboxResetReason: String? = null,
+    /** Whether a synced pull stopped at the page cap, null when failed or unavailable. */
+    val truncated: Boolean? = null,
 )
 
-@RaftCoreInternalApi fun ActivityForegroundSyncUpdated.stateTransitionTraceAttrs(): JsonObject =
-    buildJsonObject {
+private const val MAX_FOREGROUND_SYNC_TOKEN_LENGTH = 64
+
+private fun sanitizeForegroundSyncToken(raw: String?): String? {
+    val trimmed = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val normalized =
+        buildString(trimmed.length.coerceAtMost(MAX_FOREGROUND_SYNC_TOKEN_LENGTH)) {
+            for (ch in trimmed) {
+                if (length >= MAX_FOREGROUND_SYNC_TOKEN_LENGTH) break
+                val safe =
+                    ch in 'a'..'z' ||
+                        ch in 'A'..'Z' ||
+                        ch in '0'..'9' ||
+                        ch == '_' ||
+                        ch == '-' ||
+                        ch == '.' ||
+                        ch == ':'
+                append(if (safe) ch else '_')
+            }
+        }
+    return normalized.takeIf { it.isNotEmpty() }
+}
+
+@RaftCoreInternalApi fun activityForegroundSyncUpdatedOf(
+    serverId: String,
+    durationMillis: Long,
+    outcome: RaftSyncPullOutcome,
+    timestampMillis: Long,
+): ActivityForegroundSyncUpdated {
+    val synced = outcome.result as? RaftSyncPullResult.Synced
+    val failed = outcome.result as? RaftSyncPullResult.Failed
+    return ActivityForegroundSyncUpdated(
+        serverId = serverId,
+        durationMillis = durationMillis.coerceAtLeast(0L),
+        inboxRowsApplied = synced?.inboxRowsApplied ?: 0,
+        syncedOk = synced != null,
+        timestampMillis = timestampMillis,
+        failureCode = failed?.code,
+        cursorKept = failed?.cursorKept,
+        mutexWaitMillis = outcome.timing.mutexWaitMillis.coerceAtLeast(0L),
+        snapshotJitterMillis = outcome.timing.snapshotJitterMillis.coerceAtLeast(0L),
+        pullDurationMillis = outcome.timing.pullDurationMillis.coerceAtLeast(0L),
+        pages = synced?.pages,
+        firstSync = synced?.firstSync,
+        resetReason = synced?.resetReason,
+        inboxResetReason = synced?.inboxResetReason,
+        truncated = synced?.truncated,
+    )
+}
+
+@RaftCoreInternalApi fun ActivityForegroundSyncUpdated.stateTransitionTraceAttrs(): JsonObject {
+    val cleanFailureCode = sanitizeForegroundSyncToken(failureCode)
+    val cleanResetReason = sanitizeForegroundSyncToken(resetReason)
+    val cleanInboxResetReason = sanitizeForegroundSyncToken(inboxResetReason)
+    val detail =
+        buildString {
+            append("duration_ms=")
+            append(durationMillis)
+            append(";inbox_rows_applied=")
+            append(inboxRowsApplied)
+            append(";synced_ok=")
+            append(if (syncedOk) 1 else 0)
+            cleanFailureCode?.let { append(";failure_code=").append(it) }
+            cursorKept?.let { append(";cursor_kept=").append(if (it) 1 else 0) }
+            mutexWaitMillis?.let { append(";mutex_wait_ms=").append(it) }
+            snapshotJitterMillis?.let { append(";snapshot_jitter_ms=").append(it) }
+            pullDurationMillis?.let { append(";pull_duration_ms=").append(it) }
+            pages?.let { append(";pages=").append(it) }
+            firstSync?.let { append(";first_sync=").append(if (it) 1 else 0) }
+            cleanResetReason?.let { append(";reset_reason=").append(it) }
+            cleanInboxResetReason?.let { append(";inbox_reset_reason=").append(it) }
+            truncated?.let { append(";truncated=").append(if (it) 1 else 0) }
+        }
+    return buildJsonObject {
         putJsonObject("key") {
             put("domain", ActivityInPlaceCheckTraceDomain)
             put("event", ActivityForegroundSyncUpdatedTraceEvent)
@@ -164,17 +255,25 @@ enum class ActivityAuditNotJudgedCause(val wireValue: String) {
             put("entityId", "server:$serverId")
         }
         putJsonObject("meta") {
-            put(
-                "outcomeDetail",
-                "duration_ms=$durationMillis;inbox_rows_applied=$inboxRowsApplied;synced_ok=${if (syncedOk) 1 else 0}"
-            )
+            put("outcomeDetail", detail)
             put("touched", inboxRowsApplied)
             put("timestamp", timestampMillis)
         }
         put("duration_ms", durationMillis.toString())
         put("inbox_rows_applied", inboxRowsApplied.toString())
         put("synced_ok", if (syncedOk) "true" else "false")
+        cleanFailureCode?.let { put("failure_code", it) }
+        cursorKept?.let { put("cursor_kept", if (it) "true" else "false") }
+        mutexWaitMillis?.let { put("mutex_wait_ms", it.toString()) }
+        snapshotJitterMillis?.let { put("snapshot_jitter_ms", it.toString()) }
+        pullDurationMillis?.let { put("pull_duration_ms", it.toString()) }
+        pages?.let { put("pages", it.toString()) }
+        firstSync?.let { put("first_sync", if (it) "true" else "false") }
+        cleanResetReason?.let { put("reset_reason", it) }
+        cleanInboxResetReason?.let { put("inbox_reset_reason", it) }
+        truncated?.let { put("truncated", if (it) "true" else "false") }
     }
+}
 
 /** An audited row as the patch left it, and whether the audit is the follow-up read (web `audit` / `audit.followup`). */
 @RaftCoreInternalApi data class ActivityRowAudit(val moved: Boolean, val followup: Boolean)

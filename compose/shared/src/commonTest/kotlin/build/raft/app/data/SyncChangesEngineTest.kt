@@ -1,5 +1,9 @@
 package build.raft.app.data
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.test.Test
@@ -8,6 +12,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.TestTimeSource
 
 /** The pull loop of `GET /api/sync/changes` (botiverse/slock 0d030e341, PR #11459 client loop). */
 class SyncChangesEngineTest {
@@ -383,5 +389,107 @@ class SyncChangesEngineTest {
             )!!.changes.toSyncApplyPlan()
         assertTrue(serverGone.deletes.isEmpty())
         assertEquals(RaftSyncScopeKind.Server, serverGone.removedScopes.single().kind)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `pullWithOutcome records mutex wait and snapshot jitter timing breakdown`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        val clock = TestTimeSource()
+        val firstApiEntered = CompletableDeferred<Unit>()
+        val releaseFirstApi = CompletableDeferred<Unit>()
+        val logs = mutableListOf<String>()
+        var calls = 0
+        val api =
+            RaftSyncChangesApi { _, _, _ ->
+                calls += 1
+                if (calls == 1) {
+                    firstApiEntered.complete(Unit)
+                    releaseFirstApi.await()
+                    clock += 250.milliseconds
+                    syncPage(syncChangesBody("c1.2.1"))
+                } else {
+                    clock += 80.milliseconds
+                    syncPage(syncChangesBody("c1.3.1", reset = """{"reason":"too_old","snapshots":["agents"]}"""))
+                }
+            }
+        val engine =
+            RaftSyncChangesEngine(
+                api = api,
+                cursors = cursors,
+                sink =
+                    object : RaftSyncChangesSink {
+                        override suspend fun reloadSnapshots(scope: RaftSyncScope, snapshots: Set<RaftSyncSnapshot>, reason: String): Boolean {
+                            clock += 300.milliseconds
+                            return true
+                        }
+
+                        override suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan) = Unit
+                    },
+                snapshotJitterDelay = { clock += 4_200.milliseconds },
+                logger = { logs += it },
+                timeSource = clock,
+            )
+
+        val first = async { engine.pullWithOutcome(syncTestScope, trigger = "reconnect") }
+        firstApiEntered.await()
+
+        val second = async { engine.pullWithOutcome(syncTestScope, trigger = "foreground") }
+        // Let the second coroutine reach mutex.withLock before the first finishes.
+        runCurrent()
+        releaseFirstApi.complete(Unit)
+
+        val firstOutcome = first.await()
+        val secondOutcome = second.await()
+
+        assertIs<RaftSyncPullResult.Synced>(firstOutcome.result)
+        assertEquals(0L, firstOutcome.timing.mutexWaitMillis)
+        assertEquals(0L, firstOutcome.timing.snapshotJitterMillis)
+        assertEquals(250L, firstOutcome.timing.pullDurationMillis)
+        assertTrue(logs.first().contains("mutexWaitMs=0"))
+        assertFalse(logs.first().contains("snapshotJitterMs="))
+
+        val secondSynced = assertIs<RaftSyncPullResult.Synced>(secondOutcome.result)
+        assertEquals("too_old", secondSynced.resetReason)
+        assertEquals(250L, secondOutcome.timing.mutexWaitMillis)
+        assertEquals(4_200L, secondOutcome.timing.snapshotJitterMillis)
+        assertEquals(4_580L, secondOutcome.timing.pullDurationMillis)
+        assertTrue(logs.last().contains("mutexWaitMs=250"))
+        assertTrue(logs.last().contains("snapshotJitterMs=4200"))
+        assertTrue(logs.last().contains("durationMs=4580"))
+    }
+
+    @Test
+    fun `pullWithOutcome preserves snapshot jitter timing when reset snapshot reload fails`() = runTest {
+        cursors.write(syncTestScope, "c1.1.1")
+        val clock = TestTimeSource()
+        val api =
+            RaftSyncChangesApi { _, _, _ ->
+                clock += 60.milliseconds
+                syncPage(syncChangesBody("c1.9.1", reset = """{"reason":"forced","snapshots":["agents"]}"""))
+            }
+        val engine =
+            RaftSyncChangesEngine(
+                api = api,
+                cursors = cursors,
+                sink =
+                    object : RaftSyncChangesSink {
+                        override suspend fun reloadSnapshots(scope: RaftSyncScope, snapshots: Set<RaftSyncSnapshot>, reason: String): Boolean {
+                            clock += 140.milliseconds
+                            return false
+                        }
+
+                        override suspend fun apply(scope: RaftSyncScope, plan: RaftSyncApplyPlan) = Unit
+                    },
+                snapshotJitterDelay = { clock += 3_000.milliseconds },
+                timeSource = clock,
+            )
+
+        val outcome = engine.pullWithOutcome(syncTestScope, trigger = "foreground")
+
+        assertEquals(RaftSyncPullResult.Failed("snapshot_failed"), outcome.result)
+        assertEquals(0L, outcome.timing.mutexWaitMillis)
+        assertEquals(3_000L, outcome.timing.snapshotJitterMillis)
+        assertEquals(3_200L, outcome.timing.pullDurationMillis)
     }
 }

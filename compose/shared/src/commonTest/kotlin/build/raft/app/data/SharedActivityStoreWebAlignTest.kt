@@ -583,4 +583,106 @@ class SharedActivityStoreWebAlignTest {
         assertEquals(3, synced.inboxRowsApplied)
         assertEquals(2, synced.pages)
     }
+
+    @Test
+    fun foregroundSyncUpdatedIncludesFailureCodeAndTimingBreakdownWhenProvided() {
+        val syncedOutcome =
+            RaftSyncPullOutcome(
+                result =
+                    RaftSyncPullResult.Synced(
+                        pages = 2,
+                        changes = 5,
+                        firstSync = true,
+                        resetReason = "too_old",
+                        truncated = false,
+                        inboxResetReason = "gap_detected",
+                        inboxRowsApplied = 4,
+                    ),
+                timing =
+                    RaftSyncPullTiming(
+                        mutexWaitMillis = 120L,
+                        snapshotJitterMillis = 4_500L,
+                        pullDurationMillis = 5_100L,
+                    ),
+            )
+        val syncedAttrs =
+            activityForegroundSyncUpdatedOf(
+                serverId = "server-1",
+                durationMillis = 5_220L,
+                outcome = syncedOutcome,
+                timestampMillis = 1_700_000L,
+            ).stateTransitionTraceAttrs()
+        assertEquals("applied", syncedAttrs.getValue("key").jsonObject.getValue("outcome").jsonPrimitive.content)
+        assertEquals("5220", syncedAttrs.getValue("duration_ms").jsonPrimitive.content)
+        assertEquals("4", syncedAttrs.getValue("inbox_rows_applied").jsonPrimitive.content)
+        assertEquals("true", syncedAttrs.getValue("synced_ok").jsonPrimitive.content)
+        assertNull(syncedAttrs["failure_code"])
+        assertNull(syncedAttrs["cursor_kept"])
+        assertEquals("120", syncedAttrs.getValue("mutex_wait_ms").jsonPrimitive.content)
+        assertEquals("4500", syncedAttrs.getValue("snapshot_jitter_ms").jsonPrimitive.content)
+        assertEquals("5100", syncedAttrs.getValue("pull_duration_ms").jsonPrimitive.content)
+        assertEquals("2", syncedAttrs.getValue("pages").jsonPrimitive.content)
+        assertEquals("true", syncedAttrs.getValue("first_sync").jsonPrimitive.content)
+        assertEquals("too_old", syncedAttrs.getValue("reset_reason").jsonPrimitive.content)
+        assertEquals("gap_detected", syncedAttrs.getValue("inbox_reset_reason").jsonPrimitive.content)
+        assertEquals("false", syncedAttrs.getValue("truncated").jsonPrimitive.content)
+        assertEquals(
+            "duration_ms=5220;inbox_rows_applied=4;synced_ok=1;mutex_wait_ms=120;snapshot_jitter_ms=4500;pull_duration_ms=5100;pages=2;first_sync=1;reset_reason=too_old;inbox_reset_reason=gap_detected;truncated=0",
+            syncedAttrs.getValue("meta").jsonObject.getValue("outcomeDetail").jsonPrimitive.content,
+        )
+
+        val failedOutcome =
+            RaftSyncPullOutcome(
+                result = RaftSyncPullResult.Failed(code = "timeout", cursorKept = true),
+                timing =
+                    RaftSyncPullTiming(
+                        mutexWaitMillis = 35L,
+                        snapshotJitterMillis = 0L,
+                        pullDurationMillis = 5_002L,
+                    ),
+            )
+        val failedAttrs =
+            activityForegroundSyncUpdatedOf(
+                serverId = "server-1",
+                durationMillis = 5_040L,
+                outcome = failedOutcome,
+                timestampMillis = 1_700_001L,
+            ).stateTransitionTraceAttrs()
+        assertEquals("failed", failedAttrs.getValue("key").jsonObject.getValue("outcome").jsonPrimitive.content)
+        assertEquals("false", failedAttrs.getValue("synced_ok").jsonPrimitive.content)
+        assertEquals("timeout", failedAttrs.getValue("failure_code").jsonPrimitive.content)
+        assertEquals("true", failedAttrs.getValue("cursor_kept").jsonPrimitive.content)
+        assertEquals("35", failedAttrs.getValue("mutex_wait_ms").jsonPrimitive.content)
+        assertEquals("0", failedAttrs.getValue("snapshot_jitter_ms").jsonPrimitive.content)
+        assertEquals("5002", failedAttrs.getValue("pull_duration_ms").jsonPrimitive.content)
+        assertNull(failedAttrs["pages"])
+        assertNull(failedAttrs["first_sync"])
+        assertEquals(
+            "duration_ms=5040;inbox_rows_applied=0;synced_ok=0;failure_code=timeout;cursor_kept=1;mutex_wait_ms=35;snapshot_jitter_ms=0;pull_duration_ms=5002",
+            failedAttrs.getValue("meta").jsonObject.getValue("outcomeDetail").jsonPrimitive.content,
+        )
+
+        // Token sanitization prevents delimiters, control chars, or oversized values from corrupting outcomeDetail.
+        val longReason = "r".repeat(80)
+        val sanitizedAttrs =
+            ActivityForegroundSyncUpdated(
+                serverId = "server-1",
+                durationMillis = 200L,
+                inboxRowsApplied = 0,
+                syncedOk = false,
+                timestampMillis = 1_700_002L,
+                failureCode = "http_500;bad=1\u0007 text",
+                cursorKept = false,
+                resetReason = "   ",
+                inboxResetReason = longReason,
+            ).stateTransitionTraceAttrs()
+        assertEquals("http_500_bad_1__text", sanitizedAttrs.getValue("failure_code").jsonPrimitive.content)
+        assertEquals("false", sanitizedAttrs.getValue("cursor_kept").jsonPrimitive.content)
+        assertNull(sanitizedAttrs["reset_reason"])
+        assertEquals("r".repeat(64), sanitizedAttrs.getValue("inbox_reset_reason").jsonPrimitive.content)
+        assertEquals(
+            "duration_ms=200;inbox_rows_applied=0;synced_ok=0;failure_code=http_500_bad_1__text;cursor_kept=0;inbox_reset_reason=${"r".repeat(64)}",
+            sanitizedAttrs.getValue("meta").jsonObject.getValue("outcomeDetail").jsonPrimitive.content,
+        )
+    }
 }

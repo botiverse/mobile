@@ -340,6 +340,24 @@ import kotlin.time.TimeSource
 }
 
 /**
+ * Timing breakdown for one [RaftSyncChangesEngine.pullWithOutcome] call (ms), kept separate from
+ * [RaftSyncPullResult] so result equality stays deterministic.
+ */
+@RaftCoreInternalApi data class RaftSyncPullTiming(
+    /** Time spent waiting to acquire this scope's pull mutex (e.g. behind an in-flight pull). */
+    val mutexWaitMillis: Long = 0L,
+    /** Time spent inside `snapshotJitterDelay` (0–20 s on reset / rebootstrap / jittered first sync). */
+    val snapshotJitterMillis: Long = 0L,
+    /** Wall time spent inside the locked pull (includes [snapshotJitterMillis], snapshot reloads, and page fetches). */
+    val pullDurationMillis: Long = 0L,
+)
+
+@RaftCoreInternalApi data class RaftSyncPullOutcome(
+    val result: RaftSyncPullResult,
+    val timing: RaftSyncPullTiming = RaftSyncPullTiming(),
+)
+
+/**
  * The incremental sync loop of one server (contract: [parseSyncChangesPage]; failures: the "Pull
  * failures" section of slock packages/shared/src/syncChanges.ts, slock #13765, shared with web).
  *
@@ -393,6 +411,7 @@ import kotlin.time.TimeSource
     private val pullJitterDelay: suspend () -> Unit = {},
     private val requestTimeoutMillis: Long = SYNC_CHANGES_REQUEST_TIMEOUT_MILLIS,
     private val logger: (String) -> Unit = {},
+    private val timeSource: TimeSource = TimeSource.Monotonic,
 ) {
     private val lock = SynchronizedObject()
     private val mutexes = mutableMapOf<RaftSyncScope, Mutex>()
@@ -405,15 +424,33 @@ import kotlin.time.TimeSource
         trigger: String,
         jitterSnapshots: Boolean = false,
         jitterPull: Boolean = false,
-    ): RaftSyncPullResult {
+    ): RaftSyncPullResult = pullWithOutcome(scope, trigger, jitterSnapshots, jitterPull).result
+
+    suspend fun pullWithOutcome(
+        scope: RaftSyncScope,
+        trigger: String,
+        jitterSnapshots: Boolean = false,
+        jitterPull: Boolean = false,
+    ): RaftSyncPullOutcome {
         // Before the scope's lock: a trigger arriving meanwhile is not held behind this wait.
         if (jitterPull) pullJitterDelay()
         val mutex = synchronized(lock) { mutexes.getOrPut(scope) { Mutex() } }
+        val mutexWaitStarted = timeSource.markNow()
         return mutex.withLock {
-            val startedAt = TimeSource.Monotonic.markNow()
+            val mutexWaitMillis = mutexWaitStarted.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+            val startedAt = timeSource.markNow()
+            var snapshotJitterMillis = 0L
+            val awaitSnapshotJitter: suspend () -> Unit = {
+                val jitterStarted = timeSource.markNow()
+                try {
+                    snapshotJitterDelay()
+                } finally {
+                    snapshotJitterMillis += jitterStarted.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+                }
+            }
             val result =
                 try {
-                    pullLocked(scope, jitterSnapshots)
+                    pullLocked(scope, jitterSnapshots, awaitSnapshotJitter)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (error: Throwable) {
@@ -428,6 +465,13 @@ import kotlin.time.TimeSource
                 }
                 result is RaftSyncPullResult.Synced -> synchronized(lock) { droppedAfterFailure -= scope }
             }
+            val pullDurationMillis = startedAt.elapsedNow().inWholeMilliseconds.coerceAtLeast(0L)
+            val timing =
+                RaftSyncPullTiming(
+                    mutexWaitMillis = mutexWaitMillis,
+                    snapshotJitterMillis = snapshotJitterMillis,
+                    pullDurationMillis = pullDurationMillis,
+                )
             logger(
                 "sync_changes_pull serverId=${scope.serverId} trigger=$trigger " + when (result) {
                     is RaftSyncPullResult.Synced ->
@@ -441,9 +485,12 @@ import kotlin.time.TimeSource
                             (result.ignoredEntities.entries.joinToString(",") { (entity, count) -> "$entity:$count" }
                                 .takeIf { it.isNotEmpty() }?.let { " ignored=$it" } ?: "")
                     is RaftSyncPullResult.Failed -> "result=failed code=${result.code} cursorKept=${result.cursorKept}"
-                } + " durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                } +
+                    " mutexWaitMs=$mutexWaitMillis" +
+                    (if (snapshotJitterMillis > 0L) " snapshotJitterMs=$snapshotJitterMillis" else "") +
+                    " durationMs=$pullDurationMillis"
             )
-            result
+            RaftSyncPullOutcome(result = result, timing = timing)
         }
     }
 
@@ -466,7 +513,11 @@ import kotlin.time.TimeSource
         return RaftSyncPullResult.Failed(code, cursorKept = kept)
     }
 
-    private suspend fun pullLocked(scope: RaftSyncScope, jitterSnapshots: Boolean): RaftSyncPullResult {
+    private suspend fun pullLocked(
+        scope: RaftSyncScope,
+        jitterSnapshots: Boolean,
+        awaitSnapshotJitter: suspend () -> Unit,
+    ): RaftSyncPullResult {
         val serverId = ServerId(scope.serverId)
         var firstSync = false
         var restarted = false
@@ -529,7 +580,7 @@ import kotlin.time.TimeSource
                 // Snapshots after the cursor was read: whatever changes during them comes again.
                 // A RE-connect, an invalid_cursor restart or a re-bootstrap after a failure: full lists
                 // every client may ask at once. Sign-in / server select take them at once.
-                if (jitterSnapshots || restarted || rebootstrap) snapshotJitterDelay()
+                if (jitterSnapshots || restarted || rebootstrap) awaitSnapshotJitter()
                 if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
                 if (!sink.reloadSnapshots(scope, RaftSyncSnapshot.All, reason = "first_sync")) {
                     return RaftSyncPullResult.Failed("snapshot_failed")
@@ -563,7 +614,7 @@ import kotlin.time.TimeSource
             retryAfter = page.retryAfterMillis?.let(::syncRetryAfterMillis)
             if (reset != null) {
                 resetReason = reset.reason
-                snapshotJitterDelay()
+                awaitSnapshotJitter()
                 if (!isCurrent(scope)) return RaftSyncPullResult.Failed("scope_retired")
                 if (!sink.reloadSnapshots(scope, reset.snapshots, reason = "reset_${reset.reason}")) {
                     return RaftSyncPullResult.Failed("snapshot_failed")
