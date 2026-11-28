@@ -56,6 +56,7 @@ private data class PersistedServerFeatureFlagLastKnown(
     val accountId: String,
     val serverId: String,
     val values: Map<String, Boolean>,
+    val variants: Map<String, String> = emptyMap(),
 )
 
 @Serializable
@@ -99,13 +100,29 @@ class ServerFeatureFlagLastKnownStore(
         return entries().firstOrNull { it.matches(scope) }?.values?.get(key)
     }
 
+    /** The stored variant of [key] for the CURRENT binding, or null when nothing is stored for it. */
+    fun readVariant(serverId: ServerId, key: String): String? {
+        if (key !in keys) return null
+        val scope = scopeFor(serverId) ?: return null
+        return entries().firstOrNull { it.matches(scope) }?.variants?.get(key)
+    }
+
     /**
-     * Stores [values] for [scope] if [scope] is still the current binding for its server. Returns false
-     * (and writes nothing) when the binding changed while the evaluation was in flight.
+     * Stores [values] and [variants] for [scope] if [scope] is still the current binding for its server.
+     * Returns false (and writes nothing) when the binding changed while the evaluation was in flight.
      */
-    @RaftCoreInternalApi fun writeIfCurrent(scope: ServerFeatureFlagLastKnownScope, values: Map<String, Boolean>): Boolean {
+    @RaftCoreInternalApi fun writeIfCurrent(
+        scope: ServerFeatureFlagLastKnownScope,
+        values: Map<String, Boolean>,
+        variants: Map<String, String> = emptyMap(),
+    ): Boolean {
         val persisted = values.filterKeys { it in keys }
         if (persisted.isEmpty()) return false
+        val persistedVariants =
+            variants
+                .filterKeys { it in keys }
+                .mapValues { (_, value) -> value.trim() }
+                .filterValues { it.isNotEmpty() }
         return synchronized(lock) {
             if (scopeFor(ServerId(scope.serverId)) != scope) return@synchronized false
             val replacement =
@@ -114,6 +131,7 @@ class ServerFeatureFlagLastKnownStore(
                     accountId = scope.accountId,
                     serverId = scope.serverId,
                     values = persisted,
+                    variants = persistedVariants,
                 )
             val next =
                 entries().filter { entry ->

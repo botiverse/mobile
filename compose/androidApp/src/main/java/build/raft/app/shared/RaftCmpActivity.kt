@@ -5859,7 +5859,11 @@ internal class RaftBridgeModule(
                             RaftHandsUpdateChannelStore(appContext).writeOverrideChannel(requestedChannel)
                         }
                         handsUpdateDownloads.clear()
-                        RaftAppLog.infoAlways("SlockHandsUpdate", "channel_switched channel=$requestedChannel")
+                        val effectiveChannel = handsEffectiveReleaseChannelForRuntime(appContext)
+                        RaftAppLog.infoAlways(
+                                "SlockHandsUpdate",
+                                "channel_switched override=$requestedChannel channel=$effectiveChannel"
+                        )
                         emitHandsUpdateStatusEvent()
                         runCatching { checkHandsUpdate(install = false) }
                             .getOrElse { loadSettingsDeveloper() }

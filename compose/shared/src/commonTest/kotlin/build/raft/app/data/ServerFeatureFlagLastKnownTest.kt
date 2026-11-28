@@ -5,6 +5,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -158,5 +159,40 @@ class ServerFeatureFlagLastKnownTest {
         assertNull(device.disk.getString(SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY))
         device.binding = accountA
         assertTrue(device.process(ScriptedApi { offline }).isEnabled(server, THREAD_MARKDOWN_SINGLE_PARAGRAPH_LIGHT_FEATURE_FLAG_KEY))
+    }
+
+    @Test
+    fun persistedVariantsSurviveColdStartAndLegacyEntriesWithoutVariantsDecodeCleanly() = runBlocking {
+        val device = Device().apply { binding = accountA }
+        val store = ServerFeatureFlagLastKnownStore(store = device.disk, currentBinding = { device.binding })
+        val flags = SharedServerFeatureFlags(
+            api = ScriptedApi {
+                HomeNetworkResponse(
+                    code = 200,
+                    bodyText =
+                        """{"evaluations":[""" +
+                            """{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true,"variant":"canary"},""" +
+                            """{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true}""" +
+                            """]}""",
+                )
+            },
+            lastKnown = store,
+        )
+        flags.prefetch(server)
+        assertEquals("canary", store.readVariant(server, MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY))
+        assertNull(store.readVariant(server, MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY))
+
+        // Cold restart reads the stored variant offline.
+        val coldStore = ServerFeatureFlagLastKnownStore(store = device.disk, currentBinding = { device.binding })
+        assertEquals("canary", coldStore.readVariant(server, MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY))
+
+        // Legacy stored JSON without a "variants" property decodes cleanly with null variant.
+        device.disk.putString(
+            SERVER_FEATURE_FLAG_LAST_KNOWN_STORAGE_KEY,
+            """{"version":1,"entries":[{"environmentId":"https://api.example","accountId":"user-a","serverId":"s1","values":{"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY":true}}]}""",
+        )
+        val legacyStore = ServerFeatureFlagLastKnownStore(store = device.disk, currentBinding = { device.binding })
+        assertEquals(true, legacyStore.read(server, MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY))
+        assertNull(legacyStore.readVariant(server, MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY))
     }
 }

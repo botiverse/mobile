@@ -750,15 +750,34 @@ class SharedServerFeatureFlagsTest {
     }
 
     @Test
-    fun earlyAccessFlagsDefaultOffAggregateAcrossServersAndPersistLastKnown() = runBlocking {
+    fun earlyAccessFlagsDefaultOffAggregateAcrossServersResolveVariantAndPersistLastKnown() = runBlocking {
         assertEquals("mobile_early_access_visible_v0", MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY)
         assertEquals("mobile_early_access_default_on_v0", MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY)
+        assertEquals("beta", DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL)
         assertTrue(MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertTrue(MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY in REGISTERED_SERVER_FEATURE_FLAG_KEYS)
         assertFalse(MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
         assertFalse(MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_CLIENT_DEFAULT_ON_KEYS)
         assertTrue(MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
         assertTrue(MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY in SERVER_FEATURE_FLAG_LAST_KNOWN_KEYS)
+
+        // Variant normalization accepts valid release channel slugs and rejects production/retired/malformed values.
+        assertEquals("beta", normalizeMobileEarlyAccessChannelVariant("beta"))
+        assertEquals("beta", normalizeMobileEarlyAccessChannelVariant(" BETA "))
+        assertEquals("canary", normalizeMobileEarlyAccessChannelVariant("canary"))
+        assertEquals("canary-1", normalizeMobileEarlyAccessChannelVariant("canary-1"))
+        assertEquals("alpha", normalizeMobileEarlyAccessChannelVariant("alpha"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant(null))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant(""))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("   "))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("main"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("preview"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("debug"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("nightly"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("alpha-delta"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("../bad"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("bad/channel"))
+        assertEquals(null, normalizeMobileEarlyAccessChannelVariant("bad_slug"))
 
         val disk = InMemoryRaftKeyValueStore()
         val binding = ServerFeatureFlagLastKnownBinding("https://api.raft.build", "user-1")
@@ -768,7 +787,7 @@ class SharedServerFeatureFlagsTest {
                     when (serverId.value) {
                         "srv-default-only" ->
                             ok(
-                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":false},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true}]}"""
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":false},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true,"variant":"canary"}]}"""
                             )
                         "srv-visible-only" ->
                             ok(
@@ -776,7 +795,19 @@ class SharedServerFeatureFlagsTest {
                             )
                         "srv-both" ->
                             ok(
-                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true}]}"""
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true,"variant":"beta"},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true,"variant":"canary"}]}"""
+                            )
+                        "srv-canary-visible" ->
+                            ok(
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true,"variant":"canary"},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true}]}"""
+                            )
+                        "srv-canary-default-on" ->
+                            ok(
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true,"variant":"../bad"},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true,"variant":"canary"}]}"""
+                            )
+                        "srv-invalid-variants" ->
+                            ok(
+                                """{"evaluations":[{"key":"$MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY","enabled":true,"variant":"main"},{"key":"$MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY","enabled":true,"variant":"../bad"}]}"""
                             )
                         else -> ok("""{"evaluations":[]}""")
                     }
@@ -790,35 +821,60 @@ class SharedServerFeatureFlagsTest {
         assertEquals(RaftEarlyAccessFlagPolicy(), flags.earlyAccessPolicy(emptyList()))
         assertEquals(RaftEarlyAccessFlagPolicy(), flags.earlyAccessPolicy(listOf("srv-none")))
 
-        // defaultOn without visible stays false/false.
+        // defaultOn without visible stays false/false with default fallback channel.
         flags.prefetch(ServerId("srv-default-only"))
         assertEquals(
-            RaftEarlyAccessFlagPolicy(visible = false, defaultOn = false),
+            RaftEarlyAccessFlagPolicy(visible = false, defaultOn = false, channel = "beta"),
             flags.earlyAccessPolicy(listOf("srv-default-only"))
         )
 
-        // visible-only yields visible=true, defaultOn=false.
+        // visible-only without variant falls back to default "beta".
         flags.prefetch(ServerId("srv-visible-only"))
         assertEquals(
-            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = false),
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = false, channel = "beta"),
             flags.earlyAccessPolicy(listOf("srv-none", "srv-visible-only"))
         )
 
-        // Joining a server with both enabled turns on visible + defaultOn across the account.
+        // Visible flag variant takes precedence over default-on flag variant.
         flags.prefetch(ServerId("srv-both"))
         assertEquals(
-            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true),
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "beta"),
             flags.earlyAccessPolicy(listOf("srv-none", "srv-both"))
         )
 
-        // Cold restart reads persisted last-known evaluations offline until refreshed.
+        // Custom channel variant ("canary") on visibility flag propagates cleanly.
+        flags.prefetch(ServerId("srv-canary-visible"))
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "canary"),
+            flags.earlyAccessPolicy(listOf("srv-none", "srv-canary-visible"))
+        )
+
+        // Invalid visibility variant falls through to valid default-on variant ("canary").
+        flags.prefetch(ServerId("srv-canary-default-on"))
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "canary"),
+            flags.earlyAccessPolicy(listOf("srv-canary-default-on"))
+        )
+
+        // Invalid variants on both flags safely fall back to "beta".
+        flags.prefetch(ServerId("srv-invalid-variants"))
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "beta"),
+            flags.earlyAccessPolicy(listOf("srv-invalid-variants"))
+        )
+
+        // Cold restart reads persisted last-known evaluations AND variants offline until refreshed.
         val coldStart =
             SharedServerFeatureFlags(
                 api = FakeApi(HomeNetworkResponse(code = 0, bodyText = null)),
                 lastKnown = ServerFeatureFlagLastKnownStore(store = disk, currentBinding = { binding }),
             )
         assertEquals(
-            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true),
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "canary"),
+            coldStart.earlyAccessPolicy(listOf("srv-none", "srv-canary-visible"))
+        )
+        assertEquals(
+            RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "beta"),
             coldStart.earlyAccessPolicy(listOf("srv-none", "srv-both"))
         )
     }

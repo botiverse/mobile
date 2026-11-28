@@ -4098,13 +4098,12 @@
     <string name="settings_about_action_copy_environment">Copy environment info</string>
     <string name="settings_about_action_copy">Copy</string>
     <string name="settings_about_early_access_title">Early access</string>
-    <string name="settings_about_early_access_beta_off_detail">Receive pre-release Raft updates directly from the beta channel.</string>
-    <string name="settings_about_early_access_beta_active_detail">Receiving pre-release updates from the beta channel. Turn off to rejoin Stable on the next public release.</string>
+    <string name="settings_about_early_access_channel_off_detail">Receive pre-release Raft updates directly from the %1$s channel.</string>
+    <string name="settings_about_early_access_channel_active_detail">Receiving pre-release updates from the %1$s channel. Turn off to rejoin Stable on the next public release.</string>
     <string name="settings_about_early_access_play_beta_detail">Join the Google Play beta program to receive pre-release Raft updates.</string>
     <string name="settings_about_early_access_ios_testflight_join_detail">Join Raft on TestFlight to receive pre-release iOS builds.</string>
     <string name="settings_about_early_access_ios_testflight_active_detail">Running Raft on TestFlight and receiving pre-release iOS builds.</string>
     <string name="settings_about_early_access_action_join">Join</string>
-    <string name="settings_about_early_access_badge_beta">Beta</string>
     <string name="settings_about_early_access_badge_testflight">TestFlight</string>
     <string name="settings_about_source_code">Source code</string>
     <string name="settings_developer_title">Developer</string>

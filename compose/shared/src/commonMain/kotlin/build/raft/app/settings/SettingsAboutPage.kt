@@ -3,6 +3,7 @@ package build.raft.app.settings
 import build.raft.app.resources.*
 import build.raft.app.settings.iconName
 import build.raft.app.userFacingMessage
+import build.raft.app.data.DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
 import build.raft.app.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
@@ -19,6 +20,7 @@ import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.ScreenLoadState
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.normalizeMobileEarlyAccessChannelVariant
 import build.raft.app.iconName
 import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.members.iconName
@@ -59,7 +61,9 @@ internal fun SharedSettingsAboutContent(
     onOpenDeveloper: (() -> Unit)? = null,
     /** Server-driven visibility gate (`mobile_early_access_visible_v0`, `#proj-mobile:e48030bc`). */
     earlyAccessVisible: Boolean = false,
-    /** Toggle Android direct-install runtime channel between `beta` (true) and `main` (false). */
+    /** Server-driven Early access target channel (`variant` on early-access flags, fallback `beta`). */
+    earlyAccessChannel: String = DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL,
+    /** Toggle Android direct-install runtime channel between [earlyAccessChannel] (true) and `main` (false). */
     onToggleEarlyAccessChannel: ((Boolean) -> Unit)? = null
 ) {
     val versionTaps = remember { SettingsDeveloperUnlockTaps() }
@@ -85,7 +89,8 @@ internal fun SharedSettingsAboutContent(
             developer = developer,
             updateCheck = updateCheck,
             actionState = actionState,
-            canToggleHandsChannel = onToggleEarlyAccessChannel != null
+            canToggleHandsChannel = onToggleEarlyAccessChannel != null,
+            earlyAccessChannel = earlyAccessChannel
         )
     val aboutPayload =
         snapshot.toAboutPayload(
@@ -137,7 +142,7 @@ internal fun SharedSettingsAboutContent(
             SETTINGS_ABOUT_SOURCE_CODE_ACTION, SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION ->
                 settingsAboutExternalUrl(action, value, webUrl)?.let(onOpenUrl)
             SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION ->
-                (earlyAccessOption as? SettingsAboutEarlyAccessOption.HandsBetaToggle)?.let { option ->
+                (earlyAccessOption as? SettingsAboutEarlyAccessOption.HandsChannelToggle)?.let { option ->
                     onToggleEarlyAccessChannel?.invoke(!option.enabled)
                 }
             DEVELOPER_ACTION_HANDS_UPDATE_CHECK -> onCheckHandsUpdate()
@@ -161,11 +166,12 @@ internal const val SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION = "openEarlyAcces
 /**
  * Early-access enrollment option surfaced in Settings › About when gated on by the server
  * (`mobile_early_access_visible_v0`, `#proj-mobile:e48030bc`), routing Android direct installs to
- * the dedicated human `beta` channel (#proj-mobile:#430) after retiring `preview` (#proj-mobile:#370).
+ * the server-configured target channel (`variant`, defaulting to `beta`; `#proj-mobile:#430`).
  */
 internal sealed interface SettingsAboutEarlyAccessOption {
-    data class HandsBetaToggle(
+    data class HandsChannelToggle(
         val enabled: Boolean,
+        val channel: String,
         val busy: Boolean = false
     ) : SettingsAboutEarlyAccessOption
 
@@ -181,15 +187,19 @@ internal fun settingsAboutEarlyAccessOption(
     developer: SharedSettingsDeveloperSnapshot?,
     updateCheck: SharedSettingsUpdateCheckSnapshot?,
     actionState: SharedSettingsActionState?,
-    canToggleHandsChannel: Boolean = true
+    canToggleHandsChannel: Boolean = true,
+    earlyAccessChannel: String = DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
 ): SettingsAboutEarlyAccessOption? {
     if (!earlyAccessVisible) return null
     val effectiveUpdate = updateCheck ?: developer?.updateCheck ?: return null
-    val channel = effectiveUpdate.updateChannel.trim().lowercase()
+    val targetChannel =
+        normalizeMobileEarlyAccessChannelVariant(earlyAccessChannel) ?: DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+    val activeChannel = effectiveUpdate.updateChannel.trim().lowercase()
     val switchSupported = effectiveUpdate.updateChannelSwitchSupported && canToggleHandsChannel
     if (switchSupported) {
-        return SettingsAboutEarlyAccessOption.HandsBetaToggle(
-            enabled = channel == "beta",
+        return SettingsAboutEarlyAccessOption.HandsChannelToggle(
+            enabled = activeChannel == targetChannel,
+            channel = targetChannel,
             busy = actionState?.action == DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL && actionState.inProgress
         )
     }
@@ -204,8 +214,24 @@ internal fun settingsAboutEarlyAccessOption(
 }
 
 /** Target Hands channel when the user toggles Settings › About › Early access on or off. */
-internal fun settingsAboutEarlyAccessChannelForToggle(enableBeta: Boolean): String =
-    if (enableBeta) "beta" else "main"
+internal fun settingsAboutEarlyAccessChannelForToggle(
+    enableEarlyAccess: Boolean,
+    targetChannel: String = DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+): String =
+    if (enableEarlyAccess) {
+        normalizeMobileEarlyAccessChannelVariant(targetChannel) ?: DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+    } else {
+        "main"
+    }
+
+/** Display badge label for a Hands Early access channel slug (e.g. `beta` -> `Beta`, `canary-1` -> `Canary 1`). */
+internal fun formatHandsEarlyAccessChannelBadge(channel: String): String =
+    channel
+        .trim()
+        .split('-')
+        .filter(String::isNotEmpty)
+        .joinToString(" ") { part -> part.replaceFirstChar { it.uppercase() } }
+        .ifBlank { DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL.replaceFirstChar { it.uppercase() } }
 
 /** The app's own source repository, opened from Settings › About › Source code. */
 internal const val RAFT_MOBILE_SOURCE_CODE_URL = "https://github.com/botiverse/mobile"
@@ -367,18 +393,23 @@ internal data class SettingsAboutPayloadCopy(
     val copyEnvironmentHint: String = "Includes environment info and recent sanitized logs. For full logs, send Feedback.",
     val copy: String = "Copy",
     val earlyAccessTitle: String = "Early access",
-    val earlyAccessBetaOffDetail: String = "Receive pre-release Raft updates directly from the beta channel.",
-    val earlyAccessBetaActiveDetail: String = "Receiving pre-release updates from the beta channel. Turn off to rejoin Stable on the next public release.",
+    val earlyAccessChannelOffDetail: (String) -> String = { channel ->
+        "Receive pre-release Raft updates directly from the $channel channel."
+    },
+    val earlyAccessChannelActiveDetail: (String) -> String = { channel ->
+        "Receiving pre-release updates from the $channel channel. Turn off to rejoin Stable on the next public release."
+    },
     val earlyAccessPlayBetaDetail: String = "Join the Google Play beta program to receive pre-release Raft updates.",
     val earlyAccessIosTestFlightJoinDetail: String = "Join Raft on TestFlight to receive pre-release iOS builds.",
     val earlyAccessIosTestFlightActiveDetail: String = "Running Raft on TestFlight and receiving pre-release iOS builds.",
     val earlyAccessJoin: String = "Join",
-    val earlyAccessBetaBadge: String = "Beta",
     val earlyAccessTestFlightBadge: String = "TestFlight",
 )
 
 @Composable
 private fun settingsAboutPayloadCopy(): SettingsAboutPayloadCopy {
+    val earlyAccessOffTemplate = stringResource(Res.string.settings_about_early_access_channel_off_detail)
+    val earlyAccessActiveTemplate = stringResource(Res.string.settings_about_early_access_channel_active_detail)
     return SettingsAboutPayloadCopy(
         title = stringResource(Res.string.settings_about_title),
         detail = stringResource(Res.string.settings_about_version_build_source),
@@ -411,13 +442,12 @@ private fun settingsAboutPayloadCopy(): SettingsAboutPayloadCopy {
         copyEnvironmentHint = stringResource(Res.string.settings_diagnostics_logs_via_feedback_hint),
         copy = stringResource(Res.string.settings_about_action_copy),
         earlyAccessTitle = stringResource(Res.string.settings_about_early_access_title),
-        earlyAccessBetaOffDetail = stringResource(Res.string.settings_about_early_access_beta_off_detail),
-        earlyAccessBetaActiveDetail = stringResource(Res.string.settings_about_early_access_beta_active_detail),
+        earlyAccessChannelOffDetail = { channel -> earlyAccessOffTemplate.replaceLocalizedFormatArgs(channel) },
+        earlyAccessChannelActiveDetail = { channel -> earlyAccessActiveTemplate.replaceLocalizedFormatArgs(channel) },
         earlyAccessPlayBetaDetail = stringResource(Res.string.settings_about_early_access_play_beta_detail),
         earlyAccessIosTestFlightJoinDetail = stringResource(Res.string.settings_about_early_access_ios_testflight_join_detail),
         earlyAccessIosTestFlightActiveDetail = stringResource(Res.string.settings_about_early_access_ios_testflight_active_detail),
         earlyAccessJoin = stringResource(Res.string.settings_about_early_access_action_join),
-        earlyAccessBetaBadge = stringResource(Res.string.settings_about_early_access_badge_beta),
         earlyAccessTestFlightBadge = stringResource(Res.string.settings_about_early_access_badge_testflight),
     )
 }
@@ -515,7 +545,7 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                 )
                             }
                             when (earlyAccessOption) {
-                                is SettingsAboutEarlyAccessOption.HandsBetaToggle -> {
+                                is SettingsAboutEarlyAccessOption.HandsChannelToggle -> {
                                     add(
                                         RaftSharedSettingsRow(
                                             key = SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION,
@@ -523,13 +553,13 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                             title = copy.earlyAccessTitle,
                                             detail =
                                                 if (earlyAccessOption.enabled) {
-                                                    copy.earlyAccessBetaActiveDetail
+                                                    copy.earlyAccessChannelActiveDetail(earlyAccessOption.channel)
                                                 } else {
-                                                    copy.earlyAccessBetaOffDetail
+                                                    copy.earlyAccessChannelOffDetail(earlyAccessOption.channel)
                                                 },
                                             badgeLabel =
                                                 if (earlyAccessOption.enabled) {
-                                                    copy.earlyAccessBetaBadge
+                                                    formatHandsEarlyAccessChannelBadge(earlyAccessOption.channel)
                                                 } else {
                                                     ""
                                                 },

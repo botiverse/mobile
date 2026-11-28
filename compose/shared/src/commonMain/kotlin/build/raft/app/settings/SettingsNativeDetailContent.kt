@@ -18,6 +18,7 @@ import build.raft.app.sharedSettingsResolvedWebBaseUrl
 import build.raft.app.thread.dispatch
 import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
+import build.raft.app.data.DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
 import build.raft.app.data.RaftAppUpdateEvents
 import build.raft.app.data.RaftEarlyAccessPolicyHost
 import build.raft.app.data.RaftNotificationPreferenceEvents
@@ -332,6 +333,7 @@ internal fun SettingsNativeDetailScreen() {
         },
         appearanceAssistantSource = appearanceAssistantSource,
         earlyAccessVisible = earlyAccessPolicy.visible,
+        earlyAccessChannel = earlyAccessPolicy.channel,
     )
     }
     }
@@ -423,6 +425,8 @@ internal fun SettingsNativeDetailPageContent(
     appearanceAssistantSource: SettingsAppearanceAssistantSource? = null,
     /** Server-driven visibility gate (`mobile_early_access_visible_v0`, `#proj-mobile:e48030bc`). */
     earlyAccessVisible: Boolean = false,
+    /** Server-driven Early access target channel (`variant` on early-access flags, fallback `beta`). */
+    earlyAccessChannel: String = DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL,
     onLogout: () -> Unit
 ) {
     val diagnosticsSnapshot =
@@ -861,10 +865,11 @@ internal fun SettingsNativeDetailPageContent(
                     onOpenDiagnostics = onOpenDiagnosticsPage,
                     onOpenDeveloper = onOpenDeveloperPage,
                     earlyAccessVisible = earlyAccessVisible,
-                    onToggleEarlyAccessChannel = { enableBeta ->
+                    earlyAccessChannel = earlyAccessChannel,
+                    onToggleEarlyAccessChannel = { enableEarlyAccess ->
                         onSettingsIntent(
                             SharedSettingsIntent.SetHandsUpdateChannel(
-                                settingsAboutEarlyAccessChannelForToggle(enableBeta)
+                                settingsAboutEarlyAccessChannelForToggle(enableEarlyAccess, earlyAccessChannel)
                             )
                         )
                     },

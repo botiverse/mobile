@@ -451,10 +451,17 @@ Legacy / CI-only channels:
 Clients update when the active release's `versionCode` is greater than theirs;
 drafts and cancelled releases are invisible. Production direct-install APKs
 (`build.raft.app` / `raft-android`) support runtime switching between `main`
-and `beta` without reinstalling (`Settings › About › Early access`, gated by
-`mobile_early_access_visible_v0` / `mobile_early_access_default_on_v0`), with
-Zucchini delta updates enabled on `main`, `beta`, and `alpha`. Legacy 1.31.0
-Early access overrides (`alpha`) migrate automatically to `beta` on upgrade.
+and the Early access channel without reinstalling (`Settings › About › Early
+access`, gated by `mobile_early_access_visible_v0` /
+`mobile_early_access_default_on_v0`), with Zucchini delta updates enabled for
+every valid Hands release channel slug (`main`, `beta`, `alpha`, or any future
+server-configured target). The Early access target channel is dynamically
+controlled by the server feature flag `variant` (`mobile_early_access_visible_v0`
+first, then `mobile_early_access_default_on_v0`; fallback `beta`; artin,
+2026-11-28, `dm:@artin msg=fec09e0f`), never hardcoded in the client, so future
+channel changes need no client release. Legacy 1.31.0 Early access overrides
+(`alpha`) normalize to opt-in intent and follow the server-configured target
+channel automatically on upgrade.
 
 **One APK per Hands channel** (Lagoon, 2026-10-23). The channel is compiled in
 (`BuildConfig.HANDS_CHANNEL` from `SLOCK_HANDS_CHANNEL`, workflow input

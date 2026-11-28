@@ -505,6 +505,26 @@ class HandsDeltaUpdateGateTest {
                 buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                 runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                 appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary"
+            )
+        )
+        assertTrue(
+            handsDeltaUpdateAllowed(
+                configuredEnabled = true,
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary-1"
+            )
+        )
+        assertTrue(
+            handsDeltaUpdateAllowed(
+                configuredEnabled = true,
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 channel = HANDS_DELTA_PREVIEW_CHANNEL
             )
         )
@@ -603,6 +623,14 @@ class HandsDeltaUpdateGateTest {
                     runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = ""
+                ),
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = true,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = "../bad"
                 ),
                 // Other application IDs or app slugs
                 handsDeltaUpdateAllowed(
@@ -796,6 +824,21 @@ class HandsDeltaUpdateGateTest {
         )
         assertEquals(
             HandsUpdateRoute(
+                mode = "canary_channel_delta",
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary",
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "canary",
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = "canary"
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_MAIN_DELTA,
                 appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 channel = HANDS_DELTA_MAIN_CHANNEL,
@@ -888,22 +931,30 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
-    fun previewRetiresToMainAndRuntimeChannelOverrideSwitchesBetweenMainAndBeta() {
+    fun previewRetiresToMainAndRuntimeChannelOverrideFollowsServerConfiguredTargetChannel() {
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel("preview"))
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel(" PREVIEW "))
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel("main"))
         assertEquals(HANDS_DELTA_BETA_CHANNEL, normalizeHandsReleaseChannel("beta"))
         assertEquals(HANDS_DELTA_RELEASE_ALPHA_CHANNEL, normalizeHandsReleaseChannel("alpha"))
+        assertEquals("canary", normalizeHandsReleaseChannel("canary"))
         assertEquals("debug", normalizeHandsReleaseChannel("debug"))
 
-        // Explicit beta override maps to beta; legacy 1.31.0 persisted "alpha" override migrates to beta.
-        assertEquals(HANDS_DELTA_BETA_CHANNEL, normalizeHandsRuntimeOverrideChannel("beta"))
-        assertEquals(HANDS_DELTA_BETA_CHANNEL, normalizeHandsRuntimeOverrideChannel(" BETA "))
-        assertEquals(HANDS_DELTA_BETA_CHANNEL, normalizeHandsRuntimeOverrideChannel("ALPHA"))
-        assertEquals(HANDS_DELTA_BETA_CHANNEL, normalizeHandsRuntimeOverrideChannel("alpha"))
+        // Persisted overrides capture intent ("early_access" vs "main"); legacy 1.31.0 "alpha" and any
+        // valid dynamic channel slug normalize to "early_access" so users track the live server variant.
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("early_access"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel(" EARLY_ACCESS "))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("beta"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel(" BETA "))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("ALPHA"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("alpha"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("canary"))
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsRuntimeOverrideChannel("main"))
         assertNull(normalizeHandsRuntimeOverrideChannel("preview"))
         assertNull(normalizeHandsRuntimeOverrideChannel("debug"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("nightly"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("alpha-delta"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("../bad"))
         assertNull(normalizeHandsRuntimeOverrideChannel(null))
 
         assertTrue(
@@ -922,6 +973,15 @@ class HandsDeltaUpdateGateTest {
                 runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                 defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 defaultChannel = HANDS_DELTA_BETA_CHANNEL
+            )
+        )
+        assertTrue(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = "canary"
             )
         )
         assertTrue(
@@ -961,7 +1021,7 @@ class HandsDeltaUpdateGateTest {
             )
         )
 
-        // Switching a production main/preview build to beta enables beta_channel_delta when visible.
+        // Switching a production main/preview build to Early access enables beta_channel_delta by default.
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_BETA_DELTA,
@@ -975,13 +1035,80 @@ class HandsDeltaUpdateGateTest {
                 defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
                 deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
-                overrideChannel = HANDS_DELTA_BETA_CHANNEL,
+                overrideChannel = HANDS_OVERRIDE_EARLY_ACCESS,
                 channelSwitchSupported = true,
                 earlyAccessVisible = true,
-                earlyAccessDefaultOn = false
+                earlyAccessDefaultOn = false,
+                earlyAccessChannel = HANDS_DELTA_BETA_CHANNEL
             )
         )
-        // Legacy 1.31.0 persisted "alpha" override seamlessly migrates to beta when visible.
+        // Server variant "canary" routes BOTH defaultOn and explicit opt-in (including legacy "alpha"
+        // prefs) to canary with delta updates enabled.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = "canary_channel_delta",
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary",
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                overrideChannel = null,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = true,
+                earlyAccessChannel = "canary"
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
+                mode = "canary_channel_delta",
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary",
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                overrideChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = false,
+                earlyAccessChannel = "canary"
+            )
+        )
+        // Invalid or production earlyAccessChannel variants safely fall back to "beta".
+        for (invalidTarget in listOf("", "main", "preview", "../bad")) {
+            assertEquals(
+                invalidTarget,
+                HandsUpdateRoute(
+                    mode = HANDS_UPDATE_MODE_BETA_DELTA,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_BETA_CHANNEL,
+                    deltaEnabled = true
+                ),
+                resolveHandsUpdateRoute(
+                    deltaEnabled = true,
+                    defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                    deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                    overrideChannel = HANDS_OVERRIDE_EARLY_ACCESS,
+                    channelSwitchSupported = true,
+                    earlyAccessVisible = true,
+                    earlyAccessDefaultOn = false,
+                    earlyAccessChannel = invalidTarget
+                )
+            )
+        }
+        // Legacy 1.31.0 persisted "alpha" override seamlessly migrates to default "beta" when visible.
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_BETA_DELTA,
@@ -1001,7 +1128,7 @@ class HandsDeltaUpdateGateTest {
                 earlyAccessDefaultOn = false
             )
         )
-        // Server defaultOn=true (with visible=true) routes untouched installs to beta.
+        // Server defaultOn=true (with visible=true) routes untouched installs to beta by default.
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_BETA_DELTA,
@@ -1021,7 +1148,7 @@ class HandsDeltaUpdateGateTest {
                 earlyAccessDefaultOn = true
             )
         )
-        // Explicit user opt-out (overrideChannel=main) wins over server defaultOn=true.
+        // Explicit user opt-out (overrideChannel=main) wins over server defaultOn=true even for "canary".
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_MAIN_DELTA,
@@ -1038,7 +1165,8 @@ class HandsDeltaUpdateGateTest {
                 overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
                 channelSwitchSupported = true,
                 earlyAccessVisible = true,
-                earlyAccessDefaultOn = true
+                earlyAccessDefaultOn = true,
+                earlyAccessChannel = "canary"
             )
         )
         // Revoking visibility falls back to main for main/preview builds even when override or defaultOn was set.

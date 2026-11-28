@@ -15,6 +15,7 @@ import build.raft.app.data.preservingChannelMetadataFrom
 import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION
 import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION
 import build.raft.app.settings.SettingsAboutEarlyAccessOption
+import build.raft.app.settings.formatHandsEarlyAccessChannelBadge
 import build.raft.app.settings.settingsAboutEarlyAccessChannelForToggle
 import build.raft.app.settings.settingsAboutEarlyAccessOption
 import build.raft.app.settings.settingsAboutExternalUrl
@@ -42,7 +43,7 @@ class SettingsAboutEarlyAccessTest {
         )
 
     @Test
-    fun androidDirectInstallShowsBetaToggleOnlyWhenServerVisibilityFlagIsEnabled() {
+    fun androidDirectInstallShowsDynamicChannelToggleOnlyWhenServerVisibilityFlagIsEnabled() {
         val mainUpdate =
             SharedSettingsUpdateCheckSnapshot(
                 supported = true,
@@ -50,6 +51,7 @@ class SettingsAboutEarlyAccessTest {
                 updateChannelSwitchSupported = true
             )
         val betaUpdate = mainUpdate.copy(updateChannel = "beta")
+        val canaryUpdate = mainUpdate.copy(updateChannel = "canary")
         val alphaUpdate = mainUpdate.copy(updateChannel = "alpha")
         val dev = developer(updateCheck = mainUpdate)
 
@@ -79,17 +81,19 @@ class SettingsAboutEarlyAccessTest {
             )
         )
 
-        // Visible + on main shows the toggle OFF.
+        // Visible + on main with default beta target shows the toggle OFF with beta copy.
         val offOption =
-            assertIs<SettingsAboutEarlyAccessOption.HandsBetaToggle>(
+            assertIs<SettingsAboutEarlyAccessOption.HandsChannelToggle>(
                 settingsAboutEarlyAccessOption(
                     earlyAccessVisible = true,
                     developer = dev,
                     updateCheck = mainUpdate,
-                    actionState = null
+                    actionState = null,
+                    earlyAccessChannel = "beta"
                 )
             )
         assertFalse(offOption.enabled)
+        assertEquals("beta", offOption.channel)
         assertFalse(offOption.busy)
 
         val offPayload =
@@ -107,15 +111,17 @@ class SettingsAboutEarlyAccessTest {
 
         // Visible + on beta shows the toggle ON with Beta badge (and busy disables interaction during switch).
         val activeOption =
-            assertIs<SettingsAboutEarlyAccessOption.HandsBetaToggle>(
+            assertIs<SettingsAboutEarlyAccessOption.HandsChannelToggle>(
                 settingsAboutEarlyAccessOption(
                     earlyAccessVisible = true,
                     developer = dev.copy(updateCheck = betaUpdate),
                     updateCheck = betaUpdate,
-                    actionState = SharedSettingsActionState(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL, inProgress = true)
+                    actionState = SharedSettingsActionState(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL, inProgress = true),
+                    earlyAccessChannel = "beta"
                 )
             )
         assertTrue(activeOption.enabled)
+        assertEquals("beta", activeOption.channel)
         assertTrue(activeOption.busy)
 
         val activePayload =
@@ -132,21 +138,69 @@ class SettingsAboutEarlyAccessTest {
         assertTrue(activeRow.loading)
         assertFalse(activeRow.enabled)
 
-        // Engineering alpha builds are not reported as opted into the human Beta channel.
+        // Dynamic server-driven channel ("canary") updates both detail copy and badge without client code changes.
+        val canaryOption =
+            assertIs<SettingsAboutEarlyAccessOption.HandsChannelToggle>(
+                settingsAboutEarlyAccessOption(
+                    earlyAccessVisible = true,
+                    developer = dev.copy(updateCheck = canaryUpdate),
+                    updateCheck = canaryUpdate,
+                    actionState = null,
+                    earlyAccessChannel = "canary"
+                )
+            )
+        assertTrue(canaryOption.enabled)
+        assertEquals("canary", canaryOption.channel)
+        val canaryRow =
+            about.toAboutPayload(
+                webUrl = "https://app.raft.build",
+                errorStrings = englishErrorPresentationStringsForTest(),
+                updateCheck = canaryUpdate,
+                earlyAccessOption = canaryOption
+            ).sections.first { it.title == "Actions" }.rows.single { it.key == SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION }
+        assertEquals(true, canaryRow.toggleValue)
+        assertEquals("Canary", canaryRow.badgeLabel)
+        assertTrue(canaryRow.detail.contains("canary channel"))
+
+        // Invalid server target falls back safely to "beta".
+        val fallbackOption =
+            assertIs<SettingsAboutEarlyAccessOption.HandsChannelToggle>(
+                settingsAboutEarlyAccessOption(
+                    earlyAccessVisible = true,
+                    developer = dev.copy(updateCheck = betaUpdate),
+                    updateCheck = betaUpdate,
+                    actionState = null,
+                    earlyAccessChannel = "../bad"
+                )
+            )
+        assertTrue(fallbackOption.enabled)
+        assertEquals("beta", fallbackOption.channel)
+
+        // Engineering alpha builds are not reported as opted into the beta target channel.
         val alphaOption =
-            assertIs<SettingsAboutEarlyAccessOption.HandsBetaToggle>(
+            assertIs<SettingsAboutEarlyAccessOption.HandsChannelToggle>(
                 settingsAboutEarlyAccessOption(
                     earlyAccessVisible = true,
                     developer = dev.copy(updateCheck = alphaUpdate),
                     updateCheck = alphaUpdate,
-                    actionState = null
+                    actionState = null,
+                    earlyAccessChannel = "beta"
                 )
             )
         assertFalse(alphaOption.enabled)
 
-        // Toggling Early access ON writes "beta"; toggling OFF writes "main".
-        assertEquals("beta", settingsAboutEarlyAccessChannelForToggle(enableBeta = true))
-        assertEquals("main", settingsAboutEarlyAccessChannelForToggle(enableBeta = false))
+        // Badge formatting handles single and hyphenated channel slugs cleanly.
+        assertEquals("Beta", formatHandsEarlyAccessChannelBadge("beta"))
+        assertEquals("Canary", formatHandsEarlyAccessChannelBadge("canary"))
+        assertEquals("Canary 1", formatHandsEarlyAccessChannelBadge("canary-1"))
+        assertEquals("Beta", formatHandsEarlyAccessChannelBadge(""))
+
+        // Toggling Early access ON writes the target channel (fallback beta); toggling OFF writes "main".
+        assertEquals("beta", settingsAboutEarlyAccessChannelForToggle(enableEarlyAccess = true, targetChannel = "beta"))
+        assertEquals("canary", settingsAboutEarlyAccessChannelForToggle(enableEarlyAccess = true, targetChannel = "canary"))
+        assertEquals("beta", settingsAboutEarlyAccessChannelForToggle(enableEarlyAccess = true, targetChannel = "main"))
+        assertEquals("beta", settingsAboutEarlyAccessChannelForToggle(enableEarlyAccess = true, targetChannel = "../bad"))
+        assertEquals("main", settingsAboutEarlyAccessChannelForToggle(enableEarlyAccess = false, targetChannel = "canary"))
     }
 
     @Test

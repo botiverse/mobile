@@ -3909,13 +3909,12 @@
     <string name="settings_about_action_copy_environment">Copiar informações do ambiente</string>
     <string name="settings_about_action_copy">Copiar</string>
     <string name="settings_about_early_access_title">Acesso antecipado</string>
-    <string name="settings_about_early_access_beta_off_detail">Receba atualizações de pré-lançamento do Raft diretamente pelo canal beta.</string>
-    <string name="settings_about_early_access_beta_active_detail">Recebendo atualizações de pré-lançamento do canal beta. Desative para voltar ao canal estável na próxima versão pública.</string>
+    <string name="settings_about_early_access_channel_off_detail">Receba atualizações de pré-lançamento do Raft diretamente pelo canal %1$s.</string>
+    <string name="settings_about_early_access_channel_active_detail">Recebendo atualizações de pré-lançamento do canal %1$s. Desative para voltar ao canal estável na próxima versão pública.</string>
     <string name="settings_about_early_access_play_beta_detail">Participe do programa beta do Google Play para receber atualizações de pré-lançamento do Raft.</string>
     <string name="settings_about_early_access_ios_testflight_join_detail">Entre no Raft pelo TestFlight para receber compilações de pré-lançamento do iOS.</string>
     <string name="settings_about_early_access_ios_testflight_active_detail">Você está usando o Raft no TestFlight e recebendo compilações de pré-lançamento do iOS.</string>
     <string name="settings_about_early_access_action_join">Participar</string>
-    <string name="settings_about_early_access_badge_beta">Beta</string>
     <string name="settings_about_early_access_badge_testflight">TestFlight</string>
     <string name="settings_about_source_code">Código-fonte</string>
     <string name="settings_developer_title">Desenvolvedor</string>
