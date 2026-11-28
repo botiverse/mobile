@@ -47,13 +47,17 @@ import build.raft.app.data.AgentWorkerTimelineSnapshot
 import build.raft.app.data.AgentWorkerTimelineState
 import build.raft.app.data.AgentWorkerTimelineStore
 import build.raft.app.data.AgentWorkerTurnOutcome
+import build.raft.app.data.AgentWorkersIntent
 import build.raft.app.data.AgentWorkersLoadStatus
 import build.raft.app.data.AgentWorkersState
 import build.raft.app.data.DataResult
 import build.raft.app.data.ScreenError
+import build.raft.app.data.WorkerConversationHolding
+import build.raft.app.data.WorkerConversationHoldingMode
 import build.raft.app.members.MembersAgentActivityLoadState
 import build.raft.app.members.MembersAgentActivityTab
 import build.raft.app.members.MembersAgentSubagentsListTag
+import build.raft.app.members.MembersAgentWorkerStopConfirmTag
 import build.raft.app.members.MembersAgentWorkerStopDialogTag
 import build.raft.app.members.MembersAgentWorkerTimelineBackTag
 import build.raft.app.members.MembersAgentWorkerTimelineDetail
@@ -714,5 +718,212 @@ class MembersAgentWorkerTimelineUiTest {
             onAllNodesWithTag(MembersAgentWorkersRecentGroupTag).assertCountEquals(0)
             onAllNodesWithTag(MembersAgentWorkerTimelineTag).assertCountEquals(0)
             onAllNodesWithText("Recently ended").assertCountEquals(0)
+        }
+
+    @Test
+    fun timelineRendersDelegatedPostOnlyAndUndelegatedEvents() =
+        runRobolectricComposeUiTest {
+            val open = AgentWorkerOpenTimeline(launchId = "worker-w1-abc", worker = "w1", objectRef = "#eng:#7")
+            val events =
+                listOf(
+                    AgentWorkerTimelineEvent(
+                        seq = 1,
+                        kind = AgentWorkerEventKind.HandedOut,
+                        occurredAt = "2026-11-27T10:00:00.000Z",
+                        data = AgentWorkerTimelineEventData.HandedOut(
+                            objectRef = "#eng:#7",
+                            objectKind = AgentWorkerObjectKind.Task,
+                        ),
+                    ),
+                    AgentWorkerTimelineEvent(
+                        seq = 2,
+                        kind = AgentWorkerEventKind.Delegated,
+                        occurredAt = "2026-11-27T10:01:00.000Z",
+                        data = AgentWorkerTimelineEventData.Delegated(
+                            mode = WorkerConversationHoldingMode.Full,
+                            objectRef = "#eng:5be3e1aa",
+                            objectKind = AgentWorkerObjectKind.Thread,
+                        ),
+                    ),
+                    AgentWorkerTimelineEvent(
+                        seq = 3,
+                        kind = AgentWorkerEventKind.Delegated,
+                        occurredAt = "2026-11-27T10:02:00.000Z",
+                        data = AgentWorkerTimelineEventData.Delegated(
+                            mode = WorkerConversationHoldingMode.Post,
+                            objectRef = "#announcements",
+                        ),
+                    ),
+                    AgentWorkerTimelineEvent(
+                        seq = 4,
+                        kind = AgentWorkerEventKind.Undelegated,
+                        occurredAt = "2026-11-27T10:03:00.000Z",
+                        data = AgentWorkerTimelineEventData.Undelegated(
+                            objectRef = "#eng:5be3e1aa",
+                            mode = WorkerConversationHoldingMode.Full,
+                            objectKind = AgentWorkerObjectKind.Thread,
+                        ),
+                    ),
+                )
+            setContent {
+                TimelineTestShell {
+                    MembersAgentWorkerTimelineDetail(
+                        agentId = agentId,
+                        open = open,
+                        parentHandle = "tenny",
+                        live = null,
+                        ended = null,
+                        timelineState =
+                            AgentWorkerTimelineState(
+                                agentId = agentId,
+                                open = open,
+                                status = AgentWorkerTimelineLoadStatus.Loaded,
+                                events = events,
+                            ),
+                        nowMillis = nowMillis,
+                        stale = false,
+                        canStop = false,
+                        computerOffline = false,
+                        stoppingWorker = null,
+                        timeContext = timeContext,
+                        horizontalInset = 16.dp,
+                        onBack = {},
+                        onRefresh = {},
+                        onWorkersIntent = {},
+                        onOpenMessage = {},
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithTag(membersAgentWorkerTimelineEventTag(2)).assertIsDisplayed()
+            onNodeWithText("Handed over by @tenny").assertIsDisplayed()
+            onNodeWithTag(membersAgentWorkerTimelineEventTag(3)).assertIsDisplayed()
+            onNodeWithText("Allowed to post here by @tenny").assertIsDisplayed()
+            onNodeWithText("#announcements").assertIsDisplayed()
+            onNodeWithTag(membersAgentWorkerTimelineEventTag(4)).assertIsDisplayed()
+            onNodeWithText("Handed back to @tenny").assertIsDisplayed()
+            onAllNodesWithText("#eng:5be3e1aa").assertCountEquals(2)
+        }
+
+    @Test
+    fun timelineWithNoConversationTitlesByNameAloneAndOmitsConversationRow() =
+        runRobolectricComposeUiTest {
+            val open = AgentWorkerOpenTimeline(launchId = "worker-w3-abc", worker = "w3", objectRef = null)
+            val events =
+                listOf(
+                    AgentWorkerTimelineEvent(
+                        seq = 1,
+                        kind = AgentWorkerEventKind.HandedOut,
+                        occurredAt = "2026-11-27T10:00:00.000Z",
+                        data = AgentWorkerTimelineEventData.HandedOut(
+                            objectRef = null,
+                            objectKind = null,
+                            conversations = emptyList(),
+                        ),
+                    ),
+                )
+            setContent {
+                TimelineTestShell {
+                    MembersAgentWorkerTimelineDetail(
+                        agentId = agentId,
+                        open = open,
+                        parentHandle = "tenny",
+                        live = null,
+                        ended = null,
+                        timelineState =
+                            AgentWorkerTimelineState(
+                                agentId = agentId,
+                                open = open,
+                                status = AgentWorkerTimelineLoadStatus.Loaded,
+                                events = events,
+                            ),
+                        nowMillis = nowMillis,
+                        stale = false,
+                        canStop = false,
+                        computerOffline = false,
+                        stoppingWorker = null,
+                        timeContext = timeContext,
+                        horizontalInset = 16.dp,
+                        onBack = {},
+                        onRefresh = {},
+                        onWorkersIntent = {},
+                        onOpenMessage = {},
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithText("w3").assertIsDisplayed()
+            onAllNodesWithText("Handled conversation").assertCountEquals(0)
+            onAllNodesWithText("w3 ·", substring = true).assertCountEquals(0)
+            onNodeWithText("Handed out by @tenny").assertIsDisplayed()
+        }
+
+    @Test
+    fun liveTimelineWithMultipleHoldingsShowsConjunctionAndMultiStopDialog() =
+        runRobolectricComposeUiTest {
+            val open = AgentWorkerOpenTimeline(launchId = "worker-w1-abc", worker = "w1", objectRef = "#eng:#7")
+            val live =
+                AgentWorkerRow(
+                    agentId = agentId,
+                    worker = "w1",
+                    objectRef = "#eng:#7",
+                    objectKind = AgentWorkerObjectKind.Task,
+                    since = "2026-11-25T10:00:00.000Z",
+                    state = AgentWorkerState.Running,
+                    launchId = "worker-w1-abc",
+                    conversations =
+                        listOf(
+                            WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:#7", AgentWorkerObjectKind.Task),
+                            WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:5be3e1aa", AgentWorkerObjectKind.Thread),
+                        ),
+                )
+            val intents = mutableListOf<AgentWorkersIntent>()
+            setContent {
+                TimelineTestShell {
+                    MembersAgentWorkerTimelineDetail(
+                        agentId = agentId,
+                        open = open,
+                        parentHandle = "tenny",
+                        live = live,
+                        ended = null,
+                        timelineState =
+                            AgentWorkerTimelineState(
+                                agentId = agentId,
+                                open = open,
+                                status = AgentWorkerTimelineLoadStatus.Loaded,
+                                events = emptyList(),
+                            ),
+                        nowMillis = nowMillis,
+                        stale = false,
+                        canStop = true,
+                        computerOffline = false,
+                        stoppingWorker = null,
+                        timeContext = timeContext,
+                        horizontalInset = 16.dp,
+                        onBack = {},
+                        onRefresh = {},
+                        onWorkersIntent = { intents += it },
+                        onOpenMessage = {},
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithText("w1 · #eng:#7 and #eng:5be3e1aa").assertIsDisplayed()
+            onNodeWithText("#eng:#7 and #eng:5be3e1aa").assertIsDisplayed()
+
+            onNodeWithTag(membersAgentWorkerStopTag("w1")).performClick()
+            waitForIdle()
+            onNodeWithText("#eng:#7 and #eng:5be3e1aa go back to @tenny.").assertIsDisplayed()
+            onNodeWithTag(MembersAgentWorkerStopConfirmTag).performClick()
+            waitForIdle()
+            assertEquals(
+                listOf<AgentWorkersIntent>(
+                    AgentWorkersIntent.Stop(agentId, "w1", listOf("#eng:#7", "#eng:5be3e1aa")),
+                ),
+                intents,
+            )
         }
 }

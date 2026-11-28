@@ -6040,6 +6040,8 @@
     <string name="member_activity_workers_starting">启动中</string>
     <string name="member_activity_workers_progress">%1$s的进展：%2$s</string>
     <string name="member_activity_workers_progress_just_now">刚刚的进展：%1$s</string>
+    <string name="member_activity_workers_posts_in">还可在 %1$s 发言</string>
+    <string name="member_activity_workers_no_conversation">未持有对话</string>
     <string name="member_activity_workers_unknown">现在看不到这个 Agent 的 Worker。</string>
     <string name="member_activity_workers_last_seen">最后更新于%1$s</string>
     <string name="member_activity_workers_empty_title">现在没有 Worker</string>
@@ -6047,7 +6049,11 @@
     <string name="member_activity_workers_stop_aria">停止 %1$s</string>
     <string name="member_activity_workers_stop_title">停止 %1$s？</string>
     <string name="member_activity_workers_stop_body">%1$s 会回到 @%2$s。</string>
+    <string name="member_activity_workers_stop_body_many">%1$s 会回到 @%2$s。</string>
+    <string name="member_activity_workers_stop_body_none">它没有持有任何对话，所以没有对话回到 @%1$s。</string>
     <string name="member_activity_workers_stop_stopped">已停止 %1$s。%2$s 已回到 @%3$s。</string>
+    <string name="member_activity_workers_stop_stopped_many">已停止 %1$s。%2$s 已回到 @%3$s。</string>
+    <string name="member_activity_workers_stop_stopped_none">已停止 %1$s。</string>
     <string name="member_activity_workers_stop_not_running">%1$s 已经结束了。</string>
     <string name="member_activity_workers_stop_stale">没有停止任何东西：这个 Agent 的 Computer 已有一段时间没有报告它的 Worker。请确认 Computer 在线，然后再试一次。</string>
     <string name="member_activity_workers_stop_stale_reason">这个 Agent 的 Computer 已有一段时间没有报告它的 Worker。请确认 Computer 在线，然后再试一次。</string>
@@ -6095,6 +6101,9 @@
     <string name="member_activity_workers_timeline_footer">保留 7 天。不记录消息内容和工具的输入、输出；会记录 Worker 的进度和结束说明。</string>
     <string name="member_activity_workers_timeline_view_message">查看消息</string>
     <string name="member_activity_workers_event_handed_out">由 @%1$s 交出</string>
+    <string name="member_activity_workers_event_delegated">由 @%1$s 移交</string>
+    <string name="member_activity_workers_event_delegated_post_only">@%1$s 允许其在此发言</string>
+    <string name="member_activity_workers_event_undelegated">已交还给 @%1$s</string>
     <string name="member_activity_workers_event_delivered_human">收到一条人发的消息</string>
     <string name="member_activity_workers_event_delivered_agent">收到一条 agent 发的消息</string>
     <string name="member_activity_workers_event_delivered_system">收到一条系统通知</string>

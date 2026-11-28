@@ -5855,6 +5855,8 @@
     <string name="member_activity_workers_starting">запускается</string>
     <string name="member_activity_workers_progress">прогресс %1$s: %2$s</string>
     <string name="member_activity_workers_progress_just_now">прогресс только что: %1$s</string>
+    <string name="member_activity_workers_posts_in">также может писать в %1$s</string>
+    <string name="member_activity_workers_no_conversation">не ведёт ни одного диалога</string>
     <string name="member_activity_workers_unknown">Сейчас не видно Workers этого агента.</string>
     <string name="member_activity_workers_last_seen">Последнее обновление %1$s</string>
     <string name="member_activity_workers_empty_title">Сейчас нет Workers</string>
@@ -5862,7 +5864,11 @@
     <string name="member_activity_workers_stop_aria">Остановить %1$s</string>
     <string name="member_activity_workers_stop_title">Остановить %1$s?</string>
     <string name="member_activity_workers_stop_body">%1$s вернётся к @%2$s.</string>
+    <string name="member_activity_workers_stop_body_many">%1$s вернутся к @%2$s.</string>
+    <string name="member_activity_workers_stop_body_none">Он не ведёт ни одного диалога, поэтому к @%1$s ничего не вернётся.</string>
     <string name="member_activity_workers_stop_stopped">%1$s остановлен. %2$s снова у @%3$s.</string>
+    <string name="member_activity_workers_stop_stopped_many">%1$s остановлен. %2$s снова у @%3$s.</string>
+    <string name="member_activity_workers_stop_stopped_none">%1$s остановлен.</string>
     <string name="member_activity_workers_stop_not_running">%1$s уже завершился.</string>
     <string name="member_activity_workers_stop_stale">Ничего не остановлено: компьютер этого агента давно не сообщал о своих Workers. Проверьте, что компьютер в сети, и попробуйте снова.</string>
     <string name="member_activity_workers_stop_stale_reason">Компьютер этого агента давно не сообщал о своих Workers. Проверьте, что компьютер в сети, и попробуйте снова.</string>
@@ -5910,6 +5916,9 @@
     <string name="member_activity_workers_timeline_footer">Хранится 7 дней. Текст сообщений и ввод/вывод инструментов никогда не записываются; сохраняются только строки прогресса и итоговая заметка Worker.</string>
     <string name="member_activity_workers_timeline_view_message">Открыть сообщение</string>
     <string name="member_activity_workers_event_handed_out">Передан от @%1$s</string>
+    <string name="member_activity_workers_event_delegated">Передано от @%1$s</string>
+    <string name="member_activity_workers_event_delegated_post_only">@%1$s разрешил публиковать здесь</string>
+    <string name="member_activity_workers_event_undelegated">Возвращено @%1$s</string>
     <string name="member_activity_workers_event_delivered_human">Получено сообщение от человека</string>
     <string name="member_activity_workers_event_delivered_agent">Получено сообщение от агента</string>
     <string name="member_activity_workers_event_delivered_system">Получено системное уведомление</string>

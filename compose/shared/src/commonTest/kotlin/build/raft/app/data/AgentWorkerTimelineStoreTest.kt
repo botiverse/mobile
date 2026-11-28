@@ -144,6 +144,33 @@ class AgentWorkerTimelineStoreTest {
     }
 
     @Test
+    fun parseSharedAgentRecentWorkersKeepsZeroHoldingRowsWithoutObject() {
+        val body =
+            """
+            {
+              "workers": [
+                {
+                  "launchId": "worker-w3-empty",
+                  "worker": "w3",
+                  "startedAt": "2026-11-27T08:00:00.000Z",
+                  "endedAt": "2026-11-27T08:15:00.000Z",
+                  "reason": "done",
+                  "handedBack": 0
+                }
+              ]
+            }
+            """.trimIndent()
+        val parsed = requireNotNull(parseSharedAgentRecentWorkers(body))
+        assertEquals(1, parsed.size)
+        val row = parsed.single()
+        assertEquals("worker-w3-empty", row.launchId)
+        assertEquals("w3", row.worker)
+        assertNull(row.objectRef)
+        assertNull(row.objectKind)
+        assertEquals(listOf("worker-w3-empty"), recentEndedAgentWorkers(parsed).map { it.launchId })
+    }
+
+    @Test
     fun parseSharedAgentWorkerTimelineParsesAllEventKindsStripsNonProgressReportTextAndSkipsUnknownKinds() {
         val body =
             """
@@ -185,6 +212,70 @@ class AgentWorkerTimelineStoreTest {
 
         assertNull(parseSharedAgentWorkerTimeline("""{"launchId":"worker-w1-old"}"""))
         assertNull(parseSharedAgentWorkerTimeline("bad"))
+    }
+
+    @Test
+    fun parseAndProjectTimelineHandlesEmptyHandedOutDelegatedAndUndelegated() {
+        val body =
+            """
+            {
+              "launchId": "worker-w3-abc",
+              "events": [
+                {"seq": 1, "kind": "handed_out", "data": {"conversations": []}, "occurredAt": "2026-11-27T10:00:00.000Z"},
+                {"seq": 2, "kind": "delegated", "data": {"mode": "full", "object": "#eng:5be3e1aa", "objectKind": "thread"}, "occurredAt": "2026-11-27T10:01:00.000Z"},
+                {"seq": 3, "kind": "delegated", "data": {"mode": "post", "object": "#announcements"}, "occurredAt": "2026-11-27T10:02:00.000Z"},
+                {"seq": 4, "kind": "undelegated", "data": {"mode": "full", "object": "#eng:5be3e1aa", "objectKind": "thread"}, "occurredAt": "2026-11-27T10:03:00.000Z"},
+                {"seq": 5, "kind": "undelegated", "data": {"object": "#announcements"}, "occurredAt": "2026-11-27T10:04:00.000Z"},
+                {"seq": 6, "kind": "delegated", "data": {"object": "#missing-mode"}, "occurredAt": "2026-11-27T10:05:00.000Z"},
+                {"seq": 7, "kind": "undelegated", "data": {}, "occurredAt": "2026-11-27T10:06:00.000Z"}
+              ]
+            }
+            """.trimIndent()
+        val snapshot = requireNotNull(parseSharedAgentWorkerTimeline(body))
+        assertEquals("worker-w3-abc", snapshot.launchId)
+        assertEquals(5, snapshot.events.size)
+
+        val handedOut = assertIs<AgentWorkerTimelineEventData.HandedOut>(snapshot.events[0].data)
+        assertNull(handedOut.objectRef)
+        assertNull(handedOut.objectKind)
+        assertEquals(emptyList(), handedOut.conversations)
+        assertEquals(emptyList(), handedOut.fullObjectRefs())
+
+        val delegatedFull = assertIs<AgentWorkerTimelineEventData.Delegated>(snapshot.events[1].data)
+        assertEquals(WorkerConversationHoldingMode.Full, delegatedFull.mode)
+        assertEquals("#eng:5be3e1aa", delegatedFull.objectRef)
+        assertEquals(AgentWorkerObjectKind.Thread, delegatedFull.objectKind)
+
+        val delegatedPost = assertIs<AgentWorkerTimelineEventData.Delegated>(snapshot.events[2].data)
+        assertEquals(WorkerConversationHoldingMode.Post, delegatedPost.mode)
+        assertEquals("#announcements", delegatedPost.objectRef)
+        assertNull(delegatedPost.objectKind)
+
+        val undelegatedFull = assertIs<AgentWorkerTimelineEventData.Undelegated>(snapshot.events[3].data)
+        assertEquals("#eng:5be3e1aa", undelegatedFull.objectRef)
+        assertEquals(WorkerConversationHoldingMode.Full, undelegatedFull.mode)
+        assertEquals(AgentWorkerObjectKind.Thread, undelegatedFull.objectKind)
+
+        val undelegatedMinimal = assertIs<AgentWorkerTimelineEventData.Undelegated>(snapshot.events[4].data)
+        assertEquals("#announcements", undelegatedMinimal.objectRef)
+        assertNull(undelegatedMinimal.mode)
+        assertNull(undelegatedMinimal.objectKind)
+
+        val projected = projectAgentWorkerTimelineEvents(snapshot.events)
+        assertEquals(
+            listOf(
+                AgentWorkerEventKind.HandedOut,
+                AgentWorkerEventKind.Delegated,
+                AgentWorkerEventKind.Delegated,
+                AgentWorkerEventKind.Undelegated,
+                AgentWorkerEventKind.Undelegated,
+            ),
+            projected.map { it.kind },
+        )
+        projected.forEach { item ->
+            assertEquals(AgentWorkerTimelineVariant.Default, item.variant)
+            assertFalse(item.warning)
+        }
     }
 
     @Test
@@ -562,5 +653,26 @@ class AgentWorkerTimelineStoreTest {
             agentWorkerTimelineRefreshKey(live = null, ended = recentRow()),
         )
         assertTrue(agentWorkerTimelineRefreshKey(live = liveRow(), ended = null).startsWith("running|2026-11-25T10:10:00.000Z"))
+        val keyOneHolding =
+            agentWorkerTimelineRefreshKey(
+                live =
+                    liveRow().copy(
+                        conversations = listOf(WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:#7", AgentWorkerObjectKind.Task)),
+                    ),
+                ended = null,
+            )
+        val keyTwoHoldings =
+            agentWorkerTimelineRefreshKey(
+                live =
+                    liveRow().copy(
+                        conversations =
+                            listOf(
+                                WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:#7", AgentWorkerObjectKind.Task),
+                                WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:5be3e1aa", AgentWorkerObjectKind.Thread),
+                            ),
+                    ),
+                ended = null,
+            )
+        assertTrue(keyOneHolding != keyTwoHoldings)
     }
 }

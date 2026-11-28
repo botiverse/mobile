@@ -58,6 +58,8 @@ import build.raft.app.data.AgentWorkersLoadStatus
 import build.raft.app.data.AgentWorkersState
 import build.raft.app.data.ScreenError
 import build.raft.app.data.defaultNowMillis
+import build.raft.app.data.fullObjectRefs
+import build.raft.app.data.postObjectRefs
 import build.raft.app.data.recentEndedAgentWorkers
 import build.raft.app.get
 import build.raft.app.model.MemberId
@@ -258,6 +260,28 @@ internal fun AgentWorkerStopFeedback.serverError(): ScreenError? =
         is AgentWorkerStopFeedback.NotRunning -> null
     }
 
+/** Localized conjunction of conversation refs, matching web `intl.formatList(objects, { type: "conjunction" })`. */
+@Composable
+internal fun membersWorkerJoinObjectsLocalized(objects: List<String>): String =
+    memberRemovalImpactJoinLocalized(objects)
+
+/** Localized Stop confirmation dialog consequence for 0 / 1 / many full holdings (web `stopBody`). */
+@Composable
+internal fun membersAgentWorkerStopBodyMessage(
+    objectRefs: List<String>,
+    parentHandle: String,
+): String =
+    when (objectRefs.size) {
+        0 -> stringResource(Res.string.member_activity_workers_stop_body_none, parentHandle)
+        1 -> stringResource(Res.string.member_activity_workers_stop_body, objectRefs[0], parentHandle)
+        else ->
+            stringResource(
+                Res.string.member_activity_workers_stop_body_many,
+                membersWorkerJoinObjectsLocalized(objectRefs),
+                parentHandle,
+            )
+    }
+
 /** Localized toast copy for [feedback], matching web `stopWorkerWithFeedback`. */
 @Composable
 internal fun membersAgentWorkerStopFeedbackMessage(
@@ -266,7 +290,23 @@ internal fun membersAgentWorkerStopFeedbackMessage(
 ): String =
     when (feedback) {
         is AgentWorkerStopFeedback.Stopped ->
-            stringResource(Res.string.member_activity_workers_stop_stopped, feedback.worker, feedback.objectRef, parentHandle)
+            when (feedback.objectRefs.size) {
+                0 -> stringResource(Res.string.member_activity_workers_stop_stopped_none, feedback.worker)
+                1 ->
+                    stringResource(
+                        Res.string.member_activity_workers_stop_stopped,
+                        feedback.worker,
+                        feedback.objectRefs[0],
+                        parentHandle,
+                    )
+                else ->
+                    stringResource(
+                        Res.string.member_activity_workers_stop_stopped_many,
+                        feedback.worker,
+                        membersWorkerJoinObjectsLocalized(feedback.objectRefs),
+                        parentHandle,
+                    )
+            }
         is AgentWorkerStopFeedback.NotRunning ->
             stringResource(Res.string.member_activity_workers_stop_not_running, feedback.worker)
         is AgentWorkerStopFeedback.ComputerOffline ->
@@ -483,9 +523,10 @@ internal fun MembersAgentWorkersList(
     val dialogRow = confirmingRow
     if (dialogRow != null) {
         val busy = state.stoppingWorker == dialogRow.worker
+        val fullObjectRefs = dialogRow.fullObjectRefs()
         MembersAgentWorkerStopDialog(
             worker = dialogRow.worker,
-            objectRef = dialogRow.objectRef,
+            objectRefs = fullObjectRefs,
             parentHandle = workers.parentHandle,
             busy = busy,
             onConfirm = {
@@ -494,7 +535,7 @@ internal fun MembersAgentWorkersList(
                     AgentWorkersIntent.Stop(
                         agentId = agentId,
                         worker = dialogRow.worker,
-                        objectRef = dialogRow.objectRef,
+                        objectRefs = fullObjectRefs,
                     )
                 )
                 // If the intent sink didn't transition into a synchronous in-flight state (e.g. test fake),
@@ -665,8 +706,25 @@ private fun MembersAgentWorkerRow(
         } else {
             null
         }
-    // Web AgentWorkerRows: object · model · how long · progress (never rule).
-    val facts = listOfNotNull(row.objectRef, row.model, durationPart, progressPart).joinToString(" · ")
+    // Web AgentWorkerRows (#22): every full holding (or "holds no conversation") · optional "can also post in …" · model · how long · progress (never rule).
+    val fullObjects = row.fullObjectRefs()
+    val postObjects = row.postObjectRefs()
+    val conversationPart =
+        if (fullObjects.isNotEmpty()) {
+            membersWorkerJoinObjectsLocalized(fullObjects)
+        } else {
+            stringResource(Res.string.member_activity_workers_no_conversation)
+        }
+    val postsInPart =
+        if (postObjects.isNotEmpty()) {
+            stringResource(
+                Res.string.member_activity_workers_posts_in,
+                membersWorkerJoinObjectsLocalized(postObjects),
+            )
+        } else {
+            null
+        }
+    val facts = listOfNotNull(conversationPart, postsInPart, row.model, durationPart, progressPart).joinToString(" · ")
     val blockedReason =
         when {
             computerOffline -> stringResource(Res.string.agent_stop_turn_computer_offline)
@@ -749,12 +807,12 @@ private fun MembersAgentWorkerRow(
 
 /**
  * Web `WorkerStopControl` size-sm confirmation Dialog:
- * title "Stop w1?", body "#eng:#7 goes back to @tenny.", ghost Cancel + warning Stop.
+ * title "Stop w1?", body for 0 / 1 / many full holdings, ghost Cancel + warning Stop.
  */
 @Composable
 internal fun MembersAgentWorkerStopDialog(
     worker: String,
-    objectRef: String,
+    objectRefs: List<String>,
     parentHandle: String,
     busy: Boolean,
     onConfirm: () -> Unit,
@@ -774,7 +832,7 @@ internal fun MembersAgentWorkerStopDialog(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             RaftText(
-                text = stringResource(Res.string.member_activity_workers_stop_body, objectRef, parentHandle),
+                text = membersAgentWorkerStopBodyMessage(objectRefs = objectRefs, parentHandle = parentHandle),
                 style = RaftTheme.typography.subhead,
                 color = RaftTheme.colors.foregroundMuted,
             )

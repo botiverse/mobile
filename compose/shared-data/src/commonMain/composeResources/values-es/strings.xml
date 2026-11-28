@@ -5855,6 +5855,8 @@
     <string name="member_activity_workers_starting">iniciando</string>
     <string name="member_activity_workers_progress">progreso %1$s: %2$s</string>
     <string name="member_activity_workers_progress_just_now">progreso ahora mismo: %1$s</string>
+    <string name="member_activity_workers_posts_in">también puede publicar en %1$s</string>
+    <string name="member_activity_workers_no_conversation">no tiene conversaciones</string>
     <string name="member_activity_workers_unknown">No se pueden ver los Workers de este agente ahora.</string>
     <string name="member_activity_workers_last_seen">Visto por última vez %1$s</string>
     <string name="member_activity_workers_empty_title">No hay Workers ahora</string>
@@ -5862,7 +5864,11 @@
     <string name="member_activity_workers_stop_aria">Detener %1$s</string>
     <string name="member_activity_workers_stop_title">¿Detener %1$s?</string>
     <string name="member_activity_workers_stop_body">%1$s vuelve a @%2$s.</string>
+    <string name="member_activity_workers_stop_body_many">%1$s vuelven a @%2$s.</string>
+    <string name="member_activity_workers_stop_body_none">No tiene ninguna conversación, así que nada vuelve a @%1$s.</string>
     <string name="member_activity_workers_stop_stopped">%1$s detenido. %2$s vuelve a estar con @%3$s.</string>
+    <string name="member_activity_workers_stop_stopped_many">%1$s detenido. %2$s vuelven a estar con @%3$s.</string>
+    <string name="member_activity_workers_stop_stopped_none">%1$s detenido.</string>
     <string name="member_activity_workers_stop_not_running">%1$s ya había terminado.</string>
     <string name="member_activity_workers_stop_stale">No se detuvo nada: la computadora de este agente lleva un rato sin informar de sus Workers. Comprueba que la computadora esté en línea y vuelve a intentarlo.</string>
     <string name="member_activity_workers_stop_stale_reason">La computadora de este agente lleva un rato sin informar de sus Workers. Comprueba que la computadora esté en línea y vuelve a intentarlo.</string>
@@ -5910,6 +5916,9 @@
     <string name="member_activity_workers_timeline_footer">Se conserva durante 7 días. Nunca se registran el texto de los mensajes ni las entradas y salidas de las herramientas; sí se registran las líneas de progreso y la nota final del Worker.</string>
     <string name="member_activity_workers_timeline_view_message">Ver mensaje</string>
     <string name="member_activity_workers_event_handed_out">Entregado por @%1$s</string>
+    <string name="member_activity_workers_event_delegated">Transferido por @%1$s</string>
+    <string name="member_activity_workers_event_delegated_post_only">Autorizado a publicar aquí por @%1$s</string>
+    <string name="member_activity_workers_event_undelegated">Devuelto a @%1$s</string>
     <string name="member_activity_workers_event_delivered_human">Recibió un mensaje de una persona</string>
     <string name="member_activity_workers_event_delivered_agent">Recibió un mensaje de un agente</string>
     <string name="member_activity_workers_event_delivered_system">Recibió un aviso del sistema</string>

@@ -62,9 +62,11 @@ import build.raft.app.data.AgentWorkerTurnOutcome
 import build.raft.app.data.AgentWorkersIntent
 import build.raft.app.data.MobileUiErrorCode
 import build.raft.app.data.MobileUiErrorSurface
+import build.raft.app.data.WorkerConversationHoldingMode
 import build.raft.app.data.agentWorkerTimelineChipState
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.formatAgentUsageTokens
+import build.raft.app.data.fullObjectRefs
 import build.raft.app.data.projectAgentWorkerTimelineEvents
 import build.raft.app.localizedErrorPresentationStrings
 import build.raft.app.model.MemberId
@@ -194,7 +196,23 @@ internal fun MembersAgentWorkerTimelineDetail(
     val heldMs = startedAtMillis?.let { start -> maxOf(0L, (endedAtMillis ?: effectiveNowMillis) - start) }
     val stoppedBy = ended?.stoppedBy ?: endData?.stoppedBy
     val waitingOn = ended?.waitingOn ?: endData?.waitingOn
-    val title = "${open.worker} · ${open.objectRef}"
+    val conversationObjects =
+        remember(live, handedOutData, open.objectRef) {
+            if (live != null) {
+                live.fullObjectRefs()
+            } else {
+                handedOutData?.fullObjectRefs()?.takeIf { it.isNotEmpty() }
+                    ?: listOfNotNull(open.objectRef?.trim()?.takeIf { it.isNotEmpty() })
+            }
+        }
+    val conversationSummary =
+        if (conversationObjects.isNotEmpty()) {
+            membersWorkerJoinObjectsLocalized(conversationObjects)
+        } else {
+            null
+        }
+    // #22: a Worker that holds no conversation is named alone.
+    val title = if (conversationSummary != null) "${open.worker} · $conversationSummary" else open.worker
 
     var confirmingStop by remember(agentId, open.launchId) { mutableStateOf(false) }
     var stopDispatched by remember(agentId, open.launchId) { mutableStateOf(false) }
@@ -314,66 +332,76 @@ internal fun MembersAgentWorkerTimelineDetail(
                 AgentWorkerTimelineLoadStatus.Idle,
                 AgentWorkerTimelineLoadStatus.Loading,
                 AgentWorkerTimelineLoadStatus.Loaded -> {
+                    val hasFacts =
+                        conversationSummary != null ||
+                            !model.isNullOrBlank() ||
+                            !startedAt.isNullOrBlank() ||
+                            heldMs != null ||
+                            reason != null
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
                             .testTag(MembersAgentWorkerTimelineEventsTag)
                             .nestedScroll(scrollUp = NestedScrollMode.SELF_FIRST, scrollDown = NestedScrollMode.SELF_FIRST),
                     ) {
-                        item(key = "worker-timeline-facts") {
-                            Column {
-                                RaftDescriptionList(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = horizontalInset, vertical = 12.dp),
-                                    direction = RaftDescriptionListDirection.Horizontal,
-                                ) {
-                                    Item(
-                                        term = stringResource(Res.string.member_activity_workers_detail_conversation),
-                                        value = open.objectRef,
-                                        mono = true,
-                                    )
-                                    if (!model.isNullOrBlank()) {
-                                        Item(
-                                            term = stringResource(Res.string.member_activity_workers_detail_model),
-                                            value = model,
-                                            mono = true,
-                                        )
+                        if (hasFacts) {
+                            item(key = "worker-timeline-facts") {
+                                Column {
+                                    RaftDescriptionList(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = horizontalInset, vertical = 12.dp),
+                                        direction = RaftDescriptionListDirection.Horizontal,
+                                    ) {
+                                        if (conversationSummary != null) {
+                                            Item(
+                                                term = stringResource(Res.string.member_activity_workers_detail_conversation),
+                                                value = conversationSummary,
+                                                mono = true,
+                                            )
+                                        }
+                                        if (!model.isNullOrBlank()) {
+                                            Item(
+                                                term = stringResource(Res.string.member_activity_workers_detail_model),
+                                                value = model,
+                                                mono = true,
+                                            )
+                                        }
+                                        if (!startedAt.isNullOrBlank()) {
+                                            Item(
+                                                term = stringResource(Res.string.member_activity_workers_detail_started),
+                                                value = formatRaftTimestampClockWithSeconds(startedAt, timeContext).uppercase(),
+                                                mono = true,
+                                            )
+                                        }
+                                        if (heldMs != null) {
+                                            val timeParts =
+                                                listOfNotNull(
+                                                    membersWorkerSpanText(heldMs),
+                                                    turnsCount.takeIf { it > 0 }?.let { count ->
+                                                        if (count == 1) stringResource(Res.string.member_activity_workers_detail_turns_one)
+                                                        else stringResource(Res.string.member_activity_workers_detail_turns_other, count)
+                                                    },
+                                                ).joinToString(" · ")
+                                            Item(
+                                                term = stringResource(Res.string.member_activity_workers_detail_time),
+                                                value = timeParts,
+                                            )
+                                        }
+                                        if (reason != null) {
+                                            Item(
+                                                term = stringResource(Res.string.member_activity_workers_detail_ended),
+                                                value = membersWorkerEndReasonText(
+                                                    reason = reason,
+                                                    parentHandle = parentHandle,
+                                                    stoppedBy = stoppedBy,
+                                                    waitingOn = waitingOn,
+                                                ),
+                                            )
+                                        }
                                     }
-                                    if (!startedAt.isNullOrBlank()) {
-                                        Item(
-                                            term = stringResource(Res.string.member_activity_workers_detail_started),
-                                            value = formatRaftTimestampClockWithSeconds(startedAt, timeContext).uppercase(),
-                                            mono = true,
-                                        )
-                                    }
-                                    if (heldMs != null) {
-                                        val timeParts =
-                                            listOfNotNull(
-                                                membersWorkerSpanText(heldMs),
-                                                turnsCount.takeIf { it > 0 }?.let { count ->
-                                                    if (count == 1) stringResource(Res.string.member_activity_workers_detail_turns_one)
-                                                    else stringResource(Res.string.member_activity_workers_detail_turns_other, count)
-                                                },
-                                            ).joinToString(" · ")
-                                        Item(
-                                            term = stringResource(Res.string.member_activity_workers_detail_time),
-                                            value = timeParts,
-                                        )
-                                    }
-                                    if (reason != null) {
-                                        Item(
-                                            term = stringResource(Res.string.member_activity_workers_detail_ended),
-                                            value = membersWorkerEndReasonText(
-                                                reason = reason,
-                                                parentHandle = parentHandle,
-                                                stoppedBy = stoppedBy,
-                                                waitingOn = waitingOn,
-                                            ),
-                                        )
-                                    }
+                                    MembersDetailSectionDivider()
                                 }
-                                MembersDetailSectionDivider()
                             }
                         }
 
@@ -429,9 +457,10 @@ internal fun MembersAgentWorkerTimelineDetail(
 
     if (confirmingStop && live != null) {
         val busy = stoppingWorker == live.worker
+        val fullObjectRefs = live.fullObjectRefs()
         MembersAgentWorkerStopDialog(
             worker = live.worker,
-            objectRef = live.objectRef,
+            objectRefs = fullObjectRefs,
             parentHandle = parentHandle,
             busy = busy,
             onConfirm = {
@@ -440,7 +469,7 @@ internal fun MembersAgentWorkerTimelineDetail(
                     AgentWorkersIntent.Stop(
                         agentId = agentId,
                         worker = live.worker,
-                        objectRef = live.objectRef,
+                        objectRefs = fullObjectRefs,
                     )
                 )
             },
@@ -557,6 +586,8 @@ private fun AgentWorkerTimelineEventData.viewableMessageIdOrNull(): String? =
         is AgentWorkerTimelineEventData.HandedToParent -> messageId
         is AgentWorkerTimelineEventData.HumanSettled -> messageId
         is AgentWorkerTimelineEventData.HandedOut,
+        is AgentWorkerTimelineEventData.Delegated,
+        is AgentWorkerTimelineEventData.Undelegated,
         is AgentWorkerTimelineEventData.TurnStarted,
         is AgentWorkerTimelineEventData.TurnEnded,
         is AgentWorkerTimelineEventData.Reported,
@@ -574,6 +605,15 @@ private fun membersWorkerTimelineEventTitle(
     when (val data = item.data) {
         is AgentWorkerTimelineEventData.HandedOut ->
             stringResource(Res.string.member_activity_workers_event_handed_out, parentHandle)
+        is AgentWorkerTimelineEventData.Delegated ->
+            when (data.mode) {
+                WorkerConversationHoldingMode.Full ->
+                    stringResource(Res.string.member_activity_workers_event_delegated, parentHandle)
+                WorkerConversationHoldingMode.Post ->
+                    stringResource(Res.string.member_activity_workers_event_delegated_post_only, parentHandle)
+            }
+        is AgentWorkerTimelineEventData.Undelegated ->
+            stringResource(Res.string.member_activity_workers_event_undelegated, parentHandle)
         is AgentWorkerTimelineEventData.Delivered ->
             when (data.sender) {
                 AgentWorkerDeliverySender.Human ->
@@ -685,6 +725,10 @@ private fun membersWorkerTimelineEventDetailParts(
     when (val data = item.data) {
         is AgentWorkerTimelineEventData.HandedOut ->
             listOfNotNull(data.objectRef, data.model)
+        is AgentWorkerTimelineEventData.Delegated ->
+            listOf(data.objectRef)
+        is AgentWorkerTimelineEventData.Undelegated ->
+            listOf(data.objectRef)
         is AgentWorkerTimelineEventData.Delivered ->
             listOf(
                 when (data.via) {

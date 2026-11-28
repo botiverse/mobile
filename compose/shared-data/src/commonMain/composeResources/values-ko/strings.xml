@@ -5855,6 +5855,8 @@
     <string name="member_activity_workers_starting">시작 중</string>
     <string name="member_activity_workers_progress">%1$s 진행: %2$s</string>
     <string name="member_activity_workers_progress_just_now">방금 진행: %1$s</string>
+    <string name="member_activity_workers_posts_in">%1$s에도 게시 가능</string>
+    <string name="member_activity_workers_no_conversation">담당 중인 대화 없음</string>
     <string name="member_activity_workers_unknown">지금은 이 에이전트의 Worker를 볼 수 없어요.</string>
     <string name="member_activity_workers_last_seen">마지막 확인 %1$s</string>
     <string name="member_activity_workers_empty_title">지금은 Worker가 없어요</string>
@@ -5862,7 +5864,11 @@
     <string name="member_activity_workers_stop_aria">%1$s 중지</string>
     <string name="member_activity_workers_stop_title">%1$s을(를) 중지할까요?</string>
     <string name="member_activity_workers_stop_body">%1$s은(는) @%2$s에게 돌아가요.</string>
+    <string name="member_activity_workers_stop_body_many">%1$s은(는) @%2$s에게 돌아가요.</string>
+    <string name="member_activity_workers_stop_body_none">담당 중인 대화가 없어 @%1$s에게 돌아갈 대화가 없어요.</string>
     <string name="member_activity_workers_stop_stopped">%1$s을(를) 중지했어요. %2$s은(는) @%3$s에게 돌아갔어요.</string>
+    <string name="member_activity_workers_stop_stopped_many">%1$s을(를) 중지했어요. %2$s은(는) @%3$s에게 돌아갔어요.</string>
+    <string name="member_activity_workers_stop_stopped_none">%1$s을(를) 중지했어요.</string>
     <string name="member_activity_workers_stop_not_running">%1$s은(는) 이미 끝났어요.</string>
     <string name="member_activity_workers_stop_stale">아무것도 중지하지 않았어요. 이 에이전트의 컴퓨터가 한동안 Worker를 보고하지 않았어요. 컴퓨터가 온라인인지 확인한 뒤 다시 시도하세요.</string>
     <string name="member_activity_workers_stop_stale_reason">이 에이전트의 컴퓨터가 한동안 Worker를 보고하지 않았어요. 컴퓨터가 온라인인지 확인한 뒤 다시 시도하세요.</string>
@@ -5910,6 +5916,9 @@
     <string name="member_activity_workers_timeline_footer">7일 동안 보관됩니다. 메시지 내용과 도구 입출력은 기록되지 않으며, Worker의 진행 내용과 종료 메모만 기록됩니다.</string>
     <string name="member_activity_workers_timeline_view_message">메시지 보기</string>
     <string name="member_activity_workers_event_handed_out">@%1$s이(가) 맡김</string>
+    <string name="member_activity_workers_event_delegated">@%1$s이(가) 넘겨줌</string>
+    <string name="member_activity_workers_event_delegated_post_only">@%1$s이(가) 여기 게시를 허용함</string>
+    <string name="member_activity_workers_event_undelegated">@%1$s에게 돌려보냄</string>
     <string name="member_activity_workers_event_delivered_human">사람이 보낸 메시지를 받음</string>
     <string name="member_activity_workers_event_delivered_agent">에이전트가 보낸 메시지를 받음</string>
     <string name="member_activity_workers_event_delivered_system">시스템 알림을 받음</string>

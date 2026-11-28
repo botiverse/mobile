@@ -125,6 +125,99 @@ class AgentWorkersStoreTest {
     }
 
     @Test
+    fun parseSharedAgentWorkersReadSupportsEmptyMultiFullPostOnlyAndLegacyRows() {
+        val body =
+            """
+            {
+              "status": "known",
+              "receivedAt": "2026-11-27T10:12:00.000Z",
+              "ageMs": 1000,
+              "stale": false,
+              "digest": "d0000099",
+              "workers": [
+                {
+                  "agentId": "agent-1",
+                  "worker": "w1",
+                  "object": "#eng:#7",
+                  "objectKind": "task",
+                  "conversations": [
+                    {"mode": "full", "object": "#eng:#7", "objectKind": "task"},
+                    {"mode": "full", "object": "#eng:5be3e1aa", "objectKind": "thread"},
+                    {"mode": "post", "object": "#announcements"},
+                    {"mode": "unknown", "object": "#ignored"}
+                  ],
+                  "since": "2026-11-27T10:00:00.000Z",
+                  "state": "running",
+                  "launchId": "worker-w1-abc"
+                },
+                {
+                  "agentId": "agent-1",
+                  "worker": "w2",
+                  "object": "#ops:#3",
+                  "objectKind": "task",
+                  "since": "2026-11-27T10:00:00.000Z",
+                  "state": "running"
+                },
+                {
+                  "agentId": "agent-1",
+                  "worker": "w3",
+                  "conversations": [{"mode": "post", "object": "#announcements"}],
+                  "since": "2026-11-27T10:00:00.000Z",
+                  "state": "running",
+                  "launchId": "worker-w3-abc"
+                },
+                {
+                  "agentId": "agent-1",
+                  "worker": "w4",
+                  "conversations": [],
+                  "since": "2026-11-27T10:00:00.000Z",
+                  "state": "running",
+                  "launchId": "worker-w4-abc"
+                }
+              ]
+            }
+            """.trimIndent()
+        val parsed = assertIs<AgentWorkersReadSnapshot.Known>(parseSharedAgentWorkersRead(body))
+        assertEquals(4, parsed.workers.size)
+
+        val multi = parsed.workers[0]
+        assertEquals("w1", multi.worker)
+        assertEquals("#eng:#7", multi.objectRef)
+        assertEquals(AgentWorkerObjectKind.Task, multi.objectKind)
+        assertEquals(
+            listOf(
+                WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:#7", AgentWorkerObjectKind.Task),
+                WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:5be3e1aa", AgentWorkerObjectKind.Thread),
+                WorkerConversationHolding(WorkerConversationHoldingMode.Post, "#announcements", null),
+            ),
+            multi.conversations,
+        )
+        assertEquals(listOf("#eng:#7", "#eng:5be3e1aa"), multi.fullObjectRefs())
+        assertEquals(listOf("#announcements"), multi.postObjectRefs())
+
+        val legacy = parsed.workers[1]
+        assertEquals("w2", legacy.worker)
+        assertNull(legacy.conversations)
+        assertEquals(listOf("#ops:#3"), legacy.fullObjectRefs())
+        assertEquals(emptyList(), legacy.postObjectRefs())
+
+        val postOnly = parsed.workers[2]
+        assertEquals("w3", postOnly.worker)
+        assertNull(postOnly.objectRef)
+        assertNull(postOnly.objectKind)
+        assertEquals(emptyList(), postOnly.fullObjectRefs())
+        assertEquals(listOf("#announcements"), postOnly.postObjectRefs())
+
+        val empty = parsed.workers[3]
+        assertEquals("w4", empty.worker)
+        assertNull(empty.objectRef)
+        assertNull(empty.objectKind)
+        assertEquals(emptyList(), empty.conversations)
+        assertEquals(emptyList(), empty.fullObjectRefs())
+        assertEquals(emptyList(), empty.postObjectRefs())
+    }
+
+    @Test
     fun parseSharedAgentWorkerStopOutcomeAndApiRequestsMatchSlockRoutes() = runTest {
         assertEquals(AgentWorkerStopOutcome.Stopped, parseSharedAgentWorkerStopOutcome("""{"outcome":"stopped"}"""))
         assertEquals(AgentWorkerStopOutcome.NotFound, parseSharedAgentWorkerStopOutcome("""{"outcome":"not_found"}"""))
@@ -398,6 +491,57 @@ class AgentWorkersStoreTest {
         runCurrent()
         assertEquals(1, store.state.value.workers.size)
         assertEquals(AgentWorkerStopFeedback.SnapshotStale(staleError), store.state.value.feedback)
+    }
+
+    @Test
+    fun stopPropagatesZeroAndMultipleHoldingObjectRefs() = runTest {
+        val zeroRow =
+            AgentWorkerRow(
+                agentId = agent1,
+                worker = "w3",
+                objectRef = null,
+                objectKind = null,
+                since = "2026-11-27T10:00:00.000Z",
+                state = AgentWorkerState.Running,
+                conversations = emptyList(),
+            )
+        val multiRow =
+            AgentWorkerRow(
+                agentId = agent1,
+                worker = "w1",
+                objectRef = "#eng:#7",
+                objectKind = AgentWorkerObjectKind.Task,
+                since = "2026-11-27T10:00:00.000Z",
+                state = AgentWorkerState.Running,
+                conversations =
+                    listOf(
+                        WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:#7", AgentWorkerObjectKind.Task),
+                        WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:5be3e1aa", AgentWorkerObjectKind.Thread),
+                    ),
+            )
+        val store =
+            AgentWorkersStore(
+                listWorkers = { _, _ -> known(workers = listOf(zeroRow, multiRow)) },
+                stopWorker = { _, _ -> DataResult.Content(AgentWorkerStopOutcome.Stopped) },
+                scope = backgroundScope,
+                freshness = MutableSharedFlow(),
+            )
+        store.dispatch(AgentWorkersIntent.Bind(serverId, agent1, enabled = true))
+        runCurrent()
+
+        store.dispatch(AgentWorkersIntent.Stop(agent1, "w3", zeroRow.fullObjectRefs()))
+        runCurrent()
+        val zeroFeedback = assertIs<AgentWorkerStopFeedback.Stopped>(store.state.value.feedback)
+        assertEquals("w3", zeroFeedback.worker)
+        assertEquals(emptyList(), zeroFeedback.objectRefs)
+        assertNull(zeroFeedback.objectRef)
+
+        store.dispatch(AgentWorkersIntent.Stop(agent1, "w1", multiRow.fullObjectRefs()))
+        runCurrent()
+        val multiFeedback = assertIs<AgentWorkerStopFeedback.Stopped>(store.state.value.feedback)
+        assertEquals("w1", multiFeedback.worker)
+        assertEquals(listOf("#eng:#7", "#eng:5be3e1aa"), multiFeedback.objectRefs)
+        assertEquals("#eng:#7", multiFeedback.objectRef)
     }
 
     @Test

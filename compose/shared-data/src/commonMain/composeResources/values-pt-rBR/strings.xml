@@ -5855,6 +5855,8 @@
     <string name="member_activity_workers_starting">iniciando</string>
     <string name="member_activity_workers_progress">progresso %1$s: %2$s</string>
     <string name="member_activity_workers_progress_just_now">progresso agora mesmo: %1$s</string>
+    <string name="member_activity_workers_posts_in">também pode publicar em %1$s</string>
+    <string name="member_activity_workers_no_conversation">não mantém nenhuma conversa</string>
     <string name="member_activity_workers_unknown">Não dá para ver os Workers deste agente agora.</string>
     <string name="member_activity_workers_last_seen">Visto pela última vez %1$s</string>
     <string name="member_activity_workers_empty_title">Nenhum Worker agora</string>
@@ -5862,7 +5864,11 @@
     <string name="member_activity_workers_stop_aria">Parar %1$s</string>
     <string name="member_activity_workers_stop_title">Parar %1$s?</string>
     <string name="member_activity_workers_stop_body">%1$s volta para @%2$s.</string>
+    <string name="member_activity_workers_stop_body_many">%1$s voltam para @%2$s.</string>
+    <string name="member_activity_workers_stop_body_none">Não mantém nenhuma conversa, então nada volta para @%1$s.</string>
     <string name="member_activity_workers_stop_stopped">%1$s parado. %2$s voltou para @%3$s.</string>
+    <string name="member_activity_workers_stop_stopped_many">%1$s parado. %2$s voltaram para @%3$s.</string>
+    <string name="member_activity_workers_stop_stopped_none">%1$s parado.</string>
     <string name="member_activity_workers_stop_not_running">%1$s já tinha terminado.</string>
     <string name="member_activity_workers_stop_stale">Nada foi parado: o computador deste agente não informa seus Workers há algum tempo. Verifique se o computador está online e tente de novo.</string>
     <string name="member_activity_workers_stop_stale_reason">O computador deste agente não informa seus Workers há algum tempo. Verifique se o computador está online e tente de novo.</string>
@@ -5910,6 +5916,9 @@
     <string name="member_activity_workers_timeline_footer">Mantido por 7 dias. O texto das mensagens e as entradas e saídas de ferramentas nunca são registrados; as linhas de progresso e a nota final do Worker são.</string>
     <string name="member_activity_workers_timeline_view_message">Ver mensagem</string>
     <string name="member_activity_workers_event_handed_out">Delegado por @%1$s</string>
+    <string name="member_activity_workers_event_delegated">Repassado por @%1$s</string>
+    <string name="member_activity_workers_event_delegated_post_only">Autorizado a publicar aqui por @%1$s</string>
+    <string name="member_activity_workers_event_undelegated">Devolvido para @%1$s</string>
     <string name="member_activity_workers_event_delivered_human">Recebeu uma mensagem de uma pessoa</string>
     <string name="member_activity_workers_event_delivered_agent">Recebeu uma mensagem de um agente</string>
     <string name="member_activity_workers_event_delivered_system">Recebeu um aviso do sistema</string>

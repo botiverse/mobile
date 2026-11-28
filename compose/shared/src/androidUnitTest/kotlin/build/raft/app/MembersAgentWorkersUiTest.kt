@@ -35,6 +35,8 @@ import build.raft.app.data.AgentWorkersIntent
 import build.raft.app.data.AgentWorkersLoadStatus
 import build.raft.app.data.AgentWorkersState
 import build.raft.app.data.ScreenError
+import build.raft.app.data.WorkerConversationHolding
+import build.raft.app.data.WorkerConversationHoldingMode
 import build.raft.app.data.groupAgentActivitySubagents
 import build.raft.app.members.MembersAgentActivityLoadState
 import build.raft.app.members.MembersAgentActivityTab
@@ -79,8 +81,8 @@ class MembersAgentWorkersUiTest {
 
     private fun workerRow(
         worker: String = "w1",
-        objectRef: String = "#eng:#7",
-        objectKind: AgentWorkerObjectKind = AgentWorkerObjectKind.Task,
+        objectRef: String? = "#eng:#7",
+        objectKind: AgentWorkerObjectKind? = AgentWorkerObjectKind.Task,
         model: String? = "claude-opus-5-5",
         rule: String? = "task conversations always go out",
         since: String = "2026-11-23T10:00:00.000Z",
@@ -94,6 +96,7 @@ class MembersAgentWorkersUiTest {
         stalled: Boolean = false,
         inToolForMs: Long? = null,
         waitingFrom: String? = null,
+        conversations: List<WorkerConversationHolding>? = null,
     ): AgentWorkerRow =
         AgentWorkerRow(
             agentId = agentId,
@@ -113,6 +116,7 @@ class MembersAgentWorkersUiTest {
             stalled = stalled,
             inToolForMs = inToolForMs,
             waitingFrom = waitingFrom,
+            conversations = conversations,
         )
 
     private fun workersState(
@@ -497,12 +501,105 @@ class MembersAgentWorkersUiTest {
         }
 
     @Test
+    fun multiHoldingsPostOnlyAndEmptyRowsAndStopDialogsMatchWebCopy() =
+        runRobolectricComposeUiTest {
+            val rows =
+                listOf(
+                    workerRow(
+                        worker = "w1",
+                        objectRef = "#eng:#7",
+                        objectKind = AgentWorkerObjectKind.Task,
+                        model = null,
+                        progress = null,
+                        conversations =
+                            listOf(
+                                WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:#7", AgentWorkerObjectKind.Task),
+                                WorkerConversationHolding(WorkerConversationHoldingMode.Full, "#eng:5be3e1aa", AgentWorkerObjectKind.Thread),
+                                WorkerConversationHolding(WorkerConversationHoldingMode.Post, "#announcements", null),
+                            ),
+                    ),
+                    workerRow(
+                        worker = "w2",
+                        objectRef = "#eng:#7",
+                        objectKind = AgentWorkerObjectKind.Task,
+                        model = null,
+                        progress = null,
+                        conversations = null,
+                    ),
+                    workerRow(
+                        worker = "w3",
+                        objectRef = null,
+                        objectKind = null,
+                        model = null,
+                        progress = null,
+                        conversations =
+                            listOf(
+                                WorkerConversationHolding(WorkerConversationHoldingMode.Post, "#announcements", null),
+                            ),
+                    ),
+                )
+            val intents = mutableListOf<AgentWorkersIntent>()
+            val binding =
+                MembersAgentWorkersBinding(
+                    state = MutableStateFlow(workersState(workers = rows)),
+                    parentHandle = "tenny",
+                    canStop = true,
+                    computerOffline = false,
+                    onIntent = { intents += it },
+                )
+            setContent {
+                WorkersTestShell {
+                    MembersAgentWorkersList(
+                        agentId = agentId,
+                        workers = binding,
+                        groups = emptyList(),
+                        timeContext = SubagentsFixtureTimeContext,
+                        onOpenSubagent = {},
+                        contentPadding = PaddingValues(16.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        nowEpochMillis = { nowMillis },
+                    )
+                }
+            }
+            waitForIdle()
+            onNodeWithText("#eng:#7 and #eng:5be3e1aa · can also post in #announcements · 12m 0s").assertIsDisplayed()
+            onNodeWithText("#eng:#7 · 12m 0s").assertIsDisplayed()
+            onNodeWithText("holds no conversation · can also post in #announcements · 12m 0s").assertIsDisplayed()
+
+            // Stop dialog for 0 full holdings says nothing goes back.
+            onNodeWithTag(membersAgentWorkerStopTag("w3")).performClick()
+            waitForIdle()
+            onNodeWithText("Stop w3?").assertIsDisplayed()
+            onNodeWithText("It holds no conversation, so nothing goes back to @tenny.").assertIsDisplayed()
+            onNodeWithTag(MembersAgentWorkerStopConfirmTag).performClick()
+            waitForIdle()
+
+            // Stop dialog for multiple full holdings lists all of them.
+            onNodeWithTag(membersAgentWorkerStopTag("w1")).performClick()
+            waitForIdle()
+            onNodeWithText("Stop w1?").assertIsDisplayed()
+            onNodeWithText("#eng:#7 and #eng:5be3e1aa go back to @tenny.").assertIsDisplayed()
+            onNodeWithTag(MembersAgentWorkerStopConfirmTag).performClick()
+            waitForIdle()
+
+            assertEquals(
+                listOf<AgentWorkersIntent>(
+                    AgentWorkersIntent.Stop(agentId, "w3", emptyList()),
+                    AgentWorkersIntent.Stop(agentId, "w1", listOf("#eng:#7", "#eng:5be3e1aa")),
+                ),
+                intents,
+            )
+        }
+
+    @Test
     fun stopFeedbackMessagesMatchWebCopy() =
         runRobolectricComposeUiTest {
             val rendered = mutableListOf<String>()
             val cases =
                 listOf(
+                    AgentWorkerStopFeedback.Stopped("w3", emptyList()),
                     AgentWorkerStopFeedback.Stopped("w1", "#eng:#7"),
+                    AgentWorkerStopFeedback.Stopped("w1", listOf("#eng:#7", "#eng:5be3e1aa")),
                     AgentWorkerStopFeedback.NotRunning("w1"),
                     AgentWorkerStopFeedback.ComputerOffline(ScreenError("computer_offline", serverCode = "computer_offline")),
                     AgentWorkerStopFeedback.SnapshotStale(ScreenError("workers_snapshot_stale", serverCode = "workers_snapshot_stale")),
@@ -518,7 +615,9 @@ class MembersAgentWorkersUiTest {
             waitForIdle()
             assertEquals(
                 listOf(
+                    "Stopped w3.",
                     "Stopped w1. #eng:#7 is back with @tenny.",
+                    "Stopped w1. #eng:#7 and #eng:5be3e1aa are back with @tenny.",
                     "w1 had already ended.",
                     "This agent's Computer is offline.",
                     "Nothing was stopped: this agent's Computer hasn't reported its Workers for a while. Check that the Computer is online, then try again.",
