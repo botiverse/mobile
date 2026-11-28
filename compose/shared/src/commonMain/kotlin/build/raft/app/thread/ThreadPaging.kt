@@ -193,6 +193,7 @@ internal class ThreadPaging(
                         latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code, errorTraceId = result.blocker.traceId)
                 }
             reducePayloadPatch { currentPayload ->
+                settled = false
                 if (
                     !staleTokenStillCurrent(staleToken, "thread_page", "older_apply", existing, currentPayload) ||
                     !routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)
@@ -305,6 +306,7 @@ internal class ThreadPaging(
             if (!existing.mainLoadFailed) return LocalOlderPageResult.NotServed
             var closed = false
             reducePayloadPatch { currentPayload ->
+                closed = false
                 if (
                     !currentPayload.durableLastKnown ||
                     !currentPayload.mainLoadFailed ||
@@ -325,6 +327,7 @@ internal class ThreadPaging(
         if (!page.insideProvenSegment) return LocalOlderPageResult.NotServed
         var applied = false
         reducePayloadPatch { currentPayload ->
+            applied = false
             if (
                 !currentPayload.durableLastKnown ||
                 !staleTokenStillCurrent(staleToken, "thread_page", "durable_older_apply", existing, currentPayload) ||
@@ -400,6 +403,8 @@ internal class ThreadPaging(
         var applied = false
         var committedForCache: RaftThreadScreenPayload? = null
         reducePayloadPatch(cachePayload = false) { currentPayload ->
+            applied = false
+            committedForCache = null
             if (
                 currentPayload.durableLastKnown ||
                 !staleTokenStillCurrent(staleToken, "thread_page", "proven_older_apply", existing, currentPayload) ||

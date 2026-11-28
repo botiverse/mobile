@@ -27,7 +27,7 @@ internal class ThreadUnreadThreadParents(
     scope: CoroutineScope,
     private val diagnosticsLogger: ((String) -> Unit)?,
     private val currentState: () -> SharedThreadState,
-    private val reduceState: (SharedThreadState) -> Boolean,
+    private val reduceState: ((SharedThreadState) -> SharedThreadState) -> Boolean,
 ) {
     /** Unread-thread ids already asked of the followed-threads list on this page (never re-asked). */
     private val unreadThreadParentsRequested = mutableSetOf<String>()
@@ -108,10 +108,13 @@ internal class ThreadUnreadThreadParents(
                 "thread_unread_thread_parents_result result=content requested=${pending.size} " +
                     "resolved=${pending.count { it in resolved }} channelThreads=${resolved.size}"
             )
-            val latest = currentState()
-            val merged = latest.unreadThreadParents + resolved
-            if (merged != latest.unreadThreadParents) {
-                reduceState(latest.copy(unreadThreadParents = merged))
+            reduceState { latest ->
+                val merged = latest.unreadThreadParents + resolved
+                if (merged != latest.unreadThreadParents) {
+                    latest.copy(unreadThreadParents = merged)
+                } else {
+                    latest
+                }
             }
         } finally {
             unreadThreadParentsInFlight = false

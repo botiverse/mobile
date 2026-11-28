@@ -771,24 +771,34 @@ internal class ThreadSecondaryHydration(
         val basePayload = existing
         val threadKey = existing.sourceThreadId.orEmpty()
         if (threadKey.isBlank()) return
-        val currentState = storeState.value
-        if (currentState.membersLoadKey != threadKey) {
-            // Switched threads: reset status so the previous verdict does not leak.
-            storeState.value = currentState.copy(
-                membersLoadKey = threadKey,
-                membersLoadStatus = LoadMembersStatus.Idle
-            )
+        var skipReason: String? = null
+        storeState.update { currentState ->
+            skipReason = null
+            val resetState =
+                if (currentState.membersLoadKey != threadKey) {
+                    // Switched threads: reset status so the previous verdict does not leak.
+                    currentState.copy(
+                        membersLoadKey = threadKey,
+                        membersLoadStatus = LoadMembersStatus.Idle
+                    )
+                } else {
+                    currentState
+                }
+            when {
+                !force && resetState.membersLoadStatus == LoadMembersStatus.InFlight -> {
+                    skipReason = "in_flight"
+                    resetState
+                }
+                !force && resetState.membersLoadStatus == LoadMembersStatus.Loaded -> {
+                    skipReason = "already_loaded"
+                    resetState
+                }
+                else -> resetState.copy(membersLoadStatus = LoadMembersStatus.InFlight)
+            }
         }
-        val resolvedStatus = storeState.value.membersLoadStatus
-        if (!force && resolvedStatus == LoadMembersStatus.InFlight) {
+        skipReason?.let { reason ->
             diagnosticsLogger?.invoke(
-                "thread_members_load_skip threadId=$threadKey reason=in_flight"
-            )
-            return
-        }
-        if (!force && resolvedStatus == LoadMembersStatus.Loaded) {
-            diagnosticsLogger?.invoke(
-                "thread_members_load_skip threadId=$threadKey reason=already_loaded"
+                "thread_members_load_skip threadId=$threadKey reason=$reason"
             )
             return
         }
@@ -796,7 +806,6 @@ internal class ThreadSecondaryHydration(
             "thread_members_load_start threadId=$threadKey " +
                 "existingMembers=${existing.members.size} existingCandidates=${existing.memberCandidates.size}"
         )
-        storeState.value = storeState.value.copy(membersLoadStatus = LoadMembersStatus.InFlight)
         when (val outcome = dataSource.enrichThreadMembers(existing)) {
             is SharedThreadDataSource.MembersEnrichOutcome.Updated -> {
                 if (!routeStillCurrent(basePayload, "thread_members_load", "after_fetch")) {
@@ -808,7 +817,13 @@ internal class ThreadSecondaryHydration(
                     }
                     currentPayload.withMembersPatchFrom(outcome.payload)
                 }
-                storeState.value = storeState.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
+                storeState.update { current ->
+                    if (current.membersLoadKey == threadKey) {
+                        current.copy(membersLoadStatus = LoadMembersStatus.Loaded)
+                    } else {
+                        current
+                    }
+                }
                 diagnosticsLogger?.invoke(
                     "thread_members_load_result threadId=$threadKey " +
                         "result=changed members=${outcome.payload.members.size} " +
@@ -820,7 +835,13 @@ internal class ThreadSecondaryHydration(
                 if (!routeStillCurrent(basePayload, "thread_members_load", "after_fetch")) {
                     return
                 }
-                storeState.value = storeState.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
+                storeState.update { current ->
+                    if (current.membersLoadKey == threadKey) {
+                        current.copy(membersLoadStatus = LoadMembersStatus.Loaded)
+                    } else {
+                        current
+                    }
+                }
                 diagnosticsLogger?.invoke(
                     "thread_members_load_result threadId=$threadKey " +
                         "result=unchanged members=${existing.members.size} candidates=${existing.memberCandidates.size} " +
@@ -833,7 +854,13 @@ internal class ThreadSecondaryHydration(
                 }
                 // Transient failure: keep status as Error so the next
                 // modal open (or Refresh) can retry. Do not reduce payload.
-                storeState.value = storeState.value.copy(membersLoadStatus = LoadMembersStatus.Error)
+                storeState.update { current ->
+                    if (current.membersLoadKey == threadKey) {
+                        current.copy(membersLoadStatus = LoadMembersStatus.Error)
+                    } else {
+                        current
+                    }
+                }
                 diagnosticsLogger?.invoke(
                     "thread_members_load_result threadId=$threadKey " +
                         "result=failed reason=${outcome.reason} " +
