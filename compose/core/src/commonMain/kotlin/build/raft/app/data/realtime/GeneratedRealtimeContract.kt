@@ -118,6 +118,7 @@ object GeneratedRealtimeContract {
         const val ProductFeedbackAppUnread = "product_feedback:app_unread"
         const val ActivityChanged = "activity:changed"
         const val ActivityDoneUpdated = "activity_done:updated"
+        const val ToAnswerChanged = "to-answer:changed"
         const val AnnouncementNew = "announcement:new"
         const val ReminderFired = "reminder:fired"
         const val ReminderScheduled = "reminder:scheduled"
@@ -188,6 +189,7 @@ object GeneratedRealtimeContract {
             ProductFeedbackAppUnread,
             ActivityChanged,
             ActivityDoneUpdated,
+            ToAnswerChanged,
             AnnouncementNew,
             ReminderFired,
             ReminderScheduled,

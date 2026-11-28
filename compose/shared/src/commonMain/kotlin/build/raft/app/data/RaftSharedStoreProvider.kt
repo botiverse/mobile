@@ -594,6 +594,23 @@ internal class RaftSharedStoreProvider private constructor(
             },
             logger = sharedInfoLogger("SlockChannelAuthority", "channel_authority"),
         )
+    /**
+     * Activity's "To answer" store (`botiverse/slock#17252/#17261`, behind `to_answer_list`):
+     * holds open question/confirm/request cards from `GET /api/actions/to-answer`, kept live via
+     * `to-answer:changed`, deadline expiry, and reconnect refetch.
+     */
+    internal val toAnswerStore: SharedToAnswerStore =
+        SharedToAnswerStore(
+            api = NetworkRaftToAnswerApi(networkClient),
+            scope = threadSendScope,
+            isFlagEnabled = { serverId -> serverFeatureFlags.isToAnswerListEnabled(serverId) },
+            isServerActive = { serverId ->
+                selectedServerStores.entries().any { (_, store) ->
+                    store.currentServerId.value?.trim() == serverId
+                }
+            },
+            logger = sharedInfoLogger("SlockToAnswer", "to_answer"),
+        )
     // task #166: display-only last-known unread counts and previews for the cached cold-start
     // Home. Declared first so every later initializer that builds the Home store sees it.
     private val homeRowHintPersistStorage = HomeRowHintPersistStorage(sharedPreferenceStore)
@@ -2511,6 +2528,7 @@ internal class RaftSharedStoreProvider private constructor(
                 }
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                 channelAuthorityStore.clear()
+                toAnswerStore.clear()
                 shellPeerReadReceiptStores.entries().forEach { (_, store) ->
                     store.dispatch(PeerReadReceiptIntent.BindOwner(null))
                 }
@@ -2589,6 +2607,7 @@ internal class RaftSharedStoreProvider private constructor(
                 // Step 4: the server's conversation identities (names, avatars, DM peers) in every shell.
                 shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.dropServer(grant.serverId) }
                 channelAuthorityStore.resetServer(grant.serverId)
+                toAnswerStore.resetServer(grant.serverId)
                 shellPeerReadReceiptStores.entries().forEach { (_, store) ->
                     if (store.state.value.owner?.serverId == grant.serverId) {
                         store.dispatch(PeerReadReceiptIntent.BindOwner(null))
@@ -2667,6 +2686,8 @@ internal class RaftSharedStoreProvider private constructor(
                     )
                     // Missed `server:features-changed` notices are not replayed: refetch on every (re)connect.
                     serverFeatureFlagChangeRefresher.onReconnected(ServerId(grant.serverId))
+                    // `to-answer:changed` is not replayed: refetch when the list is active and flag is on.
+                    toAnswerStore.onRealtimeReconnected(grant.serverId)
                     // Nor are `appearance:updated` ones: a theme changed elsewhere while offline.
                     serverAppearanceCatchUp.onReconnected(ServerId(grant.serverId))
                     // Nor are the feedback unread totals: read this app's again.
@@ -2736,6 +2757,7 @@ internal class RaftSharedStoreProvider private constructor(
                 if (stillCurrent) {
                     shellConversationIdentityHubs.entries().forEach { (_, hub) -> hub.clear() }
                     channelAuthorityStore.clear()
+                    toAnswerStore.clear()
                     clearActiveServerSelectionsIfUnchanged(receipts)
                 }
                 updateNetworkKmmRecoveryEnvironment()
@@ -2941,6 +2963,7 @@ internal class RaftSharedStoreProvider private constructor(
                                     }
                                 if (!stillSelectedElsewhere) {
                                     channelAuthorityStore.resetServer(cleanPrevious)
+                                    toAnswerStore.resetServer(cleanPrevious)
                                 }
                             }
                             previousServerId = cleanNext
@@ -5268,6 +5291,9 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                         owner.installChannelAuthorityUpdatedSink { serverId, event ->
                             provider.channelAuthorityStore.onChannelAuthorityUpdated(serverId, event)
+                        }
+                        owner.installToAnswerChangedSink { serverId, event ->
+                            provider.toAnswerStore.onToAnswerChanged(serverId, event)
                         }
                     },
                 realtimeAuthorityProvider = realtimeAuthorityProvider,

@@ -344,6 +344,16 @@ const val PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY: String = "private_mention_add_v0
 @RaftCoreInternalApi const val TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY: String = "task_waiting_on_you_v0"
 
 /**
+ * Activity's "To answer" filter (`botiverse/slock` #17252 / #17261, `docs/contracts/to-answer.md`,
+ * `TO_ANSWER_LIST_FEATURE_FLAG_KEY`): per server, default OFF (unresolved or missing evaluates
+ * false; non-last-known). When ON, Activity's Filter offers "To answer" (open question, confirm,
+ * and request cards waiting on the reader from `GET /api/actions/to-answer`, kept live by
+ * `to-answer:changed`). When OFF, no filter choice is shown, a persisted choice falls back to All,
+ * and nothing is fetched.
+ */
+@RaftCoreInternalApi const val TO_ANSWER_LIST_FEATURE_FLAG_KEY: String = "to_answer_list"
+
+/**
  * Per-member personal MCP accounts and native Connect card account choice (botiverse/slock
  * `packages/shared/src/featureFlags.ts` `MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY`, #15635 /
  * #16087 / #16241 / #16986, `#wg-mobile-sync:#228`): per server, default OFF (unresolved or
@@ -460,6 +470,8 @@ val REGISTERED_SERVER_FEATURE_FLAG_KEYS: List<String> = listOf(
     PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY,
     // Activity task waiting-on-you status (botiverse/slock #16759 / #17085, default OFF).
     TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY,
+    // Activity "To answer" filter (botiverse/slock #17252 / #17261, default OFF).
+    TO_ANSWER_LIST_FEATURE_FLAG_KEY,
     // Personal MCP accounts & native Connect card account choice (#wg-mobile-sync:#228, default OFF).
     MCP_PERSONAL_ACCOUNTS_FEATURE_FLAG_KEY,
     // Composer streaming voice dictation (#wg-mobile-sync:#334, default OFF).
@@ -867,6 +879,13 @@ class SharedServerFeatureFlags(
      */
     @RaftCoreInternalApi fun isTaskWaitingOnYouEnabled(serverId: ServerId?): Boolean =
         isEnabled(serverId, TASK_WAITING_ON_YOU_FEATURE_FLAG_KEY)
+
+    /**
+     * Activity "To answer" filter gate (botiverse/slock `TO_ANSWER_LIST_FEATURE_FLAG_KEY`,
+     * #17252 / #17261): per server, default OFF (unresolved or missing evaluates false).
+     */
+    @RaftCoreInternalApi fun isToAnswerListEnabled(serverId: ServerId?): Boolean =
+        isEnabled(serverId, TO_ANSWER_LIST_FEATURE_FLAG_KEY)
 
     /**
      * Composer streaming voice dictation gate (`#wg-mobile-sync:#334`, botiverse/slock

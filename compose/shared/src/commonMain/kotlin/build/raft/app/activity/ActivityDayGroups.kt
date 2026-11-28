@@ -62,6 +62,16 @@ internal fun activityDayLabel(epochDay: Long, todayEpochDay: Long): ActivityDayL
     }
 
 /** One day's rows under its heading; [epochDay] and [label] are null for rows before any readable time. */
+internal data class ActivityTypedDayGroup<T>(
+    val epochDay: Long?,
+    val label: ActivityDayLabel?,
+    val rows: List<T>,
+) {
+    /** By the day, not its heading: stable when Today turns into Yesterday, so its rows stay put. */
+    val key: String = activityDayGroupKey(epochDay)
+}
+
+/** One day's rows under its heading; [epochDay] and [label] are null for rows before any readable time. */
 internal data class ActivityDayGroup(
     val epochDay: Long?,
     val label: ActivityDayLabel?,
@@ -82,31 +92,29 @@ private fun activityLocalEpochDay(epochMillis: Long, localOffsetMinutes: Int): L
     floorDiv(epochMillis + localOffsetMinutes * MillisPerMinute, MillisPerDay)
 
 /**
- * The listed rows by day, newest first, one heading per day that has rows: a filter, a Done or an
- * Unfollow that empties a day takes its heading with it. Days count in the person's zone, and a time a
- * little ahead of this device's clock counts as today.
- *
- * Unlike the web, which sorts the rows by their time first, this keeps the order the list presents:
- * the stable order updates a held row in place and reveals the new order later
- * ([activityItemsPreservingPresentedOrder]), and moving it into another day here would reorder the
- * rows under a finger. A row whose day is not older than the group it follows stays in that group,
- * so no heading shows twice; a row with no readable time stays where it is too.
+ * Generic day grouping preserving the presented order (also used by Activity's "To answer" list,
+ * web `groupRowsByDay` in `activityDayGroups.ts`): one heading per day that has rows, in order,
+ * without ever repeating a heading; rows with no readable time stay where they are.
  */
-internal fun groupActivityRowsByDay(items: List<InboxItem>, timeContext: RaftTimeContext?): List<ActivityDayGroup> {
+internal fun <T> groupItemsByActivityDay(
+    items: List<T>,
+    timeContext: RaftTimeContext?,
+    timeOf: (T) -> String?,
+): List<ActivityTypedDayGroup<T>> {
     if (items.isEmpty()) return emptyList()
-    val today = timeContext?.activityTodayEpochDay() ?: return listOf(ActivityDayGroup(null, null, items))
+    val today = timeContext?.activityTodayEpochDay() ?: return listOf(ActivityTypedDayGroup(null, null, items))
     val offset = timeContext.localOffsetMinutes
-    val groups = mutableListOf<ActivityDayGroup>()
+    val groups = mutableListOf<ActivityTypedDayGroup<T>>()
     var currentDay: Long? = null
-    var currentRows = mutableListOf<InboxItem>()
+    var currentRows = mutableListOf<T>()
     fun close() {
         if (currentRows.isNotEmpty()) {
-            groups += ActivityDayGroup(currentDay, currentDay?.let { activityDayLabel(it, today) }, currentRows)
+            groups += ActivityTypedDayGroup(currentDay, currentDay?.let { activityDayLabel(it, today) }, currentRows)
         }
     }
     for (item in items) {
         val day =
-            parseRaftTimestampEpochMillisOrNull(item.activityRowTimeValue(), offset)
+            parseRaftTimestampEpochMillisOrNull(timeOf(item), offset)
                 ?.let { activityLocalEpochDay(it, offset).coerceAtMost(today) }
         val startsDay = day != null && (currentRows.isEmpty() || currentDay == null || day < currentDay)
         if (startsDay) {
@@ -119,6 +127,21 @@ internal fun groupActivityRowsByDay(items: List<InboxItem>, timeContext: RaftTim
     close()
     return groups
 }
+
+/**
+ * The listed rows by day, newest first, one heading per day that has rows: a filter, a Done or an
+ * Unfollow that empties a day takes its heading with it. Days count in the person's zone, and a time a
+ * little ahead of this device's clock counts as today.
+ *
+ * Unlike the web, which sorts the rows by their time first, this keeps the order the list presents:
+ * the stable order updates a held row in place and reveals the new order later
+ * ([activityItemsPreservingPresentedOrder]), and moving it into another day here would reorder the
+ * rows under a finger. A row whose day is not older than the group it follows stays in that group,
+ * so no heading shows twice; a row with no readable time stays where it is too.
+ */
+internal fun groupActivityRowsByDay(items: List<InboxItem>, timeContext: RaftTimeContext?): List<ActivityDayGroup> =
+    groupItemsByActivityDay(items, timeContext) { it.activityRowTimeValue() }
+        .map { group -> ActivityDayGroup(group.epochDay, group.label, group.rows) }
 
 /** The string resources a heading renders from: tested directly, so a mis-wired key turns red. */
 internal data class ActivityDayLabelSelection(

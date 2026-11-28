@@ -2,6 +2,8 @@ package build.raft.app.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** web `store/activityFilterPreference.ts` (slock #11383): the Filter menu's last choice, per server. */
@@ -75,6 +77,52 @@ class ActivityFilterPreferenceRepositoryTest {
         assertTrue(
             InboxFilter.entries.map { it.preferenceValue() }.toSet() ==
                 setOf("all", "unread", "mentions", "pinned", "saved", "tasks", "artifacts")
+        )
+    }
+
+    @Test
+    fun toAnswerChoicePersistsPerServerAndFallsBackToAllWhenFlagOff() {
+        val keyValues = InMemoryRaftKeyValueStore()
+        val preferences = ActivityFilterPreferenceRepository(keyValues)
+
+        preferences.writeChoice("server-1", ActivityFilterChoice.ToAnswer)
+
+        assertEquals(TO_ANSWER_FILTER_PREFERENCE_VALUE, keyValues.getString("raft.activity.filter.server-1"))
+        assertTrue(preferences.readIsToAnswerChosen("server-1"))
+        assertFalse(preferences.readIsToAnswerChosen("server-2"))
+        // Underlying inbox store always keeps All while To answer is persisted.
+        assertEquals(InboxFilter.All, preferences.read("server-1"))
+        // Flag ON restores To answer; flag OFF falls back to All.
+        assertEquals(ActivityFilterChoice.ToAnswer, preferences.readChoice("server-1", toAnswerEnabled = true))
+        assertEquals(ActivityFilterChoice.Inbox(InboxFilter.All), preferences.readChoice("server-1", toAnswerEnabled = false))
+        assertEquals(ActivityFilterChoice.Inbox(InboxFilter.All), preferences.readChoice("server-2", toAnswerEnabled = true))
+
+        // Clearing back to All removes the stored preference key.
+        preferences.writeChoice("server-1", ActivityFilterChoice.Inbox(InboxFilter.All))
+        assertNull(keyValues.getString("raft.activity.filter.server-1"))
+        assertFalse(preferences.readIsToAnswerChosen("server-1"))
+    }
+
+    @Test
+    fun snakeCaseToAnswerAliasAndShownActivityFilterChoiceWorkAcrossFlagStates() {
+        val keyValues = InMemoryRaftKeyValueStore(mapOf("raft.activity.filter.server-1" to "to_answer"))
+        val preferences = ActivityFilterPreferenceRepository(keyValues)
+
+        assertTrue(preferences.readIsToAnswerChosen("server-1"))
+        assertEquals(ActivityFilterChoice.ToAnswer, preferences.readChoice("server-1", toAnswerEnabled = true))
+        assertEquals(ActivityFilterChoice.Inbox(InboxFilter.All), preferences.readChoice("server-1", toAnswerEnabled = false))
+
+        assertEquals(
+            ActivityFilterChoice.Inbox(InboxFilter.All),
+            shownActivityFilterChoice(InboxFilter.All, toAnswerChosen = true, toAnswerEnabled = false),
+        )
+        assertEquals(
+            ActivityFilterChoice.ToAnswer,
+            shownActivityFilterChoice(InboxFilter.All, toAnswerChosen = true, toAnswerEnabled = true),
+        )
+        assertEquals(
+            ActivityFilterChoice.Inbox(InboxFilter.Mentions),
+            shownActivityFilterChoice(InboxFilter.Mentions, toAnswerChosen = false, toAnswerEnabled = true),
         )
     }
 }

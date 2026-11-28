@@ -95,6 +95,7 @@
     "productFeedbackAppUnread": "product_feedback:app_unread",
     "activityChanged": "activity:changed",
     "activityDoneUpdated": "activity_done:updated",
+    "toAnswerChanged": "to-answer:changed",
     "announcementNew": "announcement:new",
     "reminderFired": "reminder:fired",
     "reminderScheduled": "reminder:scheduled",
@@ -165,6 +166,7 @@
     "productFeedbackAppUnread",
     "activityChanged",
     "activityDoneUpdated",
+    "toAnswerChanged",
     "announcementNew",
     "reminderFired",
     "reminderScheduled",
@@ -236,8 +238,7 @@
     "notification:desktop": "Platform-scoped to clientKind desktop sockets and sent with an ack (emitDesktopNotificationWithAck); the desktop client adopts it in realtime unification phase 2.",
     "object:changed": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
     "object:unwatch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
-    "object:watch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet.",
-    "to-answer:changed": "Live refresh for Activity 'To answer' filter (slock #17252/#17261, behind to_answer_list); mobile has not ported the To answer filter yet."
+    "object:watch": "Live pings for an open Artifact page (slock #15598, client emits object:watch/unwatch, server sends object:changed). The app shows Artifacts in a WebView of the web viewer; the native app has no consumer yet."
   },
   "acknowledgedUnemittedServerWireEvents": {
     "computerUpgradeProgress": "No literal server emit site on slock staging (web still lists it; RFC 033 streams it from the Computer). Kept until the server team confirms it is gone.",

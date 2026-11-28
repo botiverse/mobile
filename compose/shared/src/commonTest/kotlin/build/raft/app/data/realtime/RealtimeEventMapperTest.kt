@@ -30,6 +30,8 @@ import build.raft.app.model.TaskCreated
 import build.raft.app.model.TaskUpdated
 import build.raft.app.model.ThreadReplyUpdated
 import build.raft.app.model.ThreadUpdated
+import build.raft.app.model.ToAnswerChangeKind
+import build.raft.app.model.ToAnswerChanged
 import build.raft.app.data.isAgentProfileUpdate
 import kotlin.test.Test
 import kotlin.test.assertFalse
@@ -1528,6 +1530,74 @@ class RealtimeEventMapperTest {
             RealtimeEventMapper().map(
                 RealtimeSocketEvents.ChannelAuthorityUpdated,
                 """{ "channelId": "ch-joint", "channelRole": "admin", "authorityRevision": "3" }"""
+            )
+        )
+    }
+
+    @Test
+    fun toAnswerChangedMapsOpenedEndedAndDropsMalformedPayloads() {
+        assertTrue(RealtimeSocketEvents.ToAnswerChanged in RealtimeSocketEvents.ServerWireEvents)
+
+        val opened =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ToAnswerChanged,
+                """{ "serverId": "srv-1", "messageId": "msg-1", "change": "opened" }""",
+            )
+        val mappedOpened = assertIs<ToAnswerChanged>(opened)
+        assertEquals("srv-1", mappedOpened.serverId.value)
+        assertEquals("msg-1", mappedOpened.messageId.value)
+        assertEquals(ToAnswerChangeKind.Opened, mappedOpened.change)
+        assertNull(mappedOpened.state)
+        assertNull(mappedOpened.byUserId)
+        assertNull(mappedOpened.byName)
+
+        val ended =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ToAnswerChanged,
+                """{ "serverId": "srv-1", "messageId": "msg-2", "change": "ended", "state": "executed", "byUserId": "u-andy", "byName": "AndyLok" }""",
+            )
+        val mappedEnded = assertIs<ToAnswerChanged>(ended)
+        assertEquals("srv-1", mappedEnded.serverId.value)
+        assertEquals("msg-2", mappedEnded.messageId.value)
+        assertEquals(ToAnswerChangeKind.Ended, mappedEnded.change)
+        assertEquals("executed", mappedEnded.state)
+        assertEquals("u-andy", mappedEnded.byUserId)
+        assertEquals("AndyLok", mappedEnded.byName)
+
+        val withdrawn =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ToAnswerChanged,
+                """{ "serverId": "srv-1", "messageId": "msg-3", "change": "ended", "state": "withdrawn" }""",
+            )
+        val mappedWithdrawn = assertIs<ToAnswerChanged>(withdrawn)
+        assertEquals(ToAnswerChangeKind.Ended, mappedWithdrawn.change)
+        assertEquals("withdrawn", mappedWithdrawn.state)
+        assertNull(mappedWithdrawn.byUserId)
+        assertNull(mappedWithdrawn.byName)
+
+        // Malformed payloads are dropped cleanly.
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ToAnswerChanged,
+                """{ "serverId": "srv-1", "messageId": "msg-4", "change": "ended" }""",
+            )
+        )
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ToAnswerChanged,
+                """{ "serverId": "", "messageId": "msg-4", "change": "opened" }""",
+            )
+        )
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ToAnswerChanged,
+                """{ "serverId": "srv-1", "messageId": "", "change": "opened" }""",
+            )
+        )
+        assertNull(
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ToAnswerChanged,
+                """{ "serverId": "srv-1", "messageId": "msg-4", "change": "unknown" }""",
             )
         )
     }

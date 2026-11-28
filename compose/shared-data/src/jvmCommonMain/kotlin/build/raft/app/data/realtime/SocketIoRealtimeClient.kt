@@ -939,6 +939,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is ServerFeaturesChanged -> "server_features_changed"
     is ActivityChanged -> "activity_changed"
     is ActivityDoneUpdated -> "activity_done_updated"
+    is build.raft.app.model.ToAnswerChanged -> "to_answer_changed"
     is build.raft.app.model.JointInvitesChanged -> "joint_invites_changed"
     is build.raft.app.model.PermissionUpdatesChanged -> "permission_updates_changed"
     is build.raft.app.model.SeatJoinBlocksChanged -> "seat_join_blocks_changed"

@@ -369,6 +369,8 @@ class SharedHomeDataSource(
         is build.raft.app.model.ActivityChanged -> false
         // Activity Done / undone lives in Activity only; no Home row changes.
         is build.raft.app.model.ActivityDoneUpdated -> false
+        // Activity "To answer" list updates live in SharedToAnswerStore; no Home row changes.
+        is build.raft.app.model.ToAnswerChanged -> false
         // Pending joint invites live in the Home notification center's own store, which reads them again.
         is build.raft.app.model.JointInvitesChanged -> false
         // Pending App permission updates light the Apps review dot (SharedAppPermissionUpdatesStore); no Home row.

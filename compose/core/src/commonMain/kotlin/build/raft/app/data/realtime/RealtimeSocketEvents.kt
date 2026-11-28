@@ -131,6 +131,13 @@ object RealtimeSocketEvents {
      * to their own `user:<id>` room after commit: `{ serverId, rowKind, rowId, objectKind?, done, position }`.
      */
     const val ActivityDoneUpdated = GeneratedRealtimeContract.SocketEvent.ActivityDoneUpdated
+    /**
+     * `to-answer:changed` (botiverse/slock #17252 / #17261, `packages/shared/src/toAnswer.ts`,
+     * `docs/contracts/to-answer.md`): sent to the `user:<id>:server:<id>` room of each person who
+     * may list an action card when one is posted (`opened`) or stops waiting (`ended`). No card
+     * content; not replayed on reconnect.
+     */
+    const val ToAnswerChanged = GeneratedRealtimeContract.SocketEvent.ToAnswerChanged
     const val AnnouncementNew = GeneratedRealtimeContract.SocketEvent.AnnouncementNew
     const val ReminderFired = GeneratedRealtimeContract.SocketEvent.ReminderFired
     const val ReminderScheduled = GeneratedRealtimeContract.SocketEvent.ReminderScheduled
