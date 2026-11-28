@@ -63,6 +63,9 @@ jobs:
           python3 compose/iosApp/scripts/assert_xctest_ran.py --self-test
           python3 compose/iosApp/scripts/print_xctest_failures.py --self-test
 
+      - name: Test mobile-perf harness
+        run: python3 -m unittest discover -s scripts/mobile_perf -v
+
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
