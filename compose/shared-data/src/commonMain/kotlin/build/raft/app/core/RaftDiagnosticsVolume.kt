@@ -450,7 +450,7 @@ class RaftDiagnosticsVolumePolicy(
             setOf(
                 "SlockWebView", "SlockArtifactViewer", "SlockSharedAuth", "SlockNavTransitionFrames",
                 "SlockAndroidDiagnostics", "SlockMemoryTelemetry", "SlockAuthCritical", "RaftTextInput",
-                "SlockHandsUpdate",
+                "RaftVoiceDictation", "SlockHandsUpdate",
             )
 
         private val RoutineNetworkLine =

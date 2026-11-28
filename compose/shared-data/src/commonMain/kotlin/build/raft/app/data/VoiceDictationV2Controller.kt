@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
+import build.raft.app.raftLogInfo
 import build.raft.realtime.socket.RaftWebSocketSession
 import kotlin.concurrent.Volatile
 import kotlin.time.Clock
@@ -10,8 +11,10 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -78,8 +81,7 @@ sealed interface VoiceDictationAudioStartResult {
     data class Failed(val reason: String? = null) : VoiceDictationAudioStartResult
 }
 
-/**
- * Platform audio capture seam (Android `AudioRecord`, iOS `AVAudioEngine`, Desktop `TargetDataLine`).
+/** Platform audio capture seam (Android `AudioRecord`, iOS `AVAudioEngine`, Desktop `TargetDataLine`).
  * Implementations must deliver PCM16 little-endian mono frames at [sampleRateHz] and make [stop]
  * idempotent.
  */
@@ -87,6 +89,13 @@ sealed interface VoiceDictationAudioStartResult {
 interface RaftVoiceDictationAudioRecorder {
     val sampleRateHz: Int
         get() = VOICE_DICTATION_DEFAULT_SAMPLE_RATE_HZ
+
+    /**
+     * Returns `true` when OS microphone capture permission is already granted so the controller can
+     * overlap `POST /api/voice/dictation/permits` with native audio hardware startup without
+     * risking a permission prompt expiring the permit or hitting `/permits` on denied permission.
+     */
+    fun hasRecordAudioPermission(): Boolean = false
 
     suspend fun start(
         onPcmChunk: (ByteArray) -> Unit,
@@ -502,10 +511,21 @@ class VoiceDictationV2Controller(
     private val privacyModeProvider: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
     private val clientPlatformProvider: () -> VoiceFeedbackClientPlatform = ::currentVoiceFeedbackClientPlatform,
     private val onSessionTelemetry: ((serverId: String, summary: VoiceDictationSessionSummary) -> Unit)? = null,
+    private val onDiagnosticLog: (tag: String, message: String) -> Unit = { tag, message ->
+        raftLogInfo(tag, message)
+    },
 ) {
     private class QueuedAudioChunk(
         val bytes: ByteArray,
         val preReady: Boolean,
+    )
+
+    private data class SessionTimingSnapshot(
+        val permitMs: Long? = null,
+        val wsConnectMs: Long? = null,
+        val readyWaitMs: Long? = null,
+        val parallelPermit: Boolean = false,
+        val callerContextFallback: Boolean = false,
     )
 
     private inner class Session(
@@ -552,6 +572,12 @@ class VoiceDictationV2Controller(
         var streamUrlSource: VoiceStreamUrlSource? = null
         var connectedAtMs: Long? = null
         var firstPartialAtMs: Long? = null
+        var permitStartedAtMs: Long? = null
+        var permitFinishedAtMs: Long? = null
+        var wsConnectStartedAtMs: Long? = null
+        var wsConnectedAtMs: Long? = null
+        var parallelPermit: Boolean = false
+        var callerContextFallback: Boolean = false
         var transcriptCapture: DictationTranscriptCapture = DictationTranscriptCapture()
         var closeReason: String = VOICE_DICTATION_CLOSE_REASON_DONE
         var closeReasonLatched: Boolean = false
@@ -561,6 +587,24 @@ class VoiceDictationV2Controller(
         var senderJob: Job? = null
         var stopJob: Job? = null
         var drainTimeoutJob: Job? = null
+
+        fun timingSnapshotLocked(): SessionTimingSnapshot =
+            SessionTimingSnapshot(
+                permitMs =
+                    permitStartedAtMs?.let { start ->
+                        permitFinishedAtMs?.let { finish -> (finish - start).coerceAtLeast(0L) }
+                    },
+                wsConnectMs =
+                    wsConnectStartedAtMs?.let { start ->
+                        wsConnectedAtMs?.let { finish -> (finish - start).coerceAtLeast(0L) }
+                    },
+                readyWaitMs =
+                    wsConnectedAtMs?.let { wsConnected ->
+                        metrics.connectedAtMs?.let { readyAt -> (readyAt - wsConnected).coerceAtLeast(0L) }
+                    },
+                parallelPermit = parallelPermit,
+                callerContextFallback = callerContextFallback,
+            )
 
         fun markRecorderNeedsStop() {
             synchronized(stateLock) { recorderNeedsStop = true }
@@ -855,12 +899,31 @@ class VoiceDictationV2Controller(
 
         val job =
             scope.launch {
+                var parallelPermitDeferred: Deferred<VoiceDictationV2PermitOutcome>? = null
                 try {
                     previousCleanup?.join()
                     if (!isActiveForeground(session)) return@launch
 
+                    val preAuthorized =
+                        runCatching { session.recorder.hasRecordAudioPermission() }.getOrDefault(false)
+                    if (preAuthorized) {
+                        synchronized(stateLock) {
+                            session.parallelPermit = true
+                        }
+                        parallelPermitDeferred =
+                            async {
+                                requestPermitSafely(
+                                    session = session,
+                                    draftBefore = normalizedDraftBefore,
+                                    draftAfter = normalizedDraftAfter,
+                                    contactHints = normalizedContactHints,
+                                )
+                            }
+                    }
+
                     // Step 1: Acquire microphone first so OS permission prompts cannot expire the
                     // 60 s permit connect window and permission denial never hits /permits or WS.
+                    // When RECORD_AUDIO is already granted, permit fetch overlaps with mic startup above.
                     val audioStart =
                         try {
                             session.recorder.start(
@@ -868,9 +931,11 @@ class VoiceDictationV2Controller(
                                 onAudioLevel = { level -> updateAudioLevel(session, level) },
                             )
                         } catch (cancellation: CancellationException) {
+                            parallelPermitDeferred?.cancel()
                             session.markRecorderNeedsStop()
                             throw cancellation
                         } catch (error: Throwable) {
+                            parallelPermitDeferred?.cancel()
                             failSession(session, error = VoiceDictationV2Error.AudioCaptureFailed(error.message))
                             return@launch
                         }
@@ -893,48 +958,38 @@ class VoiceDictationV2Controller(
                                         true
                                     }
                                 }
-                            if (!enteredListening) return@launch
+                            if (!enteredListening) {
+                                parallelPermitDeferred?.cancel()
+                                return@launch
+                            }
                         }
                         VoiceDictationAudioStartResult.PermissionDenied -> {
+                            parallelPermitDeferred?.cancel()
                             failSession(session, error = VoiceDictationV2Error.PermissionDenied)
                             return@launch
                         }
                         VoiceDictationAudioStartResult.DeviceUnavailable -> {
+                            parallelPermitDeferred?.cancel()
                             failSession(session, error = VoiceDictationV2Error.DeviceUnavailable)
                             return@launch
                         }
                         is VoiceDictationAudioStartResult.Failed -> {
+                            parallelPermitDeferred?.cancel()
                             failSession(session, error = VoiceDictationV2Error.AudioCaptureFailed(audioStart.reason))
                             return@launch
                         }
                     }
 
-                    // Step 2: Request single-use v2 permit from Raft server (runs concurrently with live mic capture).
+                    // Step 2: Obtain single-use v2 permit from Raft server (awaiting parallel fetch if
+                    // RECORD_AUDIO was already granted, otherwise running concurrently with live mic capture).
                     val permitOutcome =
-                        try {
-                            permitApi.requestPermit(
-                                serverId = session.owner.serverId,
-                                language = session.language,
-                                channelId = session.owner.channelId,
+                        parallelPermitDeferred?.await()
+                            ?: requestPermitSafely(
+                                session = session,
                                 draftBefore = normalizedDraftBefore,
                                 draftAfter = normalizedDraftAfter,
                                 contactHints = normalizedContactHints,
                             )
-                        } catch (cancellation: CancellationException) {
-                            throw cancellation
-                        } catch (error: Throwable) {
-                            failSession(
-                                session,
-                                error =
-                                    VoiceDictationV2Error.PermitRefused(
-                                        VoiceDictationV2PermitFailure.Failed(
-                                            code = "voice_dictation_network_error",
-                                            serverMessage = error.message,
-                                        ),
-                                    ),
-                            )
-                            return@launch
-                        }
                     if (!isLive(session)) return@launch
 
                     val permit =
@@ -975,6 +1030,12 @@ class VoiceDictationV2Controller(
                     if (!updatedPermitState) return@launch
 
                     // Step 3: Connect WebSocket with `Authorization: Bearer <permit>` (and optional `?tp=`) and send `start`.
+                    val wsConnectStartedAt = nowMillis()
+                    synchronized(stateLock) {
+                        if (session.wsConnectStartedAtMs == null) {
+                            session.wsConnectStartedAtMs = wsConnectStartedAt
+                        }
+                    }
                     val connection =
                         try {
                             streamConnector.connect(
@@ -988,6 +1049,12 @@ class VoiceDictationV2Controller(
                             failSession(session, error = VoiceDictationV2Error.ConnectionLost(error.message))
                             return@launch
                         }
+                    val wsConnectedAt = nowMillis()
+                    synchronized(stateLock) {
+                        if (session.wsConnectedAtMs == null) {
+                            session.wsConnectedAtMs = wsConnectedAt
+                        }
+                    }
 
                     if (!session.attachConnection(connection)) {
                         withContext(NonCancellable) {
@@ -1068,6 +1135,7 @@ class VoiceDictationV2Controller(
                         }
                     }
                 } finally {
+                    parallelPermitDeferred?.cancel()
                     withContext(NonCancellable) {
                         session.cleanupResources()
                     }
@@ -1107,6 +1175,7 @@ class VoiceDictationV2Controller(
         var modeToSettle: Pair<CompletableDeferred<VoiceDictationSessionMode>, VoiceDictationSessionMode>? = null
         var previousBg: Session? = null
         var previousBgSummary: VoiceDictationSessionSummary? = null
+        var previousBgTiming = SessionTimingSnapshot()
         var previousBgHelperJobs: List<Job> = emptyList()
         var previousBgRunJob: Job? = null
         var previousBgHasConnection = false
@@ -1132,6 +1201,7 @@ class VoiceDictationV2Controller(
                             errorCode = null,
                             nowMs = stopAt,
                         )
+                    previousBgTiming = existingBg.timingSnapshotLocked()
                     previousBg = existingBg
                     previousBgRunJob = existingBg.runJob
                     previousBgHasConnection = existingBg.connection != null
@@ -1160,7 +1230,7 @@ class VoiceDictationV2Controller(
         modeToSettle?.let { (deferred, mode) -> deferred.complete(mode) }
 
         previousBg?.let { stale ->
-            emitSessionTelemetrySafely(stale.owner.serverId, previousBgSummary)
+            emitSessionTelemetrySafely(stale.owner.serverId, previousBgSummary, previousBgTiming)
             stale.liveAudioChannel.close()
             previousBgHelperJobs.forEach { it.cancel() }
             if (!previousBgHasConnection) {
@@ -1705,6 +1775,7 @@ class VoiceDictationV2Controller(
     ) {
         var releaseSubmitWait = false
         var summary: VoiceDictationSessionSummary? = null
+        var timing = SessionTimingSnapshot()
         val completedAt = nowMillis()
         val termination =
             synchronized(stateLock) {
@@ -1722,6 +1793,7 @@ class VoiceDictationV2Controller(
                                 errorCode = null,
                                 nowMs = completedAt,
                             )
+                        timing = session.timingSnapshotLocked()
                         stateFlow.value =
                             stateFlow.value.copy(
                                 phase = VoiceDictationV2Phase.Idle,
@@ -1742,6 +1814,7 @@ class VoiceDictationV2Controller(
                                 errorCode = null,
                                 nowMs = completedAt,
                             )
+                        timing = session.timingSnapshotLocked()
                         stateFlow.value =
                             stateFlow.value.copy(
                                 hasBackgroundDrain = false,
@@ -1751,7 +1824,7 @@ class VoiceDictationV2Controller(
                 }
                 Triple(collectHelperJobsLocked(session), session.runJob, session.connection != null)
             }
-        emitSessionTelemetrySafely(session.owner.serverId, summary)
+        emitSessionTelemetrySafely(session.owner.serverId, summary, timing)
         val feedbackTarget = captureSessionOutcome(session, sentBeforeRefineDone = false)
         if (feedbackTarget != null) {
             synchronized(stateLock) {
@@ -1782,6 +1855,7 @@ class VoiceDictationV2Controller(
     ) {
         var releaseSubmitWait = false
         var summary: VoiceDictationSessionSummary? = null
+        var timing = SessionTimingSnapshot()
         val failedAt = nowMillis()
         val termination =
             synchronized(stateLock) {
@@ -1801,6 +1875,7 @@ class VoiceDictationV2Controller(
                             errorCode = voiceDictationSessionErrorCode(error),
                             nowMs = failedAt,
                         )
+                    timing = session.timingSnapshotLocked()
                     stateFlow.value =
                         applyErrorToStateLocked(
                             base =
@@ -1833,6 +1908,7 @@ class VoiceDictationV2Controller(
                                 nowMs = failedAt,
                             )
                         }
+                    timing = session.timingSnapshotLocked()
                     val surfaceBanner = !wasReady && activeSession == null
                     stateFlow.value =
                         applyErrorToStateLocked(
@@ -1847,7 +1923,7 @@ class VoiceDictationV2Controller(
                 }
                 Triple(collectHelperJobsLocked(session), session.runJob, session.connection != null)
             }
-        emitSessionTelemetrySafely(session.owner.serverId, summary)
+        emitSessionTelemetrySafely(session.owner.serverId, summary, timing)
         val (helperJobs, runJob, hasConnection) = termination
         session.liveAudioChannel.close()
         helperJobs.forEach { it.cancel() }
@@ -1943,7 +2019,7 @@ class VoiceDictationV2Controller(
         val sessionsToClean = mutableListOf<Triple<Session, Job?, Boolean>>()
         val helperJobsToCancel = mutableListOf<Job>()
         val immediateRunJobsToCancel = mutableListOf<Job>()
-        val telemetryToEmit = mutableListOf<Pair<String, VoiceDictationSessionSummary>>()
+        val telemetryToEmit = mutableListOf<Triple<String, VoiceDictationSessionSummary, SessionTimingSnapshot>>()
         var existingRecorderCleanup: Job? = null
         var submitWaitToCancel: CompletableDeferred<Boolean>? = null
 
@@ -1966,7 +2042,7 @@ class VoiceDictationV2Controller(
                         errorCode = null,
                         nowMs = abortAt,
                     )?.let { summary ->
-                        telemetryToEmit += active.owner.serverId to summary
+                        telemetryToEmit += Triple(active.owner.serverId, summary, active.timingSnapshotLocked())
                     }
                 }
                 active.recordCloseReasonLocked(closeReason)
@@ -1990,7 +2066,7 @@ class VoiceDictationV2Controller(
                         errorCode = null,
                         nowMs = abortAt,
                     )?.let { summary ->
-                        telemetryToEmit += bg.owner.serverId to summary
+                        telemetryToEmit += Triple(bg.owner.serverId, summary, bg.timingSnapshotLocked())
                     }
                 }
                 bg.recordCloseReasonLocked(closeReason)
@@ -2035,8 +2111,8 @@ class VoiceDictationV2Controller(
             existingRecorderCleanup = pendingRecorderCleanupJob
         }
 
-        telemetryToEmit.forEach { (serverId, summary) ->
-            emitSessionTelemetrySafely(serverId, summary)
+        telemetryToEmit.forEach { (serverId, summary, timing) ->
+            emitSessionTelemetrySafely(serverId, summary, timing)
         }
         submitWaitToCancel?.complete(false)
         if (sessionsToClean.isEmpty()) {
@@ -2063,6 +2139,50 @@ class VoiceDictationV2Controller(
         return lastRecorderCleanup
     }
 
+    private suspend fun requestPermitSafely(
+        session: Session,
+        draftBefore: String?,
+        draftAfter: String?,
+        contactHints: List<String>?,
+    ): VoiceDictationV2PermitOutcome {
+        val startedAt = nowMillis()
+        synchronized(stateLock) {
+            if (session.permitStartedAtMs == null) {
+                session.permitStartedAtMs = startedAt
+            }
+        }
+        val outcome =
+            try {
+                permitApi.requestPermit(
+                    serverId = session.owner.serverId,
+                    language = session.language,
+                    channelId = session.owner.channelId,
+                    draftBefore = draftBefore,
+                    draftAfter = draftAfter,
+                    contactHints = contactHints,
+                )
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Throwable) {
+                VoiceDictationV2PermitOutcome.Refused(
+                    VoiceDictationV2PermitFailure.Failed(
+                        code = "voice_dictation_network_error",
+                        serverMessage = error.message,
+                    ),
+                )
+            }
+        val finishedAt = nowMillis()
+        synchronized(stateLock) {
+            if (session.permitFinishedAtMs == null) {
+                session.permitFinishedAtMs = finishedAt
+            }
+            if (outcome is VoiceDictationV2PermitOutcome.Issued && outcome.usedCallerContextFallback) {
+                session.callerContextFallback = true
+            }
+        }
+        return outcome
+    }
+
     private fun emitImmediateStartFailureTelemetry(
         serverId: String,
         mode: VoiceDictationSessionMode,
@@ -2084,12 +2204,47 @@ class VoiceDictationV2Controller(
     private fun emitSessionTelemetrySafely(
         serverId: String,
         summary: VoiceDictationSessionSummary?,
+        timing: SessionTimingSnapshot = SessionTimingSnapshot(),
     ) {
         if (summary == null) return
+        runCatching {
+            onDiagnosticLog(
+                VOICE_DICTATION_DIAGNOSTIC_LOG_TAG,
+                formatVoiceDictationSessionTimingLog(summary = summary, timing = timing),
+            )
+        }
         val callback = onSessionTelemetry ?: return
         runCatching {
             callback(serverId, summary)
         }
+    }
+
+    private fun formatVoiceDictationSessionTimingLog(
+        summary: VoiceDictationSessionSummary,
+        timing: SessionTimingSnapshot,
+    ): String =
+        buildString {
+            append("voice_dictation_session_timing")
+            append(" mode=").append(summary.mode.wire)
+            append(" stoppedBy=").append(summary.stoppedBy.wire)
+            append(" durationMs=").append(summary.durationMs.coerceAtLeast(0L))
+            append(" micStartMs=").append(summary.micStartMs?.coerceAtLeast(0L)?.toString() ?: "none")
+            append(" permitMs=").append(timing.permitMs?.coerceAtLeast(0L)?.toString() ?: "none")
+            append(" wsConnectMs=").append(timing.wsConnectMs?.coerceAtLeast(0L)?.toString() ?: "none")
+            append(" readyWaitMs=").append(timing.readyWaitMs?.coerceAtLeast(0L)?.toString() ?: "none")
+            append(" connectMs=").append(summary.connectMs?.coerceAtLeast(0L)?.toString() ?: "none")
+            append(" firstPartialMs=").append(summary.firstPartialMs?.coerceAtLeast(0L)?.toString() ?: "none")
+            append(" finishingMs=").append(summary.finishingMs?.coerceAtLeast(0L)?.toString() ?: "none")
+            append(" parallelPermit=").append(timing.parallelPermit)
+            append(" callerContextFallback=").append(timing.callerContextFallback)
+            append(" preReadyQueued=").append(summary.preReadyChunksQueued.coerceAtLeast(0))
+            append(" preReadySent=").append(summary.preReadyChunksSent.coerceAtLeast(0))
+            append(" streamSource=").append(summary.streamUrlSource?.wire ?: "none")
+            append(" errorCode=").append(summary.errorCode?.wire ?: "none")
+        }
+
+    private companion object {
+        const val VOICE_DICTATION_DIAGNOSTIC_LOG_TAG: String = "RaftVoiceDictation"
     }
 
     private fun resolveSubmitWait(target: CompletableDeferred<Boolean>?, proceed: Boolean) {

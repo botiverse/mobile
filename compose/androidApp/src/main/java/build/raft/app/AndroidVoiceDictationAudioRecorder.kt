@@ -2,12 +2,15 @@
 
 package build.raft.app
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import androidx.core.content.ContextCompat
 import build.raft.app.core.data.diagnostics.RaftAppLog
 import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
@@ -140,6 +143,7 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
     override val sampleRateHz: Int = VOICE_DICTATION_DEFAULT_SAMPLE_RATE_HZ,
     private val logWarning: (String) -> Unit = { message -> RaftAppLog.w(LOG_TAG, message) },
     private val stopJoinTimeoutMs: Long = DEFAULT_STOP_JOIN_TIMEOUT_MS,
+    private val hasRecordAudioPermissionProvider: () -> Boolean = { false },
 ) : RaftVoiceDictationAudioRecorder {
 
     constructor(appContext: Context) : this(
@@ -148,6 +152,12 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
         },
         sourceFactory = DefaultAndroidVoiceDictationPcmSourceFactory,
         captureDispatcher = Dispatchers.IO,
+        hasRecordAudioPermissionProvider = {
+            ContextCompat.checkSelfPermission(
+                appContext.applicationContext,
+                Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED
+        },
     )
 
     private class ActiveCapture(
@@ -160,6 +170,9 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
     private val lock = Any()
     private val captureScope = CoroutineScope(SupervisorJob() + captureDispatcher)
     private var activeCapture: ActiveCapture? = null
+
+    override fun hasRecordAudioPermission(): Boolean =
+        runCatching { hasRecordAudioPermissionProvider() }.getOrDefault(false)
 
     override suspend fun start(
         onPcmChunk: (ByteArray) -> Unit,

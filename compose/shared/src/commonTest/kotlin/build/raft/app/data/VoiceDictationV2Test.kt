@@ -1,6 +1,8 @@
 package build.raft.app.data
 
+import build.raft.app.RaftDiagnosticsVolumePolicy
 import build.raft.app.model.ServerId
+import build.raft.app.raftRedactLogMessage
 import build.raft.realtime.socket.RaftWebSocketConnector
 import build.raft.realtime.socket.RaftWebSocketFrame
 import build.raft.realtime.socket.RaftWebSocketSession
@@ -14,6 +16,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -51,6 +54,7 @@ class VoiceDictationV2Test {
     @AfterTest
     fun tearDownRegistry() {
         RaftVoiceDictationAudioRecorderRegistry.unregister()
+        VoiceDictationCallerContextFallbackCache.clear()
     }
 
     // -------------------------------------------------------------------------
@@ -140,6 +144,7 @@ class VoiceDictationV2Test {
                 contactHints = listOf("Tenny"),
             )
         assertIs<VoiceDictationV2PermitOutcome.Issued>(recovered)
+        assertTrue(recovered.usedCallerContextFallback)
         assertEquals(2, client.sentBodies.size)
         val firstObj = Json.parseToJsonElement(assertNotNull(client.sentBodies[0])).jsonObject
         assertEquals("Prior draft", firstObj["draftBefore"]?.jsonPrimitive?.content)
@@ -151,6 +156,7 @@ class VoiceDictationV2Test {
         )
 
         // 1b. 400 invalid_request when carrying ONLY draftAfter -> retries ONCE stripped -> 201 Issued.
+        VoiceDictationCallerContextFallbackCache.clear()
         val draftAfterOnlyClient = FakeDictationNetworkClient()
         draftAfterOnlyClient.responseProvider = { attempt, _ ->
             if (attempt == 1) {
@@ -173,6 +179,7 @@ class VoiceDictationV2Test {
                 contactHints = null,
             )
         assertIs<VoiceDictationV2PermitOutcome.Issued>(recoveredAfterOnly)
+        assertTrue(recoveredAfterOnly.usedCallerContextFallback)
         assertEquals(2, draftAfterOnlyClient.sentBodies.size)
         val afterOnlyFirstObj = Json.parseToJsonElement(assertNotNull(draftAfterOnlyClient.sentBodies[0])).jsonObject
         assertEquals(setOf("v", "language", "channelId", "draftAfter"), afterOnlyFirstObj.keys)
@@ -183,6 +190,7 @@ class VoiceDictationV2Test {
         )
 
         // 2. Persistent 400 stops after 2 attempts (never loops) and returns InvalidRequest.
+        VoiceDictationCallerContextFallbackCache.clear()
         val persistentClient = FakeDictationNetworkClient()
         persistentClient.nextResponse =
             HomeNetworkResponse(
@@ -3352,6 +3360,443 @@ class VoiceDictationV2Test {
     }
 
     // -------------------------------------------------------------------------
+    // 13. Startup latency optimizations & zero-text stage timing logs
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun permitApiNegativeCachesCallerContext400FallbackPerServerScopeWith5MinuteTtl() = runTest {
+        assertEquals(300_000L, VOICE_DICTATION_CALLER_CONTEXT_FALLBACK_TTL_MS)
+        var fakeNowMs = 1_000_000L
+        val sharedCache = VoiceDictationCallerContextFallbackCache(maxEntries = 2)
+
+        // 1. First tap on older prod server: sends caller context -> 400 -> retries stripped -> 201 Issued.
+        val prodClient1 = FakeDictationNetworkClient(apiBaseUrl = "https://api.raft.build/api/")
+        prodClient1.responseProvider = { attempt, body ->
+            if (attempt == 1 && body != null && body.contains("draftBefore")) {
+                HomeNetworkResponse(
+                    code = 400,
+                    bodyText = null,
+                    errorBodyText = """{"code":"invalid_request","error":"Unrecognized keys"}""",
+                )
+            } else {
+                HomeNetworkResponse(code = 201, bodyText = validPermitJson)
+            }
+        }
+        val api1 =
+            RaftVoiceDictationV2PermitApi(
+                networkClient = prodClient1,
+                nowMillis = { fakeNowMs },
+                fallbackCache = sharedCache,
+            )
+        val firstOutcome =
+            api1.requestPermit(
+                serverId = "srv-prod",
+                language = "zh-CN",
+                channelId = validChannelUuid,
+                draftBefore = "Draft context",
+                draftAfter = " after",
+                contactHints = listOf("Artin"),
+            )
+        val firstIssued = assertIs<VoiceDictationV2PermitOutcome.Issued>(firstOutcome)
+        assertTrue(firstIssued.usedCallerContextFallback)
+        assertEquals(2, prodClient1.sentBodies.size)
+
+        // 2. Subsequent tap from a fresh PermitApi instance (e.g. after navigating channels) within
+        //    5-minute TTL skips the wasted 400 RTT completely (1 stripped request, fallback = true).
+        fakeNowMs += VOICE_DICTATION_CALLER_CONTEXT_FALLBACK_TTL_MS - 1L
+        val prodClient2 = FakeDictationNetworkClient(apiBaseUrl = "https://api.raft.build/api") // trailing slash normalized
+        prodClient2.nextResponse = HomeNetworkResponse(code = 201, bodyText = validPermitJson)
+        val api2 =
+            RaftVoiceDictationV2PermitApi(
+                networkClient = prodClient2,
+                nowMillis = { fakeNowMs },
+                fallbackCache = sharedCache,
+            )
+        val cachedOutcome =
+            api2.requestPermit(
+                serverId = "srv-prod",
+                language = "zh-CN",
+                channelId = validChannelUuid,
+                draftBefore = "Another draft",
+                draftAfter = " tail",
+                contactHints = listOf("Andy"),
+            )
+        val cachedIssued = assertIs<VoiceDictationV2PermitOutcome.Issued>(cachedOutcome)
+        assertTrue(cachedIssued.usedCallerContextFallback)
+        assertEquals(1, prodClient2.sentBodies.size, "cached fallback must skip the wasted 400 RTT")
+        assertEquals("""{"v":2,"language":"zh","channelId":"$validChannelUuid"}""", prodClient2.sentBodies.single())
+
+        // 3. Different serverId on same env AND same serverId on staging env are NOT affected by prod/srv-prod cache.
+        val otherServerClient = FakeDictationNetworkClient(apiBaseUrl = "https://api.raft.build/api/")
+        otherServerClient.nextResponse = HomeNetworkResponse(code = 201, bodyText = validPermitJson)
+        val otherServerOutcome =
+            RaftVoiceDictationV2PermitApi(
+                networkClient = otherServerClient,
+                nowMillis = { fakeNowMs },
+                fallbackCache = sharedCache,
+            ).requestPermit(
+                serverId = "srv-other",
+                language = "en",
+                channelId = null,
+                draftBefore = "Other server draft",
+                draftAfter = null,
+                contactHints = null,
+            )
+        val otherServerIssued = assertIs<VoiceDictationV2PermitOutcome.Issued>(otherServerOutcome)
+        assertFalse(otherServerIssued.usedCallerContextFallback)
+        assertEquals(1, otherServerClient.sentBodies.size)
+        assertTrue(assertNotNull(otherServerClient.sentBodies.single()).contains("draftBefore"))
+
+        val stagingClient = FakeDictationNetworkClient(apiBaseUrl = "https://api-aws-staging.botiverse.dev/api/")
+        stagingClient.nextResponse = HomeNetworkResponse(code = 201, bodyText = validPermitJson)
+        val stagingOutcome =
+            RaftVoiceDictationV2PermitApi(
+                networkClient = stagingClient,
+                nowMillis = { fakeNowMs },
+                fallbackCache = sharedCache,
+            ).requestPermit(
+                serverId = "srv-prod",
+                language = "en",
+                channelId = null,
+                draftBefore = "Staging draft",
+                draftAfter = null,
+                contactHints = null,
+            )
+        val stagingIssued = assertIs<VoiceDictationV2PermitOutcome.Issued>(stagingOutcome)
+        assertFalse(stagingIssued.usedCallerContextFallback)
+        assertEquals(1, stagingClient.sentBodies.size)
+        assertTrue(assertNotNull(stagingClient.sentBodies.single()).contains("draftBefore"))
+
+        // 4. After TTL expires (>= 300_000 ms), next tap re-probes caller context so server upgrades auto-heal.
+        fakeNowMs += 1L
+        val upgradedProdClient = FakeDictationNetworkClient(apiBaseUrl = "https://api.raft.build/api/")
+        upgradedProdClient.nextResponse = HomeNetworkResponse(code = 201, bodyText = validPermitJson)
+        val upgradedOutcome =
+            RaftVoiceDictationV2PermitApi(
+                networkClient = upgradedProdClient,
+                nowMillis = { fakeNowMs },
+                fallbackCache = sharedCache,
+            ).requestPermit(
+                serverId = "srv-prod",
+                language = "en",
+                channelId = null,
+                draftBefore = "Upgraded server draft",
+                draftAfter = " suffix",
+                contactHints = listOf("Artin"),
+            )
+        val upgradedIssued = assertIs<VoiceDictationV2PermitOutcome.Issued>(upgradedOutcome)
+        assertFalse(upgradedIssued.usedCallerContextFallback)
+        assertEquals(1, upgradedProdClient.sentBodies.size)
+        assertTrue(assertNotNull(upgradedProdClient.sentBodies.single()).contains("draftBefore"))
+
+        // 5. Persistent 400 (retry also fails) must NOT poison the cache.
+        val failingClient = FakeDictationNetworkClient(apiBaseUrl = "https://api.raft.build/api/")
+        failingClient.nextResponse =
+            HomeNetworkResponse(
+                code = 400,
+                bodyText = null,
+                errorBodyText = """{"code":"invalid_request"}""",
+            )
+        val failedOutcome =
+            RaftVoiceDictationV2PermitApi(
+                networkClient = failingClient,
+                nowMillis = { fakeNowMs },
+                fallbackCache = sharedCache,
+            ).requestPermit(
+                serverId = "srv-bad",
+                language = "en",
+                channelId = null,
+                draftBefore = "Bad draft",
+                draftAfter = null,
+                contactHints = null,
+            )
+        assertIs<VoiceDictationV2PermitOutcome.Refused>(failedOutcome)
+        assertFalse(sharedCache.isActive("https://api.raft.build/api", "srv-bad", fakeNowMs))
+
+        // 6. Bounded cache size evicts oldest entry cleanly.
+        sharedCache.recordFallback("https://api.raft.build/api", "srv-a", fakeNowMs, 60_000L)
+        sharedCache.recordFallback("https://api.raft.build/api", "srv-b", fakeNowMs, 60_000L)
+        sharedCache.recordFallback("https://api.raft.build/api", "srv-c", fakeNowMs, 60_000L)
+        assertEquals(2, sharedCache.size())
+        assertFalse(sharedCache.isActive("https://api.raft.build/api", "srv-a", fakeNowMs))
+        assertTrue(sharedCache.isActive("https://api.raft.build/api", "srv-b", fakeNowMs))
+        assertTrue(sharedCache.isActive("https://api.raft.build/api", "srv-c", fakeNowMs))
+    }
+
+    @Test
+    fun controllerParallelizesPermitWithMicStartWhenPermissionGrantedAndCancelsOnMicFailure() = runTest {
+        // 1. Default recorder (hasRecordAudioPermission() == false): permit does NOT start until mic starts.
+        val serialMicGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+        val serialPermitApi = FakeDictationPermitApi(defaultPermitOutcome())
+        val serialWs = FakeDictationWebSocketSession()
+        val serialController =
+            VoiceDictationV2Controller(
+                permitApi = serialPermitApi,
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> serialWs },
+                scope = backgroundScope,
+                audioRecorderProvider = {
+                    FakeDictationAudioRecorder(
+                        startGate = serialMicGate,
+                        recordAudioPermissionGranted = false,
+                    )
+                },
+            )
+        serialController.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Connecting, serialController.state.value.phase)
+        assertEquals(0, serialPermitApi.calls.size, "permit must wait for mic start when permission is not pre-authorized")
+        serialMicGate.complete(VoiceDictationAudioStartResult.Started)
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Listening, serialController.state.value.phase)
+        assertEquals(1, serialPermitApi.calls.size)
+        serialController.cancel()
+        runCurrent()
+
+        // 2. Pre-authorized recorder (hasRecordAudioPermission() == true): permit starts concurrently while mic start suspends.
+        val parallelMicGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+        val parallelPermitGate = CompletableDeferred<VoiceDictationV2PermitOutcome>()
+        val parallelPermitApi = FakeDictationPermitApi(defaultPermitOutcome(), gate = parallelPermitGate)
+        val parallelWs = FakeDictationWebSocketSession()
+        var parallelWsConnectCalls = 0
+        val parallelController =
+            VoiceDictationV2Controller(
+                permitApi = parallelPermitApi,
+                streamConnector =
+                    VoiceDictationV2StreamClient { _, _ ->
+                        parallelWsConnectCalls += 1
+                        parallelWs
+                    },
+                scope = backgroundScope,
+                audioRecorderProvider = {
+                    FakeDictationAudioRecorder(
+                        startGate = parallelMicGate,
+                        recordAudioPermissionGranted = true,
+                    )
+                },
+            )
+        parallelController.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Connecting, parallelController.state.value.phase)
+        assertEquals(1, parallelPermitApi.calls.size, "pre-authorized recorder must overlap permit fetch with mic start")
+        assertEquals(0, parallelWsConnectCalls, "WS connect must not start before mic capture is live")
+
+        // Even if permit finishes BEFORE mic resolves, WS waits until mic succeeds.
+        parallelPermitGate.complete(defaultPermitOutcome())
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Connecting, parallelController.state.value.phase)
+        assertEquals(0, parallelWsConnectCalls)
+
+        parallelMicGate.complete(VoiceDictationAudioStartResult.Started)
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Listening, parallelController.state.value.phase)
+        assertEquals(1, parallelWsConnectCalls)
+        parallelController.cancel()
+        runCurrent()
+
+        // 3. Pre-authorized recorder failing (PermissionDenied / DeviceUnavailable / Failed) cancels in-flight permit and never connects WS.
+        val failureCases =
+            listOf(
+                VoiceDictationAudioStartResult.PermissionDenied to VoiceDictationV2Error.PermissionDenied,
+                VoiceDictationAudioStartResult.DeviceUnavailable to VoiceDictationV2Error.DeviceUnavailable,
+                VoiceDictationAudioStartResult.Failed("hal_busy") to VoiceDictationV2Error.AudioCaptureFailed("hal_busy"),
+            )
+        for ((micFailure, expectedError) in failureCases) {
+            val failMicGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+            val failPermitGate = CompletableDeferred<VoiceDictationV2PermitOutcome>()
+            val failPermitApi = FakeDictationPermitApi(defaultPermitOutcome(), gate = failPermitGate)
+            var failWsCalls = 0
+            val failController =
+                VoiceDictationV2Controller(
+                    permitApi = failPermitApi,
+                    streamConnector =
+                        VoiceDictationV2StreamClient { _, _ ->
+                            failWsCalls += 1
+                            FakeDictationWebSocketSession()
+                        },
+                    scope = backgroundScope,
+                    audioRecorderProvider = {
+                        FakeDictationAudioRecorder(
+                            startGate = failMicGate,
+                            recordAudioPermissionGranted = true,
+                        )
+                    },
+                )
+            failController.start(serverId = "srv-1", onComposerUpdate = {})
+            runCurrent()
+            assertEquals(1, failPermitApi.calls.size)
+            assertEquals(0, failPermitApi.cancelledCount)
+
+            failMicGate.complete(micFailure)
+            runCurrent()
+            assertEquals(VoiceDictationV2Phase.Idle, failController.state.value.phase)
+            assertEquals(expectedError, failController.state.value.error)
+            assertEquals(1, failPermitApi.cancelledCount, "parallel permit must be cancelled when mic returns $micFailure")
+            assertEquals(0, failWsCalls, "WS must never connect when mic fails with $micFailure")
+        }
+    }
+
+    @Test
+    fun controllerEmitsZeroTextStageTimingDiagnosticLogOnceWithSplitConnectAndReadyWaitStages() = runTest {
+        var fakeNowMs = 50_000L
+        val micGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+        val permitGate = CompletableDeferred<VoiceDictationV2PermitOutcome>()
+        val wsConnectGate = CompletableDeferred<RaftWebSocketSession>()
+        val ws = FakeDictationWebSocketSession()
+        val recorder =
+            FakeDictationAudioRecorder(
+                startGate = micGate,
+                recordAudioPermissionGranted = true,
+            )
+        val diagLogs = mutableListOf<Pair<String, String>>()
+        val summaries = mutableListOf<VoiceDictationSessionSummary>()
+
+        val controller =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(), gate = permitGate),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsConnectGate.await() },
+                scope = backgroundScope,
+                audioRecorderProvider = { recorder },
+                nowMillis = { fakeNowMs },
+                onSessionTelemetry = { _, summary -> summaries += summary },
+                onDiagnosticLog = { tag, message -> diagLogs += tag to message },
+            )
+
+        val secretDraft = "SECRET_TIMING_DRAFT_BEFORE"
+        val secretDraftAfter = "SECRET_TIMING_DRAFT_AFTER"
+        val secretHint = "SECRET_TIMING_CONTACT"
+        val secretSpoken = "SECRET_TIMING_TRANSCRIPT"
+        val secretPermitToken = "hv2.k1.SECRET_PERMIT_PAYLOAD.sig"
+        val secretStreamUrl = "wss://secret-live.example.test/v1/stream"
+
+        controller.start(
+            serverId = "srv-secret-timing",
+            channelId = validChannelUuid,
+            baseText = "$secretDraft\n$secretDraftAfter",
+            insertStart = secretDraft.length,
+            insertEnd = secretDraft.length,
+            draftBefore = secretDraft,
+            draftAfter = "\n$secretDraftAfter",
+            contactHints = listOf(secretHint),
+            mode = VoiceDictationSessionMode.Hold,
+            onComposerUpdate = {},
+        )
+        runCurrent()
+
+        // Parallel permit started at t=0; mic finishes at +25 ms.
+        fakeNowMs += 25L
+        micGate.complete(VoiceDictationAudioStartResult.Started)
+        runCurrent()
+
+        // Buffer 2 pre-ready chunks.
+        recorder.emitChunk(ByteArray(3_200) { 1 })
+        recorder.emitChunk(ByteArray(3_200) { 2 })
+
+        // Parallel permit finishes at +340 ms (with callerContextFallback = true, streamUrlSource = RaftEdge).
+        fakeNowMs += 315L
+        permitGate.complete(
+            VoiceDictationV2PermitOutcome.Issued(
+                permit =
+                    VoiceDictationV2Permit(
+                        permit = secretPermitToken,
+                        url = secretStreamUrl,
+                        expiresAtIso = "2026-11-26T20:01:00.000Z",
+                        expiresAtEpochMs = 1_795_723_260_000L,
+                        maxDurationSeconds = 600,
+                        quota =
+                            VoiceDictationV2Quota(
+                                usedSeconds = 120,
+                                limitSeconds = 7200,
+                                remainingSeconds = 7080,
+                                resetsAtIso = "2026-11-27T00:00:00.000Z",
+                                resetsAtEpochMs = 1_795_737_600_000L,
+                            ),
+                        streamUrlSource = VoiceStreamUrlSource.RaftEdge,
+                    ),
+                usedCallerContextFallback = true,
+            ),
+        )
+        runCurrent()
+
+        // WS handshake takes 410 ms (t=340 -> t=750).
+        fakeNowMs += 410L
+        wsConnectGate.complete(ws)
+        runCurrent()
+
+        // holt-live `start -> ready` wait takes 1_250 ms (t=750 -> t=2_000 -> total connectMs = 2_000).
+        fakeNowMs += 1_250L
+        ws.pushText("""{"deck":"ready"}""")
+        runCurrent()
+
+        // First partial arrives at +2_600 ms.
+        fakeNowMs += 600L
+        ws.pushText("""{"deck":"text","text":"$secretSpoken","stable_len":0}""")
+        runCurrent()
+
+        // User stops at +4_000 ms; done settles 350 ms later.
+        fakeNowMs += 1_400L
+        controller.stop(VoiceDictationStopReason.Button)
+        runCurrent()
+        fakeNowMs += 350L
+        ws.pushText("""{"deck":"done"}""")
+        runCurrent()
+
+        // Repeated teardown must never emit duplicate log lines.
+        controller.cancel()
+        controller.onOwnerChanged(serverId = "srv-other")
+        runCurrent()
+
+        assertEquals(1, summaries.size)
+        assertEquals(1, diagLogs.size)
+        val (tag, line) = diagLogs.single()
+        assertEquals("RaftVoiceDictation", tag)
+        assertEquals(
+            "voice_dictation_session_timing" +
+                " mode=hold" +
+                " stoppedBy=button" +
+                " durationMs=4000" +
+                " micStartMs=25" +
+                " permitMs=340" +
+                " wsConnectMs=410" +
+                " readyWaitMs=1250" +
+                " connectMs=2000" +
+                " firstPartialMs=2600" +
+                " finishingMs=350" +
+                " parallelPermit=true" +
+                " callerContextFallback=true" +
+                " preReadyQueued=2" +
+                " preReadySent=2" +
+                " streamSource=raft_edge" +
+                " errorCode=none",
+            line,
+        )
+
+        // Volume policy persists RaftVoiceDictation lines without flagging errorCode=none as a failure,
+        // and the platform log sanitizer leaves every timing field untouched.
+        assertEquals(line, raftRedactLogMessage(line))
+        assertFalse(RaftDiagnosticsVolumePolicy.looksLikeFailure(line))
+        val policy = RaftDiagnosticsVolumePolicy()
+        repeat(5) { idx ->
+            assertTrue(policy.admit("info", tag, line, idx * 1_000L, verbose = false).persist)
+        }
+
+        // Strict privacy: zero text, context, token, URL, serverId, or channelId.
+        for (
+            secret in listOf(
+                secretDraft,
+                secretDraftAfter,
+                secretHint,
+                secretSpoken,
+                secretPermitToken,
+                secretStreamUrl,
+                "srv-secret-timing",
+                validChannelUuid,
+            )
+        ) {
+            assertFalse(line.contains(secret, ignoreCase = true), "leaked '$secret' into timing log: $line")
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Test helpers
     // -------------------------------------------------------------------------
 
@@ -3384,7 +3829,9 @@ class VoiceDictationV2Test {
                 ),
         )
 
-    private class FakeDictationNetworkClient : RaftNetworkClient {
+    private class FakeDictationNetworkClient(
+        var apiBaseUrl: String? = null,
+    ) : RaftNetworkClient {
         var lastPath: String? = null
         var lastMethod: String? = null
         var lastBodyText: String? = null
@@ -3392,6 +3839,8 @@ class VoiceDictationV2Test {
         var nextResponse: HomeNetworkResponse = HomeNetworkResponse(code = 201, bodyText = "{}")
         var responseProvider: ((attempt: Int, bodyText: String?) -> HomeNetworkResponse)? = null
         val sentBodies = mutableListOf<String?>()
+
+        override fun currentApiBaseUrl(): String? = apiBaseUrl
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -3425,6 +3874,7 @@ class VoiceDictationV2Test {
     ) : VoiceDictationV2PermitApi {
         val calls = mutableListOf<Triple<String, String?, String?>>()
         val contextCalls = mutableListOf<RecordedPermitContextCall>()
+        var cancelledCount: Int = 0
 
         override suspend fun requestPermit(
             serverId: String,
@@ -3474,7 +3924,12 @@ class VoiceDictationV2Test {
                     draftAfter = draftAfter,
                     contactHints = contactHints,
                 )
-            return gate?.await() ?: nextOutcome
+            return try {
+                gate?.await() ?: nextOutcome
+            } catch (cancelled: CancellationException) {
+                cancelledCount += 1
+                throw cancelled
+            }
         }
     }
 
@@ -3483,12 +3938,15 @@ class VoiceDictationV2Test {
         private val startResult: VoiceDictationAudioStartResult = VoiceDictationAudioStartResult.Started,
         private val startGate: CompletableDeferred<VoiceDictationAudioStartResult>? = null,
         private val onStopTailChunks: List<ByteArray> = emptyList(),
+        private val recordAudioPermissionGranted: Boolean = false,
     ) : RaftVoiceDictationAudioRecorder {
         var startCalls: Int = 0
         var stopCalls: Int = 0
         private var chunkCallback: ((ByteArray) -> Unit)? = null
         private var lastChunkCallback: ((ByteArray) -> Unit)? = null
         private var levelCallback: ((Float) -> Unit)? = null
+
+        override fun hasRecordAudioPermission(): Boolean = recordAudioPermissionGranted
 
         override suspend fun start(
             onPcmChunk: (ByteArray) -> Unit,
