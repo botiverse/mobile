@@ -8,11 +8,13 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import build.raft.app.data.AppLocale
 import build.raft.app.data.InstallMarketplaceAppActionCardType
 import build.raft.app.data.PlanUpgradeActionCardType
 import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardSeatOutcome
+import build.raft.app.data.stringDescLocaleType
 import build.raft.app.resources.StringDesc
 import build.raft.app.thread.LocalThreadActionCardNames
 import build.raft.app.thread.LocalThreadActionCardSpecHost
@@ -42,7 +44,7 @@ import org.robolectric.annotation.Config
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w390dp-h844dp")
 class ThreadActionCardParityUiTest {
     @get:Rule
     val activities = RobolectricComposeActivityRule()
@@ -65,24 +67,24 @@ class ThreadActionCardParityUiTest {
     ): String {
         val resultBlock =
             if (withResultText != null) {
-                ""","result":{"root":"res","elements":{"res":{"type":"Text","props":{"text":"$withResultText"}}}}"""
+                ""","result":{"root":"resRoot","elements":{"resRoot":{"type":"Stack","props":{"direction":"column"},"children":["res"]},"res":{"type":"Text","props":{"text":"$withResultText"}}}}"""
             } else {
                 ""
             }
         return """
-            {"catalog":"action-card.v1","icon":"credit_card",
-             "title":{"key":"test.title","text":{"en":"Test action card"}},
+            {"catalog":"action-card.v1","icon":"sparkles",
+             "title":{"key":"actionCard.test.title","text":{"en":"Test action card"}},
              "spec":{"root":"root","elements":{
                "root":{"type":"Stack","props":{"direction":"column"},"children":["actions"]},
                "actions":{"type":"Stack","props":{"direction":"row","role":"actions"},"children":["go"]},
-               "go":{"type":"Button","props":{"label":{"key":"test.go","text":{"en":"$buttonLabel"}},"emphasis":"primary","action":{"kind":"execute"}}}
+               "go":{"type":"Button","props":{"label":{"key":"actionCard.test.go","text":{"en":"$buttonLabel"}},"emphasis":"primary","action":{"kind":"execute"}}}
              }}$resultBlock}
         """.trimIndent()
     }
 
     @Test
     fun seatOutcomeRendersForRequesterAndOtherAndWithoutCommittedBy() = runRobolectricComposeUiTest {
-        StringDesc.localeType = StringDesc.LocaleType.Custom("en")
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
         var viewerId by mutableStateOf("u-mei")
         var executedBy by mutableStateOf<String?>("Ada")
         val spec = ActionCardSpecFixtures.cardFromJson(simpleSpec(buttonLabel = "Add seats"))
@@ -115,23 +117,24 @@ class ThreadActionCardParityUiTest {
                 }
             }
         }
+        waitForIdle()
 
-        onNodeWithTag("action-card-outcome").assertExists()
-        onNodeWithText("You can create Scout now.", substring = true).assertExists()
+        onNodeWithTag("action-card-outcome", useUnmergedTree = true).assertExists()
+        onNodeWithText("You can create Scout now.", substring = true, useUnmergedTree = true).assertExists()
 
         viewerId = "u-owner"
         waitForIdle()
-        onNodeWithText("Mei Lin can create Scout now.", substring = true).assertExists()
+        onNodeWithText("Mei Lin can create Scout now.", substring = true, useUnmergedTree = true).assertExists()
 
         executedBy = null
         waitForIdle()
-        onNodeWithTag("action-card-outcome").assertExists()
-        onNodeWithText("Mei Lin can create Scout now.", substring = true).assertExists()
+        onNodeWithTag("action-card-outcome", useUnmergedTree = true).assertExists()
+        onNodeWithText("Mei Lin can create Scout now.", substring = true, useUnmergedTree = true).assertExists()
     }
 
     @Test
     fun planUpgradeCardAutoMarksDoneWhenServerLeavesFreeAndRevertsOnFree() = runRobolectricComposeUiTest {
-        StringDesc.localeType = StringDesc.LocaleType.Custom("en")
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
         var serverPlan by mutableStateOf<String?>("free")
         val spec = ActionCardSpecFixtures.cardFromJson(simpleSpec(buttonLabel = "Upgrade to Pro", withResultText = "Legacy result"))
         val card =
@@ -160,27 +163,28 @@ class ThreadActionCardParityUiTest {
                 }
             }
         }
+        waitForIdle()
 
-        onNodeWithText("Upgrade to Pro").assertExists()
+        onNodeWithText("Upgrade to Pro", useUnmergedTree = true).assertExists()
 
         serverPlan = "pro"
         waitForIdle()
-        onNodeWithText("Upgraded to Pro").assertExists()
-        onNodeWithText("Upgrade to Pro").assertDoesNotExist()
-        onNodeWithText("Legacy result", substring = true).assertDoesNotExist()
+        onNodeWithText("Upgraded to Pro", substring = true, useUnmergedTree = true).assertExists()
+        onNodeWithText("Upgrade to Pro", useUnmergedTree = true).assertDoesNotExist()
+        onNodeWithText("Legacy result", substring = true, useUnmergedTree = true).assertDoesNotExist()
 
         serverPlan = "founder"
         waitForIdle()
-        onNodeWithText("No longer limited by the Free plan").assertExists()
+        onNodeWithText("No longer limited by the Free plan", substring = true, useUnmergedTree = true).assertExists()
 
         serverPlan = "free"
         waitForIdle()
-        onNodeWithText("Upgrade to Pro").assertExists()
+        onNodeWithText("Upgrade to Pro", useUnmergedTree = true).assertExists()
     }
 
     @Test
     fun installMarketplaceAppWithSafeSetupUrlStaysUnfoldedAndOpensExternalUrl() = runRobolectricComposeUiTest {
-        StringDesc.localeType = StringDesc.LocaleType.Custom("en")
+        StringDesc.localeType = AppLocale.English.stringDescLocaleType
         val openedUrls = mutableListOf<String>()
         val spec = ActionCardSpecFixtures.cardFromJson(simpleSpec(buttonLabel = "Add Linear", withResultText = "Linear installed"))
         var setupUrl by mutableStateOf<String?>("https://linear.app/raft/setup")
@@ -214,6 +218,7 @@ class ThreadActionCardParityUiTest {
                 }
             }
         }
+        waitForIdle()
 
         onNodeWithTag("action-card-continue-setup").assertExists().performClick()
         assertEquals(listOf("https://linear.app/raft/setup"), openedUrls)
