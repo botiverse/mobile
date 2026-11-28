@@ -173,10 +173,11 @@ internal data class RaftWebViewConfig(
      */
     val allowNewWindows: Boolean = false,
     /**
-     * Android: explicit origin (`https://host[:port]`) allowed to auto-grant audio-only WebView
-     * capture (`RESOURCE_AUDIO_CAPTURE`) after ensuring Android OS `RECORD_AUDIO` runtime
-     * permission (`#proj-workspace:#463`). Strictly fail-closed (`null` by default) and requires
-     * [mainFrameOrigin] to lock to the exact same origin on a non-isolated partition.
+     * Android & iOS: explicit origin (`https://host[:port]`) allowed to auto-grant audio-only
+     * WebView capture (`RESOURCE_AUDIO_CAPTURE` after Android OS `RECORD_AUDIO` permission, or
+     * main-frame `WKMediaCaptureTypeMicrophone` after iOS `AVCaptureDevice` audio authorization;
+     * `#proj-workspace:#463`, `#wg-mobile-sync:#362`). Strictly fail-closed (`null` by default)
+     * and requires [mainFrameOrigin] to lock to the exact same origin on a non-isolated partition.
      */
     val audioCaptureAllowedOrigin: String? = null,
 ) {

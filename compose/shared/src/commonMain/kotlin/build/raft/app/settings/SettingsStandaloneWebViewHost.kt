@@ -1340,10 +1340,11 @@ internal fun standaloneSettingsWebViewInjectedJavaScript(
 }
 
 /**
- * Resolves the Android WebView own-origin audio-capture allowlist for standalone Settings web
- * surfaces (`#proj-workspace:#463`): admitted strictly when [lockToWebOrigin] is enabled AND
- * [mainFrameOrigin] matches Raft's explicitly configured [webBaseUrl] origin (never an unlocked
- * surface, never a non-Raft host such as Hands Release Notes, and never an Artifact content host).
+ * Resolves the Android and iOS WebView own-origin audio-capture allowlist for standalone Settings
+ * web surfaces (`#proj-workspace:#463`, `#wg-mobile-sync:#362`): admitted strictly when
+ * [lockToWebOrigin] is enabled AND [mainFrameOrigin] matches Raft's explicitly configured
+ * [webBaseUrl] origin (never an unlocked surface, never a non-Raft host such as Hands Release
+ * Notes, and never an Artifact content host).
  */
 internal fun settingsWebViewAudioCaptureAllowedOrigin(
     lockToWebOrigin: Boolean,
