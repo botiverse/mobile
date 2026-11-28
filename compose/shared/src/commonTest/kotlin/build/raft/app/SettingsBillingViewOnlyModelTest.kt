@@ -335,4 +335,59 @@ class SettingsBillingViewOnlyModelTest {
         assertNull(model.details)
         assertEquals(SettingsBillingViewOnlySeats(used = 2.5, capacity = 4.0, humans = 2, agents = 5), model.seats)
     }
+
+    @Test
+    fun appSumoRetainedStorageUsesUsedPlusReservedOmitsResetMonthAndAllowsOverLimit() {
+        val mib = 1024L * 1024L
+        val gib = 1024L * mib
+        val withReserved =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"appsumo","stripeConfigured":true,"appsumo":{"tier":1,"lifetime":true,"maxHumans":1,"maxAgents":-1,"maxHostedJointChannels":2,"hostedJointChannels":1},"usage":{"humans":1,"agents":2,"universalSeats":1.2},"fileUploadQuota":{"month":"2026-11","limited":true,"usedBytes":${512L * mib},"reservedBytes":${128L * mib},"remainingBytes":${384L * mib},"limitBytes":$gib}}"""
+            )
+        val withReservedModel = settingsBillingViewOnlyModel(snapshot(withReserved), sessionPlan = null, nowEpochMillis = now)
+        assertEquals(
+            SettingsBillingViewOnlyUploads(
+                usedBytes = 640L * mib,
+                limitBytes = gib,
+                usedUp = false,
+                month = null,
+                retainedStorage = true,
+            ),
+            withReservedModel.uploads,
+        )
+
+        // Tier downgrade can leave retained usage above the new limit: never clamp to limitBytes.
+        val overLimit =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"appsumo","stripeConfigured":true,"appsumo":{"tier":1,"lifetime":true,"maxHumans":1,"maxAgents":-1,"maxHostedJointChannels":2,"hostedJointChannels":0},"usage":{"humans":1,"agents":0,"universalSeats":1.0},"fileUploadQuota":{"month":"2026-11","limited":true,"usedBytes":${4L * gib},"reservedBytes":0,"remainingBytes":0,"limitBytes":$gib}}"""
+            )
+        val overLimitModel = settingsBillingViewOnlyModel(snapshot(overLimit), sessionPlan = null, nowEpochMillis = now)
+        assertEquals(
+            SettingsBillingViewOnlyUploads(
+                usedBytes = 4L * gib,
+                limitBytes = gib,
+                usedUp = true,
+                month = null,
+                retainedStorage = true,
+            ),
+            overLimitModel.uploads,
+        )
+
+        // Older server omitting usedBytes/reservedBytes falls back cleanly to limit - remaining.
+        val olderServer =
+            parseSharedSettingsBillingSubscription(
+                """{"plan":"pro","source":"appsumo","stripeConfigured":true,"appsumo":{"tier":1,"lifetime":true,"maxHumans":1,"maxAgents":-1,"maxHostedJointChannels":2,"hostedJointChannels":0},"usage":{"humans":1,"agents":0,"universalSeats":1.0},"fileUploadQuota":{"month":"2026-11","limited":true,"remainingBytes":${512L * mib},"limitBytes":$gib}}"""
+            )
+        val olderServerModel = settingsBillingViewOnlyModel(snapshot(olderServer), sessionPlan = null, nowEpochMillis = now)
+        assertEquals(
+            SettingsBillingViewOnlyUploads(
+                usedBytes = 512L * mib,
+                limitBytes = gib,
+                usedUp = false,
+                month = null,
+                retainedStorage = true,
+            ),
+            olderServerModel.uploads,
+        )
+    }
 }

@@ -123,12 +123,20 @@ internal class ThreadRouteAttachmentUploader(
                 storeScope = storeScope,
                 uploadContext = uploadContext,
                 fallbackUploadFiles = if (gate == RaftUpgradeGate.UploadMonthlyQuota) failedFiles else emptyList(),
+                knownBillingSource = if (gate == RaftUpgradeGate.UploadMonthlyQuota) monthlyUploadQuota?.source else null,
             )
         }
-        bridge.errorToast(
-            localizedAttachmentUploadFailedDetail(
+        val detail =
+            if (
+                monthlyUploadQuota?.source.equals("appsumo", ignoreCase = true) &&
+                    labels.appSumoStorageLimitLabel.isNotBlank()
+            ) {
+                labels.appSumoStorageLimitLabel
+            } else {
                 userFacingErrorLabels.forErrorCode(errorCode) ?: genericThreadErrorLabel
-            ),
+            }
+        bridge.errorToast(
+            localizedAttachmentUploadFailedDetail(detail),
             traceId
         )
     }

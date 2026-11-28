@@ -366,4 +366,60 @@ class RaftUpgradeDialogTest {
             )
         )
     }
+
+    @Test
+    fun appSumoUploadLimitOutcomeAndContextPreserveSourceAcrossPlatforms() {
+        val gib = 1024L * 1024L * 1024L
+        assertEquals(
+            RaftUpgradeOutcome.Dialog(RaftUpgradeMode.AppSumoUploadLimit),
+            raftUpgradeOutcome(RaftUpgradeGate.UploadMonthlyQuota, plan = "pro", linksOut = true, isAppSumoUpload = true),
+        )
+        assertEquals(
+            RaftUpgradeOutcome.Dialog(RaftUpgradeMode.AppSumoUploadLimit),
+            raftUpgradeOutcome(RaftUpgradeGate.UploadMonthlyQuota, plan = "pro", linksOut = false, isAppSumoUpload = true),
+        )
+        assertEquals(
+            RaftUpgradeOutcome.None,
+            raftUpgradeOutcome(RaftUpgradeGate.UploadMonthlyQuota, plan = "pro", linksOut = true, isAppSumoUpload = false),
+        )
+        assertFalse(raftUpgradeDoneOnReturn(RaftUpgradeMode.AppSumoUploadLimit, "pro"))
+        assertFalse(
+            raftShouldOpenNativeAskSeatsDialog(
+                mode = RaftUpgradeMode.AppSumoUploadLimit,
+                isOwner = false,
+                proSeatAddEnabled = true,
+                offersUpgrade = true,
+                purpose = SeatRequestPurpose.AgentCreate("scout"),
+            )
+        )
+
+        val appSumoSnapshot =
+            SettingsBillingFileUploadQuotaSnapshot(
+                month = "2026-11",
+                limited = true,
+                limitBytes = gib,
+                remainingBytes = 0L,
+                usedBytes = 4L * gib,
+                reservedBytes = 0L,
+                source = "appsumo",
+            )
+        val context = appSumoSnapshot.toRaftUpgradeMonthlyUploadContext()
+        assertEquals(
+            RaftUpgradeUploadContext.MonthlyQuota(
+                month = "2026-11",
+                limitBytes = gib,
+                remainingBytes = 0L,
+                files = emptyList(),
+                source = "appsumo",
+            ),
+            context,
+        )
+        assertTrue(requireNotNull(context).isAppSumo)
+        assertEquals(context, uploadContextForGate(RaftUpgradeGate.UploadMonthlyQuota, context))
+
+        val withoutMonth = appSumoSnapshot.copy(month = null).toRaftUpgradeMonthlyUploadContext()
+        assertTrue(requireNotNull(withoutMonth).isAppSumo)
+        assertEquals("", withoutMonth.month)
+        assertEquals(withoutMonth, uploadContextForGate(RaftUpgradeGate.UploadMonthlyQuota, withoutMonth))
+    }
 }

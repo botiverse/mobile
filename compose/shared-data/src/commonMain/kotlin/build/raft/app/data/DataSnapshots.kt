@@ -1977,12 +1977,22 @@ data class SettingsBillingSeatUsageSnapshot(
     val universalSeats: Double
 )
 
-/** The monthly file upload allowance: [limitBytes] and [remainingBytes] are -1 when unlimited. */
+/**
+ * File upload / retained storage allowance: [limitBytes] and [remainingBytes] are -1 when unlimited.
+ * [usedBytes] and [reservedBytes] come from `GET /billing/subscription` and legacy 403 `quota`
+ * payloads (null when omitted by an older server or direct-upload `monthlyUpload` refusal).
+ * [source] is `"appsumo"` when the quota belongs to an AppSumo lifetime license (`source: "appsumo"`
+ * on `monthlyUpload` or a valid `appsumo.tier` grant on `quota` / `fileUploadQuota`,
+ * botiverse/slock #17191).
+ */
 data class SettingsBillingFileUploadQuotaSnapshot(
     val month: String?,
     val limited: Boolean,
     val limitBytes: Long,
-    val remainingBytes: Long
+    val remainingBytes: Long,
+    val usedBytes: Long? = null,
+    val reservedBytes: Long? = null,
+    val source: String? = null,
 )
 
 data class SettingsServerUsageSnapshot(

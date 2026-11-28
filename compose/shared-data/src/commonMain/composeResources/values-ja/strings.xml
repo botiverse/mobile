@@ -392,6 +392,7 @@
     <string name="settings_billing_vo_usage_title">使用状況</string>
     <string name="settings_billing_vo_usage_used">%2$s 中 %1$s 使用</string>
     <string name="settings_billing_vo_appsumo_unlimited_usage">%1$d 件使用中（上限なし）</string>
+    <string name="settings_billing_vo_appsumo_storage">ストレージ</string>
     <string name="settings_billing_vo_seats">シート</string>
     <string name="settings_billing_vo_people">メンバー（人）</string>
     <string name="settings_billing_vo_agents">エージェント</string>
@@ -7197,4 +7198,8 @@
     <string name="agent_migration_error_leave_out_unsupported">移行元のコンピューターの Raft が古いため、パスを除外できません。更新してからもう一度お試しください。</string>
     <string name="agent_migration_error_source_offline">このエージェントが今あるコンピューターはオフラインです。そのコンピューターで Raft Computer を起動してから、もう一度お試しください。</string>
     <string name="agent_migration_error_source_offline_named">このエージェントが今ある %1$s はオフラインです。そのコンピューターで Raft Computer を起動してから、もう一度お試しください。</string>
+    <string name="upgrade_dialog_appsumo_upload_limit_title">AppSumo のストレージ上限</string>
+    <string name="upgrade_dialog_appsumo_manage_plan">AppSumo プランを管理</string>
+    <string name="upgrade_dialog_appsumo_upload_manage_help">不要なファイルを削除して空き容量を増やしてください。設定のプランと請求で使用量を確認できます。</string>
+    <string name="upgrade_dialog_appsumo_upload_ask_owner">不要なファイルを削除するか、サーバーの所有者に使用量の確認を依頼してください。</string>
 </resources>

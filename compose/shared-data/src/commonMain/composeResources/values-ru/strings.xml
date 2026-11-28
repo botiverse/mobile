@@ -392,6 +392,7 @@
     <string name="settings_billing_vo_usage_title">Использование</string>
     <string name="settings_billing_vo_usage_used">Использовано %1$s из %2$s</string>
     <string name="settings_billing_vo_appsumo_unlimited_usage">Используется: %1$d · Без ограничений</string>
+    <string name="settings_billing_vo_appsumo_storage">Хранилище</string>
     <string name="settings_billing_vo_seats">Места</string>
     <string name="settings_billing_vo_people">Люди</string>
     <string name="settings_billing_vo_agents">Агенты</string>
@@ -7196,4 +7197,8 @@
     <string name="agent_migration_error_leave_out_unsupported">Raft на исходном компьютере слишком старый, чтобы исключать пути. Обновите его и попробуйте снова.</string>
     <string name="agent_migration_error_source_offline">Компьютер, на котором сейчас находится этот агент, не в сети. Запустите на нём Raft Computer и попробуйте ещё раз.</string>
     <string name="agent_migration_error_source_offline_named">Компьютер %1$s, на котором сейчас находится этот агент, не в сети. Запустите на нём Raft Computer и попробуйте ещё раз.</string>
+    <string name="upgrade_dialog_appsumo_upload_limit_title">Лимит хранилища AppSumo</string>
+    <string name="upgrade_dialog_appsumo_manage_plan">Управлять тарифом AppSumo</string>
+    <string name="upgrade_dialog_appsumo_upload_manage_help">Удалите ненужные файлы, чтобы освободить место. Использование хранилища можно проверить в настройках тарифа.</string>
+    <string name="upgrade_dialog_appsumo_upload_ask_owner">Удалите ненужные файлы или попросите владельца сервера проверить использование хранилища.</string>
 </resources>

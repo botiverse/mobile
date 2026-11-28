@@ -164,7 +164,13 @@ internal data class SettingsBillingViewOnlyAppSumo(
     val maxJointChannels: Int,
 )
 
-internal data class SettingsBillingViewOnlyUploads(val usedBytes: Long, val limitBytes: Long, val usedUp: Boolean, val month: String?)
+internal data class SettingsBillingViewOnlyUploads(
+    val usedBytes: Long,
+    val limitBytes: Long,
+    val usedUp: Boolean,
+    val month: String?,
+    val retainedStorage: Boolean = false,
+)
 
 internal data class SettingsBillingViewOnlyMembers(val people: Int, val agents: Int)
 
@@ -280,13 +286,31 @@ internal fun settingsBillingViewOnlyModel(
             null
         }
     val quota = summary?.fileUploadQuota?.takeIf { it.limited && it.limitBytes > 0 }
+    val isAppSumoStorage =
+        appsumo != null ||
+            (!isFree && (summary?.source.equals("appsumo", ignoreCase = true) || quota?.source.equals("appsumo", ignoreCase = true)))
     val uploads =
-        if ((isFree || appsumo != null) && quota != null) {
+        if ((isFree || isAppSumoStorage) && quota != null) {
+            val usedBytes =
+                if (isAppSumoStorage) {
+                    // AppSumo retained storage (botiverse/slock #17191): count committed + reserved
+                    // bytes without clamping to limitBytes (a tier downgrade can leave usage above
+                    // the new limit). Fall back to limit - remaining if an older server omits usedBytes.
+                    val reportedUsed = quota.usedBytes
+                    if (reportedUsed != null) {
+                        max(0L, reportedUsed) + max(0L, quota.reservedBytes ?: 0L)
+                    } else {
+                        min(quota.limitBytes, max(0L, quota.limitBytes - max(0L, quota.remainingBytes)))
+                    }
+                } else {
+                    min(quota.limitBytes, max(0L, quota.limitBytes - max(0L, quota.remainingBytes)))
+                }
             SettingsBillingViewOnlyUploads(
-                usedBytes = min(quota.limitBytes, max(0L, quota.limitBytes - max(0L, quota.remainingBytes))),
+                usedBytes = usedBytes,
                 limitBytes = quota.limitBytes,
                 usedUp = quota.remainingBytes <= 0,
-                month = quota.month?.takeIf { settingsBillingYearMonth(it) != null },
+                month = if (isAppSumoStorage) null else quota.month?.takeIf { settingsBillingYearMonth(it) != null },
+                retainedStorage = isAppSumoStorage,
             )
         } else {
             null
@@ -743,7 +767,7 @@ private fun SettingsBillingUsageCard(model: SettingsBillingViewOnlyModel) {
             model.uploads?.let { uploads ->
                 val used = settingsBillingFormatBytes(uploads.usedBytes)
                 val limit = settingsBillingFormatBytes(uploads.limitBytes)
-                val resets = uploads.month?.let { settingsBillingResetDay(it) }
+                val resets = if (uploads.retainedStorage) null else uploads.month?.let { settingsBillingResetDay(it) }
                 val valueText =
                     when {
                         resets == null -> stringResource(Res.string.settings_billing_vo_usage_used, used, limit)
@@ -756,7 +780,14 @@ private fun SettingsBillingUsageCard(model: SettingsBillingViewOnlyModel) {
                     RaftMeter(
                         used = uploads.usedBytes.toFloat(),
                         max = uploads.limitBytes.toFloat(),
-                        label = stringResource(Res.string.settings_billing_vo_uploads),
+                        label =
+                            stringResource(
+                                if (uploads.retainedStorage) {
+                                    Res.string.settings_billing_vo_appsumo_storage
+                                } else {
+                                    Res.string.settings_billing_vo_uploads
+                                }
+                            ),
                         valueText = valueText,
                         showValue = false,
                     )

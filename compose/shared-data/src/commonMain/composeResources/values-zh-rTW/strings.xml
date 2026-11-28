@@ -392,6 +392,7 @@
     <string name="settings_billing_vo_usage_title">用量</string>
     <string name="settings_billing_vo_usage_used">已用 %1$s / %2$s</string>
     <string name="settings_billing_vo_appsumo_unlimited_usage">已使用 %1$d 個，無上限</string>
+    <string name="settings_billing_vo_appsumo_storage">儲存空間</string>
     <string name="settings_billing_vo_seats">席位</string>
     <string name="settings_billing_vo_people">人</string>
     <string name="settings_billing_vo_agents">Agent</string>
@@ -7196,4 +7197,8 @@
     <string name="agent_migration_error_leave_out_unsupported">來源電腦上的 Raft 版本太舊，無法排除路徑。請先更新，再重試。</string>
     <string name="agent_migration_error_source_offline">這個 Agent 目前所在的電腦已離線。請在該電腦上啟動 Raft Computer，然後再試一次。</string>
     <string name="agent_migration_error_source_offline_named">這個 Agent 目前所在的電腦 %1$s 已離線。請在該電腦上啟動 Raft Computer，然後再試一次。</string>
+    <string name="upgrade_dialog_appsumo_upload_limit_title">AppSumo 儲存空間上限</string>
+    <string name="upgrade_dialog_appsumo_manage_plan">管理 AppSumo 方案</string>
+    <string name="upgrade_dialog_appsumo_upload_manage_help">刪除不需要的檔案可釋放空間。可在設定的方案與帳單頁面查看用量。</string>
+    <string name="upgrade_dialog_appsumo_upload_ask_owner">請刪除不需要的檔案，或聯絡伺服器擁有者查看用量。</string>
 </resources>
