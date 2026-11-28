@@ -479,8 +479,13 @@ class ComputerRuntimeOperationsTest {
 
         override suspend fun providers(runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeAuthProvidersResult> = error("unexpected")
 
-        override suspend fun connect(runtime: RuntimeAuthRuntime, providerId: String, apiKey: String): RuntimeAuthCall<RuntimeAuthProviderConnectResult> =
-            error("unexpected")
+        override suspend fun connect(
+            runtime: RuntimeAuthRuntime,
+            providerId: String,
+            apiKey: String,
+            baseUrl: String?,
+            modelIds: List<String>?,
+        ): RuntimeAuthCall<RuntimeAuthProviderConnectResult> = error("unexpected")
     }
 
     private companion object {

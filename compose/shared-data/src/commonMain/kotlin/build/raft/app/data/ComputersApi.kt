@@ -923,15 +923,21 @@ interface RaftComputersApi {
             (wire as? JsonObject)?.get("result")?.toRuntimeAuthProvidersResult()
         }
 
-    /** Saves a provider's API key on the Computer (Pi). The key goes into this one request body; never log it. */
+    /** Saves a provider's API key on the Computer (Pi / OpenCode / Qwen Code). The key goes into this one request body; never log it. */
     suspend fun connectRuntimeProvider(
         serverId: ServerId,
         machineId: String,
         runtime: RuntimeAuthRuntime,
         providerId: String,
         apiKey: String,
+        baseUrl: String? = null,
+        modelIds: List<String>? = null,
     ): RuntimeAuthCall<RuntimeAuthProviderConnectResult> {
-        val body = runtimeAuthBodyJson.encodeToString(RuntimeAuthConnectProviderBody.serializer(), RuntimeAuthConnectProviderBody(providerId, apiKey))
+        val body =
+            runtimeAuthBodyJson.encodeToString(
+                RuntimeAuthConnectProviderBody.serializer(),
+                RuntimeAuthConnectProviderBody(providerId = providerId, apiKey = apiKey, baseUrl = baseUrl, modelIds = modelIds),
+            )
         return transport.connectRuntimeProvider(serverId, machineId, runtime.wire, body).runtimeAuthCall { wire ->
             (wire as? JsonObject)?.get("result")?.toRuntimeAuthProviderConnectResult()
         }

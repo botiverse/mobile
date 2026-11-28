@@ -26,6 +26,8 @@ import androidx.compose.ui.unit.dp
 import build.raft.app.data.RUNTIME_INSTALL_COMMANDS
 import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthLoginRegion
+import build.raft.app.data.RuntimeAuthProvider
+import build.raft.app.data.RuntimeAuthProviderEndpoint
 import build.raft.app.data.RuntimeAuthProviderKeyEntry
 import build.raft.app.data.RuntimeAuthProviderOAuthFlow
 import build.raft.app.data.RuntimeAuthRuntime
@@ -58,7 +60,11 @@ import build.raft.designsystem.components.RaftIconTile
 import build.raft.designsystem.components.RaftIconTileSize
 import build.raft.designsystem.components.RaftListRow
 import build.raft.designsystem.components.RaftListRowVariant
+import build.raft.designsystem.components.RaftSelect
 import build.raft.designsystem.components.RaftSpinner
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusSize
+import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftTextField
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
@@ -131,6 +137,9 @@ internal sealed interface ComputerRuntimeAuthAction {
     /** Pi: one more provider at a time; pink while none is stored. */
     data class AddProvider(val primary: Boolean) : ComputerRuntimeAuthAction
 
+    /** Provider-key runtime (Qwen Code): connect a model provider with an API key; pink while none is configured. */
+    data class ConnectProvider(val primary: Boolean) : ComputerRuntimeAuthAction
+
     data object SignOut : ComputerRuntimeAuthAction
 
     data object SignIn : ComputerRuntimeAuthAction
@@ -173,6 +182,7 @@ internal fun ComputerRuntimeAuthCardState.action(): ComputerRuntimeAuthAction? {
     val current = status
     if (current is RuntimeAuthStatus.Unavailable) return ComputerRuntimeAuthAction.Unavailable(current.reason, upgradeOffered = upgrade != null)
     if (runtime.perProvider) return ComputerRuntimeAuthAction.AddProvider(primary = current !is RuntimeAuthStatus.LoggedIn)
+    if (runtime.hasProviderKey) return ComputerRuntimeAuthAction.ConnectProvider(primary = current !is RuntimeAuthStatus.LoggedIn)
     if (current is RuntimeAuthStatus.LoggedIn) {
         // Qoder has no sign-out; a Computer from before Antigravity's signs it in but not out.
         return if (view.computerSignsOut(runtime)) ComputerRuntimeAuthAction.SignOut else null
@@ -227,6 +237,35 @@ internal val ComputerRuntimeAuthCardState.lastAccount: String?
 internal fun ComputerRuntimeAuthHeaderBadge(auth: ComputerRuntimeAuthCardState, usageShowsAccount: Boolean, authOnly: Boolean) {
     if (auth.runtime.perProvider) return
     val status = auth.status
+    if (auth.runtime.hasProviderKey) {
+        // Presence only: configured or not; anything else (unknown, unavailable) says nothing.
+        val configured =
+            when (status) {
+                is RuntimeAuthStatus.LoggedIn -> true
+                is RuntimeAuthStatus.LoggedOut -> false
+                else -> return
+            }
+        RaftBadge(
+            text =
+                stringResource(
+                    if (configured) {
+                        Res.string.settings_computers_runtime_auth_provider_configured
+                    } else {
+                        Res.string.settings_computers_runtime_auth_provider_not_configured
+                    }
+                ),
+            modifier = Modifier.testTag(if (configured) COMPUTER_RUNTIME_PROVIDER_CONFIGURED_TAG else COMPUTER_RUNTIME_PROVIDER_NOT_CONFIGURED_TAG),
+            appearance = RaftBadgeAppearance.Soft,
+            variant = if (configured) RaftBadgeVariant.Success else RaftBadgeVariant.Warning,
+            icon = {
+                RaftStatusDot(
+                    variant = if (configured) RaftStatusVariant.Success else RaftStatusVariant.Warning,
+                    size = RaftStatusSize.Md,
+                )
+            },
+        )
+        return
+    }
     when {
         status is RuntimeAuthStatus.LoggedOut -> ComputerRuntimeAuthStatusChip(signedIn = false, Modifier.testTag(COMPUTER_RUNTIME_AUTH_LOGGED_OUT_TAG))
         authOnly && status is RuntimeAuthStatus.LoggedIn && auth.headerAccountText(usageShowsAccount) == null ->
@@ -334,7 +373,12 @@ internal fun ComputerRuntimeAuthActionView(
         is ComputerRuntimeAuthAction.Caption ->
             RaftText(
                 stringResource(
-                    if (action.notAttached) Res.string.settings_computers_runtime_auth_not_attached else Res.string.settings_computers_runtime_auth_upgrade_required
+                    when {
+                        action.notAttached && auth.runtime.hasProviderKey -> Res.string.settings_computers_runtime_auth_provider_not_attached
+                        action.notAttached -> Res.string.settings_computers_runtime_auth_not_attached
+                        auth.runtime.hasProviderKey -> Res.string.settings_computers_runtime_auth_provider_upgrade_required
+                        else -> Res.string.settings_computers_runtime_auth_upgrade_required
+                    }
                 ),
                 modifier = modifier.testTag(COMPUTER_RUNTIME_AUTH_UNAVAILABLE_TAG),
                 style = RaftTheme.typography.caption,
@@ -356,6 +400,15 @@ internal fun ComputerRuntimeAuthActionView(
                 variant = if (action.primary) RaftButtonVariant.Primary else RaftButtonVariant.Default,
                 size = RaftButtonSize.Md,
                 leadingIcon = { RaftComputersIcon(RaftLucideIconName.Plus) },
+            )
+        is ComputerRuntimeAuthAction.ConnectProvider ->
+            RaftButton(
+                text = stringResource(Res.string.settings_computers_runtime_auth_provider_connect_action),
+                onClick = onSignIn,
+                modifier = modifier.testTag(COMPUTER_RUNTIME_AUTH_CONNECT_PROVIDER_TAG),
+                variant = if (action.primary) RaftButtonVariant.Primary else RaftButtonVariant.Default,
+                size = RaftButtonSize.Md,
+                leadingIcon = { RaftComputersIcon(RaftLucideIconName.KeyRound) },
             )
         // Raft DS Button: a sign-out can be undone (sign in again), so the card's is a quiet ghost
         // action; its confirm carries the warning tone. Where the Computer's own account is drawn it is
@@ -590,6 +643,8 @@ internal fun ComputerRuntimeAuthDialogHost(
                 )
             is ComputerRuntimeAuthDialog.AddProvider ->
                 ComputerRuntimePiDialog(dialog.session, runtimeName, computer, onClose = controller::closeDialog)
+            is ComputerRuntimeAuthDialog.ConnectProvider ->
+                ComputerRuntimeProviderConnectDialog(dialog.session, runtimeName, computer, onClose = controller::closeDialog)
             null -> Unit
         }
     }
@@ -1172,9 +1227,310 @@ private fun ComputerRuntimePiKeyForm(session: ComputerRuntimePiSession, runtimeN
     session.failure?.let { ComputerRuntimeAuthFailureBanner(it.problem, it.traceId, providerLabel, serverMessage = it.serverMessage) }
 }
 
+private const val UngroupedProviderGroupId = "third-party"
+
+@Composable
+private fun runtimeProviderGroupLabel(provider: RuntimeAuthProvider): String {
+    val label = provider.group?.label
+    if (!label.isNullOrBlank()) return label
+    return when (val id = provider.group?.id ?: UngroupedProviderGroupId) {
+        "third-party" -> stringResource(Res.string.settings_computers_runtime_auth_provider_group_third_party)
+        "custom" -> stringResource(Res.string.settings_computers_runtime_auth_provider_group_custom)
+        else -> id
+    }
+}
+
+/**
+ * Web `RuntimeProviderConnectDialog`: connect a provider-key runtime (Qwen Code) to a model
+ * provider with an API key, and an endpoint or model where the provider needs them.
+ */
+@Composable
+internal fun ComputerRuntimeProviderConnectDialog(
+    session: ComputerRuntimeProviderConnectSession,
+    runtimeName: String,
+    computerName: String,
+    onClose: () -> Unit,
+) {
+    val list = session.list
+    val detailsStep = session.step == ComputerRuntimeProviderConnectStep.Details && session.chosenProvider != null
+    RaftDialog(
+        onDismissRequest = onClose,
+        title = stringResource(Res.string.settings_computers_runtime_auth_provider_title, runtimeName),
+        modifier = Modifier.testTag(COMPUTER_RUNTIME_PROVIDER_DIALOG_TAG),
+        dismissOnClickOutside = false,
+        closeLabel = stringResource(Res.string.common_close),
+        footer = {
+            when {
+                session.step == ComputerRuntimeProviderConnectStep.Done ->
+                    RaftButton(
+                        stringResource(Res.string.settings_computers_runtime_auth_done),
+                        onClick = onClose,
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg,
+                    )
+                list is ComputerRuntimePiProviderList.Failed -> {
+                    RaftButton(stringResource(Res.string.common_close), onClick = onClose, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                    if (list.failure.retryable) {
+                        RaftButton(
+                            stringResource(Res.string.settings_computers_runtime_auth_retry),
+                            onClick = session::load,
+                            variant = RaftButtonVariant.Primary,
+                            size = RaftButtonSize.Lg,
+                        )
+                    }
+                }
+                detailsStep -> {
+                    RaftButton(
+                        stringResource(Res.string.settings_computers_runtime_auth_provider_back),
+                        onClick = session::back,
+                        modifier = Modifier.testTag(COMPUTER_RUNTIME_PROVIDER_BACK_TAG),
+                        variant = RaftButtonVariant.Ghost,
+                        size = RaftButtonSize.Lg,
+                        enabled = !session.connecting,
+                    )
+                    RaftButton(
+                        stringResource(Res.string.settings_computers_runtime_auth_provider_connect),
+                        onClick = session::connect,
+                        modifier = Modifier.testTag(COMPUTER_RUNTIME_PROVIDER_CONNECT_TAG),
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg,
+                        enabled = session.ready,
+                        loading = session.connecting,
+                        loadingLabel = stringResource(Res.string.settings_computers_runtime_auth_provider_connecting),
+                    )
+                }
+                else -> {
+                    RaftButton(stringResource(Res.string.common_cancel), onClick = onClose, variant = RaftButtonVariant.Ghost, size = RaftButtonSize.Lg)
+                    if (list is ComputerRuntimePiProviderList.Listed) {
+                        RaftButton(
+                            stringResource(Res.string.settings_computers_runtime_auth_continue),
+                            onClick = session::continueWithChoice,
+                            modifier = Modifier.testTag(COMPUTER_RUNTIME_PROVIDER_CONTINUE_TAG),
+                            variant = RaftButtonVariant.Primary,
+                            size = RaftButtonSize.Lg,
+                            enabled = session.chosenProvider != null,
+                        )
+                    }
+                }
+            }
+        },
+    ) {
+        ComputerRuntimeProviderConnectBody(session, runtimeName, computerName)
+    }
+}
+
+@Composable
+private fun ComputerRuntimeProviderConnectBody(
+    session: ComputerRuntimeProviderConnectSession,
+    runtimeName: String,
+    computerName: String,
+) {
+    val colors = RaftTheme.colors
+    val typography = RaftTheme.typography
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        val list = session.list
+        val chosen = session.chosenProvider
+        when {
+            session.step == ComputerRuntimeProviderConnectStep.Done ->
+                RaftBanner(
+                    description = stringResource(Res.string.settings_computers_runtime_auth_provider_success, runtimeName),
+                    modifier = Modifier.testTag(COMPUTER_RUNTIME_PROVIDER_SAVED_TAG),
+                    status = RaftBannerStatus.Success,
+                    size = RaftBannerSize.Sm,
+                )
+            list == ComputerRuntimePiProviderList.Loading ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    RaftSpinner()
+                    RaftText(
+                        stringResource(Res.string.settings_computers_runtime_auth_provider_loading, computerName),
+                        style = typography.subhead,
+                        color = colors.foregroundMuted,
+                    )
+                }
+            list is ComputerRuntimePiProviderList.Failed ->
+                ComputerRuntimeAuthFailureBanner(list.failure.problem, list.failure.traceId, runtimeName, serverMessage = list.failure.serverMessage)
+            list is ComputerRuntimePiProviderList.Listed ->
+                if (session.step == ComputerRuntimeProviderConnectStep.Details && chosen != null) {
+                    ComputerRuntimeProviderDetailsForm(session, chosen, runtimeName, computerName)
+                } else {
+                    RaftText(
+                        stringResource(Res.string.settings_computers_runtime_auth_provider_choose_prompt),
+                        style = typography.subhead,
+                        color = colors.foregroundMuted,
+                    )
+                    ComputerRuntimeProviderChoices(list, session.chosenId, session::choose, runtimeName)
+                }
+        }
+    }
+}
+
+@Composable
+internal fun ComputerRuntimeProviderChoices(
+    list: ComputerRuntimePiProviderList.Listed,
+    chosenId: String?,
+    onChoose: (String) -> Unit,
+    runtimeName: String,
+) {
+    val alreadyConfigured = stringResource(Res.string.settings_computers_runtime_auth_provider_already_configured)
+    val groupMap = LinkedHashMap<String, RaftChoiceListGroup>()
+    val items =
+        list.providers.map { provider ->
+            val groupId = provider.group?.id ?: UngroupedProviderGroupId
+            val groupLabel = runtimeProviderGroupLabel(provider)
+            if (groupId !in groupMap) {
+                groupMap[groupId] = RaftChoiceListGroup(groupId, groupLabel)
+            }
+            RaftChoiceListItem(
+                value = provider.id,
+                label = provider.label,
+                descriptions =
+                    listOfNotNull(
+                        provider.description?.let(::AnnotatedString),
+                        if (provider.configured) AnnotatedString(alreadyConfigured) else null,
+                    ),
+                searchText = listOfNotNull(provider.label, provider.description, groupLabel).joinToString(" "),
+                group = groupId,
+            )
+        }
+    RaftChoiceList(
+        items = items,
+        value = chosenId,
+        onValueChange = onChoose,
+        searchPlaceholder = stringResource(Res.string.settings_computers_runtime_auth_provider_search),
+        clearSearchLabel = stringResource(Res.string.common_clear),
+        noMatchLabel = stringResource(Res.string.settings_computers_runtime_auth_provider_no_match),
+        emptyLabel = stringResource(Res.string.settings_computers_runtime_auth_provider_empty, runtimeName),
+        modifier = Modifier.testTag(COMPUTER_RUNTIME_PROVIDER_CHOICES_TAG),
+        groups = groupMap.values.toList(),
+    )
+}
+
+@Composable
+private fun ComputerRuntimeProviderDetailsForm(
+    session: ComputerRuntimeProviderConnectSession,
+    chosen: RuntimeAuthProvider,
+    runtimeName: String,
+    computerName: String,
+) {
+    val colors = RaftTheme.colors
+    val groupLabel = runtimeProviderGroupLabel(chosen)
+    val baseUrlError =
+        if (session.fieldError == ComputerRuntimeProviderField.BaseUrl) {
+            stringResource(Res.string.settings_computers_runtime_auth_provider_field_base_url)
+        } else {
+            null
+        }
+    val modelError =
+        if (session.fieldError == ComputerRuntimeProviderField.Model) {
+            stringResource(Res.string.settings_computers_runtime_auth_provider_field_model)
+        } else {
+            null
+        }
+    val apiKeyError =
+        if (session.fieldError == ComputerRuntimeProviderField.ApiKey) {
+            stringResource(Res.string.settings_computers_runtime_auth_provider_field_api_key)
+        } else {
+            null
+        }
+    RaftText(
+        text = "$groupLabel · ${chosen.label}",
+        modifier = Modifier.testTag(COMPUTER_RUNTIME_PROVIDER_CHOSEN_TAG),
+        style = RaftTheme.typography.subhead,
+        color = colors.foreground,
+    )
+    when (val endpoint = chosen.endpoint) {
+        RuntimeAuthProviderEndpoint.Fixed -> Unit
+        is RuntimeAuthProviderEndpoint.Choice -> {
+            val selectedOption = endpoint.options.firstOrNull { it.id == session.endpointId }
+            RaftField(
+                label = stringResource(Res.string.settings_computers_runtime_auth_provider_endpoint_label),
+                required = true,
+            ) {
+                RaftSelect(
+                    value = selectedOption,
+                    options = endpoint.options,
+                    onValueChange = { option -> session.endpointChanged(option.id) },
+                    optionLabel = { it.label },
+                    modifier = Modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_PROVIDER_ENDPOINT_TAG),
+                    placeholder = stringResource(Res.string.settings_computers_runtime_auth_provider_endpoint_placeholder),
+                    enabled = !session.connecting,
+                )
+            }
+        }
+        is RuntimeAuthProviderEndpoint.Custom -> {
+            RaftField(
+                label = stringResource(Res.string.settings_computers_runtime_auth_provider_base_url_label),
+                required = true,
+                error = baseUrlError,
+            ) {
+                RaftTextField(
+                    value = session.baseUrl,
+                    onValueChange = session::baseUrlChanged,
+                    modifier = Modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_PROVIDER_BASE_URL_TAG),
+                    placeholder = endpoint.placeholder.orEmpty(),
+                    enabled = !session.connecting,
+                    invalid = baseUrlError != null,
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Uri),
+                )
+            }
+        }
+    }
+    if (chosen.needsModelIds) {
+        RaftField(
+            label = stringResource(Res.string.settings_computers_runtime_auth_provider_model_label),
+            required = true,
+            error = modelError,
+        ) {
+            RaftTextField(
+                value = session.model,
+                onValueChange = session::modelChanged,
+                modifier = Modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_PROVIDER_MODEL_TAG),
+                enabled = !session.connecting,
+                invalid = modelError != null,
+                keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Ascii),
+            )
+        }
+    }
+    RaftField(
+        label = stringResource(Res.string.settings_computers_runtime_auth_provider_api_key_label),
+        required = true,
+        error = apiKeyError,
+    ) {
+        RaftTextField(
+            value = session.apiKey,
+            onValueChange = session::apiKeyChanged,
+            modifier = Modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_PROVIDER_API_KEY_TAG),
+            enabled = !session.connecting,
+            invalid = apiKeyError != null,
+            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password),
+            visualTransformation = PasswordVisualTransformation(),
+        )
+    }
+    RaftText(
+        stringResource(Res.string.settings_computers_runtime_auth_provider_scope_note, runtimeName, computerName),
+        style = RaftTheme.typography.caption,
+        color = colors.foregroundHint,
+    )
+    session.failure?.let { ComputerRuntimeAuthFailureBanner(it.problem, it.traceId, runtimeName, serverMessage = it.serverMessage) }
+}
+
 internal const val COMPUTER_RUNTIME_AUTH_SIGN_IN_TAG = "runtime-auth-sign-in"
 internal const val COMPUTER_RUNTIME_AUTH_SIGN_OUT_TAG = "runtime-auth-sign-out"
 internal const val COMPUTER_RUNTIME_AUTH_ADD_PROVIDER_TAG = "runtime-auth-add-provider"
+internal const val COMPUTER_RUNTIME_AUTH_CONNECT_PROVIDER_TAG = "runtime-auth-connect-provider"
+internal const val COMPUTER_RUNTIME_PROVIDER_CONFIGURED_TAG = "runtime-provider-configured"
+internal const val COMPUTER_RUNTIME_PROVIDER_NOT_CONFIGURED_TAG = "runtime-provider-not-configured"
+internal const val COMPUTER_RUNTIME_PROVIDER_DIALOG_TAG = "runtime-provider-connect-dialog"
+internal const val COMPUTER_RUNTIME_PROVIDER_CHOICES_TAG = "runtime-provider-choices"
+internal const val COMPUTER_RUNTIME_PROVIDER_CHOSEN_TAG = "runtime-provider-chosen"
+internal const val COMPUTER_RUNTIME_PROVIDER_CONTINUE_TAG = "runtime-provider-continue"
+internal const val COMPUTER_RUNTIME_PROVIDER_BACK_TAG = "runtime-provider-back"
+internal const val COMPUTER_RUNTIME_PROVIDER_ENDPOINT_TAG = "runtime-provider-endpoint"
+internal const val COMPUTER_RUNTIME_PROVIDER_BASE_URL_TAG = "runtime-provider-base-url"
+internal const val COMPUTER_RUNTIME_PROVIDER_MODEL_TAG = "runtime-provider-model"
+internal const val COMPUTER_RUNTIME_PROVIDER_API_KEY_TAG = "runtime-provider-api-key"
+internal const val COMPUTER_RUNTIME_PROVIDER_CONNECT_TAG = "runtime-provider-connect"
+internal const val COMPUTER_RUNTIME_PROVIDER_SAVED_TAG = "runtime-provider-saved"
 internal const val COMPUTER_RUNTIME_AUTH_UNAVAILABLE_TAG = "runtime-auth-unavailable"
 internal const val COMPUTER_RUNTIME_AUTH_CREDENTIALS_NOTE_TAG = "runtime-auth-credentials-note"
 internal const val COMPUTER_RUNTIME_AUTH_CLI_UNAVAILABLE_TAG = "runtime-auth-cli-unavailable"

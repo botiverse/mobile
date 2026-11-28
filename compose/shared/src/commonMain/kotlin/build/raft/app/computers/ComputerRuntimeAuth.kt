@@ -9,6 +9,7 @@ import build.raft.app.data.RuntimeAuthLoginRegion
 import build.raft.app.data.RuntimeAuthLogoutResult
 import build.raft.app.data.RuntimeAuthProvider
 import build.raft.app.data.RuntimeAuthProviderConnectResult
+import build.raft.app.data.RuntimeAuthProviderEndpoint
 import build.raft.app.data.RuntimeAuthProviderKeyEntry
 import build.raft.app.data.RuntimeAuthProviderOAuthFlow
 import build.raft.app.data.RuntimeAuthProvidersResult
@@ -49,9 +50,9 @@ import kotlinx.coroutines.launch
  * RuntimeAccountUsageChip.tsx + RuntimeUsageSurface.tsx, features/computer/RuntimeSignInDialog.tsx,
  * RuntimeSignOutDialog.tsx, PiSignInDialog.tsx, providerConnectFailure.ts; contract
  * docs/contracts/runtime-auth.md). The login runs on the Computer; the app only shows its link or
- * device code, relays a pasted code, and reads the result from this person's sockets.
- *
- * Qwen Code's provider connect is not offered here yet: its badge stays as it was.
+ * device code, relays a pasted code, and reads the result from this person's sockets. Qwen Code
+ * connects a model provider with an API key (plus endpoint or model when required) via
+ * `ComputerRuntimeProviderConnectSession`.
  */
 
 /** What the runtime cards need from the shell to sign runtimes in: the socket's events and a browser. */
@@ -87,7 +88,13 @@ internal interface ComputerRuntimeAuthOps {
 
     suspend fun providers(runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeAuthProvidersResult>
 
-    suspend fun connect(runtime: RuntimeAuthRuntime, providerId: String, apiKey: String): RuntimeAuthCall<RuntimeAuthProviderConnectResult>
+    suspend fun connect(
+        runtime: RuntimeAuthRuntime,
+        providerId: String,
+        apiKey: String,
+        baseUrl: String? = null,
+        modelIds: List<String>? = null,
+    ): RuntimeAuthCall<RuntimeAuthProviderConnectResult>
 
     /** Runs the runtime's own updater on the Computer (slock #15117); the cached view is dropped. */
     suspend fun upgrade(runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeUpgradeResult> =
@@ -118,8 +125,13 @@ internal class StoreComputerRuntimeAuthOps(
 
     override suspend fun providers(runtime: RuntimeAuthRuntime) = store.runtimeAuthProviders(owner, serverId, machineId, runtime)
 
-    override suspend fun connect(runtime: RuntimeAuthRuntime, providerId: String, apiKey: String) =
-        store.connectRuntimeProvider(owner, serverId, machineId, runtime, providerId, apiKey)
+    override suspend fun connect(
+        runtime: RuntimeAuthRuntime,
+        providerId: String,
+        apiKey: String,
+        baseUrl: String?,
+        modelIds: List<String>?,
+    ) = store.connectRuntimeProvider(owner, serverId, machineId, runtime, providerId, apiKey, baseUrl, modelIds)
 
     override suspend fun upgrade(runtime: RuntimeAuthRuntime) = store.upgradeRuntime(owner, serverId, machineId, runtime)
 }
@@ -139,11 +151,11 @@ internal class StoreComputerRuntimeInstallOps(
 }
 
 /**
- * The sign-in runtime a runtime card offers for a Raft runtime (web `runtimeAuthRuntimeFor`), or
- * null. Qwen Code's provider connect is not on mobile yet, so its badge keeps no sign-in.
+ * The sign-in or provider-connect runtime a runtime card offers for a Raft runtime (web
+ * `runtimeAuthRuntimeFor`), or null.
  */
 internal fun computerRuntimeCardAuthRuntime(raftRuntimeId: String): RuntimeAuthRuntime? =
-    RuntimeAuthRuntime.forRaftRuntime(raftRuntimeId)?.takeUnless { it.hasProviderKey }
+    RuntimeAuthRuntime.forRaftRuntime(raftRuntimeId)
 
 /** Why a sign-in, a sign-out or a provider step stopped, in the web's words (one message each). */
 internal enum class ComputerRuntimeAuthProblem {
@@ -315,10 +327,23 @@ internal fun RuntimeAuthRequestError.signOutServerMessageOrNull(): String? =
         else -> usableServerWordsOrNull()
     }
 
-/** Web `providerRequestFailure`: null for a refused API key (the field says so instead). */
+/** Which field on a provider-connect form the server refused (web `ProviderField`). */
+internal enum class ComputerRuntimeProviderField { ApiKey, BaseUrl, Model }
+
+/** Web `providerRequestFailure` field branch: a 400 validation code that belongs under one input. */
+internal fun RuntimeAuthRequestError.providerFieldError(): ComputerRuntimeProviderField? =
+    when (code) {
+        "invalid_api_key" -> ComputerRuntimeProviderField.ApiKey
+        "invalid_base_url" -> ComputerRuntimeProviderField.BaseUrl
+        "invalid_model" -> ComputerRuntimeProviderField.Model
+        else -> null
+    }
+
+/** Web `providerRequestFailure`: null for a refused field (the field says so instead). */
 internal fun RuntimeAuthRequestError.providerFailure(connect: Boolean): ComputerRuntimeAuthFailure? {
     val (problem, retryable, knownCode) =
         when {
+            connect && providerFieldError() != null -> return null
             code == "invalid_api_key" -> return null
             code == "computer_offline" -> Triple(ComputerRuntimeAuthProblem.ComputerOffline, true, true)
             code == "computer_upgrade_required" -> Triple(ComputerRuntimeAuthProblem.ProviderUpgradeRequired, false, true)
@@ -811,6 +836,203 @@ internal class ComputerRuntimePiSession(
     }
 }
 
+internal enum class ComputerRuntimeProviderConnectStep { Choose, Details, Done }
+
+/**
+ * Provider-key runtime connect flow (Qwen Code; web `RuntimeProviderConnectDialog`): read the
+ * providers the Computer's Qwen offers, pick one, then fill in its endpoint or base URL, model
+ * when required, and API key. The key lives in [apiKey] only while unsent and is cleared on save,
+ * Back, or dialog close; it is never logged.
+ */
+internal class ComputerRuntimeProviderConnectSession(
+    val runtime: RuntimeAuthRuntime,
+    private val ops: ComputerRuntimeAuthOps,
+    private val scope: CoroutineScope,
+    private val log: (String) -> Unit = {},
+    private val onSuperseded: () -> Unit = {},
+    private val onViewStale: () -> Unit = {},
+) {
+    var list by mutableStateOf<ComputerRuntimePiProviderList>(ComputerRuntimePiProviderList.Loading)
+        private set
+    var step by mutableStateOf(ComputerRuntimeProviderConnectStep.Choose)
+        private set
+    var chosenId by mutableStateOf<String?>(null)
+        private set
+    var endpointId by mutableStateOf<String?>(null)
+        private set
+    var baseUrl by mutableStateOf("")
+        private set
+    var model by mutableStateOf("")
+        private set
+    var apiKey by mutableStateOf("")
+        private set
+    var connecting by mutableStateOf(false)
+        private set
+    var failure by mutableStateOf<ComputerRuntimeAuthFailure?>(null)
+        private set
+    var fieldError by mutableStateOf<ComputerRuntimeProviderField?>(null)
+        private set
+    private var detailsFor: String? = null
+    private var listAttempt = 0
+    private var closed = false
+
+    val chosenProvider: RuntimeAuthProvider?
+        get() = chosenId?.let { id -> (list as? ComputerRuntimePiProviderList.Listed)?.providers?.firstOrNull { it.id == id } }
+
+    val needsEndpoint: Boolean
+        get() = chosenProvider?.endpoint is RuntimeAuthProviderEndpoint.Choice
+
+    val needsBaseUrl: Boolean
+        get() = chosenProvider?.endpoint is RuntimeAuthProviderEndpoint.Custom
+
+    val needsModel: Boolean
+        get() = chosenProvider?.needsModelIds == true
+
+    val ready: Boolean
+        get() {
+            val provider = chosenProvider ?: return false
+            if (apiKey.isBlank()) return false
+            if (provider.endpoint is RuntimeAuthProviderEndpoint.Choice && endpointId == null) return false
+            if (provider.endpoint is RuntimeAuthProviderEndpoint.Custom && baseUrl.isBlank()) return false
+            if (provider.needsModelIds && model.isBlank()) return false
+            return true
+        }
+
+    fun load() {
+        val attempt = ++listAttempt
+        list = ComputerRuntimePiProviderList.Loading
+        scope.launch {
+            val result = ops.providers(runtime)
+            if (closed || attempt != listAttempt) return@launch
+            log("computer_runtime_connect_providers runtime=${runtime.wire} result=${result.diagnosticsLabel()}")
+            list =
+                when (result) {
+                    is RuntimeAuthCall.Done ->
+                        when (val value = result.value) {
+                            is RuntimeAuthProvidersResult.Listed -> ComputerRuntimePiProviderList.Listed(value.providers)
+                            is RuntimeAuthProvidersResult.Failed ->
+                                ComputerRuntimePiProviderList.Failed(providerResultFailure(value.reason, null, busy = false, connect = false))
+                            is RuntimeAuthProvidersResult.Unsupported ->
+                                ComputerRuntimePiProviderList.Failed(providerResultFailure(null, value.reason, busy = false, connect = false))
+                        }
+                    is RuntimeAuthCall.Refused ->
+                        ComputerRuntimePiProviderList.Failed(
+                            result.error.providerFailure(connect = false)
+                                ?: ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.ProviderInvalidInput, true, result.error.traceId)
+                        )
+                    RuntimeAuthCall.Superseded -> {
+                        onSuperseded()
+                        return@launch
+                    }
+                }
+        }
+    }
+
+    fun choose(providerId: String) {
+        chosenId = providerId
+    }
+
+    fun continueWithChoice() {
+        val provider = chosenProvider ?: return
+        if (detailsFor != provider.id) {
+            detailsFor = provider.id
+            endpointId = null
+            baseUrl = ""
+            model = ""
+            apiKey = ""
+        }
+        failure = null
+        fieldError = null
+        step = ComputerRuntimeProviderConnectStep.Details
+    }
+
+    fun back() {
+        if (connecting) return
+        detailsFor = null
+        endpointId = null
+        baseUrl = ""
+        model = ""
+        apiKey = ""
+        failure = null
+        fieldError = null
+        step = ComputerRuntimeProviderConnectStep.Choose
+    }
+
+    fun endpointChanged(id: String) {
+        endpointId = id
+    }
+
+    fun baseUrlChanged(value: String) {
+        baseUrl = value
+        if (fieldError == ComputerRuntimeProviderField.BaseUrl) fieldError = null
+    }
+
+    fun modelChanged(value: String) {
+        model = value
+        if (fieldError == ComputerRuntimeProviderField.Model) fieldError = null
+    }
+
+    fun apiKeyChanged(value: String) {
+        apiKey = value
+        if (fieldError == ComputerRuntimeProviderField.ApiKey) fieldError = null
+    }
+
+    fun connect() {
+        val provider = chosenProvider ?: return
+        if (!ready || connecting) return
+        val resolvedBaseUrl =
+            when (val ep = provider.endpoint) {
+                RuntimeAuthProviderEndpoint.Fixed -> null
+                is RuntimeAuthProviderEndpoint.Choice -> ep.options.firstOrNull { it.id == endpointId }?.url ?: return
+                is RuntimeAuthProviderEndpoint.Custom -> baseUrl.trim()
+            }
+        val resolvedModelIds = if (provider.needsModelIds) listOf(model.trim()) else null
+        val key = apiKey.trim()
+        connecting = true
+        failure = null
+        fieldError = null
+        scope.launch {
+            val result = ops.connect(runtime, provider.id, key, baseUrl = resolvedBaseUrl, modelIds = resolvedModelIds)
+            val value = (result as? RuntimeAuthCall.Done)?.value
+            if (value == RuntimeAuthProviderConnectResult.Connected || (value as? RuntimeAuthProviderConnectResult.Failed)?.reason == "timed_out") {
+                onViewStale()
+            }
+            if (closed) return@launch
+            connecting = false
+            log("computer_runtime_connect_provider runtime=${runtime.wire} result=${result.diagnosticsLabel()}")
+            when (result) {
+                is RuntimeAuthCall.Done ->
+                    when (val outcome = result.value) {
+                        RuntimeAuthProviderConnectResult.Connected -> {
+                            apiKey = ""
+                            step = ComputerRuntimeProviderConnectStep.Done
+                        }
+                        RuntimeAuthProviderConnectResult.Busy -> failure = providerResultFailure(null, null, busy = true, connect = true)
+                        is RuntimeAuthProviderConnectResult.Failed -> failure = providerResultFailure(outcome.reason, null, busy = false, connect = true)
+                        is RuntimeAuthProviderConnectResult.Unsupported -> failure = providerResultFailure(null, outcome.reason, busy = false, connect = true)
+                    }
+                is RuntimeAuthCall.Refused -> {
+                    val field = result.error.providerFieldError()
+                    if (field != null) {
+                        fieldError = field
+                    } else {
+                        failure =
+                            result.error.providerFailure(connect = true)
+                                ?: ComputerRuntimeAuthFailure(ComputerRuntimeAuthProblem.ProviderInvalidInput, true, result.error.traceId)
+                    }
+                }
+                RuntimeAuthCall.Superseded -> onSuperseded()
+            }
+        }
+    }
+
+    /** The key goes with the dialog. */
+    fun close() {
+        closed = true
+        apiKey = ""
+    }
+}
+
 /** The card's open dialog. */
 internal sealed interface ComputerRuntimeAuthDialog {
     data class SignIn(val session: ComputerRuntimeSignInSession) : ComputerRuntimeAuthDialog
@@ -818,6 +1040,8 @@ internal sealed interface ComputerRuntimeAuthDialog {
     data class SignOut(val state: ComputerRuntimeSignOutState) : ComputerRuntimeAuthDialog
 
     data class AddProvider(val session: ComputerRuntimePiSession) : ComputerRuntimeAuthDialog
+
+    data class ConnectProvider(val session: ComputerRuntimeProviderConnectSession) : ComputerRuntimeAuthDialog
 }
 
 /**
@@ -933,21 +1157,35 @@ internal class ComputerRuntimeAuthController(
     fun openSignIn() {
         dispose()
         dialog =
-            if (runtime.perProvider) {
-                val session =
-                    ComputerRuntimePiSession(
-                        runtime = runtime,
-                        machineId = machineId,
-                        ops = ops,
-                        scope = scope,
-                        onAccount = { provider -> openProviderSignIn(provider) },
-                        log = log,
-                        onSuperseded = ::superseded,
-                    )
-                session.load()
-                ComputerRuntimeAuthDialog.AddProvider(session)
-            } else {
-                ComputerRuntimeAuthDialog.SignIn(newSignIn(null).also { it.open() })
+            when {
+                runtime.perProvider -> {
+                    val session =
+                        ComputerRuntimePiSession(
+                            runtime = runtime,
+                            machineId = machineId,
+                            ops = ops,
+                            scope = scope,
+                            onAccount = { provider -> openProviderSignIn(provider) },
+                            log = log,
+                            onSuperseded = ::superseded,
+                        )
+                    session.load()
+                    ComputerRuntimeAuthDialog.AddProvider(session)
+                }
+                runtime.hasProviderKey -> {
+                    val session =
+                        ComputerRuntimeProviderConnectSession(
+                            runtime = runtime,
+                            ops = ops,
+                            scope = scope,
+                            log = log,
+                            onSuperseded = ::superseded,
+                            onViewStale = { read(force = true) },
+                        )
+                    session.load()
+                    ComputerRuntimeAuthDialog.ConnectProvider(session)
+                }
+                else -> ComputerRuntimeAuthDialog.SignIn(newSignIn(null).also { it.open() })
             }
     }
 
@@ -1018,11 +1256,14 @@ internal class ComputerRuntimeAuthController(
         when (val open = dialog) {
             is ComputerRuntimeAuthDialog.SignIn -> open.session.close()
             is ComputerRuntimeAuthDialog.AddProvider -> open.session.close()
+            is ComputerRuntimeAuthDialog.ConnectProvider -> open.session.close()
             is ComputerRuntimeAuthDialog.SignOut -> if (open.state.submitting) return
             null -> Unit
         }
         val signedIn = (dialog as? ComputerRuntimeAuthDialog.SignIn)?.session?.state?.done == true
-        val saved = (dialog as? ComputerRuntimeAuthDialog.AddProvider)?.session?.step == ComputerRuntimePiStep.Done
+        val saved =
+            (dialog as? ComputerRuntimeAuthDialog.AddProvider)?.session?.step == ComputerRuntimePiStep.Done ||
+                (dialog as? ComputerRuntimeAuthDialog.ConnectProvider)?.session?.step == ComputerRuntimeProviderConnectStep.Done
         dialog = null
         if (signedIn || saved) read(force = true)
     }
@@ -1031,6 +1272,7 @@ internal class ComputerRuntimeAuthController(
     fun dispose() {
         (dialog as? ComputerRuntimeAuthDialog.SignIn)?.session?.close()
         (dialog as? ComputerRuntimeAuthDialog.AddProvider)?.session?.close()
+        (dialog as? ComputerRuntimeAuthDialog.ConnectProvider)?.session?.close()
     }
 
     private fun superseded() {
