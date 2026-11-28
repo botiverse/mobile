@@ -8,6 +8,7 @@ from typing import Any
 DEFAULT_FIXTURE_TAG = "mobile-bench-v1"
 ANDROID_PACKAGE = "build.raft.app"
 IOS_BUNDLE_ID = "build.raft.app"
+VALID_CALIBRATION_MODES: frozenset[str] = frozenset({"latency_ms", "slow_frames"})
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,9 @@ class ScenarioSpec:
     default_warm_state: str
     android_capture: dict[str, Any]
     ios_capture: dict[str, Any]
+    calibration_mode: str = "latency_ms"
+    calibration_metric: str = "duration_ms"
+    ios_calibration_metric: str = "duration_ms"
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -46,8 +50,11 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "auth_bootstrap_ms",
             "first_feed_render_ms",
         ),
-        optional_segments=("frame_count",),
+        optional_segments=("frame_count", "ttid_ms"),
         default_warm_state="cold",
+        calibration_mode="latency_ms",
+        calibration_metric="ttfd_ms",
+        ios_calibration_metric="ttfd_ms",
         android_capture={
             "package": ANDROID_PACKAGE,
             "component": f"{ANDROID_PACKAGE}/.MainActivity",
@@ -56,6 +63,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "gfxinfo_reset": True,
             "perfetto_categories": ("gfx", "view", "binder_driver", "am", "wm"),
             "logcat_filter": "ActivityTaskManager|SlockPerf|SlockPerfScene|cold_start",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "ttfd_ms",
         },
         ios_capture={
@@ -64,6 +72,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "cold_launch": True,
             "xctrace_templates": ("App Launch", "Time Profiler"),
             "signpost_subsystem": "build.raft.app.perf",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "ttfd_ms",
         },
     ),
@@ -84,6 +93,9 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         ),
         optional_segments=(),
         default_warm_state="profile_warm",
+        calibration_mode="latency_ms",
+        calibration_metric="duration_ms",
+        ios_calibration_metric="duration_ms",
         android_capture={
             "package": ANDROID_PACKAGE,
             "duration_ms": 6000,
@@ -91,6 +103,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "gfxinfo_reset": True,
             "perfetto_categories": ("gfx", "view", "binder_driver", "am", "wm"),
             "logcat_filter": "SlockPerf|bottom_tab_|channel_switch|nav_transition",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
         ios_capture={
@@ -99,6 +112,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "cold_launch": False,
             "xctrace_templates": ("Animation Hitches", "Time Profiler"),
             "signpost_subsystem": "build.raft.app.perf",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
     ),
@@ -119,6 +133,9 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         ),
         optional_segments=(),
         default_warm_state="profile_warm",
+        calibration_mode="slow_frames",
+        calibration_metric="slow_frame_ratio",
+        ios_calibration_metric="hitch_ms_per_s",
         android_capture={
             "package": ANDROID_PACKAGE,
             "duration_ms": 10000,
@@ -127,7 +144,8 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "swipe_count": 6,
             "perfetto_categories": ("gfx", "view", "binder_driver", "am", "wm"),
             "logcat_filter": "SlockPerf|thread_scroll|ime_settle",
-            "calibration_metric": "duration_ms",
+            "calibration_mode": "slow_frames",
+            "calibration_metric": "slow_frame_ratio",
         },
         ios_capture={
             "bundle_id": IOS_BUNDLE_ID,
@@ -136,7 +154,8 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "swipe_count": 6,
             "xctrace_templates": ("Animation Hitches", "Metal System Trace", "Time Profiler"),
             "signpost_subsystem": "build.raft.app.perf",
-            "calibration_metric": "duration_ms",
+            "calibration_mode": "slow_frames",
+            "calibration_metric": "hitch_ms_per_s",
         },
     ),
     "composer_first_char": ScenarioSpec(
@@ -158,6 +177,9 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         ),
         optional_segments=(),
         default_warm_state="profile_warm",
+        calibration_mode="latency_ms",
+        calibration_metric="duration_ms",
+        ios_calibration_metric="duration_ms",
         android_capture={
             "package": ANDROID_PACKAGE,
             "duration_ms": 8000,
@@ -166,6 +188,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "keystroke_count": 40,
             "perfetto_categories": ("gfx", "view", "binder_driver", "am", "wm"),
             "logcat_filter": "SlockPerf|thread_composer|first_char_latency",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
         ios_capture={
@@ -175,6 +198,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "keystroke_count": 40,
             "xctrace_templates": ("Animation Hitches", "Time Profiler"),
             "signpost_subsystem": "build.raft.app.perf",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
     ),
@@ -194,6 +218,9 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         ),
         optional_segments=("frame_count",),
         default_warm_state="profile_warm",
+        calibration_mode="latency_ms",
+        calibration_metric="duration_ms",
+        ios_calibration_metric="duration_ms",
         android_capture={
             "package": ANDROID_PACKAGE,
             "duration_ms": 10000,
@@ -201,6 +228,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "gfxinfo_reset": True,
             "perfetto_categories": ("gfx", "view", "binder_driver", "am", "wm"),
             "logcat_filter": "SlockPerf|webview|artifact",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
         ios_capture={
@@ -209,6 +237,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "cold_launch": False,
             "xctrace_templates": ("Animation Hitches", "Time Profiler"),
             "signpost_subsystem": "build.raft.app.perf",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
     ),
@@ -230,6 +259,9 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         ),
         optional_segments=("first_frame_ms", "target_positioned_ms", "stable_ms"),
         default_warm_state="profile_warm",
+        calibration_mode="latency_ms",
+        calibration_metric="duration_ms",
+        ios_calibration_metric="duration_ms",
         android_capture={
             "package": ANDROID_PACKAGE,
             "duration_ms": 6000,
@@ -237,6 +269,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "gfxinfo_reset": True,
             "perfetto_categories": ("gfx", "view", "binder_driver", "am", "wm"),
             "logcat_filter": "SlockPerf|open_trace_summary|open_trace_shift|reading_anchor|thread_open",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
         ios_capture={
@@ -245,6 +278,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "cold_launch": False,
             "xctrace_templates": ("Animation Hitches", "Time Profiler"),
             "signpost_subsystem": "build.raft.app.perf",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
     ),
@@ -267,6 +301,9 @@ SCENARIOS: dict[str, ScenarioSpec] = {
         ),
         optional_segments=(),
         default_warm_state="profile_warm",
+        calibration_mode="latency_ms",
+        calibration_metric="duration_ms",
+        ios_calibration_metric="duration_ms",
         android_capture={
             "package": ANDROID_PACKAGE,
             "duration_ms": 6000,
@@ -274,6 +311,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "gfxinfo_reset": True,
             "perfetto_categories": ("gfx", "view", "binder_driver", "am", "wm"),
             "logcat_filter": "SlockPerf|foreground_resume|foreground_sync_updated",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
         ios_capture={
@@ -282,6 +320,7 @@ SCENARIOS: dict[str, ScenarioSpec] = {
             "cold_launch": False,
             "xctrace_templates": ("Animation Hitches", "Time Profiler"),
             "signpost_subsystem": "build.raft.app.perf",
+            "calibration_mode": "latency_ms",
             "calibration_metric": "duration_ms",
         },
     ),
@@ -310,3 +349,14 @@ def get_primary_kpi(scenario_name: str, *, project: str | None = None) -> str:
     if project == "raft-ios":
         return spec.ios_primary_kpi
     return spec.primary_kpi
+
+
+def get_calibration_config(
+    scenario_name: str,
+    *,
+    project: str | None = None,
+) -> tuple[str, str]:
+    """Return ``(calibration_mode, calibration_metric)`` for a scenario and platform."""
+    spec = get_scenario(scenario_name)
+    metric = spec.ios_calibration_metric if project == "raft-ios" else spec.calibration_metric
+    return spec.calibration_mode, metric

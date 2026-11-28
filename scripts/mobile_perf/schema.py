@@ -95,6 +95,14 @@ FORBIDDEN_COHORT_KEYS: tuple[str, ...] = (
 
 VALID_RUN_KINDS: frozenset[str] = frozenset({"baseline", "ab", "calibration", "diagnose"})
 VALID_AB_ARMS: frozenset[str] = frozenset({"base", "head"})
+ANDROID_THERMAL_STATES: frozenset[str] = frozenset(
+    {"none", "light", "moderate", "severe", "critical", "emergency", "shutdown"}
+)
+IOS_THERMAL_STATES: frozenset[str] = frozenset({"nominal", "fair", "serious", "critical"})
+PROJECT_THERMAL_STATES: dict[str, frozenset[str]] = {
+    "raft-android": ANDROID_THERMAL_STATES,
+    "raft-ios": IOS_THERMAL_STATES,
+}
 VALID_VERDICTS: frozenset[str] = frozenset(
     {
         "improved",
@@ -368,6 +376,12 @@ def _validate_common(row: Mapping[str, Any]) -> list[str]:
     if isinstance(taken_at, str) and taken_at.strip() and not is_valid_utc_iso(taken_at):
         errors.append(f"taken_at must be ISO-8601 UTC ending with 'Z', got {taken_at!r}")
 
+    build_type = row.get("build_type")
+    if isinstance(build_type, str) and "debug" in build_type.lower():
+        errors.append(
+            f"build_type must not be a debug build (got {build_type!r}); use a release/profileable build"
+        )
+
     run_kind = row.get("run_kind")
     if isinstance(run_kind, str) and run_kind not in VALID_RUN_KINDS:
         errors.append(f"run_kind must be one of {sorted(VALID_RUN_KINDS)}, got {run_kind!r}")
@@ -396,6 +410,15 @@ def _validate_common(row: Mapping[str, Any]) -> list[str]:
     if cal_ms is not None and (not _is_number(cal_ms) or float(cal_ms) < 0):
         errors.append(
             f"calibration_injected_ms must be null or a non-negative number, got {cal_ms!r}"
+        )
+    elif (
+        run_kind in ("baseline", "ab", "diagnose")
+        and cal_ms is not None
+        and _is_number(cal_ms)
+        and float(cal_ms) > 0
+    ):
+        errors.append(
+            f"run_kind={run_kind!r} must not have calibration_injected_ms > 0 (got {cal_ms!r})"
         )
 
     refresh_hz = row.get("refresh_hz")
@@ -426,10 +449,17 @@ def _validate_common(row: Mapping[str, Any]) -> list[str]:
                     f"cohort_key mismatch: got {cohort_key!r}, expected {expected_cohort!r}"
                 )
 
+    project = row.get("project")
+    allowed_thermal = PROJECT_THERMAL_STATES.get(project) if isinstance(project, str) else None
     for thermal_col in ("thermal_start", "thermal_end"):
         tval = row.get(thermal_col)
-        if tval is not None and (not isinstance(tval, str) or not tval.strip()):
-            errors.append(f"{thermal_col} must be null or a non-empty string, got {tval!r}")
+        if tval is not None:
+            if not isinstance(tval, str) or not tval.strip():
+                errors.append(f"{thermal_col} must be null or a non-empty string, got {tval!r}")
+            elif allowed_thermal is not None and tval not in allowed_thermal:
+                errors.append(
+                    f"{thermal_col} for {project} must be one of {sorted(allowed_thermal)}, got {tval!r}"
+                )
 
     samples = row.get("samples")
     if not _is_int(samples) or samples < 0:
@@ -608,12 +638,14 @@ def write_jsonl(
     *,
     kind: str | None = None,
     validate: bool = True,
+    append: bool = False,
 ) -> int:
     """Write rows to a UTF-8 JSONL file in canonical DDL column order.
 
     When ``validate`` is True and ``kind`` is provided (or inferred from
     row column shape), all rows are validated before touching disk.
-    Returns the number of written rows.
+    When ``append`` is True, rows are appended to the existing file instead
+    of truncating it. Returns the number of written rows.
     """
     materialized = [dict(r) for r in rows]
     resolved_kind: str | None = _normalize_kind(kind) if kind is not None else None
@@ -644,7 +676,14 @@ def write_jsonl(
 
     out_path = Path(path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    with out_path.open("w", encoding="utf-8") as handle:
+    needs_leading_nl = False
+    if append and out_path.exists() and out_path.stat().st_size > 0:
+        with out_path.open("rb") as chk:
+            chk.seek(-1, 2)
+            needs_leading_nl = chk.read(1) != b"\n"
+    with out_path.open("a" if append else "w", encoding="utf-8") as handle:
+        if needs_leading_nl:
+            handle.write("\n")
         for row in materialized:
             ordered = _canonical_row(columns, row) if columns is not None else row
             handle.write(json.dumps(ordered, ensure_ascii=False, separators=(",", ":")) + "\n")

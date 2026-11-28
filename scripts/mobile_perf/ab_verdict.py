@@ -1,11 +1,16 @@
-"""Paired interleaved A/B verdict engine and 200ms sensitivity calibration checker.
+"""Paired interleaved A/B verdict engine and sensitivity calibration checker.
 
 Pure Python stdlib statistical evaluator:
-- Enforces strict cohort & scenario equality (``invalid_cohort`` on mismatch).
-- Flags/filters thermally throttled runs (severe/critical/emergency/shutdown/serious
-  or thermal tier jump >= 2).
-- Computes median, IQR, MAD, paired deltas, relative delta %, and deterministic
-  exact sign-flip / permutation p-values.
+- Enforces strict cohort, scenario, ``ab_session_id``, ``run_kind``,
+  ``calibration_injected_ms``, ``ab_arm``, and unique ``(ab_arm, iteration)``
+  invariants (``invalid_cohort`` on any violation).
+- Flags/filters thermally throttled runs (either ``thermal_start`` or
+  ``thermal_end`` in severe/critical/emergency/shutdown/serious, or thermal
+  tier jump >= 2) and explicitly reports unverified (missing/unknown) thermal
+  telemetry.
+- Computes median, IQR, MAD, paired deltas, paired median delta, relative
+  delta %, and deterministic exact paired sign-flip p-values (default
+  ``min_pairs=6``).
 - Classifies verdicts with an explicit noise-floor rule:
   ``improved``, ``regressed``, ``neutral``, ``noisy``, ``insufficient_samples``,
   or ``invalid_cohort``.
@@ -19,7 +24,7 @@ import random
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from .scenarios import SCENARIOS, get_primary_kpi
+from .scenarios import SCENARIOS, VALID_CALIBRATION_MODES, get_calibration_config, get_primary_kpi
 
 THERMAL_THROTTLED_STATES: frozenset[str] = frozenset(
     {"severe", "critical", "emergency", "shutdown", "serious"}
@@ -43,11 +48,25 @@ _IOS_THERMAL_TIERS: dict[str, int] = {
     "critical": 3,
 }
 
+_THERMAL_STATUS_PREFIX = "thermal_status_"
 
-def _thermal_tier(state: str | None) -> int | None:
-    if not isinstance(state, str) or not state.strip():
+
+def _normalize_thermal_state(state: str | None) -> str | None:
+    """Normalize thermal string (case-insensitive, stripping optional THERMAL_STATUS_ prefix)."""
+    if not isinstance(state, str):
         return None
     norm = state.strip().lower()
+    if not norm:
+        return None
+    if norm.startswith(_THERMAL_STATUS_PREFIX):
+        norm = norm[len(_THERMAL_STATUS_PREFIX) :]
+    return norm or None
+
+
+def _thermal_tier(state: str | None) -> int | None:
+    norm = _normalize_thermal_state(state)
+    if norm is None:
+        return None
     if norm in _ANDROID_THERMAL_TIERS:
         return _ANDROID_THERMAL_TIERS[norm]
     if norm in _IOS_THERMAL_TIERS:
@@ -60,11 +79,17 @@ def is_thermal_throttled(
     thermal_end: str | None,
 ) -> tuple[bool, str | None]:
     """Return ``(throttled, reason)`` for a run's start/end thermal states."""
-    end_norm = thermal_end.strip().lower() if isinstance(thermal_end, str) else None
-    start_norm = thermal_start.strip().lower() if isinstance(thermal_start, str) else None
+    start_norm = _normalize_thermal_state(thermal_start)
+    end_norm = _normalize_thermal_state(thermal_end)
 
-    if end_norm in THERMAL_THROTTLED_STATES:
+    start_hot = start_norm in THERMAL_THROTTLED_STATES
+    end_hot = end_norm in THERMAL_THROTTLED_STATES
+    if start_hot and end_hot:
+        return True, f"thermal_start={start_norm},thermal_end={end_norm}"
+    if end_hot:
         return True, f"thermal_end={end_norm}"
+    if start_hot:
+        return True, f"thermal_start={start_norm}"
 
     t_start = _thermal_tier(start_norm)
     t_end = _thermal_tier(end_norm)
@@ -74,9 +99,53 @@ def is_thermal_throttled(
     return False, None
 
 
+def classify_thermal_status(
+    thermal_start: str | None,
+    thermal_end: str | None,
+) -> tuple[str, str | None]:
+    """Classify thermal telemetry into ``("throttled" | "unverified" | "ok", reason)``.
+
+    - ``("throttled", reason)`` when throttled at start, at end, or tier jump >= 2.
+    - ``("unverified", reason)`` when either ``thermal_start`` or ``thermal_end``
+      is missing/null/empty or unrecognized after normalization.
+    - ``("ok", None)`` only when both ``thermal_start`` and ``thermal_end`` are
+      recognized non-throttled states with tier jump < 2.
+    """
+    throttled, throttle_reason = is_thermal_throttled(thermal_start, thermal_end)
+    if throttled:
+        return "throttled", throttle_reason
+
+    issues: list[str] = []
+    start_norm = _normalize_thermal_state(thermal_start)
+    end_norm = _normalize_thermal_state(thermal_end)
+
+    if start_norm is None:
+        issues.append("thermal_start=missing")
+    elif _thermal_tier(start_norm) is None:
+        issues.append(f"thermal_start=unknown({thermal_start!r})")
+
+    if end_norm is None:
+        issues.append("thermal_end=missing")
+    elif _thermal_tier(end_norm) is None:
+        issues.append(f"thermal_end=unknown({thermal_end!r})")
+
+    if issues:
+        return "unverified", ",".join(issues)
+
+    return "ok", None
+
+
 # ---------------------------------------------------------------------------
 # Robust summary statistics & deterministic permutation tests
 # ---------------------------------------------------------------------------
+
+
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _is_finite_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
 
 
 def _quantile(sorted_vals: Sequence[float], q: float) -> float:
@@ -179,26 +248,6 @@ def _exact_two_sample_permutation_p_value(
     return (extreme + 1) / (draws + 1), "mc_two_sample_permutation_seeded"
 
 
-def _compute_ab_p_value(
-    base_vals: Sequence[float],
-    head_vals: Sequence[float],
-    deltas: Sequence[float],
-    alpha: float,
-) -> tuple[float, str]:
-    """Choose exact paired sign-flip when attainable p_min <= alpha, else exact two-sample permutation.
-
-    Note: for ``n = 5``, the minimum attainable two-sided paired sign-flip p-value
-    is ``2 / 2^5 = 0.0625 > 0.05``. Falling back to the exact two-sample
-    permutation test (``C(10, 5) = 252``, ``p_min = 0.00794``) preserves full
-    exactness and determinism at ``min_pairs = 5`` while using pure paired
-    sign-flip for all ``n >= 6``.
-    """
-    n = len(deltas)
-    if n >= 6 or (n > 0 and (2.0 / (1 << min(n, 30))) <= alpha + 1e-12):
-        return _exact_paired_sign_flip_p_value(deltas)
-    return _exact_two_sample_permutation_p_value(base_vals, head_vals)
-
-
 def _default_abs_floor(metric: str) -> float:
     if metric.endswith("_ratio"):
         return 0.01
@@ -222,6 +271,47 @@ def _resolve_metric(rows: Sequence[Mapping[str, Any]], primary_metric: str | Non
     return "duration_ms"
 
 
+def _resolve_calibration_mode_and_metric(
+    rows: Sequence[Mapping[str, Any]],
+    *,
+    mode: str | None,
+    primary_metric: str | None,
+) -> tuple[str, str]:
+    if mode is not None and mode not in VALID_CALIBRATION_MODES:
+        raise ValueError(
+            f"Unknown calibration mode {mode!r}; expected one of {sorted(VALID_CALIBRATION_MODES)}"
+        )
+    scenarios_seen = {r.get("scenario") for r in rows if r.get("scenario")}
+    projects_seen = {r.get("project") for r in rows if r.get("project")}
+    proj = next(iter(projects_seen)) if len(projects_seen) == 1 else None
+    sc = next(iter(scenarios_seen)) if len(scenarios_seen) == 1 else None
+
+    if sc in SCENARIOS:
+        default_mode, default_metric = get_calibration_config(sc, project=proj)
+    else:
+        default_mode, default_metric = "latency_ms", "duration_ms"
+
+    if mode is not None:
+        resolved_mode = mode
+    elif primary_metric in ("slow_frame_ratio", "hitch_ms_per_s"):
+        resolved_mode = "slow_frames"
+    elif primary_metric in ("duration_ms", "ttfd_ms"):
+        resolved_mode = "latency_ms"
+    else:
+        resolved_mode = default_mode
+
+    if primary_metric is not None:
+        resolved_metric = primary_metric
+    elif resolved_mode == default_mode:
+        resolved_metric = default_metric
+    elif resolved_mode == "slow_frames":
+        resolved_metric = "hitch_ms_per_s" if proj == "raft-ios" else "slow_frame_ratio"
+    else:
+        resolved_metric = "ttfd_ms" if sc == "cold_start" else "duration_ms"
+
+    return resolved_mode, resolved_metric
+
+
 # ---------------------------------------------------------------------------
 # Public API: paired A/B verdict evaluator
 # ---------------------------------------------------------------------------
@@ -231,7 +321,7 @@ def evaluate_ab(
     rows: Sequence[Mapping[str, Any]],
     primary_metric: str | None = None,
     *,
-    min_pairs: int = 5,
+    min_pairs: int = 6,
     alpha: float = 0.05,
     rel_floor: float = 0.05,
     noise_multiplier: float = 2.0,
@@ -249,13 +339,18 @@ def evaluate_ab(
             "primary_metric": primary_metric,
             "cohort_key": None,
             "scenario": None,
+            "ab_session_id": None,
             "paired_count": 0,
             "min_pairs": min_pairs,
-            "reasons": ["no rows supplied"],
+            "unrecognized_arm_count": 0,
+            "unrecognized_arms": [],
             "thermal_flags": [],
+            "thermal_unverified_count": 0,
+            "thermal_unverified_runs": [],
+            "reasons": ["no rows supplied"],
         }
 
-    # 1. Strict cohort & scenario equality gate across all supplied rows.
+    # 1. Strict cohort, scenario, session, run_kind, calibration, arm, and uniqueness gates.
     cohort_keys = sorted({str(r.get("cohort_key") or "") for r in rows})
     scenarios_seen = sorted({str(r.get("scenario") or "") for r in rows})
     metric = _resolve_metric(rows, primary_metric)
@@ -265,55 +360,128 @@ def evaluate_ab(
         reasons.append(f"cohort_key mismatch across rows: {cohort_keys}")
     if len(scenarios_seen) != 1 or not scenarios_seen[0]:
         reasons.append(f"scenario mismatch across rows: {scenarios_seen}")
+
+    # Single non-empty ab_session_id across all rows.
+    session_ids_raw = [r.get("ab_session_id") for r in rows]
+    missing_session_count = sum(
+        1 for s in session_ids_raw if not isinstance(s, str) or not s.strip()
+    )
+    nonempty_sessions = sorted(
+        {s.strip() for s in session_ids_raw if isinstance(s, str) and s.strip()}
+    )
+    if missing_session_count > 0:
+        reasons.append(f"missing or empty ab_session_id on {missing_session_count} row(s)")
+    if len(nonempty_sessions) > 1:
+        reasons.append(f"ab_session_id mismatch across rows: {nonempty_sessions}")
+
+    # Strict run_kind == "ab" and calibration_injected_ms not > 0.
+    bad_run_kinds = [r.get("run_kind") for r in rows if r.get("run_kind") != "ab"]
+    if bad_run_kinds:
+        unique_bad_rk = sorted({repr(rk) if rk is None else str(rk) for rk in bad_run_kinds})
+        reasons.append(
+            f"invalid run_kind for A/B evaluation on {len(bad_run_kinds)} row(s) "
+            f"(expected 'ab'): {unique_bad_rk}"
+        )
+
+    injected_cal_vals = [
+        float(r["calibration_injected_ms"])
+        for r in rows
+        if _is_finite_number(r.get("calibration_injected_ms"))
+        and float(r["calibration_injected_ms"]) > 0
+    ]
+    if injected_cal_vals:
+        reasons.append(
+            f"calibration_injected_ms > 0 is forbidden in A/B evaluation "
+            f"({len(injected_cal_vals)} row(s): {sorted(set(injected_cal_vals))})"
+        )
+
+    # Unrecognized ab_arm values (never silently skip).
+    unrecognized_arms_raw = [r.get("ab_arm") for r in rows if r.get("ab_arm") not in ("base", "head")]
+    unrecognized_arm_count = len(unrecognized_arms_raw)
+    unrecognized_arms: list[Any] = []
+    for arm_val in unrecognized_arms_raw:
+        if arm_val not in unrecognized_arms:
+            unrecognized_arms.append(arm_val)
+    if unrecognized_arm_count > 0:
+        reasons.append(
+            f"unrecognized ab_arm on {unrecognized_arm_count} row(s) "
+            f"(expected 'base' or 'head'): {unrecognized_arms}"
+        )
+
+    # Duplicate (ab_arm, iteration) entries across ALL rows (valid or invalid).
+    arm_iter_counts: dict[tuple[str, int], int] = {}
+    for row in rows:
+        arm = row.get("ab_arm")
+        it = row.get("iteration")
+        if arm in ("base", "head") and _is_int(it):
+            key = (arm, it)
+            arm_iter_counts[key] = arm_iter_counts.get(key, 0) + 1
+    duplicate_arm_iters = sorted(k for k, cnt in arm_iter_counts.items() if cnt > 1)
+    if duplicate_arm_iters:
+        dup_desc = ", ".join(
+            f"{arm}#{it} (x{arm_iter_counts[(arm, it)]})" for arm, it in duplicate_arm_iters
+        )
+        reasons.append(f"duplicate (ab_arm, iteration) entries detected: {dup_desc}")
+
     if reasons:
         return {
             "verdict": "invalid_cohort",
             "primary_metric": metric,
             "cohort_keys": cohort_keys,
             "scenarios": scenarios_seen,
-            "cohort_key": cohort_keys[0] if len(cohort_keys) == 1 else None,
-            "scenario": scenarios_seen[0] if len(scenarios_seen) == 1 else None,
+            "cohort_key": cohort_keys[0] if len(cohort_keys) == 1 and cohort_keys[0] else None,
+            "scenario": scenarios_seen[0] if len(scenarios_seen) == 1 and scenarios_seen[0] else None,
+            "ab_session_id": (
+                nonempty_sessions[0]
+                if len(nonempty_sessions) == 1 and missing_session_count == 0
+                else None
+            ),
+            "ab_session_ids": nonempty_sessions,
+            "unrecognized_arm_count": unrecognized_arm_count,
+            "unrecognized_arms": unrecognized_arms,
+            "duplicate_arm_iterations": [
+                {"ab_arm": arm, "iteration": it, "count": arm_iter_counts[(arm, it)]}
+                for arm, it in duplicate_arm_iters
+            ],
             "paired_count": 0,
             "min_pairs": min_pairs,
-            "reasons": reasons,
             "thermal_flags": [],
+            "thermal_unverified_count": 0,
+            "thermal_unverified_runs": [],
+            "reasons": reasons,
         }
 
     cohort_key = cohort_keys[0]
     scenario = scenarios_seen[0]
+    ab_session_id = nonempty_sessions[0]
     eff_abs_floor = _default_abs_floor(metric) if abs_floor_ms is None else float(abs_floor_ms)
 
-    # 2. Filter invalid rows, missing metrics, and thermal throttling.
+    # 2. Filter invalid rows, missing metrics, and thermal throttling; record unverified thermal.
     base_by_iter: dict[int, float] = {}
     head_by_iter: dict[int, float] = {}
     invalid_excluded = 0
     thermal_excluded = 0
     thermal_flags: list[dict[str, Any]] = []
+    thermal_unverified_runs: list[dict[str, Any]] = []
 
     for row in rows:
-        arm = row.get("ab_arm")
-        if arm not in ("base", "head"):
-            continue
+        arm = row["ab_arm"]
         iteration = row.get("iteration")
         valid = row.get("valid")
         samples = row.get("samples")
         val = row.get(metric)
 
-        throttled, thermal_reason = is_thermal_throttled(
+        thermal_status, thermal_reason = classify_thermal_status(
             row.get("thermal_start"), row.get("thermal_end")
         )
         has_valid_sample_and_metric = (
-            isinstance(samples, int)
-            and not isinstance(samples, bool)
+            _is_int(samples)
             and samples > 0
-            and isinstance(iteration, int)
-            and not isinstance(iteration, bool)
-            and isinstance(val, (int, float))
-            and not isinstance(val, bool)
-            and math.isfinite(float(val))
+            and _is_int(iteration)
+            and _is_finite_number(val)
         )
 
-        if throttled and has_valid_sample_and_metric:
+        if thermal_status == "throttled" and has_valid_sample_and_metric:
             thermal_flags.append(
                 {
                     "run_id": row.get("run_id"),
@@ -332,6 +500,18 @@ def evaluate_ab(
             invalid_excluded += 1
             continue
 
+        if thermal_status == "unverified":
+            thermal_unverified_runs.append(
+                {
+                    "run_id": row.get("run_id"),
+                    "ab_arm": arm,
+                    "iteration": iteration,
+                    "thermal_start": row.get("thermal_start"),
+                    "thermal_end": row.get("thermal_end"),
+                    "reason": thermal_reason,
+                }
+            )
+
         target = base_by_iter if arm == "base" else head_by_iter
         target[iteration] = float(val)
 
@@ -342,6 +522,14 @@ def evaluate_ab(
         reasons.append(
             f"{action} {len(thermal_flags)} thermally throttled run(s): "
             + ", ".join(f"{f['ab_arm']}#{f['iteration']}({f['reason']})" for f in thermal_flags)
+        )
+    if thermal_unverified_runs:
+        reasons.append(
+            f"WARNING: {len(thermal_unverified_runs)} run(s) have unverified thermal telemetry "
+            f"(missing or unrecognized thermal_start/thermal_end): "
+            + ", ".join(
+                f"{u['ab_arm']}#{u['iteration']}({u['reason']})" for u in thermal_unverified_runs
+            )
         )
 
     # 3. Pair base & head by exact iteration index.
@@ -359,15 +547,20 @@ def evaluate_ab(
             "primary_metric": metric,
             "cohort_key": cohort_key,
             "scenario": scenario,
+            "ab_session_id": ab_session_id,
             "paired_count": len(paired_iters),
             "min_pairs": min_pairs,
+            "unrecognized_arm_count": 0,
+            "unrecognized_arms": [],
             "invalid_excluded_count": invalid_excluded,
             "thermal_excluded_count": thermal_excluded,
             "thermal_flags": thermal_flags,
+            "thermal_unverified_count": len(thermal_unverified_runs),
+            "thermal_unverified_runs": thermal_unverified_runs,
             "reasons": reasons,
         }
 
-    # 4. Robust statistics & deterministic p-value.
+    # 4. Robust statistics & deterministic paired sign-flip p-value.
     base_med = _median(base_vals)
     head_med = _median(head_vals)
     base_iqr = _iqr(base_vals)
@@ -379,30 +572,31 @@ def evaluate_ab(
     median_delta = head_med - base_med
     paired_median_delta = _median(deltas)
     delta_mad = _mad(deltas)
-    rel_delta_pct = (median_delta / base_med * 100.0) if abs(base_med) > 1e-12 else None
+    rel_delta_pct = (paired_median_delta / base_med * 100.0) if abs(base_med) > 1e-12 else None
 
-    p_value, p_method = _compute_ab_p_value(base_vals, head_vals, deltas, alpha)
+    p_value, p_method = _exact_paired_sign_flip_p_value(deltas)
 
     rel_threshold = rel_floor * abs(base_med)
     noise_threshold = noise_multiplier * pooled_mad
     practical_floor = max(rel_threshold, eff_abs_floor)
     noise_floor = max(practical_floor, noise_threshold)
 
-    abs_delta = abs(median_delta)
+    abs_delta = abs(paired_median_delta)
     significant = p_value <= alpha + 1e-12
     exceeds_noise_floor = abs_delta > noise_floor
     relative_noise = (pooled_mad / abs(base_med)) if abs(base_med) > 1e-12 else 0.0
 
     if significant and exceeds_noise_floor:
         if lower_is_better:
-            verdict = "improved" if median_delta < 0 else "regressed"
+            verdict = "improved" if paired_median_delta < 0 else "regressed"
         else:
-            verdict = "improved" if median_delta > 0 else "regressed"
+            verdict = "improved" if paired_median_delta > 0 else "regressed"
         reasons.append(
-            f"{metric} delta {median_delta:+.3f} ({rel_delta_pct:+.2f}%) exceeds noise floor "
-            f"{noise_floor:.3f} with p={p_value:.5f}"
+            f"{metric} paired median delta {paired_median_delta:+.3f} ({rel_delta_pct:+.2f}%) "
+            f"exceeds noise floor {noise_floor:.3f} with p={p_value:.5f}"
             if rel_delta_pct is not None
-            else f"{metric} delta {median_delta:+.3f} exceeds noise floor {noise_floor:.3f} with p={p_value:.5f}"
+            else f"{metric} paired median delta {paired_median_delta:+.3f} exceeds noise floor "
+            f"{noise_floor:.3f} with p={p_value:.5f}"
         )
     else:
         # Distinguish noisy from neutral: high dispersion or an unverified large shift => noisy.
@@ -414,13 +608,14 @@ def evaluate_ab(
                 )
             if abs_delta > practical_floor:
                 reasons.append(
-                    f"observed delta {median_delta:+.3f} exceeds practical floor {practical_floor:.3f} "
-                    f"but failed gate (p={p_value:.5f}, noise_floor={noise_floor:.3f})"
+                    f"observed paired median delta {paired_median_delta:+.3f} exceeds practical floor "
+                    f"{practical_floor:.3f} but failed gate (p={p_value:.5f}, noise_floor={noise_floor:.3f})"
                 )
         else:
             verdict = "neutral"
             reasons.append(
-                f"delta {median_delta:+.3f} within noise floor {noise_floor:.3f} with controlled variance "
+                f"paired median delta {paired_median_delta:+.3f} within noise floor "
+                f"{noise_floor:.3f} with controlled variance "
                 f"(p={p_value:.5f}, pooled_mad={pooled_mad:.3f})"
             )
 
@@ -429,12 +624,17 @@ def evaluate_ab(
         "primary_metric": metric,
         "cohort_key": cohort_key,
         "scenario": scenario,
+        "ab_session_id": ab_session_id,
         "paired_count": len(paired_iters),
         "paired_iterations": paired_iters,
         "min_pairs": min_pairs,
+        "unrecognized_arm_count": 0,
+        "unrecognized_arms": [],
         "invalid_excluded_count": invalid_excluded,
         "thermal_excluded_count": thermal_excluded,
         "thermal_flags": thermal_flags,
+        "thermal_unverified_count": len(thermal_unverified_runs),
+        "thermal_unverified_runs": thermal_unverified_runs,
         "base_median": round(base_med, 4),
         "head_median": round(head_med, 4),
         "base_iqr": round(base_iqr, 4),
@@ -461,8 +661,32 @@ def evaluate_ab(
 
 
 # ---------------------------------------------------------------------------
-# Public API: 200ms sensitivity calibration checker
+# Public API: per-scenario sensitivity calibration checker
 # ---------------------------------------------------------------------------
+
+
+def _infer_calibration_window_ms(
+    rows: Sequence[Mapping[str, Any]],
+    explicit_window_ms: float | None,
+) -> float | None:
+    if explicit_window_ms is not None:
+        if not _is_finite_number(explicit_window_ms) or float(explicit_window_ms) <= 0:
+            raise ValueError(f"window_ms must be > 0, got {explicit_window_ms!r}")
+        return float(explicit_window_ms)
+    found: list[float] = []
+    for r in rows:
+        candidates = [r.get("window_ms")]
+        extra = r.get("extra")
+        if isinstance(extra, Mapping):
+            candidates.append(extra.get("window_ms"))
+        segs = r.get("segments")
+        if isinstance(segs, Mapping):
+            candidates.append(segs.get("window_ms"))
+        for cand in candidates:
+            if _is_finite_number(cand) and float(cand) > 0:
+                found.append(float(cand))
+                break
+    return _median(found) if found else None
 
 
 def evaluate_calibration(
@@ -470,115 +694,277 @@ def evaluate_calibration(
     injected_rows: Sequence[Mapping[str, Any]],
     *,
     primary_metric: str | None = None,
+    mode: str | None = None,
     injected_ms: float = 200.0,
+    expected_delta: float | None = None,
+    injected_slow_frames: int | None = None,
+    window_ms: float | None = None,
     tolerance_ratio: float = 0.25,
-    min_pairs: int = 5,
+    min_pairs: int = 6,
     alpha: float = 0.05,
     filter_thermal: bool = True,
 ) -> dict[str, Any]:
-    """Verify the harness reliably detects an injected synthetic stall (default 200ms).
+    """Verify harness sensitivity against synthetic latency or slow-frame injection.
 
-    For ``injected_ms=200.0`` and ``tolerance_ratio=0.25``, requires the observed
-    latency delta (``injected_median - base_median``) to fall inside
-    ``[150.0, 250.0]`` ms and be statistically significant (``p <= alpha``) on
-    matching cohorts.
+    Supports two calibration modes:
+    - ``latency_ms`` (default for the 6 latency scenarios): checks that the
+      observed paired median delta falls inside
+      ``[injected_ms * (1 - tolerance_ratio), injected_ms * (1 + tolerance_ratio)]``
+      with ``p <= alpha``.
+    - ``slow_frames`` (default for ``thread_scroll_ime``): checks either
+      ``slow_frame_ratio`` (via ``expected_delta`` or
+      ``injected_slow_frames / median(samples)``) or ``hitch_ms_per_s`` (via
+      ``expected_delta`` or ``injected_slow_frames * injected_ms / window_s``)
+      within ``±tolerance_ratio`` with ``p <= alpha``.
     """
-    if injected_ms <= 0:
+    if min_pairs < 1:
+        raise ValueError(f"min_pairs must be >= 1, got {min_pairs!r}")
+    if not _is_finite_number(injected_ms) or float(injected_ms) <= 0:
         raise ValueError(f"injected_ms must be > 0, got {injected_ms!r}")
-    if not (0.0 < tolerance_ratio < 1.0):
+    if not _is_finite_number(tolerance_ratio) or not (0.0 < float(tolerance_ratio) < 1.0):
         raise ValueError(f"tolerance_ratio must be in (0, 1), got {tolerance_ratio!r}")
+    if expected_delta is not None and (not _is_finite_number(expected_delta) or float(expected_delta) <= 0):
+        raise ValueError(f"expected_delta must be > 0, got {expected_delta!r}")
+    if injected_slow_frames is not None and (not _is_int(injected_slow_frames) or injected_slow_frames <= 0):
+        raise ValueError(f"injected_slow_frames must be a positive integer, got {injected_slow_frames!r}")
 
     all_rows = list(base_rows) + list(injected_rows)
     if not base_rows or not injected_rows:
         return {
             "verdict": "insufficient_samples",
             "passed": False,
+            "calibration_mode": mode or "latency_ms",
             "primary_metric": primary_metric,
             "injected_ms": float(injected_ms),
-            "expected_min_ms": round(injected_ms * (1.0 - tolerance_ratio), 3),
-            "expected_max_ms": round(injected_ms * (1.0 + tolerance_ratio), 3),
+            "injected_slow_frames": injected_slow_frames,
+            "expected_min_ms": round(injected_ms * (1.0 - tolerance_ratio), 3)
+            if (mode or "latency_ms") == "latency_ms"
+            else None,
+            "expected_max_ms": round(injected_ms * (1.0 + tolerance_ratio), 3)
+            if (mode or "latency_ms") == "latency_ms"
+            else None,
             "reasons": ["both base_rows and injected_rows are required for calibration"],
             "thermal_flags": [],
+            "thermal_unverified_count": 0,
+            "thermal_unverified_runs": [],
         }
 
     cohort_keys = sorted({str(r.get("cohort_key") or "") for r in all_rows})
     scenarios_seen = sorted({str(r.get("scenario") or "") for r in all_rows})
-    metric = _resolve_metric(all_rows, primary_metric)
-    expected_min = injected_ms * (1.0 - tolerance_ratio)
-    expected_max = injected_ms * (1.0 + tolerance_ratio)
+    resolved_mode, metric = _resolve_calibration_mode_and_metric(
+        all_rows, mode=mode, primary_metric=primary_metric
+    )
 
     cohort_errors: list[str] = []
     if len(cohort_keys) != 1 or not cohort_keys[0]:
         cohort_errors.append(f"cohort_key mismatch across calibration rows: {cohort_keys}")
     if len(scenarios_seen) != 1 or not scenarios_seen[0]:
         cohort_errors.append(f"scenario mismatch across calibration rows: {scenarios_seen}")
+
+    # Strict calibration metadata gate BEFORE stats.
+    bad_base_rk = [r.get("run_kind") for r in base_rows if r.get("run_kind") != "calibration"]
+    if bad_base_rk:
+        cohort_errors.append(
+            f"base_rows must all have run_kind='calibration' "
+            f"(found {len(bad_base_rk)} non-calibration row(s): "
+            f"{sorted({repr(x) if x is None else str(x) for x in bad_base_rk})})"
+        )
+
+    bad_base_cal = [
+        r.get("calibration_injected_ms")
+        for r in base_rows
+        if not (
+            r.get("calibration_injected_ms") is None
+            or (
+                _is_finite_number(r.get("calibration_injected_ms"))
+                and float(r["calibration_injected_ms"]) == 0.0
+            )
+        )
+    ]
+    if bad_base_cal:
+        cohort_errors.append(
+            f"base_rows must have calibration_injected_ms in (null, 0) "
+            f"(found {len(bad_base_cal)} invalid row(s): {bad_base_cal})"
+        )
+
+    bad_inj_rk = [r.get("run_kind") for r in injected_rows if r.get("run_kind") != "calibration"]
+    if bad_inj_rk:
+        cohort_errors.append(
+            f"injected_rows must all have run_kind='calibration' "
+            f"(found {len(bad_inj_rk)} non-calibration row(s): "
+            f"{sorted({repr(x) if x is None else str(x) for x in bad_inj_rk})})"
+        )
+
+    bad_inj_cal = [
+        r.get("calibration_injected_ms")
+        for r in injected_rows
+        if not (
+            _is_finite_number(r.get("calibration_injected_ms"))
+            and float(r["calibration_injected_ms"]) > 0.0
+        )
+    ]
+    if bad_inj_cal:
+        cohort_errors.append(
+            f"injected_rows must all have numeric calibration_injected_ms > 0 "
+            f"(found {len(bad_inj_cal)} invalid row(s): {bad_inj_cal})"
+        )
+    elif resolved_mode == "latency_ms":
+        mismatched_inj = [
+            float(r["calibration_injected_ms"])
+            for r in injected_rows
+            if abs(float(r["calibration_injected_ms"]) - float(injected_ms)) > 1e-6
+        ]
+        if mismatched_inj:
+            cohort_errors.append(
+                f"injected_rows calibration_injected_ms must match injected_ms={injected_ms} "
+                f"(found {len(mismatched_inj)} mismatched row(s): {sorted(set(mismatched_inj))})"
+            )
+
+    # Duplicate iteration check within base_rows and within injected_rows.
+    for label, group in (("base", base_rows), ("injected", injected_rows)):
+        iter_counts: dict[int, int] = {}
+        for row in group:
+            it = row.get("iteration")
+            if _is_int(it):
+                iter_counts[it] = iter_counts.get(it, 0) + 1
+        dups = sorted(it for it, cnt in iter_counts.items() if cnt > 1)
+        if dups:
+            dup_str = ", ".join(f"{it} (x{iter_counts[it]})" for it in dups)
+            cohort_errors.append(f"duplicate iteration in {label}_rows: {dup_str}")
+
     if cohort_errors:
         return {
             "verdict": "invalid_cohort",
             "passed": False,
+            "calibration_mode": resolved_mode,
             "primary_metric": metric,
             "cohort_keys": cohort_keys,
             "scenarios": scenarios_seen,
+            "cohort_key": cohort_keys[0] if len(cohort_keys) == 1 and cohort_keys[0] else None,
+            "scenario": scenarios_seen[0] if len(scenarios_seen) == 1 and scenarios_seen[0] else None,
             "injected_ms": float(injected_ms),
-            "expected_min_ms": round(expected_min, 3),
-            "expected_max_ms": round(expected_max, 3),
+            "injected_slow_frames": injected_slow_frames,
+            "expected_min_ms": round(injected_ms * (1.0 - tolerance_ratio), 3)
+            if resolved_mode == "latency_ms"
+            else None,
+            "expected_max_ms": round(injected_ms * (1.0 + tolerance_ratio), 3)
+            if resolved_mode == "latency_ms"
+            else None,
             "reasons": cohort_errors,
             "thermal_flags": [],
+            "thermal_unverified_count": 0,
+            "thermal_unverified_runs": [],
         }
 
+    # Validate slow_frames mode inputs before running statistics.
+    resolved_window_ms: float | None = None
+    if resolved_mode == "slow_frames" and expected_delta is None:
+        if metric == "slow_frame_ratio":
+            if injected_slow_frames is None:
+                raise ValueError(
+                    "slow_frames calibration on slow_frame_ratio requires expected_delta or injected_slow_frames"
+                )
+        elif metric == "hitch_ms_per_s":
+            if injected_slow_frames is None:
+                raise ValueError(
+                    "slow_frames calibration on hitch_ms_per_s requires expected_delta or injected_slow_frames"
+                )
+            resolved_window_ms = _infer_calibration_window_ms(all_rows, window_ms)
+            if resolved_window_ms is None:
+                raise ValueError(
+                    "slow_frames calibration on hitch_ms_per_s requires expected_delta or window_ms"
+                )
+        else:
+            raise ValueError(
+                f"slow_frames calibration on metric {metric!r} requires expected_delta"
+            )
+
     thermal_flags: list[dict[str, Any]] = []
+    thermal_unverified_runs: list[dict[str, Any]] = []
     reasons: list[str] = []
 
-    def _collect(group: Sequence[Mapping[str, Any]], label: str) -> tuple[list[float], dict[int, float]]:
+    def _collect(
+        group: Sequence[Mapping[str, Any]], label: str
+    ) -> tuple[list[float], dict[int, float], list[int], dict[int, int]]:
         vals: list[float] = []
         by_iter: dict[int, float] = {}
+        sample_counts: list[int] = []
+        samples_by_iter: dict[int, int] = {}
         for row in group:
             val = row.get(metric)
             samples = row.get("samples")
-            if (
-                row.get("valid") is not True
-                or not isinstance(samples, int)
-                or isinstance(samples, bool)
-                or samples <= 0
-                or not isinstance(val, (int, float))
-                or isinstance(val, bool)
-                or not math.isfinite(float(val))
-            ):
-                continue
-            throttled, t_reason = is_thermal_throttled(
+            has_valid_sample_and_metric = (
+                _is_int(samples) and samples > 0 and _is_finite_number(val)
+            )
+            thermal_status, t_reason = classify_thermal_status(
                 row.get("thermal_start"), row.get("thermal_end")
             )
-            if throttled:
+            if thermal_status == "throttled" and has_valid_sample_and_metric:
                 thermal_flags.append(
                     {
                         "run_id": row.get("run_id"),
                         "group": label,
                         "iteration": row.get("iteration"),
+                        "thermal_start": row.get("thermal_start"),
+                        "thermal_end": row.get("thermal_end"),
                         "reason": t_reason,
                     }
                 )
-                if filter_thermal:
+                if filter_thermal or row.get("valid") is not True:
                     continue
+            if row.get("valid") is not True or not has_valid_sample_and_metric:
+                continue
+            if thermal_status == "unverified":
+                thermal_unverified_runs.append(
+                    {
+                        "run_id": row.get("run_id"),
+                        "group": label,
+                        "iteration": row.get("iteration"),
+                        "thermal_start": row.get("thermal_start"),
+                        "thermal_end": row.get("thermal_end"),
+                        "reason": t_reason,
+                    }
+                )
             fval = float(val)
             vals.append(fval)
+            sample_counts.append(int(samples))
             it = row.get("iteration")
-            if isinstance(it, int) and not isinstance(it, bool):
+            if _is_int(it):
                 by_iter[it] = fval
-        return vals, by_iter
+                samples_by_iter[it] = int(samples)
+        return vals, by_iter, sample_counts, samples_by_iter
 
-    base_vals, base_by_iter = _collect(base_rows, "base")
-    inj_vals, inj_by_iter = _collect(injected_rows, "injected")
+    base_vals, base_by_iter, base_samples, base_samples_by_iter = _collect(base_rows, "base")
+    inj_vals, inj_by_iter, inj_samples, inj_samples_by_iter = _collect(injected_rows, "injected")
+
+    if thermal_flags:
+        action = "filtered" if filter_thermal else "flagged"
+        reasons.append(f"{action} {len(thermal_flags)} thermally throttled calibration run(s)")
+    if thermal_unverified_runs:
+        reasons.append(
+            f"WARNING: {len(thermal_unverified_runs)} calibration run(s) have unverified thermal telemetry "
+            f"(missing or unrecognized thermal_start/thermal_end): "
+            + ", ".join(
+                f"{u['group']}#{u['iteration']}({u['reason']})" for u in thermal_unverified_runs
+            )
+        )
 
     paired_iters = sorted(set(base_by_iter.keys()) & set(inj_by_iter.keys()))
     use_paired = len(paired_iters) >= min_pairs
     if use_paired:
         b_series = [base_by_iter[i] for i in paired_iters]
         i_series = [inj_by_iter[i] for i in paired_iters]
+        used_samples = [
+            float(base_samples_by_iter[i]) for i in paired_iters
+        ] + [
+            float(inj_samples_by_iter[i]) for i in paired_iters
+        ]
         deltas = [h - b for b, h in zip(b_series, i_series)]
-        p_value, p_method = _compute_ab_p_value(b_series, i_series, deltas, alpha)
+        p_value, p_method = _exact_paired_sign_flip_p_value(deltas)
     else:
         b_series = base_vals
         i_series = inj_vals
+        used_samples = [float(s) for s in base_samples + inj_samples]
         deltas = []
         if len(b_series) < min_pairs or len(i_series) < min_pairs:
             reasons.append(
@@ -587,6 +973,7 @@ def evaluate_calibration(
             return {
                 "verdict": "insufficient_samples",
                 "passed": False,
+                "calibration_mode": resolved_mode,
                 "primary_metric": metric,
                 "cohort_key": cohort_keys[0],
                 "scenario": scenarios_seen[0],
@@ -594,17 +981,42 @@ def evaluate_calibration(
                 "injected_count": len(i_series),
                 "min_pairs": min_pairs,
                 "injected_ms": float(injected_ms),
-                "expected_min_ms": round(expected_min, 3),
-                "expected_max_ms": round(expected_max, 3),
+                "injected_slow_frames": injected_slow_frames,
+                "expected_min_ms": round(injected_ms * (1.0 - tolerance_ratio), 3)
+                if resolved_mode == "latency_ms"
+                else None,
+                "expected_max_ms": round(injected_ms * (1.0 + tolerance_ratio), 3)
+                if resolved_mode == "latency_ms"
+                else None,
                 "thermal_flags": thermal_flags,
+                "thermal_unverified_count": len(thermal_unverified_runs),
+                "thermal_unverified_runs": thermal_unverified_runs,
                 "reasons": reasons,
             }
         p_value, p_method = _exact_two_sample_permutation_p_value(b_series, i_series)
 
+    # Resolve target expected delta for the active calibration mode.
+    median_samples: float | None = _median(used_samples) if used_samples else None
+    if resolved_mode == "latency_ms":
+        target_delta = float(expected_delta) if expected_delta is not None else float(injected_ms)
+    elif expected_delta is not None:
+        target_delta = float(expected_delta)
+    elif metric == "slow_frame_ratio":
+        assert injected_slow_frames is not None and median_samples is not None and median_samples > 0
+        target_delta = float(injected_slow_frames) / median_samples
+    else:  # hitch_ms_per_s
+        assert injected_slow_frames is not None and resolved_window_ms is not None and resolved_window_ms > 0
+        target_delta = (float(injected_slow_frames) * float(injected_ms)) / (resolved_window_ms / 1000.0)
+
+    expected_min = target_delta * (1.0 - tolerance_ratio)
+    expected_max = target_delta * (1.0 + tolerance_ratio)
+
     base_med = _median(b_series)
     inj_med = _median(i_series)
-    observed_delta = inj_med - base_med
-    error_ms = observed_delta - injected_ms
+    median_delta = inj_med - base_med
+    paired_median_delta: float | None = _median(deltas) if use_paired else None
+    observed_delta = paired_median_delta if paired_median_delta is not None else median_delta
+    error_val = observed_delta - target_delta
     base_mad = _mad(b_series)
     inj_mad = _mad(i_series)
     pooled_mad = math.sqrt((base_mad**2 + inj_mad**2) / 2.0)
@@ -613,41 +1025,56 @@ def evaluate_calibration(
     significant = p_value <= alpha + 1e-12
     passed = within_tolerance and significant
 
-    if thermal_flags:
-        reasons.append(f"filtered {len(thermal_flags)} thermally throttled calibration run(s)")
+    unit_suffix = "ms" if resolved_mode == "latency_ms" else ""
     if not within_tolerance:
         reasons.append(
-            f"observed delta {observed_delta:.2f}ms outside tolerance [{expected_min:.2f}, {expected_max:.2f}]ms"
+            f"observed delta {observed_delta:.4f}{unit_suffix} outside tolerance "
+            f"[{expected_min:.4f}, {expected_max:.4f}]{unit_suffix}"
         )
     if not significant:
         reasons.append(f"not statistically significant (p={p_value:.5f} > alpha={alpha})")
     if passed:
         reasons.append(
-            f"detected +{observed_delta:.2f}ms stall (target +{injected_ms:.1f}ms, "
-            f"error {error_ms:+.2f}ms, p={p_value:.5f})"
+            f"detected +{observed_delta:.4f}{unit_suffix} {metric} shift "
+            f"(target +{target_delta:.4f}{unit_suffix}, error {error_val:+.4f}{unit_suffix}, p={p_value:.5f})"
         )
 
+    is_latency = resolved_mode == "latency_ms"
     return {
         "verdict": "pass" if passed else "fail",
         "passed": passed,
+        "calibration_mode": resolved_mode,
         "primary_metric": metric,
         "cohort_key": cohort_keys[0],
         "scenario": scenarios_seen[0],
         "paired": use_paired,
         "base_count": len(b_series),
         "injected_count": len(i_series),
+        "min_pairs": min_pairs,
         "injected_ms": float(injected_ms),
+        "injected_slow_frames": injected_slow_frames,
+        "window_ms": resolved_window_ms,
+        "median_samples": round(median_samples, 2) if median_samples is not None else None,
         "tolerance_ratio": float(tolerance_ratio),
-        "expected_min_ms": round(expected_min, 3),
-        "expected_max_ms": round(expected_max, 3),
-        "base_median": round(base_med, 4),
-        "injected_median": round(inj_med, 4),
-        "observed_delta_ms": round(observed_delta, 4),
-        "error_ms": round(error_ms, 4),
-        "pooled_mad": round(pooled_mad, 4),
+        "expected_delta": round(target_delta, 6),
+        "expected_min": round(expected_min, 6),
+        "expected_max": round(expected_max, 6),
+        "expected_min_ms": round(expected_min, 3) if is_latency else None,
+        "expected_max_ms": round(expected_max, 3) if is_latency else None,
+        "base_median": round(base_med, 6),
+        "injected_median": round(inj_med, 6),
+        "median_delta": round(median_delta, 6),
+        "paired_median_delta": round(paired_median_delta, 6) if paired_median_delta is not None else None,
+        "observed_delta": round(observed_delta, 6),
+        "error": round(error_val, 6),
+        "observed_delta_ms": round(observed_delta, 4) if is_latency else None,
+        "error_ms": round(error_val, 4) if is_latency else None,
+        "pooled_mad": round(pooled_mad, 6),
         "p_value": round(p_value, 6),
         "p_value_method": p_method,
         "alpha": alpha,
         "thermal_flags": thermal_flags,
+        "thermal_unverified_count": len(thermal_unverified_runs),
+        "thermal_unverified_runs": thermal_unverified_runs,
         "reasons": reasons,
     }

@@ -2,15 +2,30 @@
 
 Pure Python 3.10+ standard-library package producing ScopeDB-compatible
 ``mobile_runs`` (38 columns) and ``mobile_diagnose_runs`` (40 columns) JSONL
-records, cohort-enforced paired A/B verdicts, and 200ms sensitivity
+records, cohort-enforced paired A/B verdicts, and per-scenario sensitivity
 calibration checks.
 """
 
 from __future__ import annotations
 
-from .ab_verdict import evaluate_ab, evaluate_calibration, is_thermal_throttled
-from .scenarios import DEFAULT_FIXTURE_TAG, SCENARIOS, ScenarioSpec, get_scenario, list_scenarios
+from .ab_verdict import (
+    classify_thermal_status,
+    evaluate_ab,
+    evaluate_calibration,
+    is_thermal_throttled,
+)
+from .scenarios import (
+    DEFAULT_FIXTURE_TAG,
+    SCENARIOS,
+    ScenarioSpec,
+    get_calibration_config,
+    get_primary_kpi,
+    get_scenario,
+    list_scenarios,
+)
 from .schema import (
+    ANDROID_THERMAL_STATES,
+    IOS_THERMAL_STATES,
     MOBILE_DIAGNOSE_RUNS_COLUMNS,
     MOBILE_DIAGNOSE_RUNS_TABLE,
     MOBILE_RUNS_COLUMNS,
@@ -28,7 +43,9 @@ from .schema import (
 )
 
 __all__ = [
+    "ANDROID_THERMAL_STATES",
     "DEFAULT_FIXTURE_TAG",
+    "IOS_THERMAL_STATES",
     "MOBILE_DIAGNOSE_RUNS_COLUMNS",
     "MOBILE_DIAGNOSE_RUNS_TABLE",
     "MOBILE_RUNS_COLUMNS",
@@ -38,8 +55,11 @@ __all__ = [
     "ScenarioSpec",
     "TOOL_VERSION",
     "build_cohort_key",
+    "classify_thermal_status",
     "evaluate_ab",
     "evaluate_calibration",
+    "get_calibration_config",
+    "get_primary_kpi",
     "get_scenario",
     "is_thermal_throttled",
     "list_scenarios",
