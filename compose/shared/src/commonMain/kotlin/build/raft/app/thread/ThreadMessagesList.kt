@@ -2876,6 +2876,7 @@ private fun ThreadMessagesListContent(
             agentStatusResolver = agentStatusResolver,
             adaptiveSharedStores = adaptiveSharedStores,
             coroutineScope = coroutineScope,
+            messageBodyTextStyle = messageBodyTextStyle,
             onThreadEvent = onThreadEvent,
             onThreadEventKeepingAnchor = onThreadEventKeepingAnchor,
             onForwardMessage = onForwardMessage,

@@ -157,15 +157,21 @@ internal fun rememberThreadFeatureHosts(
     threadViewModel: SharedThreadViewModel,
     realtimeEvents: RaftRealtimeEvents? = null,
 ): ThreadFeatureHosts {
-    // New Message Menu toggle: message bodies become selectable in place (ThreadInPlaceTextSelection.kt).
-    // Always on where the pointer selects text (desktop: drag, double-click, Cmd+C, like the web).
-    val inPlaceSelectionEnabled = newMessageMenuEnabled || raftPlatformMessageTextPointerSelectable()
+    // #proj-mobile:#425: in-place SelectionContainer stays on pointer-selectable desktops (mouse
+    // drag, double-click, Cmd+C, like the web). On touch (Android/iOS), finger long-press always
+    // routes cleanly to the multi-detent message action sheet without competing with body selection;
+    // partial text selection lives inside the sheet's native Select Text mode.
+    val inPlaceSelectionEnabled = raftPlatformMessageTextPointerSelectable()
     val inPlaceTextSelectionHost =
         remember(inPlaceSelectionEnabled, bridge, copiedLabel) {
             ThreadInPlaceTextSelectionHost(
                 enabled = inPlaceSelectionEnabled,
                 // Web: copying a selection shows nothing (artin 2026-11-02).
-                copyText = { text -> bridge.copyToPasteboard(text) }
+                copyText = { text -> bridge.copyToPasteboard(text) },
+                copyTextWithToast = { text ->
+                    bridge.copyToPasteboard(text)
+                    bridge.briefToast(copiedLabel)
+                },
             )
         }
     // read_receipts_v0: other participants' read positions for this page's scope (null = no hydrate).

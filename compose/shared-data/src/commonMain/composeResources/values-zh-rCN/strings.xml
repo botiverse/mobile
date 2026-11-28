@@ -602,6 +602,9 @@
     <string name="thread_action_select_text">选择文本</string>
     <string name="thread_select_text_hint">长按来选择文字</string>
     <string name="thread_text_selection_copy_selection">复制选中</string>
+    <string name="thread_select_text_quote_selection">引用选中内容</string>
+    <string name="thread_select_text_selected_chars">已选中 %1$d 个字符</string>
+    <string name="thread_message_delete_confirm_prompt">删除这条未发送的消息？</string>
     <string name="thread_text_selection_select_all">全选</string>
     <string name="thread_new_message_menu_reply">回复</string>
     <string name="thread_new_message_menu_more">更多</string>

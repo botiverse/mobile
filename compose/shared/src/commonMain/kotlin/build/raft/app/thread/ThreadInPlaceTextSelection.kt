@@ -116,6 +116,8 @@ internal interface ThreadInPlaceSelectionTarget {
 internal class ThreadInPlaceTextSelectionHost(
     val enabled: Boolean,
     val copyText: (String) -> Unit,
+    /** Select Text sheet copy: copies to clipboard and shows a brief "Copied" toast. */
+    val copyTextWithToast: (String) -> Unit = copyText,
 ) {
     private var active: ThreadInPlaceSelectionTarget? = null
 

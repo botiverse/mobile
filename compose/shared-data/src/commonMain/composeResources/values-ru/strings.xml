@@ -602,6 +602,9 @@
     <string name="thread_action_select_text">Выделить текст</string>
     <string name="thread_select_text_hint">Нажмите и удерживайте, чтобы выделить текст.</string>
     <string name="thread_text_selection_copy_selection">Копировать выделенное</string>
+    <string name="thread_select_text_quote_selection">Цитировать выделенное</string>
+    <string name="thread_select_text_selected_chars">Выбрано символов: %1$d</string>
+    <string name="thread_message_delete_confirm_prompt">Удалить это неотправленное сообщение?</string>
     <string name="thread_text_selection_select_all">Выделить всё</string>
     <string name="thread_new_message_menu_reply">Ответить</string>
     <string name="thread_new_message_menu_more">Ещё</string>
