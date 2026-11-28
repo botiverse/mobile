@@ -620,6 +620,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
     private var readPredictionItemKeys: Map<ChannelId, Set<String>> = emptyMap()
     /** Channel -> (registering prediction revision, pending read-overlay generations). */
     private var readPredictionHolds: Map<ChannelId, Pair<Long, Map<String, Long>>> = emptyMap()
+    /** Unlisted / off-page channels with an in-flight local read prediction waiting on server ack. */
+    private var offPageReadPredictionRevisions: Map<ChannelId, Long> = emptyMap()
     /**
      * Locally resolved mention-action rows. Never expire (pre-overlay mobile
      * behaviour): the resolution has no server write and no newer marker that
@@ -1234,6 +1236,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             readPredictionRevisions = emptyMap()
             readPredictionItemKeys = emptyMap()
             readPredictionHolds = emptyMap()
+            offPageReadPredictionRevisions = emptyMap()
             resolvedMentionActionKeys = emptyMap()
             pendingThreadFollowMutations = emptySet()
             deferredThreadFollows = emptyMap()
@@ -3547,6 +3550,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             }
         val workingItems = orderedAfterUpdate.toMutableList()
         var insertedCount = 0
+        var insertedOffPageCandidate = false
+        var insertedOffPageUnreadUncertain = false
         var insertFallbackTrigger: InboxRefreshTrigger? = null
         val insertCandidates =
             heldConversations.filter { row ->
@@ -3584,8 +3589,18 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 continue
             }
             workingItems.add(insertIndex, row)
-            insertedCount += 1
-            delta += row.unreadCount
+            if (snapshot.hasMore) {
+                // While more pages wait, an unlisted row inserted into page 1 may already have
+                // been counted on an unloaded page; avoid blindly double-counting its unreadCount
+                // and schedule an authoritative unread-count reconcile instead.
+                insertedOffPageCandidate = true
+                if (row.unreadCount > 0 || snapshot.totalUnreadCount > 0) {
+                    insertedOffPageUnreadUncertain = true
+                }
+            } else {
+                insertedCount += 1
+                delta += row.unreadCount
+            }
             if (rowPositionOn) {
                 rowPositions.start(scopeId, row.latestActivitySeq)
                 foldLedgerRead(scopeId)
@@ -3598,18 +3613,32 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             )
         }
         if (workingItems != snapshot.items) {
+            val loadedConversationCount =
+                if (insertedOffPageCandidate) {
+                    workingItems.count { it.kind != InboxItemKind.Object && it.kind != InboxItemKind.MentionAction }
+                } else {
+                    0
+                }
+            val loadedConversationUnread =
+                if (insertedOffPageCandidate) {
+                    workingItems
+                        .filter { it.kind != InboxItemKind.Object && it.kind != InboxItemKind.MentionAction }
+                        .sumOf(InboxItem::unreadCount)
+                } else {
+                    0
+                }
             reduceState(
                 SharedActivityIntent.Refresh,
                 current.copy(
                     snapshot =
                         snapshot.copy(
                             items = workingItems,
-                            totalCount = snapshot.totalCount + insertedCount,
-                            totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta)
+                            totalCount = maxOf(0, snapshot.totalCount + insertedCount, loadedConversationCount),
+                            totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta, loadedConversationUnread)
                         )
                 ),
                 summarySource = "activity_row_reread",
-                invalidateOtherFilters = insertedCount > 0,
+                invalidateOtherFilters = insertedCount > 0 || insertedOffPageCandidate,
                 unreadFlipSource = ActivityUnreadFlipSource.BackgroundReread,
             )
         }
@@ -3626,6 +3655,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         return when {
             missing -> scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.RowMissing)
             insertFallbackTrigger != null -> scheduleRealtimeBackgroundReconcileLocked(insertFallbackTrigger)
+            insertedOffPageUnreadUncertain -> scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
             else -> null
         }
     }
@@ -4307,6 +4337,9 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 // the ledger holds, also when Home took the fact first; a cursor moved back with no flag (a
                 // counted Mark as Unread elsewhere) is a Mark as Unread too.
                 if (result == PerReceiverReadStateFactResult.Accepted || result == PerReceiverReadStateFactResult.Current) {
+                    if (result == PerReceiverReadStateFactResult.Accepted) {
+                        acceptedHere = true
+                    }
                     rowPositions.foldLedgerRead(
                         readScope.scopeId.value,
                         perReceiverStateVersionStore.readReadStateCheckpoint(serverId, memberId, readScope.scopeId)
@@ -4314,18 +4347,18 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             ?.let { ActivityLedgerReadState(maxReadSeq = it.maxReadSeq, readStateVersion = it.version) },
                         markedUnread = readScope.markedUnread
                     )
-                }
-                if (result == PerReceiverReadStateFactResult.Accepted) {
-                    acceptedHere = true
+                    // Home and Activity share PerReceiverStateVersionStore and SharedHomeShellStore
+                    // dispatches to Home first, so Activity regularly observes Current for a fresh
+                    // remote read. Project the read locally on Current too (projectRemoteReadLocked
+                    // is idempotent when the row is already cleared).
                     projectRemoteReadLocked(
                         channelId = readScope.scopeId.value,
                         maxReadSeq = maxReadSeq,
-                        intent = SharedActivityIntent.ApplyRealtimeEvent(event)
+                        intent = SharedActivityIntent.ApplyRealtimeEvent(event),
+                        markedUnread = readScope.markedUnread,
                     )?.let(reconcileJobs::add)
-                }
-                // botiverse/slock #11795: the fact's "marked unread" flag, also at the version already
-                // held (Home shares these checkpoints and may have taken the fact first).
-                if (result == PerReceiverReadStateFactResult.Accepted || result == PerReceiverReadStateFactResult.Current) {
+                    // botiverse/slock #11795: the fact's "marked unread" flag, also at the version already
+                    // held (Home shares these checkpoints and may have taken the fact first).
                     projectRemoteMarkedUnreadLocked(
                         channelId = readScope.scopeId.value,
                         markedUnread = readScope.markedUnread,
@@ -4351,7 +4384,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
     private fun projectRemoteReadLocked(
         channelId: String,
         maxReadSeq: Long,
-        intent: SharedActivityIntent
+        intent: SharedActivityIntent,
+        markedUnread: Boolean = false,
     ): Job? {
         projectRemoteReadByPositionLocked(channelId, maxReadSeq, intent)?.let { cleared ->
             // The read is persisted: the hold keeps a lagging answer from bringing the rows back.
@@ -4363,7 +4397,19 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         val snapshot = current.snapshot ?: return null
         val matching =
             snapshot.items.filter { item -> item.unreadCount > 0 && item.readReceiptChannelId()?.value == channelId }
-        if (matching.isEmpty()) return null
+        if (matching.isEmpty()) {
+            val unlisted = snapshot.items.none { item -> item.readReceiptChannelId()?.value == channelId }
+            return if (
+                !markedUnread &&
+                unlisted &&
+                !hasLocalReadOverlayForChannelLocked(current, channelId) &&
+                current.mayHaveUnlistedUnread(snapshot)
+            ) {
+                scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
+            } else {
+                null
+            }
+        }
         val readSeq = maxReadSeq.takeIf { it >= 0L }?.toString()
         val (covered, uncovered) =
             matching.partition { item ->
@@ -6767,7 +6813,15 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                             item.readReceiptChannelId() == prediction.channelId && current.keepsReadRow(item.key)
                     }.mapTo(mutableSetOf(), InboxItem::key)
             readPredictionRevisions = readPredictionRevisions + (prediction.channelId to prediction.revision)
-            if (matchingUnread.isEmpty() && uncountedMentionKeys.isEmpty()) return@synchronized
+            if (matchingUnread.isEmpty() && uncountedMentionKeys.isEmpty()) {
+                val unlisted = snapshot.items.none { item -> item.readReceiptChannelId() == prediction.channelId }
+                if (unlisted && current.mayHaveUnlistedUnread(snapshot)) {
+                    offPageReadPredictionRevisions =
+                        offPageReadPredictionRevisions + (prediction.channelId to prediction.revision)
+                }
+                return@synchronized
+            }
+            offPageReadPredictionRevisions = offPageReadPredictionRevisions - prediction.channelId
             // Pending until the coordinator reports this channel's write result
             // (handleReadReceiptResult); the hold starts at server confirmation.
             val generations = rememberUnreadCleared(overlayOwner(current), matchingUnread)
@@ -6818,6 +6872,7 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 readPredictionItemKeys[request.channelId].orEmpty().forEach(::forgetUnreadCleared)
                 readPredictionItemKeys = readPredictionItemKeys - request.channelId
                 readPredictionHolds = readPredictionHolds - request.channelId
+                offPageReadPredictionRevisions = offPageReadPredictionRevisions - request.channelId
                 true
             }
         if (shouldRefresh) {
@@ -6835,22 +6890,67 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
      */
     @RaftCoreInternalApi fun handleReadReceiptResult(request: ReadReceiptRequest, succeeded: Boolean, maxReadSeq: Long? = null) {
         if (!succeeded) return
+        var offPageReconcileJob: Job? = null
         val owned =
             synchronized(realtimeOwnerLock) {
                 val current = _state.value
                 if (!current.matchesReadReceiptOwner(request.owner)) return@synchronized false
-                val (revision, generations) = readPredictionHolds[request.channelId] ?: return@synchronized true
-                if (request.revision < revision) return@synchronized true
-                readOverlay.confirmAll(overlayOwner(current), generations)
-                readPredictionHolds = readPredictionHolds - request.channelId
+                val held = readPredictionHolds[request.channelId]
+                if (held != null) {
+                    val (revision, generations) = held
+                    if (request.revision < revision) return@synchronized true
+                    readOverlay.confirmAll(overlayOwner(current), generations)
+                    readPredictionHolds = readPredictionHolds - request.channelId
+                    offPageReadPredictionRevisions = offPageReadPredictionRevisions - request.channelId
+                    return@synchronized true
+                }
+                val offPageRevision = offPageReadPredictionRevisions[request.channelId]
+                if (offPageRevision != null && request.revision >= offPageRevision) {
+                    offPageReadPredictionRevisions = offPageReadPredictionRevisions - request.channelId
+                }
+                val snapshot = current.snapshot
+                val unlisted =
+                    snapshot != null &&
+                        snapshot.items.none { item -> item.readReceiptChannelId() == request.channelId }
+                if (
+                    snapshot != null &&
+                    unlisted &&
+                    !hasLocalReadOverlayForChannelLocked(current, request.channelId.value) &&
+                    current.mayHaveUnlistedUnread(snapshot)
+                ) {
+                    diagnosticsLogger(
+                        "activity_off_page_read_reconcile channelId=${request.channelId.value} " +
+                            "totalUnread=${snapshot.totalUnreadCount} hasMore=${snapshot.hasMore}"
+                    )
+                    offPageReconcileJob = scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.ReadPersisted)
+                }
                 true
             }
+        offPageReconcileJob?.start()
         // Web `markRead` -> `noteLocalReadAck(channelId, maxReadSeq)` (slock #15197), off the realtime lock.
         if (owned) {
             // The read ack: an answer the server computed before it does not bring the unread back.
             rowPositions.noteRead(request.channelId.value, maxReadSeq?.toString())
             localReadAckHold.noteAck(request.channelId.value, maxReadSeq)
         }
+    }
+
+    private fun SharedActivityState.mayHaveUnlistedUnread(snapshot: InboxSnapshot): Boolean {
+        if (snapshot.totalUnreadCount <= 0) return false
+        if (snapshot.hasMore) return true
+        if (selectedFilter != InboxFilter.All) return true
+        val loadedConversationUnread =
+            snapshot.items
+                .filter { it.kind != InboxItemKind.Object && it.kind != InboxItemKind.MentionAction }
+                .sumOf(InboxItem::unreadCount)
+        return snapshot.totalUnreadCount > loadedConversationUnread
+    }
+
+    private fun hasLocalReadOverlayForChannelLocked(current: SharedActivityState, channelId: String): Boolean {
+        val owner = overlayOwner(current) ?: return false
+        return readOverlay.contains(owner, "channel:$channelId") ||
+            readOverlay.contains(owner, "dm:$channelId") ||
+            readOverlay.contains(owner, "thread:$channelId")
     }
 
     private fun SharedActivityState.matchesReadReceiptOwner(owner: ReadReceiptOwner): Boolean {
@@ -7117,6 +7217,8 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 var unreadable = 0
                 var upserts = 0
                 var deletes = 0
+                var offPageInsert = false
+                var offPageUnreadUncertain = false
                 var syncKeptCount = 0
                 var syncMergedCount = 0
                 var syncNewerCount = 0
@@ -7169,20 +7271,40 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                                 if (!next.kept && next.row.activityRowTimeValue() != shown.activityRowTimeValue()) moved += next.row.key
                                 items[index] = next.row
                             } else {
-                                if (snapshot.hasMore && items.isNotEmpty() && served.isOlderThan(items.last())) continue
+                                if (snapshot.hasMore && items.isNotEmpty() && served.isOlderThan(items.last())) {
+                                    if (served.unreadCount > 0 || snapshot.totalUnreadCount > 0) {
+                                        offPageUnreadUncertain = true
+                                    }
+                                    continue
+                                }
                                 rowPositions.start(change.id, served.latestActivitySeq)
                                 foldLedgerRead(change.id)
                                 rowPositions.noteRead(change.id, parsed.readStateMaxReadSeq)
                                 items += served
                                 moved += served.key
-                                totalCount += 1
-                                delta += served.unreadCount
+                                if (snapshot.hasMore) {
+                                    // While more pages wait, an unlisted upsert inserted into page 1
+                                    // may already have had unreads on an unloaded page: avoid blindly
+                                    // adding served.unreadCount and reconcile with the server total.
+                                    offPageInsert = true
+                                    if (served.unreadCount > 0 || snapshot.totalUnreadCount > 0) {
+                                        offPageUnreadUncertain = true
+                                    }
+                                } else {
+                                    totalCount += 1
+                                    delta += served.unreadCount
+                                }
                             }
                         }
                         is RaftSyncChange.InboxRowDelete -> {
                             settled += change.id
                             val index = listedIndex(change.id)
-                            if (index < 0) continue
+                            if (index < 0) {
+                                if (snapshot.hasMore && snapshot.totalUnreadCount > 0) {
+                                    offPageUnreadUncertain = true
+                                }
+                                continue
+                            }
                             val shown = items[index]
                             val result = applySyncInboxRowChange(rowPositions.stateOf(shown), ActivitySyncRowChange.Delete(change.position))
                             if (result.row != null) continue
@@ -7217,14 +7339,28 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     }
                 if (ordered != snapshot.items) {
                     val removedKeys = snapshot.items.map { it.key }.toSet() - ordered.map { it.key }.toSet()
+                    val loadedConversationCount =
+                        if (offPageInsert) {
+                            ordered.count { it.kind != InboxItemKind.Object && it.kind != InboxItemKind.MentionAction }
+                        } else {
+                            0
+                        }
+                    val loadedConversationUnread =
+                        if (offPageInsert) {
+                            ordered
+                                .filter { it.kind != InboxItemKind.Object && it.kind != InboxItemKind.MentionAction }
+                                .sumOf(InboxItem::unreadCount)
+                        } else {
+                            0
+                        }
                     reduceState(
                         SharedActivityIntent.Refresh,
                         current.copy(
                             snapshot =
                                 snapshot.copy(
                                     items = ordered,
-                                    totalCount = maxOf(0, totalCount),
-                                    totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta)
+                                    totalCount = maxOf(0, totalCount, loadedConversationCount),
+                                    totalUnreadCount = maxOf(0, snapshot.totalUnreadCount + delta, loadedConversationUnread)
                                 ),
                             retainedReadRowKeys = current.retainedReadRowKeys - removedKeys,
                             pendingDeferredHide = current.pendingDeferredHide?.takeUnless { it.itemKey in removedKeys }
@@ -7233,11 +7369,14 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                         unreadFlipSource = ActivityUnreadFlipSource.BackgroundReread,
                     )
                 }
-                // A row this list cannot apply by the rule: the list is read again, as before the capability.
-                if (unreadable > 0) job = scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
+                // A row this list cannot apply by the rule, or an off-page change while more pages
+                // wait whose effect on totalUnreadCount cannot be proved locally: reconcile the list.
+                if (unreadable > 0 || offPageUnreadUncertain) {
+                    job = scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
+                }
                 diagnosticsLogger(
                     "activity_sync_rows serverId=$serverId changes=${changes.size} upserts=$upserts deletes=$deletes " +
-                        "unreadable=$unreadable result=applied"
+                        "unreadable=$unreadable offPageReconcile=$offPageUnreadUncertain result=applied"
                 )
                 RaftSyncInboxRowsOutcome.Applied(settled)
             }
@@ -7339,10 +7478,24 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             val snapshot = current.snapshot ?: return null
             val listed = snapshot.items.filter { it.key in keys }
             if (listed.isEmpty()) {
+                val alreadyLocallyDone =
+                    overlayOwner(current)?.let { owner -> keys.any { doneOverlay.contains(owner, it) } } == true
+                val mayAffectUnlistedUnread =
+                    !alreadyLocallyDone &&
+                        if (event.rowKind == ActivityDoneRowKind.Object) {
+                            snapshot.hasMore && (snapshot.objectCounts?.objectUnreadCount ?: 0) > 0
+                        } else {
+                            current.mayHaveUnlistedUnread(snapshot)
+                        }
                 diagnosticsLogger(
-                    "activity_done_event action=done rowKind=${event.rowKind.wireValue} rowId=${event.rowId} outcome=not_listed"
+                    "activity_done_event action=done rowKind=${event.rowKind.wireValue} rowId=${event.rowId} " +
+                        "outcome=${if (mayAffectUnlistedUnread) "not_listed_reconcile" else "not_listed"}"
                 )
-                return null
+                return if (mayAffectUnlistedUnread) {
+                    scheduleRealtimeBackgroundReconcileLocked(InboxRefreshTrigger.Other)
+                } else {
+                    null
+                }
             }
             val objects = listed.filter { it.kind == InboxItemKind.Object }
             val conversations =

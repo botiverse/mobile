@@ -109,15 +109,107 @@ import androidx.compose.runtime.setValue
 import build.raft.app.compat.ui.withKuiklyIdleContext
 import androidx.compose.foundation.layout.size
 import build.raft.app.compat.pager.Pager
+import build.raft.app.data.AppBadgeCount
+import build.raft.app.data.HomeServerActivityUnreadProjection
+import build.raft.app.data.RaftServerNotificationLevels
+import build.raft.app.data.RaftStaleReadRecoverySignals
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 
 private const val AppUpdateNotificationRefreshIntervalMs = 30L * 60L * 1000L
+
+internal data class AppShellBadgeEmission(
+    val count: Int,
+    val source: String,
+    val isStale: Boolean,
+)
+
+/**
+ * Emits an initial `0L`, then increments whenever the process returns to the foreground
+ * (`false -> true`) or a foreground badge sync settles. Combined into the app-badge flow so
+ * `bridge.appBadge(computed)` re-reconciles a stale OS launcher / SpringBoard badge on warm
+ * foreground return even when Kotlin's computed count stays `0 -> 0`.
+ */
+internal fun appShellForegroundReconcileEpochFlow(
+    appForeground: Flow<Boolean>,
+    foregroundSyncSettled: StateFlow<Long> = MutableStateFlow(0L),
+): Flow<Long> =
+    flow {
+        var epoch = 0L
+        emit(epoch)
+        val foregroundReturns =
+            flow {
+                var previousForeground: Boolean? = null
+                appForeground.collect { foreground ->
+                    val returned = foreground && previousForeground == false
+                    previousForeground = foreground
+                    if (returned) emit(Unit)
+                }
+            }
+        val settledSignals = foregroundSyncSettled.drop(1).map { Unit }
+        merge(foregroundReturns, settledSignals).collect {
+            epoch += 1L
+            emit(epoch)
+        }
+    }
+
+internal fun appShellBadgeEmissionFlow(
+    homeBadgeFlow: Flow<Pair<AppBadgeCount, HomeServerActivityUnreadProjection>>,
+    activityUnreadSummaryFlow: Flow<build.raft.app.data.ActivityUnreadSummaryProjection>,
+    notificationLevelsFlow: Flow<Map<String, RaftServerNotificationLevels>>,
+    foregroundReconcileEpochFlow: Flow<Long>,
+    useActivityProjection: Boolean,
+    readyServerId: String?,
+    serverActivityExpectedOwner: ReadReceiptOwner?,
+): Flow<AppShellBadgeEmission> =
+    combine(
+        homeBadgeFlow.distinctUntilChanged(),
+        activityUnreadSummaryFlow,
+        notificationLevelsFlow,
+        foregroundReconcileEpochFlow,
+    ) { (fallback, serverActivityUnread), activityUnreadSummary, notificationLevelsByServer, _ ->
+        val currentServerCount =
+            if (useActivityProjection && activityUnreadSummary.hasValue) {
+                activityUnreadSummary.totalUnreadCount
+            } else {
+                fallback.count
+            }
+        AppShellBadgeEmission(
+            count =
+                build.raft.app.data.raftAppBadgeAcrossServers(
+                    currentServerId = readyServerId,
+                    currentServerCount = currentServerCount,
+                    otherServerCounts = serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
+                    serverPushMuted = serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
+                    levels =
+                        notificationLevelsByServer
+                            .filterValues { it.serverLevelKnown }
+                            .mapValues { it.value.server }
+                ),
+            source =
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
+                    build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
+                } else {
+                    fallback.source.wire
+                },
+            isStale =
+                if (useActivityProjection && activityUnreadSummary.hasValue) {
+                    activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
+                } else {
+                    fallback.isStale
+                }
+        )
+    }
 
 // Moved verbatim out of RaftAppShellReadyContent, which hit the JVM 64 KB method size limit.
 @Composable
@@ -164,50 +256,29 @@ internal fun AppShellNotificationBadgeEffects(
         readySession?.user?.id,
         readyServerId,
         serverActivityExpectedOwner,
+        sharedStores,
     ) {
         val homeBadgeFlow =
             homeShellStore.state
                 .map { it.home.appBadgeCount to it.home.serverActivityUnread }
-                .distinctUntilChanged()
-        combine(
-            homeBadgeFlow,
-            activityUnreadSummaryFlow,
-            build.raft.app.data.RaftNotificationLevelStore.state,
-        ) { (fallback, serverActivityUnread), activityUnreadSummary, notificationLevelsByServer ->
-            Triple(fallback to serverActivityUnread, activityUnreadSummary, notificationLevelsByServer)
-        }.collect { (homeBadge, activityUnreadSummary, notificationLevelsByServer) ->
-            val (fallback, serverActivityUnread) = homeBadge
-            val useActivityProjection = authoritativeHomeStartAllowed && readySession != null
-            val currentServerCount =
-                if (useActivityProjection && activityUnreadSummary.hasValue) {
-                    activityUnreadSummary.totalUnreadCount
-                } else {
-                    fallback.count
-                }
+        val foregroundReconcileEpochFlow =
+            appShellForegroundReconcileEpochFlow(
+                appForeground = RaftStaleReadRecoverySignals.foreground,
+                foregroundSyncSettled = sharedStores.foregroundBadgeReconcileEpoch,
+            )
+        appShellBadgeEmissionFlow(
+            homeBadgeFlow = homeBadgeFlow,
+            activityUnreadSummaryFlow = activityUnreadSummaryFlow,
+            notificationLevelsFlow = build.raft.app.data.RaftNotificationLevelStore.state,
+            foregroundReconcileEpochFlow = foregroundReconcileEpochFlow,
+            useActivityProjection = authoritativeHomeStartAllowed && readySession != null,
+            readyServerId = readyServerId,
+            serverActivityExpectedOwner = serverActivityExpectedOwner,
+        ).collect { emission ->
             bridge.appBadge(
-                count =
-                    build.raft.app.data.raftAppBadgeAcrossServers(
-                        currentServerId = readyServerId,
-                        currentServerCount = currentServerCount,
-                        otherServerCounts = serverActivityUnread.countsForAccountOf(serverActivityExpectedOwner),
-                        serverPushMuted = serverActivityUnread.serverPushMutedForAccountOf(serverActivityExpectedOwner),
-                        levels =
-                            notificationLevelsByServer
-                                .filterValues { it.serverLevelKnown }
-                                .mapValues { it.value.server }
-                    ),
-                source =
-                    if (useActivityProjection && activityUnreadSummary.hasValue) {
-                        build.raft.app.data.AppBadgeSource.ACTIVITY_UNREAD_SUMMARY.wire
-                    } else {
-                        fallback.source.wire
-                    },
-                isStale =
-                    if (useActivityProjection && activityUnreadSummary.hasValue) {
-                        activityUnreadSummary.freshness != build.raft.app.data.ActivityUnreadSummaryFreshness.Fresh
-                    } else {
-                        fallback.isStale
-                    }
+                count = emission.count,
+                source = emission.source,
+                isStale = emission.isStale,
             )
         }
     }

@@ -117,9 +117,11 @@ import kotlin.time.Duration
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onSubscription
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -1691,6 +1693,11 @@ internal class RaftSharedStoreProvider private constructor(
         )
     }
 
+    private val _foregroundBadgeReconcileEpoch = MutableStateFlow(0L)
+
+    /** Increments whenever a foreground/canonical badge sync settles so the shell re-emits `bridge.appBadge`. */
+    internal val foregroundBadgeReconcileEpoch: StateFlow<Long> = _foregroundBadgeReconcileEpoch.asStateFlow()
+
     /**
      * #proj-mobile:#437: emits `mobile.badge.reconciled` once per foreground once the first
      * foreground sync settles. On warm foregrounds where incremental sync-changes is enabled,
@@ -1702,7 +1709,6 @@ internal class RaftSharedStoreProvider private constructor(
         fromSyncChanges: Boolean,
     ) {
         val cleanServerId = serverId.trim().takeIf { it.isNotEmpty() } ?: return
-        if (RaftBadgeTelemetry.isCurrentForegroundReconciled()) return
         if (
             !fromSyncChanges &&
             RaftBadgeTelemetry.currentForegroundLaunchKind() == RaftBadgeLaunchKind.Warm &&
@@ -1710,6 +1716,10 @@ internal class RaftSharedStoreProvider private constructor(
         ) {
             return
         }
+        if (syncOk) {
+            _foregroundBadgeReconcileEpoch.update { it + 1L }
+        }
+        if (RaftBadgeTelemetry.isCurrentForegroundReconciled()) return
         val total = computeCurrentAppBadgeActivityTotal(cleanServerId)
         if (total == null && syncOk) return
         RaftBadgeTelemetry.onForegroundSyncCompleted(
@@ -4068,7 +4078,9 @@ internal class RaftSharedStoreProvider private constructor(
                         next = publication.state,
                     )
                 },
-            )
+            ).also { store ->
+                store.followAppLifecycle(RaftStaleReadRecoverySignals.foreground)
+            }
         }
     }
 

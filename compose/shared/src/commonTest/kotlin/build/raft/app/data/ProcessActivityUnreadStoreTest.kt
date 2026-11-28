@@ -1,9 +1,13 @@
 package build.raft.app.data
 
+import build.raft.app.model.ActivityDoneRowKind
+import build.raft.app.model.ActivityDoneUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.ChannelId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageId
+import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.TaskCreated
@@ -48,6 +52,60 @@ class ProcessActivityUnreadStoreTest {
             RealtimeRefreshRequired(RealtimeRefreshScope.Announcements, reason = "unrelated")
                 .affectsActivityUnreadSummary()
         )
+    }
+
+    @Test
+    fun doneRetractAndNotificationLevelEventsAffectSummaryAndTriggerPromptRefresh() = runBlocking {
+        val events =
+            listOf(
+                ActivityDoneUpdated(
+                    serverId = ServerId("server-1"),
+                    rowKind = ActivityDoneRowKind.Channel,
+                    rowId = "channel-1",
+                    done = true,
+                    position = "42",
+                ),
+                NotificationRetracted(
+                    serverId = ServerId("server-1"),
+                    groupKey = "server-1:channel-1",
+                    conversationId = "channel-1",
+                    throughSeq = 42L,
+                ),
+                NotificationLevelChanged(
+                    serverId = ServerId("server-1"),
+                    scope = "channel",
+                    scopeId = "channel-1",
+                    level = "none",
+                    prefsVersion = 3L,
+                ),
+            )
+        events.forEach { event ->
+            assertTrue(event.affectsActivityUnreadSummary(), "${event::class.simpleName} must affect activity unread summary")
+            assertFalse(event.isAmbientActivityUnreadEvent(), "${event::class.simpleName} must not be throttled as ambient")
+        }
+
+        val ownerFlow = MutableStateFlow<ProcessActivityUnreadOwner?>(owner())
+        var fetches = 0
+        val store =
+            store(ownerFlow) { _, _ ->
+                fetches += 1
+                DataResult.Content(ActivityUnreadSummarySnapshot(totalUnreadCount = 0, totalCount = 0))
+            }
+        val context =
+            ProcessPresenceAuthContext(
+                environmentId = "https://api.example.test",
+                accountId = "account-1",
+                authorityGeneration = 2L,
+                writeGeneration = 2L,
+            )
+        val sink = processActivityUnreadRealtimeSink(currentAuthContext = { context }, store = store)
+        val admission = ProcessActivityUnreadAdmission("server-1", "account-1", authGeneration = 2L)
+
+        events.forEachIndexed { index, event ->
+            sink(admission, event)
+            awaitFresh(store) { it.totalUnreadCount == 0 && it.requestGeneration == (index + 1).toLong() }
+        }
+        assertEquals(3, fetches)
     }
 
     /** Task #164: the server's remembered inbox (`X-Raft-Stale`) never replaces a count already known. */

@@ -1,6 +1,9 @@
 package build.raft.app.data
 
+import build.raft.app.data.realtime.PerReceiverReadStateFactResult
+import build.raft.app.data.realtime.PerReceiverStateVersionStore
 import build.raft.app.model.ChannelId
+import build.raft.app.model.MemberId
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.ServerId
@@ -79,6 +82,92 @@ class SharedActivityStoreRemoteReadTest {
         runCurrent()
         assertEquals(2, inbox.initialLoadCount, "one trailing reconcile for both reads")
         assertEquals(listOf(1, 0), store.state.value.items.map { it.unreadCount })
+    }
+
+    @Test
+    fun homeFirstThenActivitySecondReadStateClearsActivityUnreadAndEmitsSummaryFact() = runTest {
+        for (rowPosition in listOf(false, true)) {
+            val versions = PerReceiverStateVersionStore(InMemoryRaftKeyValueStore())
+            val read =
+                activityItem("channel-1", unreadCount = 3)
+                    .copy(hasMention = true, latestActivitySeq = "40", readStateLatestActivitySeq = "40")
+            val other =
+                activityItem("channel-2", unreadCount = 1)
+                    .copy(hasMention = false, latestActivitySeq = "9", readStateLatestActivitySeq = "9")
+            val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(read, other))))
+            val facts = mutableListOf<ActivityUnreadSummaryFact>()
+            var unreadCountsChangedCalls = 0
+            val store =
+                activityStore(
+                    scope = backgroundScope,
+                    inboxRepository = inbox,
+                    perReceiverStateVersionStore = versions,
+                    onSummaryFact = { facts += it },
+                    onUnreadCountsChanged = { unreadCountsChangedCalls += 1 },
+                    realtimeBackgroundRefreshIntervalMillis = 60_000L,
+                    nowMillis = { testScheduler.currentTime },
+                    inboxInPlaceEnabled = { rowPosition },
+                    inboxRowPositionEnabled = { rowPosition },
+                )
+            store.dispatch(SharedActivityIntent.LoadInitial)
+            runCurrent()
+            assertEquals(4, store.state.value.totalUnreadCount, "rowPosition=$rowPosition")
+            val factsBefore = facts.size
+
+            // Home shares PerReceiverStateVersionStore and runs before Activity in SharedHomeShellStore,
+            // so Home accepts the fact first and Activity observes PerReceiverReadStateFactResult.Current.
+            val homeResult =
+                versions.applyOrObserveReadStateFact(
+                    serverId = ServerId("server-1"),
+                    memberId = MemberId("user-1"),
+                    scopeId = ChannelId("channel-1"),
+                    incomingVersion = 2L,
+                    incomingMaxReadSeq = 40L,
+                )
+            assertEquals(PerReceiverReadStateFactResult.Accepted, homeResult)
+
+            val event = readState("channel-1", version = 2L, maxReadSeq = 40L)
+            store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+            runCurrent()
+
+            val cleared = store.state.value.items.first { it.key == read.key }
+            assertEquals(0, cleared.unreadCount, "rowPosition=$rowPosition")
+            assertEquals(false, cleared.hasMention, "rowPosition=$rowPosition")
+            assertEquals(1, store.state.value.totalUnreadCount, "rowPosition=$rowPosition")
+            assertEquals(factsBefore + 1, facts.size, "must emit onSummaryFact on Current (rowPosition=$rowPosition)")
+            assertEquals(1, facts.last().totalUnreadCount, "rowPosition=$rowPosition")
+            assertEquals(0, unreadCountsChangedCalls, "Home already accepted the fact")
+
+            // Idempotency: repeated delivery of the same Current read state must not double-decrement or emit again.
+            store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+            runCurrent()
+            assertEquals(1, store.state.value.totalUnreadCount, "no double-decrement (rowPosition=$rowPosition)")
+            assertEquals(1, store.state.value.items.first { it.key == other.key }.unreadCount)
+            assertEquals(factsBefore + 1, facts.size, "no redundant summary fact on repeat delivery")
+        }
+    }
+
+    @Test
+    fun remoteReadOnOffPageChannelWhileHasMoreSchedulesAuthoritativeReconcile() = runTest {
+        val visible = activityItem("channel-1", unreadCount = 1).copy(latestActivitySeq = "10", readStateLatestActivitySeq = "10")
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(visible), hasMore = true, totalCount = 50, totalUnreadCount = 4),
+                        snapshot(listOf(visible), hasMore = true, totalCount = 50, totalUnreadCount = 1),
+                    )
+            )
+        val store = remoteReadStore(inbox, InboxFilter.All, refreshIntervalMillis = 2_500L)
+        assertEquals(4, store.state.value.totalUnreadCount)
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(readState("channel-off-page", version = 2L, maxReadSeq = 80L)))
+        runCurrent()
+        advanceTimeBy(2_501L)
+        runCurrent()
+
+        assertEquals(2, inbox.initialLoadCount, "off-page remote read must reconcile totalUnreadCount")
+        assertEquals(1, store.state.value.totalUnreadCount)
     }
 
     private fun TestScope.remoteReadStore(
