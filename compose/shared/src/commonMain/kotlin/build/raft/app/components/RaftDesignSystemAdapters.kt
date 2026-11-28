@@ -6,6 +6,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import build.raft.app.LocalRaftWindowPlatformInputGate
 import build.raft.app.RaftEditorKeyboardIntent
 import build.raft.app.compat.ui.KeyboardParams
 import build.raft.app.raftAppEditorBehavior
@@ -191,6 +192,7 @@ internal fun rememberRaftDesignSystemEditor(
 ): RaftDesignSystemEditor {
     val keyboardIntent = remember { RaftEditorKeyboardIntent() }
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val windowInputGate = LocalRaftWindowPlatformInputGate.current
     val effectiveShowKeyboardOnFocus =
         raftResolveShowKeyboardOnFocus(
             desktopHost = raftPlatformHasFinePointer(),
@@ -218,6 +220,7 @@ internal fun rememberRaftDesignSystemEditor(
                 focusRequester = focusRequester,
                 softwareKeyboardController = softwareKeyboardController,
                 beforeFocusDelayMs = 100L,
+                hasActiveSession = { windowInputGate?.hasActiveHostSession == true },
             )
         }
     }

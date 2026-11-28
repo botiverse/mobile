@@ -120,6 +120,7 @@ internal fun ThreadComposerQuoteBlocks(
         focusRequesters.getOrPut(blockId) { FocusRequester() }
 
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val windowInputGate = LocalRaftWindowPlatformInputGate.current
     val quoteKeyboardIntent = remember { RaftEditorKeyboardIntent() }
     val pendingFocus = controller.pendingFocusRequest
     LaunchedEffect(pendingFocus?.nonce) {
@@ -130,6 +131,7 @@ internal fun ThreadComposerQuoteBlocks(
                 quoteKeyboardIntent.focusWithKeyboard(
                     focusRequester = requester,
                     softwareKeyboardController = softwareKeyboardController,
+                    hasActiveSession = { windowInputGate?.hasActiveHostSession == true },
                 )
             } else {
                 quoteKeyboardIntent.focusWithoutKeyboard(

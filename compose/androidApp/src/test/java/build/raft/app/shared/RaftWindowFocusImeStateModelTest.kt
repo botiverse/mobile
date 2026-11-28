@@ -9,7 +9,11 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldState
@@ -17,19 +21,26 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.PlatformTextInputInterceptor
+import androidx.compose.ui.platform.PlatformTextInputMethodRequest
+import androidx.compose.ui.platform.PlatformTextInputSession
 import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.platform.ViewRootForTest
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
 import build.raft.app.R
 import build.raft.app.RaftWindowFocusScope
 import build.raft.designsystem.focus.RaftFocusCoordinator
@@ -215,6 +226,67 @@ class RaftWindowFocusImeStateModelTest {
         assertEquals(TextRange(5), activity.textState.selection)
     }
 
+    @Test
+    fun activeSessionWithShowKeyboardOnFocusFalseSurvivesShowAndParkWakeUntilBlur() {
+        val controller = Robolectric.buildActivity(TestImeStateModelHostActivity::class.java).setup()
+        controllers += controller
+        val activity = controller.get()
+        controller.windowFocusChanged(true)
+        settle(activity)
+
+        val composeRoot = requireNotNull(findComposeRoot(activity.window.decorView) as? View)
+        // Idle: focused with showKeyboardOnFocus = false starts zero platform sessions.
+        assertTrue(activity.editorFocused)
+        assertEquals(0, activity.platformSessionStarts)
+        assertEquals(0, activity.platformSessionDisposals)
+        assertFalse(composeRoot.onCheckIsTextEditor())
+
+        // Establish a live session, then return showKeyboardOnFocus to false (same state as a
+        // direct tap after focusWithoutKeyboard): session remains live with zero disposals.
+        activity.showKeyboardOnFocus = true
+        settle(activity)
+        activity.showKeyboardOnFocus = false
+        settle(activity)
+        assertEquals(1, activity.platformSessionStarts)
+        assertEquals(0, activity.platformSessionDisposals)
+        assertTrue(composeRoot.onCheckIsTextEditor())
+        assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
+
+        // Calling SoftwareKeyboardController.show() while active and showKeyboardOnFocus = false
+        // must keep the exact same platform session running (no dispose or restart).
+        requireNotNull(activity.scopedKeyboardController).show()
+        settle(activity)
+        assertEquals(1, activity.platformSessionStarts)
+        assertEquals(0, activity.platformSessionDisposals)
+        assertTrue(composeRoot.onCheckIsTextEditor())
+
+        // External window focus loss parks, regain stays parked, and show() wakes the exact same
+        // outer session with zero disposals.
+        controller.windowFocusChanged(false)
+        settle(activity)
+        assertFalse(composeRoot.onCheckIsTextEditor())
+        assertEquals(1, activity.platformSessionStarts)
+        assertEquals(0, activity.platformSessionDisposals)
+
+        controller.windowFocusChanged(true)
+        settle(activity)
+        assertFalse(composeRoot.onCheckIsTextEditor())
+
+        requireNotNull(activity.scopedKeyboardController).show()
+        settle(activity)
+        assertTrue(composeRoot.onCheckIsTextEditor())
+        assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
+        assertEquals(1, activity.platformSessionStarts)
+        assertEquals(0, activity.platformSessionDisposals)
+
+        // Moving focus off the editor disposes the active host session cleanly.
+        activity.nonTextFocusRequester.requestFocus()
+        settle(activity)
+        assertFalse(activity.editorFocused)
+        assertFalse(composeRoot.onCheckIsTextEditor())
+        assertEquals(1, activity.platformSessionDisposals)
+    }
+
     private fun settle(activity: ComponentActivity) {
         Snapshot.sendApplyNotifications()
         repeat(4) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100)) }
@@ -232,9 +304,11 @@ class RaftWindowFocusImeStateModelTest {
         return null
     }
 
+    @OptIn(ExperimentalComposeUiApi::class)
     class TestImeStateModelHostActivity : ComponentActivity() {
         val windowFocusCoordinator = RaftFocusCoordinator()
         val editorFocusRequester = FocusRequester()
+        val nonTextFocusRequester = FocusRequester()
         val textState = TextFieldState(initialText = "hello world", initialSelection = TextRange(5))
         var showKeyboardOnFocus by mutableStateOf(false)
         var imeAction by mutableStateOf(ImeAction.Default)
@@ -243,6 +317,10 @@ class RaftWindowFocusImeStateModelTest {
         var windowFocused: Boolean = false
             private set
         var scopedKeyboardController: SoftwareKeyboardController? = null
+            private set
+        var platformSessionStarts: Int = 0
+            private set
+        var platformSessionDisposals: Int = 0
             private set
 
         override fun onCreate(savedInstanceState: Bundle?) {
@@ -257,21 +335,47 @@ class RaftWindowFocusImeStateModelTest {
                         RaftWindowFocusScope(coordinator = windowFocusCoordinator) {
                             val keyboardController = LocalSoftwareKeyboardController.current
                             SideEffect { scopedKeyboardController = keyboardController }
-                            BasicTextField(
-                                state = textState,
-                                keyboardOptions =
-                                    KeyboardOptions(
-                                        imeAction = imeAction,
-                                        showKeyboardOnFocus = showKeyboardOnFocus,
-                                    ),
-                                modifier =
+                            val countingInterceptor =
+                                remember {
+                                    object : PlatformTextInputInterceptor {
+                                        override suspend fun interceptStartInputMethod(
+                                            request: PlatformTextInputMethodRequest,
+                                            nextHandler: PlatformTextInputSession,
+                                        ): Nothing {
+                                            platformSessionStarts += 1
+                                            try {
+                                                nextHandler.startInputMethod(request)
+                                            } finally {
+                                                platformSessionDisposals += 1
+                                            }
+                                        }
+                                    }
+                                }
+                            Column(Modifier.fillMaxWidth()) {
+                                Box(
                                     Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(editorFocusRequester)
-                                        .onFocusChanged { focusState ->
-                                            editorFocused = focusState.isFocused
-                                        },
-                            )
+                                        .size(1.dp)
+                                        .focusRequester(nonTextFocusRequester)
+                                        .focusable(),
+                                )
+                                InterceptPlatformTextInput(interceptor = countingInterceptor) {
+                                    BasicTextField(
+                                        state = textState,
+                                        keyboardOptions =
+                                            KeyboardOptions(
+                                                imeAction = imeAction,
+                                                showKeyboardOnFocus = showKeyboardOnFocus,
+                                            ),
+                                        modifier =
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .focusRequester(editorFocusRequester)
+                                                .onFocusChanged { focusState ->
+                                                    editorFocused = focusState.isFocused
+                                                },
+                                    )
+                                }
+                            }
                             LaunchedEffect(Unit) {
                                 editorFocusRequester.requestFocus()
                             }
