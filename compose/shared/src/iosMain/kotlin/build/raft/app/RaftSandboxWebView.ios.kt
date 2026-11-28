@@ -6,14 +6,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitView
 import build.raft.app.thread.key
-import build.raft.webcontainer.WEB_MEDIA_CAPTURE_DENIED_REASON
+import build.raft.webcontainer.IOS_MICROPHONE_USAGE_DESCRIPTION_KEY
 import build.raft.webcontainer.WebContainerAndroidInsetMode
+import build.raft.webcontainer.WebContainerOrigin
 import build.raft.webcontainer.WebJsDialogKind
 import build.raft.webcontainer.WebJsDialogRequest
 import build.raft.webcontainer.WebJsDialogResult
 import build.raft.webcontainer.WebJsDialogTracker
+import build.raft.webcontainer.WebMediaCaptureAudioPermissionController
+import build.raft.webcontainer.WebOsMicrophonePermissionStatus
 import build.raft.webcontainer.formatIosSecurityOriginForLog
+import build.raft.webcontainer.iosBundleHasUsageDescription
+import build.raft.webcontainer.iosMicrophoneAuthorizationStatus
+import build.raft.webcontainer.iosRequestMicrophoneAccess
 import build.raft.webcontainer.isWebJsDialogPermitted
+import build.raft.webcontainer.parseIosSecurityOrigin
+import build.raft.webcontainer.parseWebContainerOrigin
+import build.raft.webcontainer.toIosMediaCapturePermissionDecision
 import build.raft.webcontainer.toWebMediaCaptureKind
 import kotlinx.cinterop.CEnum
 import kotlinx.cinterop.ObjCSignatureOverride
@@ -239,6 +248,29 @@ internal class RaftIosSandboxWebView(
     private var parkedForKeepAlive: Boolean = false
     private var allowJsDialogs: Boolean = false
     private val jsDialogTracker = WebJsDialogTracker()
+    private var audioCaptureAllowedOrigin: WebContainerOrigin? = null
+    internal var hasMicrophoneUsageDescription: () -> Boolean = {
+        iosBundleHasUsageDescription(IOS_MICROPHONE_USAGE_DESCRIPTION_KEY)
+    }
+    internal var microphoneAuthorizationStatus: () -> WebOsMicrophonePermissionStatus =
+        ::iosMicrophoneAuthorizationStatus
+    internal var requestMicrophoneAccess: ((Boolean) -> Unit) -> Unit =
+        ::iosRequestMicrophoneAccess
+    internal val audioPermissionController =
+        WebMediaCaptureAudioPermissionController(
+            allowedOriginProvider = { audioCaptureAllowedOrigin },
+            isHostForegroundActive = { !disposed && !parkedForKeepAlive && windowAttached && !appInBackground && webView != null },
+            hasUsageDescription = { hasMicrophoneUsageDescription() },
+            osAuthorizationStatus = { microphoneAuthorizationStatus() },
+            requestOsPermission = { onResult -> requestMicrophoneAccess(onResult) },
+            runOnMainThread = { block -> runOnIosMainThread { block() } },
+            onDecision = { granted, kind, reason, _, origin, isMainFrame ->
+                diagnosticsInfo(
+                    "media_capture_permission decision=${if (granted) "grant" else "deny"} " +
+                        "kind=${kind.name} reason=$reason mainFrame=$isMainFrame origin=$origin",
+                )
+            },
+        )
     private var windowAttached: Boolean = container.window != null
     private var appInBackground: Boolean =
         UIApplication.sharedApplication.applicationState == UIApplicationState.UIApplicationStateBackground
@@ -259,6 +291,7 @@ internal class RaftIosSandboxWebView(
                 if (!disposed) {
                     appInBackground = true
                     jsDialogTracker.cancelActive()
+                    audioPermissionController.cancelAll("app_backgrounded")
                 }
             }
         lifecycleObservers +=
@@ -327,6 +360,11 @@ internal class RaftIosSandboxWebView(
         injectedJavaScript = config.injectedJavaScript
         hostEventsEnabled = config.hostEventsEnabled
         mainFrameOrigin = config.mainFrameOrigin?.let(::raftWebOriginOf)
+        val nextAudioOrigin = resolveEffectiveAudioCaptureOrigin(config)
+        if (audioCaptureAllowedOrigin != nextAudioOrigin) {
+            audioCaptureAllowedOrigin = nextAudioOrigin
+            audioPermissionController.cancelAll("policy_changed")
+        }
         raftHost = config.raftHost
         allowPinchZoom = config.allowPinchZoom
         diagnosticsSurface = config.diagnosticsSurface
@@ -363,6 +401,13 @@ internal class RaftIosSandboxWebView(
         updateAllowedNavigationSchemes(config.allowedNavigationSchemes)
     }
 
+    private fun resolveEffectiveAudioCaptureOrigin(config: RaftWebViewConfig): WebContainerOrigin? {
+        if (config.effectiveStoragePartition == RaftWebViewStoragePartition.IsolatedThirdParty) return null
+        val lockedOrigin = config.mainFrameOrigin?.let(::parseWebContainerOrigin) ?: return null
+        val requestedOrigin = config.audioCaptureAllowedOrigin?.let(::parseWebContainerOrigin) ?: return null
+        return requestedOrigin.takeIf { it == lockedOrigin }
+    }
+
     fun bindController(controller: RaftWebViewController) {
         if (boundController === controller) return
         boundController?.unbindCommandDispatcher(this)
@@ -383,6 +428,7 @@ internal class RaftIosSandboxWebView(
 
     internal fun detachForKeepAlive() {
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("parked_for_keep_alive")
         webView?.let(::stopObserving)
         boundController?.unbindCommandDispatcher(this)
         boundController = null
@@ -406,6 +452,7 @@ internal class RaftIosSandboxWebView(
         if (disposed) return
         disposed = true
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("host_disposed")
         val center = NSNotificationCenter.defaultCenter
         for (observer in lifecycleObservers) {
             center.removeObserver(observer)
@@ -419,6 +466,7 @@ internal class RaftIosSandboxWebView(
 
     private fun tearDownWebView() {
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("webview_torn_down")
         revealTimer?.invalidate()
         revealTimer = null
         pendingHostLoadUrl = null
@@ -567,6 +615,7 @@ internal class RaftIosSandboxWebView(
         windowAttached = attached
         if (!attached) {
             jsDialogTracker.cancelActive()
+            audioPermissionController.cancelAll("window_detached")
         }
         val view = webView ?: return
         if (attached) {
@@ -1116,6 +1165,7 @@ internal class RaftIosSandboxWebView(
     internal fun didStartProvisional(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("main_frame_navigation")
         currentURL = source.URL?.absoluteString ?: currentURL
         loadStartedAt = TimeSource.Monotonic.markNow()
         diagnosticsInfo("page_started url=${formatUrlForLog(currentURL)} ${loadElapsedField()}")
@@ -1256,6 +1306,7 @@ internal class RaftIosSandboxWebView(
     internal fun contentProcessDidTerminate(source: WKWebView) {
         if (!raftIsSameObjCObject(source, webView)) return
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("content_process_terminated")
         if (parkedForKeepAlive) {
             (container as? RaftIosSandboxWebViewContainer)?.let {
                 RaftIosAppBrowserWebViewPool.dropIfSame(it, "content_process_gone")
@@ -1402,24 +1453,58 @@ internal class RaftIosSandboxWebView(
     }
 
     /**
-     * Every web page's camera / microphone request is refused ([WEB_MEDIA_CAPTURE_DENIED_REASON]):
-     * WebKit gets `WKPermissionDecisionDeny` before it reaches `tccd`, so no page raises a system
-     * prompt. A request from a WebView that is not this host's is refused too.
+     * Fail-closed own-origin audio-only media capture permission gate (`#wg-mobile-sync:#362`):
+     * grants `WKPermissionDecisionGrant` ONLY when the host is foreground-active, the request is
+     * `WKMediaCaptureTypeMicrophone` from the main frame (`initiatedByFrame.mainFrame == true`),
+     * both `requestOrigin` and `frameOrigin` strictly match [audioCaptureAllowedOrigin] (which
+     * itself requires an origin-locked non-isolated surface), `NSMicrophoneUsageDescription` is
+     * present, and iOS `AVCaptureDevice` audio authorization is granted. Every other request
+     * settles once on the main thread with `WKPermissionDecisionDeny`.
      */
+    internal fun decideMediaCapturePermission(
+        source: WKWebView,
+        requestOrigin: WebContainerOrigin?,
+        frameOrigin: WebContainerOrigin?,
+        originLabel: String,
+        isMainFrame: Boolean,
+        type: WKMediaCaptureType,
+        decisionHandler: (WKPermissionDecision) -> Unit,
+    ) {
+        if (disposed || !raftIsSameObjCObject(source, webView)) {
+            runOnIosMainThread { decisionHandler(WKPermissionDecision.WKPermissionDecisionDeny) }
+            return
+        }
+        audioPermissionController.handleRequest(
+            kind = type.toWebMediaCaptureKind(),
+            isMainFrame = isMainFrame,
+            requestOrigin = requestOrigin,
+            frameOrigin = frameOrigin,
+            originLabel = originLabel,
+        ) { granted ->
+            decisionHandler(granted.toIosMediaCapturePermissionDecision())
+        }
+    }
+
+    /** Test convenience accepting string origins when final `WKSecurityOrigin` cannot be instantiated. */
     internal fun decideMediaCapturePermission(
         source: WKWebView,
         originLabel: String,
         isMainFrame: Boolean,
         type: WKMediaCaptureType,
-    ): WKPermissionDecision {
-        if (disposed || !raftIsSameObjCObject(source, webView)) {
-            return WKPermissionDecision.WKPermissionDecisionDeny
-        }
-        diagnosticsInfo(
-            "media_capture_permission decision=deny kind=${type.toWebMediaCaptureKind().name} " +
-                "reason=$WEB_MEDIA_CAPTURE_DENIED_REASON mainFrame=$isMainFrame origin=$originLabel",
+        frameOriginLabel: String = originLabel,
+        decisionHandler: (WKPermissionDecision) -> Unit,
+    ) {
+        val parsedRequestOrigin = parseWebContainerOrigin(originLabel)
+        val parsedFrameOrigin = parseWebContainerOrigin(frameOriginLabel)
+        decideMediaCapturePermission(
+            source = source,
+            requestOrigin = parsedRequestOrigin,
+            frameOrigin = parsedFrameOrigin,
+            originLabel = parsedRequestOrigin?.asOriginString() ?: "<opaque>",
+            isMainFrame = isMainFrame,
+            type = type,
+            decisionHandler = decisionHandler,
         )
-        return WKPermissionDecision.WKPermissionDecisionDeny
     }
 
     internal fun didReceiveScriptMessage(controller: WKUserContentController, message: WKScriptMessage) {
@@ -1662,13 +1747,14 @@ private class RaftIosWebViewDelegate(
         type: WKMediaCaptureType,
         decisionHandler: (WKPermissionDecision) -> Unit,
     ) {
-        decisionHandler(
-            owner.decideMediaCapturePermission(
-                source = webView,
-                originLabel = formatIosSecurityOriginForLog(requestMediaCapturePermissionForOrigin),
-                isMainFrame = initiatedByFrame.mainFrame,
-                type = type,
-            ),
+        owner.decideMediaCapturePermission(
+            source = webView,
+            requestOrigin = parseIosSecurityOrigin(requestMediaCapturePermissionForOrigin),
+            frameOrigin = parseIosSecurityOrigin(initiatedByFrame.securityOrigin),
+            originLabel = formatIosSecurityOriginForLog(requestMediaCapturePermissionForOrigin),
+            isMainFrame = initiatedByFrame.mainFrame,
+            type = type,
+            decisionHandler = decisionHandler,
         )
     }
 

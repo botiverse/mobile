@@ -2,6 +2,7 @@
 
 package build.raft.app
 
+import build.raft.webcontainer.WebOsMicrophonePermissionStatus
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.*
 import platform.UIKit.UIView
@@ -593,30 +594,174 @@ class RaftSandboxWebViewNavigationFenceIosTest {
     @Test
     fun everyWebPageCameraOrMicrophoneRequestIsDeniedWithoutASystemPrompt() {
         val (host, webView) = host(allowNavigation = true)
+        host.onWindowAttachmentChanged(attached = true)
+        var osPromptCalls = 0
+        host.hasMicrophoneUsageDescription = { true }
+        host.microphoneAuthorizationStatus = { WebOsMicrophonePermissionStatus.Authorized }
+        host.requestMicrophoneAccess = { osPromptCalls += 1 }
         listOf(
             WKMediaCaptureType.WKMediaCaptureTypeCamera,
             WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
             WKMediaCaptureType.WKMediaCaptureTypeCameraAndMicrophone,
         ).forEach { type ->
             listOf("https://deck.raft.build", "https://example.com").forEach { origin ->
+                val out = mutableListOf<WKPermissionDecision>()
+                host.decideMediaCapturePermission(
+                    source = webView,
+                    originLabel = origin,
+                    isMainFrame = true,
+                    type = type,
+                ) { out += it }
                 assertEquals(
-                    WKPermissionDecision.WKPermissionDecisionDeny,
-                    host.decideMediaCapturePermission(source = webView, originLabel = origin, isMainFrame = true, type = type),
+                    listOf(WKPermissionDecision.WKPermissionDecisionDeny),
+                    out,
                     "$type from $origin",
                 )
             }
         }
 
         val stranger = WKWebView(frame = CGRectMake(0.0, 0.0, 1.0, 1.0), configuration = WKWebViewConfiguration())
-        assertEquals(
-            WKPermissionDecision.WKPermissionDecisionDeny,
-            host.decideMediaCapturePermission(
-                source = stranger,
-                originLabel = "https://deck.raft.build",
-                isMainFrame = true,
-                type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
-            ),
-        )
+        val strangerOut = mutableListOf<WKPermissionDecision>()
+        host.decideMediaCapturePermission(
+            source = stranger,
+            originLabel = "https://deck.raft.build",
+            isMainFrame = true,
+            type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+        ) { strangerOut += it }
+        assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionDeny), strangerOut)
+        assertEquals(0, osPromptCalls)
+    }
+
+    @Test
+    fun ownOriginAudioCaptureGrantsAfterOsPermissionAndFailsClosedOtherwise() {
+        fun buildHost(
+            mainFrameOrigin: String?,
+            audioCaptureAllowedOrigin: String?,
+            storagePartition: RaftWebViewStoragePartition = RaftWebViewStoragePartition.Default,
+        ): Pair<RaftIosSandboxWebView, WKWebView> {
+            val container = UIView(frame = CGRectMake(0.0, 0.0, 320.0, 480.0))
+            val host = RaftIosSandboxWebView(container, events)
+            hosts += host
+            host.hasMicrophoneUsageDescription = { true }
+            host.microphoneAuthorizationStatus = { WebOsMicrophonePermissionStatus.Authorized }
+            host.applyConfig(
+                RaftWebViewConfig(
+                    url = "https://app.raft.build/artifacts/pt_1",
+                    allowScripts = true,
+                    allowNavigation = true,
+                    domStorageEnabled = true,
+                    useWideViewPort = false,
+                    cacheEnabled = false,
+                    ephemeral = storagePartition == RaftWebViewStoragePartition.Ephemeral,
+                    injectedJavaScript = "",
+                    allowedNavigationSchemes = setOf("http", "https"),
+                    hostEventsEnabled = false,
+                    mainFrameOrigin = mainFrameOrigin,
+                    storagePartition = storagePartition,
+                    audioCaptureAllowedOrigin = audioCaptureAllowedOrigin,
+                ),
+            )
+            host.onWindowAttachmentChanged(attached = true)
+            val webView = container.subviews.single() as WKWebView
+            return host to webView
+        }
+
+        // 1) Origin-locked own surface grants main-frame microphone when OS permission is Authorized.
+        val (raftHost, raftWebView) =
+            buildHost(
+                mainFrameOrigin = "https://app.raft.build",
+                audioCaptureAllowedOrigin = "https://app.raft.build",
+            )
+        var promptCalls = 0
+        raftHost.requestMicrophoneAccess = { promptCalls += 1 }
+        val grantedOut = mutableListOf<WKPermissionDecision>()
+        raftHost.decideMediaCapturePermission(
+            source = raftWebView,
+            originLabel = "https://app.raft.build",
+            isMainFrame = true,
+            type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+        ) { grantedOut += it }
+        assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionGrant), grantedOut)
+        assertEquals(0, promptCalls)
+
+        // 2) Subframes, camera, mixed audio+video, sandboxed domains, scheme downgrade, and wrong port deny immediately.
+        val blocked =
+            listOf(
+                Triple("https://app.raft.build", false, WKMediaCaptureType.WKMediaCaptureTypeMicrophone),
+                Triple("https://app.raft.build", true, WKMediaCaptureType.WKMediaCaptureTypeCamera),
+                Triple("https://app.raft.build", true, WKMediaCaptureType.WKMediaCaptureTypeCameraAndMicrophone),
+                Triple("https://abc.w.raftusercontent.com", true, WKMediaCaptureType.WKMediaCaptureTypeMicrophone),
+                Triple("http://app.raft.build", true, WKMediaCaptureType.WKMediaCaptureTypeMicrophone),
+                Triple("https://app.raft.build:8443", true, WKMediaCaptureType.WKMediaCaptureTypeMicrophone),
+            )
+        for ((origin, isMainFrame, type) in blocked) {
+            val out = mutableListOf<WKPermissionDecision>()
+            raftHost.decideMediaCapturePermission(
+                source = raftWebView,
+                originLabel = origin,
+                isMainFrame = isMainFrame,
+                type = type,
+            ) { out += it }
+            assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionDeny), out, "$type $origin main=$isMainFrame")
+        }
+
+        // 3) NotDetermined requests OS access and settles once; dispose cancels pending request with Deny.
+        var pendingCb: ((Boolean) -> Unit)? = null
+        raftHost.microphoneAuthorizationStatus = { WebOsMicrophonePermissionStatus.NotDetermined }
+        raftHost.requestMicrophoneAccess = { cb -> pendingCb = cb }
+        val asyncGrantOut = mutableListOf<WKPermissionDecision>()
+        raftHost.decideMediaCapturePermission(
+            source = raftWebView,
+            originLabel = "https://app.raft.build",
+            isMainFrame = true,
+            type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+        ) { asyncGrantOut += it }
+        assertTrue(raftHost.audioPermissionController.hasPendingRequest)
+        checkNotNull(pendingCb).invoke(true)
+        assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionGrant), asyncGrantOut)
+
+        val cancelOut = mutableListOf<WKPermissionDecision>()
+        raftHost.decideMediaCapturePermission(
+            source = raftWebView,
+            originLabel = "https://app.raft.build",
+            isMainFrame = true,
+            type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+        ) { cancelOut += it }
+        val lateCb = checkNotNull(pendingCb)
+        raftHost.dispose()
+        assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionDeny), cancelOut)
+        lateCb(true)
+        assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionDeny), cancelOut)
+
+        // 4) Unlocked surface (mainFrameOrigin = null) and IsolatedThirdParty partition fail closed.
+        val (unlockedHost, unlockedWebView) =
+            buildHost(
+                mainFrameOrigin = null,
+                audioCaptureAllowedOrigin = "https://app.raft.build",
+            )
+        val unlockedOut = mutableListOf<WKPermissionDecision>()
+        unlockedHost.decideMediaCapturePermission(
+            source = unlockedWebView,
+            originLabel = "https://app.raft.build",
+            isMainFrame = true,
+            type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+        ) { unlockedOut += it }
+        assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionDeny), unlockedOut)
+
+        val (thirdPartyHost, thirdPartyWebView) =
+            buildHost(
+                mainFrameOrigin = "https://app.raft.build",
+                audioCaptureAllowedOrigin = "https://app.raft.build",
+                storagePartition = RaftWebViewStoragePartition.IsolatedThirdParty,
+            )
+        val thirdPartyOut = mutableListOf<WKPermissionDecision>()
+        thirdPartyHost.decideMediaCapturePermission(
+            source = thirdPartyWebView,
+            originLabel = "https://app.raft.build",
+            isMainFrame = true,
+            type = WKMediaCaptureType.WKMediaCaptureTypeMicrophone,
+        ) { thirdPartyOut += it }
+        assertEquals(listOf(WKPermissionDecision.WKPermissionDecisionDeny), thirdPartyOut)
     }
 
     @Test

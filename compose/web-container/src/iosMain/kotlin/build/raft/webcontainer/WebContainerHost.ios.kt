@@ -483,6 +483,43 @@ internal class WebContainerIosHost(
     private var jsbDispatcher: JsbDispatcher? = null
     private var boundController: WebContainerController? = null
     private val jsDialogTracker = WebJsDialogTracker()
+    internal var hasMicrophoneUsageDescription: () -> Boolean = {
+        iosBundleHasUsageDescription(IOS_MICROPHONE_USAGE_DESCRIPTION_KEY)
+    }
+    internal var microphoneAuthorizationStatus: () -> WebOsMicrophonePermissionStatus =
+        ::iosMicrophoneAuthorizationStatus
+    internal var requestMicrophoneAccess: ((Boolean) -> Unit) -> Unit =
+        ::iosRequestMicrophoneAccess
+    internal val audioPermissionController =
+        WebMediaCaptureAudioPermissionController(
+            allowedOriginProvider = { config?.navigationPolicy?.audioCaptureAllowedOrigin },
+            isHostForegroundActive = { !disposed && !parkedForKeepAlive && windowAttached && !appInBackground && webView != null },
+            hasUsageDescription = { hasMicrophoneUsageDescription() },
+            osAuthorizationStatus = { microphoneAuthorizationStatus() },
+            requestOsPermission = { onResult -> requestMicrophoneAccess(onResult) },
+            runOnMainThread = { block -> runOnIosMainThread { block() } },
+            onDecision = { granted, kind, reason, missingKeys, origin, isMainFrame ->
+                val surfaceId = config?.surfaceId ?: "default"
+                runCatching {
+                    telemetrySink?.onEvent(
+                        WebContainerTelemetryEvent.MediaCapturePermission(
+                            surfaceId = surfaceId,
+                            kind = kind.name,
+                            grantedPrompt = granted,
+                            reason = if (granted) null else reason,
+                            missingKeys = missingKeys,
+                            origin = origin,
+                            isMainFrame = isMainFrame,
+                        ),
+                    )
+                }
+                val decisionLabel = if (granted) "grant" else "deny"
+                val logLine =
+                    "[WebContainer][info] media_capture_permission decision=$decisionLabel surface=$surfaceId " +
+                        "kind=${kind.name} reason=$reason mainFrame=$isMainFrame origin=$origin"
+                NSLog(logLine.replace("%", "%%"))
+            },
+        )
     private var stateTimer: NSTimer? = null
     private var revealTimer: NSTimer? = null
 
@@ -516,6 +553,7 @@ internal class WebContainerIosHost(
                 if (!disposed) {
                     appInBackground = true
                     jsDialogTracker.cancelActive()
+                    audioPermissionController.cancelAll("app_backgrounded")
                     syncWatchdogLifecycle()
                 }
             }
@@ -567,6 +605,7 @@ internal class WebContainerIosHost(
         windowAttached = attached
         if (!attached) {
             jsDialogTracker.cancelActive()
+            audioPermissionController.cancelAll("window_detached")
         }
         syncWatchdogLifecycle(syncStateOnResume = attached)
     }
@@ -656,6 +695,7 @@ internal class WebContainerIosHost(
 
     internal fun detachForKeepAlive() {
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("parked_for_keep_alive")
         boundController?.unbindDispatcher(this)
         boundController = null
         events = WebContainerEvents()
@@ -714,6 +754,9 @@ internal class WebContainerIosHost(
         if (!next.allowJsDialogs) {
             jsDialogTracker.cancelActive()
         }
+        if (prev != null && prev.navigationPolicy.audioCaptureAllowedOrigin != next.navigationPolicy.audioCaptureAllowedOrigin) {
+            audioPermissionController.cancelAll("policy_changed")
+        }
         chainState.configureBudget(next.navigationPolicy.requestHeaderRule?.maxSameOriginReissues ?: 0)
         webView?.allowsBackForwardNavigationGestures = next.allowsBackForwardNavigationGestures
         (webView as? WebContainerIosWebView)?.showsFormAccessoryBar = next.showsFormAccessoryBar
@@ -743,6 +786,7 @@ internal class WebContainerIosHost(
         disposed = true
         parkedForKeepAlive = false
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("host_disposed")
         removeLifecycleObservers()
         boundController?.unbindDispatcher(this)
         boundController = null
@@ -775,6 +819,7 @@ internal class WebContainerIosHost(
 
     private fun tearDownWebView() {
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("webview_torn_down")
         stopPolling()
         kvoObserver.detach()
         revealTimer?.invalidate()
@@ -1583,6 +1628,7 @@ internal class WebContainerIosHost(
         provisionalNavInFlight = true
         downloadCancelledUrl = null
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("main_frame_navigation")
         jsbDispatcher?.cancelInFlight("main_frame_navigation")
         loadGeneration += 1
         currentLoading = true
@@ -1751,6 +1797,7 @@ internal class WebContainerIosHost(
         if (disposed || !isSameObjCObject(source, webView)) return
         val cfg = config ?: return
         jsDialogTracker.cancelActive()
+        audioPermissionController.cancelAll("content_process_terminated")
         jsbDispatcher?.cancelInFlight("web_content_process_terminated")
         if (parkedForKeepAlive) {
             runCatching {
@@ -1939,39 +1986,59 @@ internal class WebContainerIosHost(
     }
 
     /**
-     * Every web page's camera / microphone request is refused ([WEB_MEDIA_CAPTURE_DENIED_REASON]):
-     * WebKit gets `WKPermissionDecisionDeny` before it reaches `tccd`, so no page raises a system
-     * prompt. A request from a WebView that is not this host's is refused too.
+     * Fail-closed own-origin audio-only media capture permission gate (`#wg-mobile-sync:#362`):
+     * grants `WKPermissionDecisionGrant` ONLY when the host is foreground-active, the request is
+     * `WKMediaCaptureTypeMicrophone` from the main frame (`initiatedByFrame.mainFrame == true`),
+     * both `requestOrigin` and `frameOrigin` strictly match `navigationPolicy.audioCaptureAllowedOrigin`,
+     * `NSMicrophoneUsageDescription` is present, and iOS `AVCaptureDevice` audio authorization is
+     * granted. Every other request (camera, mixed audio+video, subframes, third-party/sandboxed
+     * origins, unset allowlist, stale WebView, or OS denial) settles once on the main thread with
+     * `WKPermissionDecisionDeny`.
      */
+    internal fun decideMediaCapturePermission(
+        source: WKWebView,
+        requestOrigin: WebContainerOrigin?,
+        frameOrigin: WebContainerOrigin?,
+        originLabel: String,
+        isMainFrame: Boolean,
+        type: WKMediaCaptureType,
+        decisionHandler: (WKPermissionDecision) -> Unit,
+    ) {
+        if (disposed || !isSameObjCObject(source, webView)) {
+            runOnIosMainThread { decisionHandler(WKPermissionDecision.WKPermissionDecisionDeny) }
+            return
+        }
+        audioPermissionController.handleRequest(
+            kind = type.toWebMediaCaptureKind(),
+            isMainFrame = isMainFrame,
+            requestOrigin = requestOrigin,
+            frameOrigin = frameOrigin,
+            originLabel = originLabel,
+        ) { granted ->
+            decisionHandler(granted.toIosMediaCapturePermissionDecision())
+        }
+    }
+
+    /** Test convenience accepting string origins when final `WKSecurityOrigin` cannot be instantiated. */
     internal fun decideMediaCapturePermission(
         source: WKWebView,
         originLabel: String,
         isMainFrame: Boolean,
         type: WKMediaCaptureType,
-    ): WKPermissionDecision {
-        if (disposed || !isSameObjCObject(source, webView)) {
-            return WKPermissionDecision.WKPermissionDecisionDeny
-        }
-        val kind = type.toWebMediaCaptureKind()
-        val surfaceId = config?.surfaceId ?: "default"
-        runCatching {
-            telemetrySink?.onEvent(
-                WebContainerTelemetryEvent.MediaCapturePermission(
-                    surfaceId = surfaceId,
-                    kind = kind.name,
-                    grantedPrompt = false,
-                    reason = WEB_MEDIA_CAPTURE_DENIED_REASON,
-                    missingKeys = emptyList(),
-                    origin = originLabel,
-                    isMainFrame = isMainFrame,
-                ),
-            )
-        }
-        val logLine =
-            "[WebContainer][info] media_capture_permission decision=deny surface=$surfaceId " +
-                "kind=${kind.name} reason=$WEB_MEDIA_CAPTURE_DENIED_REASON mainFrame=$isMainFrame origin=$originLabel"
-        NSLog(logLine.replace("%", "%%"))
-        return WKPermissionDecision.WKPermissionDecisionDeny
+        frameOriginLabel: String = originLabel,
+        decisionHandler: (WKPermissionDecision) -> Unit,
+    ) {
+        val parsedRequestOrigin = parseWebContainerOrigin(originLabel)
+        val parsedFrameOrigin = parseWebContainerOrigin(frameOriginLabel)
+        decideMediaCapturePermission(
+            source = source,
+            requestOrigin = parsedRequestOrigin,
+            frameOrigin = parsedFrameOrigin,
+            originLabel = parsedRequestOrigin?.asOriginString() ?: "<opaque>",
+            isMainFrame = isMainFrame,
+            type = type,
+            decisionHandler = decisionHandler,
+        )
     }
 
     private fun handleWatchdogAction(action: WebContainerWatchdogAction) {
@@ -2120,13 +2187,14 @@ private class WebContainerIosNavigationDelegate(
         type: WKMediaCaptureType,
         decisionHandler: (WKPermissionDecision) -> Unit,
     ) {
-        decisionHandler(
-            owner.decideMediaCapturePermission(
-                source = webView,
-                originLabel = formatIosSecurityOriginForLog(requestMediaCapturePermissionForOrigin),
-                isMainFrame = initiatedByFrame.mainFrame,
-                type = type,
-            ),
+        owner.decideMediaCapturePermission(
+            source = webView,
+            requestOrigin = parseIosSecurityOrigin(requestMediaCapturePermissionForOrigin),
+            frameOrigin = parseIosSecurityOrigin(initiatedByFrame.securityOrigin),
+            originLabel = formatIosSecurityOriginForLog(requestMediaCapturePermissionForOrigin),
+            isMainFrame = initiatedByFrame.mainFrame,
+            type = type,
+            decisionHandler = decisionHandler,
         )
     }
 
