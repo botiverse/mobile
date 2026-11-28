@@ -8,6 +8,7 @@ import build.raft.realtime.socket.RaftWebSocketFrame
 import build.raft.realtime.socket.RaftWebSocketSession
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -216,22 +217,174 @@ class VoiceDictationProvisionalRangeTest {
         assertEquals("Hi team ship today", updates1.last().composerText)
         assertEquals(VoiceDictationTextRange(7, 18), controller.state.value.provisionalRange)
 
-        // Non-blocking stop immediately clears provisionalRange even while background drain runs.
+        // Non-blocking stop returns foreground to Idle immediately while RETAINING provisionalRange
+        // throughout background refinement until a settled/refined snapshot or drain completion.
         controller.stop()
         runCurrent()
         assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
+        assertEquals(0f, controller.state.value.audioLevel)
         assertTrue(controller.state.value.hasBackgroundDrain)
-        assertNull(controller.state.value.provisionalRange)
+        assertEquals(VoiceDictationTextRange(7, 18), controller.state.value.provisionalRange)
 
-        // Background post-stop partial frame must NOT re-show composing underline.
+        // Intermediate post-stop partial updates both draft text and retained provisionalRange.
         ws1.pushText("""{"deck":"text","text":"team ship today please","stable_len":4}""")
         runCurrent()
         assertEquals("Hi team ship today please", updates1.last().composerText)
+        assertEquals(VoiceDictationTextRange(7, 25), controller.state.value.provisionalRange)
+
+        // Settled/refined post-stop snapshot (stable_len == text.length) clears provisionalRange immediately.
+        ws1.pushText("""{"deck":"text","text":"team ship today please.","stable_len":23,"refined":true}""")
+        runCurrent()
+        assertEquals("Hi team ship today please.", updates1.last().composerText)
         assertNull(controller.state.value.provisionalRange)
 
         ws1.pushText("""{"deck":"done"}""")
         runCurrent()
+        assertFalse(controller.state.value.hasBackgroundDrain)
         assertNull(controller.state.value.provisionalRange)
+
+        // A2) Post-stop provisionalRange also clears cleanly on:
+        //   - `done` while text is still provisional (e.g. unrefined)
+        //   - background stream error
+        //   - manual user edit during background refine
+        //   - finishForSubmit() (WYSIWYG submit)
+        //   - starting a new dictation session
+        //   - owner switch during background refine
+        val wsDone = FakeWsSession()
+        val cDone =
+            VoiceDictationV2Controller(
+                permitApi = FakePermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsDone },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeRecorder() },
+            )
+        cDone.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsDone.pushText("""{"deck":"ready"}""")
+        wsDone.pushText("""{"deck":"text","text":"unrefined draft","stable_len":0}""")
+        runCurrent()
+        cDone.stop()
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Idle, cDone.state.value.phase)
+        assertEquals(VoiceDictationTextRange(0, 15), cDone.state.value.provisionalRange)
+        wsDone.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertNull(cDone.state.value.provisionalRange)
+        assertFalse(cDone.state.value.hasBackgroundDrain)
+
+        val wsBgErr = FakeWsSession()
+        val cBgErr =
+            VoiceDictationV2Controller(
+                permitApi = FakePermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsBgErr },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeRecorder() },
+            )
+        cBgErr.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsBgErr.pushText("""{"deck":"ready"}""")
+        wsBgErr.pushText("""{"deck":"text","text":"bg error draft","stable_len":0}""")
+        runCurrent()
+        cBgErr.stop()
+        runCurrent()
+        assertEquals(VoiceDictationTextRange(0, 14), cBgErr.state.value.provisionalRange)
+        wsBgErr.pushText("""{"deck":"error","code":"unavailable"}""")
+        runCurrent()
+        assertNull(cBgErr.state.value.provisionalRange)
+        assertFalse(cBgErr.state.value.hasBackgroundDrain)
+
+        val wsBgEdit = FakeWsSession()
+        val cBgEdit =
+            VoiceDictationV2Controller(
+                permitApi = FakePermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsBgEdit },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeRecorder() },
+            )
+        cBgEdit.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsBgEdit.pushText("""{"deck":"ready"}""")
+        wsBgEdit.pushText("""{"deck":"text","text":"post stop edit","stable_len":0}""")
+        runCurrent()
+        cBgEdit.stop()
+        runCurrent()
+        assertEquals(VoiceDictationTextRange(0, 14), cBgEdit.state.value.provisionalRange)
+        // Programmatic echo preserves underline; genuine manual edit clears it immediately.
+        cBgEdit.onUserEditedComposer("post stop edit")
+        assertEquals(VoiceDictationTextRange(0, 14), cBgEdit.state.value.provisionalRange)
+        cBgEdit.onUserEditedComposer("post stop edit!")
+        assertNull(cBgEdit.state.value.provisionalRange)
+        wsBgEdit.pushText("""{"deck":"text","text":"post stop edit refined","stable_len":0}""")
+        runCurrent()
+        assertNull(cBgEdit.state.value.provisionalRange)
+        cBgEdit.cancel()
+        runCurrent()
+
+        val wsBgSubmit = FakeWsSession()
+        val cBgSubmit =
+            VoiceDictationV2Controller(
+                permitApi = FakePermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsBgSubmit },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeRecorder() },
+            )
+        cBgSubmit.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsBgSubmit.pushText("""{"deck":"ready"}""")
+        wsBgSubmit.pushText("""{"deck":"text","text":"send now","stable_len":0}""")
+        runCurrent()
+        cBgSubmit.stop()
+        runCurrent()
+        assertEquals(VoiceDictationTextRange(0, 8), cBgSubmit.state.value.provisionalRange)
+        cBgSubmit.finishForSubmit()
+        runCurrent()
+        assertNull(cBgSubmit.state.value.provisionalRange)
+        assertFalse(cBgSubmit.state.value.hasBackgroundDrain)
+
+        val wsBgRestartA = FakeWsSession()
+        val wsBgRestartB = FakeWsSession()
+        var restartIdx = 0
+        val cBgRestart =
+            VoiceDictationV2Controller(
+                permitApi = FakePermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> if (restartIdx++ == 0) wsBgRestartA else wsBgRestartB },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeRecorder() },
+            )
+        cBgRestart.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsBgRestartA.pushText("""{"deck":"ready"}""")
+        wsBgRestartA.pushText("""{"deck":"text","text":"first draft","stable_len":0}""")
+        runCurrent()
+        cBgRestart.stop()
+        runCurrent()
+        assertEquals(VoiceDictationTextRange(0, 11), cBgRestart.state.value.provisionalRange)
+        cBgRestart.start(serverId = "srv-1", baseText = "first draft", onComposerUpdate = {})
+        runCurrent()
+        assertNull(cBgRestart.state.value.provisionalRange)
+        cBgRestart.cancel()
+        runCurrent()
+
+        val wsBgOwner = FakeWsSession()
+        val cBgOwner =
+            VoiceDictationV2Controller(
+                permitApi = FakePermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsBgOwner },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeRecorder() },
+            )
+        cBgOwner.start(serverId = "srv-1", channelId = validChannelUuid, baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsBgOwner.pushText("""{"deck":"ready"}""")
+        wsBgOwner.pushText("""{"deck":"text","text":"switch room","stable_len":0}""")
+        runCurrent()
+        cBgOwner.stop()
+        runCurrent()
+        assertEquals(VoiceDictationTextRange(0, 11), cBgOwner.state.value.provisionalRange)
+        cBgOwner.onOwnerChanged(serverId = "srv-1", channelId = "660e8400-e29b-41d4-a716-446655440000")
+        runCurrent()
+        assertNull(cBgOwner.state.value.provisionalRange)
+        assertFalse(cBgOwner.state.value.hasBackgroundDrain)
 
         // B) Escape cancel(discardProvisional = true) clears range AND strips uncommitted tail.
         val ws2 = FakeWsSession()
@@ -502,10 +655,34 @@ class VoiceDictationProvisionalRangeTest {
         assertNull(resolveActiveVoiceDictationProvisionalRange(activeState, "Ship it today", imeComposing = true))
         // Never paints over diverged draft text.
         assertNull(resolveActiveVoiceDictationProvisionalRange(activeState, "Ship it tomorrow", imeComposing = false))
-        // Never paints when Idle.
+        // Renders composing underline while Idle during post-stop background refinement.
+        assertEquals(
+            VoiceDictationTextRange(8, 13),
+            resolveActiveVoiceDictationProvisionalRange(
+                activeState.copy(phase = VoiceDictationV2Phase.Idle, hasBackgroundDrain = true),
+                "Ship it today",
+                imeComposing = false,
+            ),
+        )
+        // Still respects IME composition and text divergence while refining in background.
         assertNull(
             resolveActiveVoiceDictationProvisionalRange(
-                activeState.copy(phase = VoiceDictationV2Phase.Idle),
+                activeState.copy(phase = VoiceDictationV2Phase.Idle, hasBackgroundDrain = true),
+                "Ship it today",
+                imeComposing = true,
+            ),
+        )
+        assertNull(
+            resolveActiveVoiceDictationProvisionalRange(
+                activeState.copy(phase = VoiceDictationV2Phase.Idle, hasBackgroundDrain = true),
+                "Ship it edited",
+                imeComposing = false,
+            ),
+        )
+        // Never paints when fully Idle (no active session and no background drain).
+        assertNull(
+            resolveActiveVoiceDictationProvisionalRange(
+                activeState.copy(phase = VoiceDictationV2Phase.Idle, hasBackgroundDrain = false),
                 "Ship it today",
                 imeComposing = false,
             ),

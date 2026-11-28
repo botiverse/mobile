@@ -62,6 +62,7 @@ import build.raft.app.data.VoiceDictationAudioStartResult
 import build.raft.app.data.VoiceDictationFeedbackRequest
 import build.raft.app.data.VoiceDictationFeedbackTarget
 import build.raft.app.data.VoiceDictationOutcomeReport
+import build.raft.app.data.VoiceDictationSessionMode
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Permit
 import build.raft.app.data.VoiceDictationV2PermitApi
@@ -922,7 +923,10 @@ class VoiceFeedbackUiTest {
         private val channel = Channel<VoiceDictationV2StreamEvent>(Channel.UNLIMITED)
         override val events: Flow<VoiceDictationV2StreamEvent> = channel.receiveAsFlow()
 
-        override suspend fun sendStart(sampleRateHz: Int): Boolean = true
+        override suspend fun sendStart(
+            sampleRateHz: Int,
+            mode: VoiceDictationSessionMode,
+        ): Boolean = true
 
         override suspend fun sendAudio(pcm16LeMonoBytes: ByteArray): Boolean = true
 

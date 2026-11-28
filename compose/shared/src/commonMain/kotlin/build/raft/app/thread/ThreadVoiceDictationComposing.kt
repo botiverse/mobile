@@ -141,7 +141,8 @@ internal fun voiceDictationTextMatches(a: CharSequence, b: CharSequence): Boolea
 
 /**
  * Resolves the safe, whitespace-trimmed provisional range to render in composing state for the
- * active composer text field, or `null` when dictation is inactive, IME composition is active,
+ * active composer text field (while listening or while a stopped session is still refining in the
+ * background), or `null` when neither active nor background-draining, IME composition is active,
  * no provisional text exists, or the draft text has diverged from the controller's last update.
  */
 internal fun resolveActiveVoiceDictationProvisionalRange(
@@ -149,7 +150,7 @@ internal fun resolveActiveVoiceDictationProvisionalRange(
     activeText: CharSequence,
     imeComposing: Boolean = false,
 ): VoiceDictationTextRange? {
-    if (imeComposing || !state.isActive) return null
+    if (imeComposing || (!state.isActive && !state.hasBackgroundDrain)) return null
     val rawRange = state.provisionalRange ?: return null
     val lastUpdate = state.lastUpdate
     if (lastUpdate != null && !voiceDictationTextMatches(lastUpdate.composerText, activeText)) {
@@ -400,6 +401,7 @@ internal fun startThreadComposerVoiceDictation(
     suggestionSelectionDispatcher: ThreadComposerSuggestionSelectionDispatcher,
     onQuoteBlockIdChanged: (String?) -> Unit,
     onEmitChange: (String) -> Unit,
+    deferStartMode: Boolean = false,
     isComposerFocused: Boolean = true,
     onRequestFocusWithoutKeyboard: ((segmentedBlockId: String?, selStart: Int, selEnd: Int) -> Unit)? = null,
 ) {
@@ -460,6 +462,7 @@ internal fun startThreadComposerVoiceDictation(
         insertEnd = selEnd,
         draftBefore = draftBefore,
         contactHints = contactHints,
+        deferStartMode = deferStartMode,
         onComposerUpdate = { update ->
             if (!editorOwner.isActiveSession(startSessionId)) return@start
             if (segmentedAtStart) {
