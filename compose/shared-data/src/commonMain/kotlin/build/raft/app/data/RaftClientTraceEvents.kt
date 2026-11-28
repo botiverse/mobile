@@ -1225,12 +1225,14 @@ object RaftClientTraceEvents {
         val account = userId?.trim()?.takeIf { it.isNotEmpty() } ?: return
         sender.setAccount(account)
         RaftPushDeliveryTrace.onSignedIn(accountId = account)
+        RaftBadgeTelemetry.onSignedIn(accountId = account)
     }
 
     /** Signed out ([RaftProductEvents.setSignedOut]): what is held is dropped, not sent by the next account. */
     @RaftCoreInternalApi fun onSignedOut() {
         sender.setAccount(null)
         RaftPushDeliveryTrace.onSignedOut()
+        RaftBadgeTelemetry.onSignedOut()
     }
 
     /** [sessionAccount]: the user id of the session [networkClient] authenticates with (null signed out). */
@@ -1259,6 +1261,7 @@ object RaftClientTraceEvents {
             )
         )
         RaftPushDeliveryTrace.onTransportBound()
+        RaftBadgeTelemetry.onTransportBound()
     }
 
     /** `mobile_inbox_inplace_v0`: one `activity:inplace_check` (web `emitStateTransitionTrace`). */
@@ -1315,6 +1318,15 @@ object RaftClientTraceEvents {
         occurredAtMillis: Long,
     ) {
         sender.emit(serverId, name, attrs, occurredAtMillis = occurredAtMillis)
+    }
+
+    /** #proj-mobile:#437: badge reconciliation point event (`mobile.badge.reconciled`). */
+    @RaftCoreInternalApi fun emitBadgeReconciled(
+        serverId: String,
+        attrs: JsonObject,
+        occurredAtMillis: Long,
+    ) {
+        sender.emit(serverId, RAFT_BADGE_RECONCILED_EVENT, attrs, occurredAtMillis = occurredAtMillis)
     }
 
     /** #wg-mobile-sync:#357 (web slock #17140/#17157/#17246): `slock.composer.voice_dictation_session`. */

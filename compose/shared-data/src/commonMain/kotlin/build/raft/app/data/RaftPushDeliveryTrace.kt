@@ -9,7 +9,9 @@ import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -41,6 +43,7 @@ const val RAFT_PUSH_DELIVERY_BUFFER_MAX_EVENTS = 100
 const val RAFT_PUSH_DELIVERY_BUFFER_TTL_MILLIS = 48L * 60L * 60L * 1000L
 const val RAFT_PUSH_DELIVERY_REPORTED_PRESENTED_CAP = 200
 const val RAFT_PUSH_DELIVERY_BUFFER_PREF_KEY = "raft_push_delivery_trace_buffer_v1"
+const val RAFT_PUSH_OPENED_LANDING_TIMEOUT_MILLIS = 8_000L
 
 private const val RAFT_PUSH_DELIVERY_OPENED_DEDUP_CAP = 64
 
@@ -285,6 +288,17 @@ data class RaftPushDeliveryDeviceContext(
 /** Platform default device context (Android / iOS / Desktop). */
 expect fun defaultRaftPushDeliveryDeviceContext(): RaftPushDeliveryDeviceContext
 
+/**
+ * In-memory landing destination matching criteria for a deferred `mobile.push.opened` event
+ * (`#proj-mobile:#437`). Never persisted or serialized into trace payloads.
+ */
+data class RaftPushOpenLandingTarget(
+    val serverId: String = "",
+    val conversationIds: Set<String> = emptySet(),
+    val parentMessageId: String? = null,
+    val isActivityTarget: Boolean = false,
+)
+
 /** One persisted privacy-safe push delivery event awaiting foreground handoff. */
 @Serializable
 internal data class BufferedPushDeliveryEvent(
@@ -304,6 +318,11 @@ internal data class BufferedPushDeliveryEvent(
     val dndActive: Boolean? = null,
     val inferredFromCenter: Boolean? = null,
     val openSurface: String? = null,
+    val landingUnread: Int? = null,
+    val landingLoadOk: Boolean? = null,
+    val pushAgeMs: Long? = null,
+    val readBeforeOpen: Boolean? = null,
+    val badgeAtOpen: Int? = null,
 )
 
 @Serializable
@@ -583,6 +602,15 @@ internal fun BufferedPushDeliveryEvent.toTraceAttrs(
                 }
                 RAFT_PUSH_DELIVERY_EVENT_OPENED -> {
                     put("open_surface", JsonPrimitive(openSurface ?: RaftPushDeliveryOpenSurface.SystemTray.wire))
+                    landingLoadOk?.let { ok ->
+                        put("landing_load_ok", JsonPrimitive(ok))
+                        if (ok) {
+                            landingUnread?.takeIf { it >= 0 }?.let { put("landing_unread", JsonPrimitive(it)) }
+                        }
+                    }
+                    pushAgeMs?.takeIf { it >= 0L }?.let { put("push_age_ms", JsonPrimitive(it)) }
+                    readBeforeOpen?.let { put("read_before_open", JsonPrimitive(it)) }
+                    badgeAtOpen?.takeIf { it >= 0 }?.let { put("badge_at_open", JsonPrimitive(it)) }
                 }
             }
         }
@@ -601,12 +629,33 @@ class PushDeliveryTraceRecorder(
     private val deviceContextProvider: () -> RaftPushDeliveryDeviceContext,
     private val emit: (serverId: String, name: String, attrs: JsonObject, occurredAtMs: Long) -> Unit,
     private val isEnabled: () -> Boolean = { true },
-    scope: CoroutineScope? = null,
+    private val scope: CoroutineScope? = null,
     prefKey: String = RAFT_PUSH_DELIVERY_BUFFER_PREF_KEY,
     maxEvents: Int = RAFT_PUSH_DELIVERY_BUFFER_MAX_EVENTS,
     ttlMillis: Long = RAFT_PUSH_DELIVERY_BUFFER_TTL_MILLIS,
     maxReportedPresentedIds: Int = RAFT_PUSH_DELIVERY_REPORTED_PRESENTED_CAP,
+    private val landingTimeoutMillis: Long = RAFT_PUSH_OPENED_LANDING_TIMEOUT_MILLIS,
+    private val pushTimestampRecorder: (deliveryId: String, occurredAtMs: Long) -> Unit = { _, _ -> },
+    private val pushTimestampLookup: (deliveryId: String, nowMs: Long) -> Long? = { _, _ -> null },
+    private val readBeforeOpenLookup: (groupKey: String?, seq: Long?, pushOccurredAtMs: Long?, nowMs: Long) -> Boolean = { _, _, _, _ -> false },
+    private val currentBadgeCountProvider: () -> Int = { 0 },
 ) {
+    private data class PendingDeferredPushOpen(
+        val token: Long,
+        val deliveryId: String,
+        val accountId: String?,
+        val serverId: String,
+        val transport: RaftPushDeliveryTransport,
+        val appState: RaftPushDeliveryAppState,
+        val openSurface: RaftPushDeliveryOpenSurface,
+        val occurredAtMs: Long,
+        val pushAgeMs: Long?,
+        val readBeforeOpen: Boolean,
+        val badgeAtOpen: Int,
+        val device: RaftPushDeliveryDeviceContext,
+        val target: RaftPushOpenLandingTarget,
+    )
+
     private val buffer =
         PushDeliveryTraceBuffer(
             store = preferenceStore,
@@ -617,6 +666,9 @@ class PushDeliveryTraceRecorder(
         )
     private val stateLock = SynchronizedObject()
     private val recentlyOpenedIds = ArrayList<String>()
+    private var pendingOpen: PendingDeferredPushOpen? = null
+    private var pendingOpenTimeoutJob: Job? = null
+    private var pendingOpenSeq = 0L
 
     @Volatile private var activeAccountId: String? = null
     @Volatile private var activeServerId: String? = null
@@ -644,6 +696,7 @@ class PushDeliveryTraceRecorder(
         if (!isEnabled()) return false
         if (privacyMode.value == RaftPrivacyMode.On) return false
         val normalizedId = normalizePushDeliveryId(deliveryId) ?: return false
+        runCatching { pushTimestampRecorder(normalizedId, occurredAtMs) }
         val device = safeDeviceContext(deviceContext)
         val event =
             BufferedPushDeliveryEvent(
@@ -759,22 +812,16 @@ class PushDeliveryTraceRecorder(
         occurredAtMs: Long = nowEpochMillis(),
         accountId: String? = null,
         deviceContext: RaftPushDeliveryDeviceContext? = null,
+        landingUnread: Int? = null,
+        landingLoadOk: Boolean? = null,
+        pushAgeMs: Long? = null,
+        readBeforeOpen: Boolean? = null,
+        badgeAtOpen: Int? = null,
     ): Boolean {
         if (!isEnabled()) return false
         if (privacyMode.value == RaftPrivacyMode.On) return false
         val normalizedId = normalizePushDeliveryId(deliveryId) ?: return false
-        val isNewOpen =
-            synchronized(stateLock) {
-                if (normalizedId in recentlyOpenedIds) {
-                    false
-                } else {
-                    recentlyOpenedIds += normalizedId
-                    while (recentlyOpenedIds.size > RAFT_PUSH_DELIVERY_OPENED_DEDUP_CAP) {
-                        recentlyOpenedIds.removeAt(0)
-                    }
-                    true
-                }
-            }
+        val isNewOpen = reserveOpenedId(normalizedId)
         if (!isNewOpen) return false
         val device = safeDeviceContext(deviceContext)
         val event =
@@ -790,10 +837,293 @@ class PushDeliveryTraceRecorder(
                 gmsAvailable = device.gmsAvailable,
                 occurredAtMs = occurredAtMs,
                 openSurface = openSurface.wire,
+                landingUnread = if (landingLoadOk == true) landingUnread?.coerceAtLeast(0) else null,
+                landingLoadOk = landingLoadOk,
+                pushAgeMs = pushAgeMs?.coerceAtLeast(0L),
+                readBeforeOpen = readBeforeOpen,
+                badgeAtOpen = badgeAtOpen?.coerceAtLeast(0),
             )
         buffer.append(event, nowEpochMillis())
         drainIfReady()
         return true
+    }
+
+    /**
+     * #proj-mobile:#437: captures tap-time attributes immediately (`occurred_at_ms` = tap time,
+     * `push_age_ms`, `read_before_open`, `badge_at_open`) and defers emitting `mobile.push.opened`
+     * until the destination conversation/Activity first load settles (or [landingTimeoutMillis] = 8s
+     * expires, the app backgrounds, or another push open supersedes this one).
+     */
+    fun beginDeferredOpen(
+        deliveryId: String?,
+        serverId: String?,
+        transport: RaftPushDeliveryTransport,
+        appState: RaftPushDeliveryAppState,
+        openSurface: RaftPushDeliveryOpenSurface,
+        target: RaftPushOpenLandingTarget = RaftPushOpenLandingTarget(),
+        occurredAtMs: Long = nowEpochMillis(),
+        pushOccurredAtMs: Long? = null,
+        groupKey: String? = null,
+        seq: Long? = null,
+        readBeforeOpenOverride: Boolean? = null,
+        badgeAtOpenOverride: Int? = null,
+        accountId: String? = null,
+        deviceContext: RaftPushDeliveryDeviceContext? = null,
+    ): Boolean {
+        if (!isEnabled()) return false
+        if (privacyMode.value == RaftPrivacyMode.On) return false
+        val normalizedId = normalizePushDeliveryId(deliveryId) ?: return false
+        val resolvedServer = resolveServerId(serverId)
+        val pushTs =
+            pushOccurredAtMs?.takeIf { it > 0L }
+                ?: runCatching { pushTimestampLookup(normalizedId, occurredAtMs) }.getOrNull()?.takeIf { it > 0L }
+        val pushAgeMs = pushTs?.let { (occurredAtMs - it).coerceAtLeast(0L) }
+        val readBeforeOpen =
+            readBeforeOpenOverride
+                ?: runCatching { readBeforeOpenLookup(groupKey, seq, pushTs, occurredAtMs) }.getOrDefault(false)
+        val badgeAtOpen =
+            (badgeAtOpenOverride ?: runCatching { currentBadgeCountProvider() }.getOrDefault(0))
+                .coerceAtLeast(0)
+        val device = safeDeviceContext(deviceContext)
+        val normalizedTarget =
+            RaftPushOpenLandingTarget(
+                serverId = target.serverId.trim().ifEmpty { resolvedServer },
+                conversationIds =
+                    target.conversationIds
+                        .mapNotNull { it.trim().takeIf { id -> id.isNotEmpty() } }
+                        .toSet(),
+                parentMessageId = target.parentMessageId?.trim()?.takeIf { it.isNotEmpty() },
+                isActivityTarget = target.isActivityTarget,
+            )
+        var superseded: PendingDeferredPushOpen? = null
+        var supersededJob: Job? = null
+        var token = 0L
+        val accepted =
+            synchronized(stateLock) {
+                if (normalizedId in recentlyOpenedIds) {
+                    false
+                } else {
+                    recentlyOpenedIds += normalizedId
+                    while (recentlyOpenedIds.size > RAFT_PUSH_DELIVERY_OPENED_DEDUP_CAP) {
+                        recentlyOpenedIds.removeAt(0)
+                    }
+                    superseded = pendingOpen
+                    supersededJob = pendingOpenTimeoutJob
+                    pendingOpenTimeoutJob = null
+                    pendingOpenSeq += 1L
+                    token = pendingOpenSeq
+                    pendingOpen =
+                        PendingDeferredPushOpen(
+                            token = token,
+                            deliveryId = normalizedId,
+                            accountId = resolveAccountId(accountId),
+                            serverId = resolvedServer,
+                            transport = transport,
+                            appState = appState,
+                            openSurface = openSurface,
+                            occurredAtMs = occurredAtMs,
+                            pushAgeMs = pushAgeMs,
+                            readBeforeOpen = readBeforeOpen,
+                            badgeAtOpen = badgeAtOpen,
+                            device = device,
+                            target = normalizedTarget,
+                        )
+                    true
+                }
+            }
+        if (!accepted) return false
+        supersededJob?.cancel()
+        superseded?.let { previous ->
+            emitSettledDeferredOpen(previous, landingLoadOk = false, landingUnread = null)
+        }
+        val timeoutJob =
+            scope?.launch {
+                delay(landingTimeoutMillis)
+                settlePendingOpenByToken(token = token, landingLoadOk = false, landingUnread = null)
+            }
+        if (timeoutJob != null) {
+            val attached =
+                synchronized(stateLock) {
+                    if (pendingOpen?.token == token) {
+                        pendingOpenTimeoutJob = timeoutJob
+                        true
+                    } else {
+                        false
+                    }
+                }
+            if (!attached) {
+                timeoutJob.cancel()
+            }
+        }
+        return true
+    }
+
+    /**
+     * Completes a pending deferred `mobile.push.opened` if its landing target matches the
+     * conversation that just finished its first canonical load (called BEFORE `MarkVisibleRead`).
+     */
+    fun completeDeferredOpenForConversation(
+        serverId: String?,
+        candidateConversationIds: Set<String>,
+        parentMessageId: String? = null,
+        landingLoadOk: Boolean,
+        landingUnread: Int? = null,
+    ): Boolean {
+        val cleanServer = serverId?.trim().orEmpty()
+        val cleanIds = candidateConversationIds.mapNotNull { it.trim().takeIf { id -> id.isNotEmpty() } }.toSet()
+        val cleanParent = parentMessageId?.trim()?.takeIf { it.isNotEmpty() }
+        var matched: PendingDeferredPushOpen? = null
+        var jobToCancel: Job? = null
+        synchronized(stateLock) {
+            val current = pendingOpen ?: return false
+            if (current.target.isActivityTarget) return false
+            if (current.target.serverId.isNotEmpty() && cleanServer.isNotEmpty() && current.target.serverId != cleanServer) {
+                return false
+            }
+            val idMatch =
+                if (current.target.conversationIds.isEmpty() && current.target.parentMessageId == null) {
+                    true
+                } else {
+                    current.target.conversationIds.any { it in cleanIds } ||
+                        (current.target.parentMessageId != null && current.target.parentMessageId == cleanParent)
+                }
+            if (!idMatch) return false
+            matched = current
+            pendingOpen = null
+            jobToCancel = pendingOpenTimeoutJob
+            pendingOpenTimeoutJob = null
+        }
+        jobToCancel?.cancel()
+        matched?.let { pending ->
+            emitSettledDeferredOpen(
+                pending = pending,
+                landingLoadOk = landingLoadOk,
+                landingUnread = if (landingLoadOk) landingUnread?.coerceAtLeast(0) else null,
+            )
+            return true
+        }
+        return false
+    }
+
+    /** Completes a pending Activity-target deferred `mobile.push.opened` (reminders/notices/tests). */
+    fun completeDeferredOpenForActivity(
+        serverId: String?,
+        landingLoadOk: Boolean,
+        landingUnread: Int? = null,
+    ): Boolean {
+        val cleanServer = serverId?.trim().orEmpty()
+        var matched: PendingDeferredPushOpen? = null
+        var jobToCancel: Job? = null
+        synchronized(stateLock) {
+            val current = pendingOpen ?: return false
+            if (!current.target.isActivityTarget) return false
+            if (current.target.serverId.isNotEmpty() && cleanServer.isNotEmpty() && current.target.serverId != cleanServer) {
+                return false
+            }
+            matched = current
+            pendingOpen = null
+            jobToCancel = pendingOpenTimeoutJob
+            pendingOpenTimeoutJob = null
+        }
+        jobToCancel?.cancel()
+        matched?.let { pending ->
+            emitSettledDeferredOpen(
+                pending = pending,
+                landingLoadOk = landingLoadOk,
+                landingUnread = if (landingLoadOk) landingUnread?.coerceAtLeast(0) else null,
+            )
+            return true
+        }
+        return false
+    }
+
+    /** Flushes any pending deferred push open immediately with `landing_load_ok = false`. */
+    fun flushPendingOpenAsFailed(): Boolean {
+        var pending: PendingDeferredPushOpen? = null
+        var jobToCancel: Job? = null
+        synchronized(stateLock) {
+            pending = pendingOpen
+            pendingOpen = null
+            jobToCancel = pendingOpenTimeoutJob
+            pendingOpenTimeoutJob = null
+        }
+        jobToCancel?.cancel()
+        val flushed = pending ?: return false
+        emitSettledDeferredOpen(flushed, landingLoadOk = false, landingUnread = null)
+        return true
+    }
+
+    @build.raft.app.RaftCoreInternalApi
+    fun hasPendingDeferredOpenForTest(): Boolean = synchronized(stateLock) { pendingOpen != null }
+
+    private fun reserveOpenedId(normalizedId: String): Boolean =
+        synchronized(stateLock) {
+            if (normalizedId in recentlyOpenedIds) {
+                false
+            } else {
+                recentlyOpenedIds += normalizedId
+                while (recentlyOpenedIds.size > RAFT_PUSH_DELIVERY_OPENED_DEDUP_CAP) {
+                    recentlyOpenedIds.removeAt(0)
+                }
+                true
+            }
+        }
+
+    private fun settlePendingOpenByToken(
+        token: Long,
+        landingLoadOk: Boolean,
+        landingUnread: Int?,
+    ) {
+        var matched: PendingDeferredPushOpen? = null
+        synchronized(stateLock) {
+            val current = pendingOpen ?: return
+            if (current.token != token) return
+            matched = current
+            pendingOpen = null
+            pendingOpenTimeoutJob = null
+        }
+        matched?.let { pending ->
+            emitSettledDeferredOpen(pending, landingLoadOk = landingLoadOk, landingUnread = landingUnread)
+        }
+    }
+
+    private fun discardPendingOpen() {
+        val jobToCancel =
+            synchronized(stateLock) {
+                pendingOpen = null
+                pendingOpenTimeoutJob.also { pendingOpenTimeoutJob = null }
+            }
+        jobToCancel?.cancel()
+    }
+
+    private fun emitSettledDeferredOpen(
+        pending: PendingDeferredPushOpen,
+        landingLoadOk: Boolean,
+        landingUnread: Int?,
+    ) {
+        if (!isEnabled()) return
+        if (privacyMode.value == RaftPrivacyMode.On) return
+        val event =
+            BufferedPushDeliveryEvent(
+                eventName = RAFT_PUSH_DELIVERY_EVENT_OPENED,
+                accountId = pending.accountId ?: resolveAccountId(null),
+                serverId = pending.serverId.ifEmpty { resolveServerId(null) },
+                deliveryId = pending.deliveryId,
+                transport = pending.transport.wire,
+                manufacturer = normalizePushDeliveryManufacturer(pending.device.manufacturer),
+                osVersion = normalizePushDeliveryOsVersion(pending.device.osVersion),
+                appState = pending.appState.wire,
+                gmsAvailable = pending.device.gmsAvailable,
+                occurredAtMs = pending.occurredAtMs,
+                openSurface = pending.openSurface.wire,
+                landingUnread = if (landingLoadOk) landingUnread?.coerceAtLeast(0) else null,
+                landingLoadOk = landingLoadOk,
+                pushAgeMs = pending.pushAgeMs?.coerceAtLeast(0L),
+                readBeforeOpen = pending.readBeforeOpen,
+                badgeAtOpen = pending.badgeAtOpen.coerceAtLeast(0),
+            )
+        buffer.append(event, nowEpochMillis())
+        drainIfReady()
     }
 
     fun onSignedIn(accountId: String?, serverId: String? = null) {
@@ -817,6 +1147,7 @@ class PushDeliveryTraceRecorder(
                 }
             }
         if (accountChanged) {
+            discardPendingOpen()
             buffer.clearAll()
         }
         buffer.onAccountIdentified(cleanAccount)
@@ -834,13 +1165,18 @@ class PushDeliveryTraceRecorder(
     }
 
     fun onSignedOut() {
+        var jobToCancel: Job? = null
         synchronized(stateLock) {
             activeAccountId = null
             activeServerId = null
             knownAccountHint = null
             knownServerHint = null
             recentlyOpenedIds.clear()
+            pendingOpen = null
+            jobToCancel = pendingOpenTimeoutJob
+            pendingOpenTimeoutJob = null
         }
+        jobToCancel?.cancel()
         buffer.clearAll()
     }
 
@@ -849,13 +1185,24 @@ class PushDeliveryTraceRecorder(
     }
 
     fun onProcessVisibilityChanged(foreground: Boolean) {
-        if (foreground) drainIfReady()
+        if (foreground) {
+            drainIfReady()
+        } else {
+            flushPendingOpenAsFailed()
+        }
     }
 
     fun onPrivacyModeChanged(mode: RaftPrivacyMode) {
         when (mode) {
             RaftPrivacyMode.On -> {
-                synchronized(stateLock) { recentlyOpenedIds.clear() }
+                var jobToCancel: Job? = null
+                synchronized(stateLock) {
+                    recentlyOpenedIds.clear()
+                    pendingOpen = null
+                    jobToCancel = pendingOpenTimeoutJob
+                    pendingOpenTimeoutJob = null
+                }
+                jobToCancel?.cancel()
                 buffer.clearAll()
             }
             RaftPrivacyMode.Off -> drainIfReady()
@@ -936,12 +1283,17 @@ object RaftPushDeliveryTrace {
             },
             isEnabled = ::isMobilePushDeliveryPlatform,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            pushTimestampRecorder = RaftBadgeTelemetry::recordPushTimestamp,
+            pushTimestampLookup = RaftBadgeTelemetry::lookupPushTimestamp,
+            readBeforeOpenLookup = RaftBadgeTelemetry::isReadBeforeOpen,
+            currentBadgeCountProvider = RaftBadgeTelemetry::currentBadgeCountForOpen,
         )
     }
 
     /** Installs a platform device-context provider (e.g. Android Context-backed GMS & DND checks). */
     fun installDeviceContextProvider(provider: () -> RaftPushDeliveryDeviceContext) {
         deviceContextOverride = provider
+        RaftBadgeTelemetry.installDeviceContextProvider(provider)
     }
 
     fun recordReceived(
@@ -1029,6 +1381,11 @@ object RaftPushDeliveryTrace {
         occurredAtMs: Long = ProcessRaftDatetimeFoundationOwner.nowEpochMillis(),
         accountId: String? = null,
         deviceContext: RaftPushDeliveryDeviceContext? = null,
+        landingUnread: Int? = null,
+        landingLoadOk: Boolean? = null,
+        pushAgeMs: Long? = null,
+        readBeforeOpen: Boolean? = null,
+        badgeAtOpen: Int? = null,
     ): Boolean =
         runCatching {
             recorder.recordOpened(
@@ -1040,23 +1397,100 @@ object RaftPushDeliveryTrace {
                 occurredAtMs = occurredAtMs,
                 accountId = accountId,
                 deviceContext = deviceContext,
+                landingUnread = landingUnread,
+                landingLoadOk = landingLoadOk,
+                pushAgeMs = pushAgeMs,
+                readBeforeOpen = readBeforeOpen,
+                badgeAtOpen = badgeAtOpen,
             )
         }.getOrDefault(false)
 
+    fun beginDeferredOpen(
+        deliveryId: String?,
+        serverId: String?,
+        transport: RaftPushDeliveryTransport,
+        appState: RaftPushDeliveryAppState,
+        openSurface: RaftPushDeliveryOpenSurface,
+        target: RaftPushOpenLandingTarget = RaftPushOpenLandingTarget(),
+        occurredAtMs: Long = ProcessRaftDatetimeFoundationOwner.nowEpochMillis(),
+        pushOccurredAtMs: Long? = null,
+        groupKey: String? = null,
+        seq: Long? = null,
+        readBeforeOpenOverride: Boolean? = null,
+        badgeAtOpenOverride: Int? = null,
+        accountId: String? = null,
+        deviceContext: RaftPushDeliveryDeviceContext? = null,
+    ): Boolean =
+        runCatching {
+            recorder.beginDeferredOpen(
+                deliveryId = deliveryId,
+                serverId = serverId,
+                transport = transport,
+                appState = appState,
+                openSurface = openSurface,
+                target = target,
+                occurredAtMs = occurredAtMs,
+                pushOccurredAtMs = pushOccurredAtMs,
+                groupKey = groupKey,
+                seq = seq,
+                readBeforeOpenOverride = readBeforeOpenOverride,
+                badgeAtOpenOverride = badgeAtOpenOverride,
+                accountId = accountId,
+                deviceContext = deviceContext,
+            )
+        }.getOrDefault(false)
+
+    fun completeDeferredOpenForConversation(
+        serverId: String?,
+        candidateConversationIds: Set<String>,
+        parentMessageId: String? = null,
+        landingLoadOk: Boolean,
+        landingUnread: Int? = null,
+    ): Boolean =
+        runCatching {
+            recorder.completeDeferredOpenForConversation(
+                serverId = serverId,
+                candidateConversationIds = candidateConversationIds,
+                parentMessageId = parentMessageId,
+                landingLoadOk = landingLoadOk,
+                landingUnread = landingUnread,
+            )
+        }.getOrDefault(false)
+
+    fun completeDeferredOpenForActivity(
+        serverId: String?,
+        landingLoadOk: Boolean,
+        landingUnread: Int? = null,
+    ): Boolean =
+        runCatching {
+            recorder.completeDeferredOpenForActivity(
+                serverId = serverId,
+                landingLoadOk = landingLoadOk,
+                landingUnread = landingUnread,
+            )
+        }.getOrDefault(false)
+
+    fun flushPendingOpenAsFailed(): Boolean =
+        runCatching { recorder.flushPendingOpenAsFailed() }.getOrDefault(false)
+
     fun onSignedIn(accountId: String?, serverId: String? = null) {
         runCatching { recorder.onSignedIn(accountId, serverId) }
+        RaftBadgeTelemetry.onSignedIn(accountId, serverId)
     }
 
     fun setKnownAccountHint(accountId: String?, serverId: String? = null) {
         runCatching { recorder.setKnownAccountHint(accountId, serverId) }
+        RaftBadgeTelemetry.setKnownAccountHint(accountId, serverId)
     }
 
     fun onSignedOut() {
         runCatching { recorder.onSignedOut() }
+        RaftBadgeTelemetry.onSignedOut()
     }
 
     fun onTransportBound() {
         runCatching { recorder.onTransportBound() }
+        RaftBadgeTelemetry.onTransportBound()
     }
 
     fun onProcessVisibility(foreground: Boolean) {
@@ -1064,7 +1498,7 @@ object RaftPushDeliveryTrace {
     }
 
     fun drainIfReady(): Int =
-        runCatching { recorder.drainIfReady() }.getOrDefault(0)
+        runCatching { recorder.drainIfReady() }.getOrDefault(0) + RaftBadgeTelemetry.drainIfReady()
 }
 
 /**
@@ -1131,8 +1565,11 @@ object RaftIosPushDeliveryTraceBridge {
         deliveryId: String?,
         serverId: String?,
         occurredAtMs: Long,
-    ): Boolean =
-        RaftPushDeliveryTrace.recordPresentedIfNotAlreadyReported(
+    ): Boolean {
+        if (occurredAtMs > 0L) {
+            RaftBadgeTelemetry.recordPushTimestamp(deliveryId = deliveryId, occurredAtMs = occurredAtMs)
+        }
+        return RaftPushDeliveryTrace.recordPresentedIfNotAlreadyReported(
             deliveryId = deliveryId,
             serverId = serverId,
             transport = RaftPushDeliveryTransport.Apns,
@@ -1140,6 +1577,7 @@ object RaftIosPushDeliveryTraceBridge {
             inferredFromCenter = true,
             occurredAtMs = occurredAtMs,
         )
+    }
 
     fun recordApnsOpened(
         deliveryId: String?,
@@ -1155,6 +1593,102 @@ object RaftIosPushDeliveryTraceBridge {
             appState = state,
             openSurface = RaftPushDeliveryOpenSurface.SystemTray,
             occurredAtMs = occurredAtMs,
+        )
+    }
+
+    /**
+     * #proj-mobile:#437: Swift-friendly deferred push open entry point (primitives only).
+     * Pass `-1L` for absent [pushOccurredAtMs], `-1` for absent [badgeAtOpen], and
+     * [hasSeq] = false when seq is unavailable.
+     */
+    fun beginApnsOpened(
+        deliveryId: String?,
+        serverId: String?,
+        appState: String,
+        occurredAtMs: Long,
+        pushOccurredAtMs: Long,
+        badgeAtOpen: Int,
+        groupKey: String?,
+        seq: Long,
+        hasSeq: Boolean,
+        readBeforeOpenHint: Boolean,
+        conversationId: String?,
+        channelId: String?,
+        threadId: String?,
+        parentMessageId: String?,
+        taskConversationChannelId: String?,
+        isActivityTarget: Boolean,
+    ) {
+        val state = RaftPushDeliveryAppState.fromWire(appState) ?: RaftPushDeliveryAppState.Background
+        val cleanPushTs = pushOccurredAtMs.takeIf { it > 0L }
+        val cleanSeq = if (hasSeq) seq else null
+        val candidateIds =
+            listOfNotNull(conversationId, channelId, threadId, taskConversationChannelId)
+                .mapNotNull { it.trim().takeIf { id -> id.isNotEmpty() } }
+                .toSet()
+        val readBeforeOpen =
+            readBeforeOpenHint ||
+                RaftBadgeTelemetry.isReadBeforeOpen(
+                    groupKey = groupKey,
+                    seq = cleanSeq,
+                    pushOccurredAtMs = cleanPushTs,
+                    nowMs = occurredAtMs,
+                )
+        RaftPushDeliveryTrace.beginDeferredOpen(
+            deliveryId = deliveryId,
+            serverId = serverId,
+            transport = RaftPushDeliveryTransport.Apns,
+            appState = state,
+            openSurface = RaftPushDeliveryOpenSurface.SystemTray,
+            target =
+                RaftPushOpenLandingTarget(
+                    serverId = serverId?.trim().orEmpty(),
+                    conversationIds = candidateIds,
+                    parentMessageId = parentMessageId?.trim()?.takeIf { it.isNotEmpty() },
+                    isActivityTarget = isActivityTarget,
+                ),
+            occurredAtMs = occurredAtMs,
+            pushOccurredAtMs = cleanPushTs,
+            groupKey = groupKey,
+            seq = cleanSeq,
+            readBeforeOpenOverride = readBeforeOpen,
+            badgeAtOpenOverride = badgeAtOpen.takeIf { it >= 0 },
+        )
+    }
+
+    fun noteIosIconBadgeBeforeForeground(count: Int) {
+        RaftBadgeTelemetry.noteLiveIconBadgeBeforeForeground(count)
+    }
+
+    fun recordBadgeSet(
+        count: Int,
+        source: String,
+        setAtMs: Long,
+    ) {
+        val badgeSource = RaftBadgeSource.fromWire(source) ?: return
+        RaftBadgeTelemetry.recordBadgeSet(count = count, source = badgeSource, setAtMs = setAtMs)
+    }
+
+    fun enrichForegroundAlertBadge(
+        badge: Int,
+        alertAtMs: Long,
+    ) {
+        RaftBadgeTelemetry.enrichForegroundSnapshotFromDeliveredAlert(
+            badge = badge.takeIf { it >= 0 },
+            alertAtMs = alertAtMs,
+        )
+    }
+
+    fun recordRetract(
+        groupKey: String?,
+        throughSeq: Long,
+        hasThroughSeq: Boolean,
+        retractedAtMs: Long,
+    ) {
+        RaftBadgeTelemetry.recordRetract(
+            groupKey = groupKey,
+            throughSeq = if (hasThroughSeq) throughSeq else null,
+            retractedAtMs = retractedAtMs,
         )
     }
 

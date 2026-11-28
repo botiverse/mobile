@@ -874,6 +874,12 @@ data class ThreadSnapshot(
      */
     @Transient
     val replyThreadReplyCount: Int? = null,
+    /**
+     * #proj-mobile:#437: server-reported `maxReadSeq` from `GET /api/channels/:id` captured during
+     * initial load before `MarkVisibleRead` advances read state. Excluded from equality/serialization.
+     */
+    @Transient
+    val preReadMaxReadSeq: PreReadMaxReadSeqWitness = PreReadMaxReadSeqWitness.None,
 )
 
 /**
@@ -926,6 +932,24 @@ class RawMessagePageWitness(val page: RawMessagePage?) {
 
     companion object {
         val None: RawMessagePageWitness = RawMessagePageWitness(null)
+    }
+}
+
+/**
+ * #proj-mobile:#437: carries server-reported `maxReadSeq` from `GET /api/channels/:id` on initial
+ * conversation load (before `MarkVisibleRead` runs) without affecting snapshot equality or
+ * serialization. Mirrors [RawMessagePageWitness].
+ */
+class PreReadMaxReadSeqWitness(val maxReadSeq: Long?) {
+    override fun equals(other: Any?): Boolean = other is PreReadMaxReadSeqWitness
+
+    override fun hashCode(): Int = 0
+
+    override fun toString(): String =
+        maxReadSeq?.let { "PreReadMaxReadSeqWitness(maxReadSeq=$it)" } ?: "PreReadMaxReadSeqWitness(None)"
+
+    companion object {
+        val None: PreReadMaxReadSeqWitness = PreReadMaxReadSeqWitness(null)
     }
 }
 

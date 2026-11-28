@@ -342,7 +342,9 @@ fun updateRaftProcessNetworkVisibility(foreground: Boolean): Int {
     build.raft.app.data.RaftStaleReadRecoverySignals.onProcessVisibility(foreground)
     // #proj-mobile:#172: mobile.realtime.session_health measures foreground time only.
     build.raft.app.data.realtime.RaftRealtimeSessionHealth.onProcessVisibility(foreground)
-    // #proj-mobile:#405: buffered push delivery events drain strictly on foreground return.
+    // #proj-mobile:#437: snapshot pre-reconcile badge state at foreground entry before appBadge writes.
+    build.raft.app.data.RaftBadgeTelemetry.onProcessVisibility(foreground)
+    // #proj-mobile:#405 / #437: buffered push delivery events drain on foreground; pending opens flush on background.
     build.raft.app.data.RaftPushDeliveryTrace.onProcessVisibility(foreground)
     return retired
 }

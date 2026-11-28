@@ -4585,6 +4585,20 @@ internal class RaftBridgeModule(
                 raftAndroidBridgeUrlDecode(payload.optString("string"))
             }
             "currentTimestamp" -> System.currentTimeMillis().toString()
+            "appBadge" -> {
+                val payload = runCatching { JSONObject(params ?: "{}") }.getOrNull()
+                if (payload != null) {
+                    val count = payload.optInt("count", 0).coerceAtLeast(0)
+                    val source = payload.optString("source").trim()
+                    if (source != build.raft.app.data.AppBadgeSource.UNKNOWN.wire) {
+                        build.raft.app.data.RaftBadgeTelemetry.recordBadgeSet(
+                            count = count,
+                            source = build.raft.app.data.RaftBadgeSource.App,
+                        )
+                    }
+                }
+                null
+            }
             "syncDesktopShortcuts" -> {
                 syncDesktopShortcuts(params)
                 null

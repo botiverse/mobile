@@ -4344,6 +4344,7 @@ private fun SharedThreadRouteContentContent(
     val foregroundBannerServerId = currentSession?.currentServerId?.let(::ServerId)
     val foregroundBannerTopSafeArea = raftTopSafeAreaPadding()
     val onForegroundBannerClick: (RaftForegroundMessageBanner) -> Unit = { target ->
+        target.beginDeferredPushOpen()
         foregroundBannerStore.dismiss(target.id)
         val request = target.openRequest
         val bannerPayload =

@@ -4,6 +4,7 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import build.raft.app.data.RaftNotificationRoute
 import build.raft.app.data.RaftPushDeliveryAppState
 import build.raft.app.data.RaftPushDeliveryCategory
 import build.raft.app.data.RaftPushDeliveryDeviceContext
@@ -11,14 +12,26 @@ import build.raft.app.data.RaftPushDeliveryOpenSurface
 import build.raft.app.data.RaftPushDeliverySuppressReason
 import build.raft.app.data.RaftPushDeliveryTrace
 import build.raft.app.data.RaftPushDeliveryTransport
+import build.raft.app.data.RaftPushOpenLandingTarget
 import build.raft.app.data.normalizePushDeliveryId
 import build.raft.app.data.normalizePushDeliveryManufacturer
 import build.raft.app.data.parseRaftNotificationRoute
+import build.raft.app.data.parseRaftPushSeq
 import org.json.JSONObject
 
 internal const val EXTRA_RAFT_PUSH_DELIVERY_ID = "slockPushDeliveryId"
 internal const val EXTRA_RAFT_PUSH_DELIVERY_TRANSPORT = "slockPushDeliveryTransport"
 internal const val EXTRA_RAFT_PUSH_DELIVERY_SERVER_ID = "slockPushDeliveryServerId"
+internal const val EXTRA_RAFT_PUSH_GROUP_KEY = "slockPushDeliveryGroupKey"
+internal const val EXTRA_RAFT_PUSH_SEQ = "slockPushDeliverySeq"
+internal const val EXTRA_RAFT_PUSH_HAS_SEQ = "slockPushDeliveryHasSeq"
+internal const val EXTRA_RAFT_PUSH_OCCURRED_AT_MS = "slockPushDeliveryOccurredAtMs"
+internal const val EXTRA_RAFT_PUSH_CONVERSATION_ID = "slockPushDeliveryConversationId"
+internal const val EXTRA_RAFT_PUSH_CHANNEL_ID = "slockPushDeliveryChannelId"
+internal const val EXTRA_RAFT_PUSH_THREAD_ID = "slockPushDeliveryThreadId"
+internal const val EXTRA_RAFT_PUSH_PARENT_MESSAGE_ID = "slockPushDeliveryParentMessageId"
+internal const val EXTRA_RAFT_PUSH_TASK_CONVERSATION_ID = "slockPushDeliveryTaskConversationId"
+internal const val EXTRA_RAFT_PUSH_IS_ACTIVITY_TARGET = "slockPushDeliveryIsActivityTarget"
 
 internal data class AndroidPosterPresentationOutcome(
     val presented: Boolean,
@@ -29,6 +42,27 @@ internal data class AndroidPushOpenIntentPayload(
     val deliveryId: String,
     val transport: RaftPushDeliveryTransport,
     val serverId: String,
+    val groupKey: String? = null,
+    val seq: Long? = null,
+    val pushOccurredAtMs: Long? = null,
+    val conversationId: String? = null,
+    val channelId: String? = null,
+    val threadId: String? = null,
+    val parentMessageId: String? = null,
+    val taskConversationId: String? = null,
+    val isActivityTarget: Boolean = false,
+)
+
+internal data class AndroidPushLandingSpec(
+    val groupKey: String?,
+    val seq: Long?,
+    val pushOccurredAtMs: Long?,
+    val conversationId: String?,
+    val channelId: String?,
+    val threadId: String?,
+    val parentMessageId: String?,
+    val taskConversationId: String?,
+    val isActivityTarget: Boolean,
 )
 
 /**
@@ -87,11 +121,68 @@ internal fun resolveAndroidPushServerId(serverId: String?, routeJson: String?): 
         ?: parseRaftNotificationRoute(routeJson)?.serverId?.trim()?.takeIf { it.isNotEmpty() }
         ?: ""
 
+internal fun resolveAndroidPushLandingSpec(request: JSONObject): AndroidPushLandingSpec {
+    fun optNonBlank(key: String): String? = request.optString(key).trim().takeIf { it.isNotEmpty() }
+    val serverId = resolveAndroidPushServerId(request.optString("serverId"), request.optString("route"))
+    val route = parseRaftNotificationRoute(request.optString("route"))
+    val conversationId = optNonBlank("conversationId")
+    val taskConversationId = optNonBlank("taskConversationChannelId")
+    val channelId =
+        optNonBlank("channelId")
+            ?: when (route) {
+                is RaftNotificationRoute.Channel -> route.channelId
+                is RaftNotificationRoute.DirectMessage -> route.channelId
+                else -> null
+            }
+    val threadId = optNonBlank("threadId")
+    val parentMessageId =
+        optNonBlank("parentMessageId")
+            ?: (route as? RaftNotificationRoute.Thread)?.parentMessageId
+    val groupKey =
+        optNonBlank("groupKey")
+            ?: if (serverId.isNotEmpty() && !conversationId.isNullOrEmpty()) "$serverId:$conversationId" else null
+    val seq = parseRaftPushSeq(request.optString("seq"))
+    val pushOccurredAtMs = request.optLong("deliveryOccurredAtMs", 0L).takeIf { it > 0L }
+    val hasConversationTarget =
+        conversationId != null ||
+            taskConversationId != null ||
+            channelId != null ||
+            threadId != null ||
+            parentMessageId != null
+    val isActivityTarget =
+        when (route) {
+            is RaftNotificationRoute.App -> false
+            is RaftNotificationRoute.Agent -> !hasConversationTarget
+            null -> !hasConversationTarget
+            else -> false
+        }
+    return AndroidPushLandingSpec(
+        groupKey = groupKey,
+        seq = seq,
+        pushOccurredAtMs = pushOccurredAtMs,
+        conversationId = conversationId,
+        channelId = channelId,
+        threadId = threadId,
+        parentMessageId = parentMessageId,
+        taskConversationId = taskConversationId,
+        isActivityTarget = isActivityTarget,
+    )
+}
+
 internal fun extractPushOpenPayload(
     flags: Int,
     rawDeliveryId: String?,
     rawTransport: String?,
     rawServerId: String?,
+    rawGroupKey: String? = null,
+    seq: Long? = null,
+    pushOccurredAtMs: Long? = null,
+    rawConversationId: String? = null,
+    rawChannelId: String? = null,
+    rawThreadId: String? = null,
+    rawParentMessageId: String? = null,
+    rawTaskConversationId: String? = null,
+    isActivityTarget: Boolean = false,
 ): AndroidPushOpenIntentPayload? {
     if (flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
     val deliveryId = normalizePushDeliveryId(rawDeliveryId) ?: return null
@@ -101,6 +192,15 @@ internal fun extractPushOpenPayload(
         deliveryId = deliveryId,
         transport = transport,
         serverId = serverId,
+        groupKey = rawGroupKey?.trim()?.takeIf { it.isNotEmpty() },
+        seq = seq,
+        pushOccurredAtMs = pushOccurredAtMs?.takeIf { it > 0L },
+        conversationId = rawConversationId?.trim()?.takeIf { it.isNotEmpty() },
+        channelId = rawChannelId?.trim()?.takeIf { it.isNotEmpty() },
+        threadId = rawThreadId?.trim()?.takeIf { it.isNotEmpty() },
+        parentMessageId = rawParentMessageId?.trim()?.takeIf { it.isNotEmpty() },
+        taskConversationId = rawTaskConversationId?.trim()?.takeIf { it.isNotEmpty() },
+        isActivityTarget = isActivityTarget,
     )
 }
 
@@ -142,6 +242,7 @@ internal object AndroidPushDeliveryTracker {
         appState: RaftPushDeliveryAppState,
         category: RaftPushDeliveryCategory,
         accountId: String? = null,
+        occurredAtMs: Long? = null,
     ) {
         val normalizedId = normalizePushDeliveryId(deliveryId) ?: return
         RaftPushDeliveryTrace.recordReceived(
@@ -150,6 +251,7 @@ internal object AndroidPushDeliveryTracker {
             transport = transport,
             appState = appState,
             category = category,
+            occurredAtMs = occurredAtMs?.takeIf { it > 0L } ?: System.currentTimeMillis(),
             accountId = accountId,
             deviceContext = deviceContext(context),
         )
@@ -207,10 +309,25 @@ internal object AndroidPushDeliveryTracker {
             RaftPushDeliveryTransport.fromWire(request.optString("deliveryTransport"))
                 ?: RaftPushDeliveryTransport.Fcm
         val serverId = resolveAndroidPushServerId(request.optString("serverId"), request.optString("route"))
+        val landing = resolveAndroidPushLandingSpec(request)
         intent.putExtra(EXTRA_RAFT_PUSH_DELIVERY_ID, deliveryId)
         intent.putExtra(EXTRA_RAFT_PUSH_DELIVERY_TRANSPORT, transport.wire)
         if (serverId.isNotEmpty()) {
             intent.putExtra(EXTRA_RAFT_PUSH_DELIVERY_SERVER_ID, serverId)
+        }
+        landing.groupKey?.let { intent.putExtra(EXTRA_RAFT_PUSH_GROUP_KEY, it) }
+        landing.seq?.let {
+            intent.putExtra(EXTRA_RAFT_PUSH_HAS_SEQ, true)
+            intent.putExtra(EXTRA_RAFT_PUSH_SEQ, it)
+        }
+        landing.pushOccurredAtMs?.let { intent.putExtra(EXTRA_RAFT_PUSH_OCCURRED_AT_MS, it) }
+        landing.conversationId?.let { intent.putExtra(EXTRA_RAFT_PUSH_CONVERSATION_ID, it) }
+        landing.channelId?.let { intent.putExtra(EXTRA_RAFT_PUSH_CHANNEL_ID, it) }
+        landing.threadId?.let { intent.putExtra(EXTRA_RAFT_PUSH_THREAD_ID, it) }
+        landing.parentMessageId?.let { intent.putExtra(EXTRA_RAFT_PUSH_PARENT_MESSAGE_ID, it) }
+        landing.taskConversationId?.let { intent.putExtra(EXTRA_RAFT_PUSH_TASK_CONVERSATION_ID, it) }
+        if (landing.isActivityTarget) {
+            intent.putExtra(EXTRA_RAFT_PUSH_IS_ACTIVITY_TARGET, true)
         }
     }
 
@@ -227,15 +344,41 @@ internal object AndroidPushDeliveryTracker {
                     rawDeliveryId = intent.getStringExtra(EXTRA_RAFT_PUSH_DELIVERY_ID),
                     rawTransport = intent.getStringExtra(EXTRA_RAFT_PUSH_DELIVERY_TRANSPORT),
                     rawServerId = intent.getStringExtra(EXTRA_RAFT_PUSH_DELIVERY_SERVER_ID),
+                    rawGroupKey = intent.getStringExtra(EXTRA_RAFT_PUSH_GROUP_KEY),
+                    seq = if (intent.getBooleanExtra(EXTRA_RAFT_PUSH_HAS_SEQ, false)) intent.getLongExtra(EXTRA_RAFT_PUSH_SEQ, 0L) else null,
+                    pushOccurredAtMs = intent.getLongExtra(EXTRA_RAFT_PUSH_OCCURRED_AT_MS, 0L).takeIf { it > 0L },
+                    rawConversationId = intent.getStringExtra(EXTRA_RAFT_PUSH_CONVERSATION_ID),
+                    rawChannelId = intent.getStringExtra(EXTRA_RAFT_PUSH_CHANNEL_ID),
+                    rawThreadId = intent.getStringExtra(EXTRA_RAFT_PUSH_THREAD_ID),
+                    rawParentMessageId = intent.getStringExtra(EXTRA_RAFT_PUSH_PARENT_MESSAGE_ID),
+                    rawTaskConversationId = intent.getStringExtra(EXTRA_RAFT_PUSH_TASK_CONVERSATION_ID),
+                    isActivityTarget = intent.getBooleanExtra(EXTRA_RAFT_PUSH_IS_ACTIVITY_TARGET, false),
                 )
             }.getOrNull() ?: return
         runCatching { intent.removeExtra(EXTRA_RAFT_PUSH_DELIVERY_ID) }
-        RaftPushDeliveryTrace.recordOpened(
+        val candidateIds =
+            listOfNotNull(
+                payload.conversationId,
+                payload.channelId,
+                payload.threadId,
+                payload.taskConversationId,
+            ).toSet()
+        RaftPushDeliveryTrace.beginDeferredOpen(
             deliveryId = payload.deliveryId,
             serverId = payload.serverId,
             transport = payload.transport,
             appState = appState,
             openSurface = RaftPushDeliveryOpenSurface.SystemTray,
+            target =
+                RaftPushOpenLandingTarget(
+                    serverId = payload.serverId,
+                    conversationIds = candidateIds,
+                    parentMessageId = payload.parentMessageId,
+                    isActivityTarget = payload.isActivityTarget,
+                ),
+            pushOccurredAtMs = payload.pushOccurredAtMs,
+            groupKey = payload.groupKey,
+            seq = payload.seq,
             deviceContext = deviceContext(context),
         )
     }

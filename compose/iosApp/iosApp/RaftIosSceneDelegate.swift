@@ -99,7 +99,8 @@ final class RaftIosSceneDelegate: UIResponder, UIWindowSceneDelegate {
                 userInfo: content.userInfo,
                 categoryIdentifier: content.categoryIdentifier,
                 shellInstanceId: shellInstanceId(for: scene),
-                source: "scene_connect"
+                source: "scene_connect",
+                notificationDate: response.notification.date
             )
         }
         // Cold launch from a Universal Link (a Raft message link).

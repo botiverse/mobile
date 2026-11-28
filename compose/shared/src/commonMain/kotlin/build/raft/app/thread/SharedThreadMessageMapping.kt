@@ -309,9 +309,65 @@ internal fun ThreadSnapshot.toRaftThreadPayload(
         activityMuteSupported = conversation.activityMuteSupported,
         replySummariesAuthority = replySummariesAuthority,
         canonicalAccessKnown = conversation.membershipKnown,
+        landingUnreadWitness =
+            computePreReadLandingUnreadWitness(
+                messages = messages,
+                currentUserId = currentUserId,
+                serverMaxReadSeq = preReadMaxReadSeq.maxReadSeq,
+                canLoadMoreBefore = canLoadMoreBefore,
+                canLoadMoreAfter = canLoadMoreAfter,
+            ),
     )
         .withOriginReplyCountAtLeastLoadedReplies()
         .withReplySummaries(replySummaries, replySummariesAuthority)
+}
+
+/**
+ * #proj-mobile:#437: computes the pre-read-advance unread count for the destination conversation
+ * from its first canonical fetch (`GET /api/channels/:id` `maxReadSeq` + fetched message page),
+ * before `MarkVisibleRead` advances read state.
+ */
+internal fun computePreReadLandingUnreadWitness(
+    messages: List<Message>,
+    currentUserId: String?,
+    serverMaxReadSeq: Long?,
+    canLoadMoreBefore: Boolean,
+    canLoadMoreAfter: Boolean,
+): ThreadLandingUnreadWitness {
+    if (serverMaxReadSeq == null) {
+        return if (messages.isEmpty() && !canLoadMoreAfter) {
+            ThreadLandingUnreadWitness(unreadCount = 0, serverMaxReadSeq = null, truncatedWindow = false)
+        } else {
+            ThreadLandingUnreadWitness.None
+        }
+    }
+    val cleanUserId = currentUserId?.trim()?.takeIf { it.isNotEmpty() }
+    val pageUnread =
+        messages.count { message ->
+            val seq = message.seq ?: return@count false
+            if (seq <= serverMaxReadSeq) return@count false
+            if (message.deletedAt != null) return@count false
+            if (message.messageType == build.raft.app.model.MessageType.System) return@count false
+            val isOwnHumanMessage =
+                cleanUserId != null &&
+                    message.author.kind == build.raft.app.model.MemberKind.Human &&
+                    message.author.id.value == cleanUserId
+            !isOwnHumanMessage
+        }
+    val oldestSeq = messages.mapNotNull { it.seq }.minOrNull()
+    val truncatedBefore = canLoadMoreBefore && (oldestSeq == null || oldestSeq > serverMaxReadSeq)
+    val truncatedWindow = canLoadMoreAfter || truncatedBefore
+    val resolvedUnread =
+        when {
+            pageUnread > 0 -> pageUnread
+            !canLoadMoreAfter -> 0
+            else -> null
+        }
+    return ThreadLandingUnreadWitness(
+        unreadCount = resolvedUnread,
+        serverMaxReadSeq = serverMaxReadSeq,
+        truncatedWindow = truncatedWindow,
+    )
 }
 
 private fun Message.isSparseReplyOriginParentCandidate(): Boolean =

@@ -5279,6 +5279,19 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         if (!append && settle) {
             settleStaleRecovery(nextState, result)
             settleRealtimeCatchUpLocked(nextState, result)
+            // #proj-mobile:#437: settle any pending Activity-target deferred push open (reminders/notices/tests).
+            val landingOk = result is DataResult.Content || result is DataResult.Empty
+            val landingUnread =
+                when (result) {
+                    is DataResult.Empty -> 0
+                    is DataResult.Content -> nextState.totalUnreadCount.coerceAtLeast(0)
+                    else -> null
+                }
+            RaftPushDeliveryTrace.completeDeferredOpenForActivity(
+                serverId = server.id.value,
+                landingLoadOk = landingOk,
+                landingUnread = landingUnread,
+            )
         }
     }
 

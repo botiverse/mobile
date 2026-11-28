@@ -193,4 +193,97 @@ final class RaftIosNotificationRetractionTests: XCTestCase {
         XCTAssertEqual(missingAppId?["slockNotificationTarget"], "activity")
         XCTAssertEqual(missingAppId?["slockNotificationServerId"], "s2")
     }
+
+    // MARK: Badge accuracy telemetry helpers (#proj-mobile:#437)
+
+    func testApsBadgeAndSeqExtraction() {
+        XCTAssertEqual(RaftIosNotificationRetraction.apsBadge(["aps": ["badge": NSNumber(value: 5)]]), 5)
+        XCTAssertEqual(RaftIosNotificationRetraction.apsBadge(["aps": ["badge": -2]]), 0)
+        XCTAssertNil(RaftIosNotificationRetraction.apsBadge(["aps": ["badge": true]]))
+        XCTAssertNil(RaftIosNotificationRetraction.apsBadge([:]))
+        XCTAssertEqual(RaftIosNotificationRetraction.seq(["seq": "42"]), 42)
+        XCTAssertEqual(RaftIosNotificationRetraction.seq(["seq": NSNumber(value: 7)]), 7)
+        XCTAssertNil(RaftIosNotificationRetraction.seq(["seq": "not-a-number"]))
+    }
+
+    func testIsReadBeforeOpenCoversNumericWholeGroupAndColdLaunchWithoutPostedAt() {
+        let watermarks = marks([("s1:c1", 10), ("s1:reminder", nil)], at: t0)
+        let now = t0.addingTimeInterval(30)
+
+        // Numeric throughSeq matches seq <= 10 only.
+        XCTAssertTrue(
+            RaftIosRetractWatermarks.isReadBeforeOpen(
+                userInfo: ["groupKey": "s1:c1", "seq": 10],
+                postedAt: t0.addingTimeInterval(-10),
+                watermarks: watermarks,
+                now: now
+            )
+        )
+        XCTAssertFalse(
+            RaftIosRetractWatermarks.isReadBeforeOpen(
+                userInfo: ["groupKey": "s1:c1", "seq": 11],
+                postedAt: t0.addingTimeInterval(5),
+                watermarks: watermarks,
+                now: now
+            )
+        )
+        // Whole-group retract without postedAt (cold launch) still flags read_before_open = true.
+        XCTAssertTrue(
+            RaftIosRetractWatermarks.isReadBeforeOpen(
+                userInfo: ["groupKey": "s1:reminder"],
+                postedAt: nil,
+                watermarks: watermarks,
+                now: now
+            )
+        )
+        // Newer push posted past the 60s grace window is not flagged.
+        XCTAssertFalse(
+            RaftIosRetractWatermarks.isReadBeforeOpen(
+                userInfo: ["groupKey": "s1:reminder"],
+                postedAt: t0.addingTimeInterval(120),
+                watermarks: watermarks,
+                now: t0.addingTimeInterval(130)
+            )
+        )
+    }
+
+    func testLandingTargetCoversConversationThreadTaskAndActivity() {
+        let threadLanding = RaftIosNotificationOpen.landingTarget(userInfo: [
+            "serverId": "s1",
+            "conversationId": "th-stream-1",
+            "route": [
+                "type": "thread",
+                "serverId": "s1",
+                "parentChannelId": "ch-1",
+                "parentMessageId": "pm-1",
+                "messageId": "m-9",
+            ],
+        ])
+        XCTAssertEqual(threadLanding.conversationId, "th-stream-1")
+        XCTAssertEqual(threadLanding.parentMessageId, "pm-1")
+        XCTAssertFalse(threadLanding.isActivityTarget)
+
+        let taskLanding = RaftIosNotificationOpen.landingTarget(userInfo: [
+            "serverId": "s1",
+            "conversationId": "task-ch-7",
+            "route": [
+                "type": "task",
+                "serverId": "s1",
+                "parentChannelId": "ch-1",
+                "parentChannelType": "channel",
+                "taskId": "task-7",
+                "messageId": "m-3",
+            ],
+        ])
+        XCTAssertEqual(taskLanding.taskConversationChannelId, "task-ch-7")
+        XCTAssertFalse(taskLanding.isActivityTarget)
+
+        let reminderLanding = RaftIosNotificationOpen.landingTarget(userInfo: [
+            "type": "alert",
+            "serverId": "s1",
+            "raftCategory": "reminder",
+            "groupKey": "s1:reminder",
+        ])
+        XCTAssertTrue(reminderLanding.isActivityTarget)
+    }
 }

@@ -183,8 +183,41 @@ internal data class RaftForegroundMessageBanner(
     val titleFallback: StringDesc? = null,
     val bodyFallback: StringDesc? = null,
     /** #proj-mobile:#405: server-sampled opaque UUID carried from `notification:push` for `mobile.push.opened`. */
-    val deliveryId: String? = null
-)
+    val deliveryId: String? = null,
+    /** #proj-mobile:#437: retraction group key, seq, and receipt timestamp for deferred `mobile.push.opened`. */
+    val groupKey: String? = null,
+    val seq: Long? = null,
+    val receivedAtMs: Long? = null,
+) {
+    /** #proj-mobile:#437: begins deferred `mobile.push.opened` with tap-time badge/retract/age context. */
+    fun beginDeferredPushOpen() {
+        val cleanDeliveryId = deliveryId ?: return
+        val candidateIds =
+            listOfNotNull(
+                conversation.sourceThreadId,
+                conversation.streamChannelId,
+                openRequest.conversationIdentity.sourceThreadId,
+                openRequest.conversationIdentity.streamChannelId,
+            ).mapNotNull { it.trim().takeIf { id -> id.isNotEmpty() } }.toSet()
+        build.raft.app.data.RaftPushDeliveryTrace.beginDeferredOpen(
+            deliveryId = cleanDeliveryId,
+            serverId = serverId,
+            transport = build.raft.app.data.RaftPushDeliveryTransport.MobileSocket,
+            appState = build.raft.app.data.RaftPushDeliveryAppState.Foreground,
+            openSurface = build.raft.app.data.RaftPushDeliveryOpenSurface.InAppBanner,
+            target =
+                build.raft.app.data.RaftPushOpenLandingTarget(
+                    serverId = serverId,
+                    conversationIds = candidateIds,
+                    parentMessageId = conversation.parentMessageId ?: openRequest.conversationIdentity.parentMessageId,
+                    isActivityTarget = false,
+                ),
+            pushOccurredAtMs = receivedAtMs,
+            groupKey = groupKey,
+            seq = seq,
+        )
+    }
+}
 
 /** One banner model, route owner and expiry clock for one AppShell/window. */
 internal class SharedForegroundBannerStore(
@@ -1092,7 +1125,12 @@ internal fun raftNotificationPushBannerOrNull(
         crossServerSource = sourceIdentity.takeIf { otherServer },
         titleFallback = foregroundBannerTitle.catalogFallback(),
         bodyFallback = foregroundBannerBody.catalogFallback(),
-        deliveryId = normalizePushDeliveryId(event.deliveryId)
+        deliveryId = normalizePushDeliveryId(event.deliveryId),
+        groupKey =
+            event.groupKey?.trim()?.takeIf { it.isNotEmpty() }
+                ?: event.conversationId?.trim()?.takeIf { it.isNotEmpty() }?.let { "${event.serverId.value}:$it" },
+        seq = event.seq,
+        receivedAtMs = build.raft.app.data.ProcessRaftDatetimeFoundationOwner.nowEpochMillis(),
     )
 }
 

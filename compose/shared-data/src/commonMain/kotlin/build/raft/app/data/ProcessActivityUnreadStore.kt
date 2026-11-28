@@ -136,7 +136,9 @@ import kotlinx.coroutines.sync.withLock
      * while it is false (the socket keeps running for notifications, so events still arrive); the
      * return does one read, reason `app_foreground_return` (`visibility`).
      */
-    private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground
+    private val appForeground: StateFlow<Boolean> = RaftStaleReadRecoverySignals.foreground,
+    /** #proj-mobile:#437: notified after a summary load attempt finishes (outside internal lock). */
+    private val onLoadSettled: ((serverId: String, reason: String, syncOk: Boolean) -> Unit)? = null
 ) {
     private val mutex = Mutex()
     private val entries = linkedMapOf<ProcessActivityUnreadOwner, Entry>()
@@ -618,6 +620,7 @@ import kotlinx.coroutines.sync.withLock
                     )
                     DataResult.Error(ScreenError(code = "activity_unread_exception", retryable = true))
                 }
+            var settledOutcome: Pair<String, Boolean>? = null
             val continueLoop =
                 mutex.withLock {
                     val entry = entries[owner] ?: return
@@ -726,6 +729,10 @@ import kotlinx.coroutines.sync.withLock
                                 "generation=${attempt.generation} source=${attempt.reason}"
                         )
                     }
+                    val syncOk =
+                        (result is DataResult.Content && result.data.staleReason == null) ||
+                            result is DataResult.Empty
+                    settledOutcome = attempt.reason to syncOk
                     val shouldContinue = entry.pending || (factChanged && entry.canonicalDirty)
                     if (!shouldContinue) {
                         entry.active = false
@@ -744,6 +751,9 @@ import kotlinx.coroutines.sync.withLock
                     )
                     shouldContinue
                 }
+            settledOutcome?.let { (reason, syncOk) ->
+                runCatching { onLoadSettled?.invoke(owner.serverId, reason, syncOk) }
+            }
             if (!continueLoop) return
         }
     }

@@ -1612,6 +1612,13 @@ internal class RaftSharedStoreProvider private constructor(
                     }
                 } finally {
                     notifyFinished(succeeded, pullOutcome)
+                    if (trigger == "foreground" || trigger == "server_selected") {
+                        reportBadgeReconciledIfEligible(
+                            serverId = scope.serverId,
+                            syncOk = succeeded,
+                            fromSyncChanges = true,
+                        )
+                    }
                 }
             }
         synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
@@ -1631,6 +1638,85 @@ internal class RaftSharedStoreProvider private constructor(
         val outcome = kotlinx.coroutines.CompletableDeferred<Boolean>()
         launchSyncChangesPull(serverId, trigger = trigger, onFinished = { outcome.complete(it) }) ?: return false
         return outcome.await()
+    }
+
+    private fun submitActivitySummaryFact(fact: ActivityUnreadSummaryFact) {
+        activityUnreadSummaryStore.submitFact(fact)
+        if (fact.authoritative && fact.source.startsWith("activity_canonical:")) {
+            reportBadgeReconciledIfEligible(
+                serverId = fact.serverId,
+                syncOk = true,
+                fromSyncChanges = false,
+            )
+        }
+    }
+
+    /**
+     * #proj-mobile:#437: computes the current §1.4 cross-server app badge total (same formula as
+     * `AppShellNotificationBadgeEffects` via [raftAppBadgeAcrossServers]), or `null` when neither
+     * the Activity unread summary nor Home badge count has loaded yet.
+     */
+    internal fun computeCurrentAppBadgeActivityTotal(serverId: String): Int? {
+        val cleanServerId = serverId.trim().takeIf { it.isNotEmpty() } ?: return null
+        val summary = activityUnreadSummaryStore.currentProjection(ServerId(cleanServerId))
+        val homeScope = scopesForServer(cleanServerId).firstOrNull()
+        val homeState =
+            homeScope?.let { homeStores.get(it)?.state?.value }
+                ?: homeStores.entries().firstOrNull()?.second?.state?.value
+        val fallback = homeState?.appBadgeCount ?: AppBadgeCount.UNKNOWN
+        if (!summary.hasValue && fallback.source == AppBadgeSource.UNKNOWN) {
+            return null
+        }
+        val currentServerCount =
+            if (summary.hasValue) {
+                summary.totalUnreadCount
+            } else {
+                fallback.count
+            }
+        val accountId =
+            authStore.readCommittedSessionSnapshot()?.user?.id?.trim()?.takeIf { it.isNotEmpty() }
+        val expectedOwner = accountId?.let { readReceiptOwner(cleanServerId, it) }
+        val otherServerCounts = homeState?.serverActivityUnread?.countsForAccountOf(expectedOwner).orEmpty()
+        val serverPushMuted = homeState?.serverActivityUnread?.serverPushMutedForAccountOf(expectedOwner).orEmpty()
+        val levels =
+            RaftNotificationLevelStore.state.value
+                .filterValues { it.serverLevelKnown }
+                .mapValues { it.value.server }
+        return raftAppBadgeAcrossServers(
+            currentServerId = cleanServerId,
+            currentServerCount = currentServerCount,
+            otherServerCounts = otherServerCounts,
+            serverPushMuted = serverPushMuted,
+            levels = levels,
+        )
+    }
+
+    /**
+     * #proj-mobile:#437: emits `mobile.badge.reconciled` once per foreground once the first
+     * foreground sync settles. On warm foregrounds where incremental sync-changes is enabled,
+     * defers to the `foreground` sync-changes pull (`activity:foreground_sync`).
+     */
+    internal fun reportBadgeReconciledIfEligible(
+        serverId: String,
+        syncOk: Boolean,
+        fromSyncChanges: Boolean,
+    ) {
+        val cleanServerId = serverId.trim().takeIf { it.isNotEmpty() } ?: return
+        if (RaftBadgeTelemetry.isCurrentForegroundReconciled()) return
+        if (
+            !fromSyncChanges &&
+            RaftBadgeTelemetry.currentForegroundLaunchKind() == RaftBadgeLaunchKind.Warm &&
+            syncChangesPullAllowed(cleanServerId)
+        ) {
+            return
+        }
+        val total = computeCurrentAppBadgeActivityTotal(cleanServerId)
+        if (total == null && syncOk) return
+        RaftBadgeTelemetry.onForegroundSyncCompleted(
+            serverId = cleanServerId,
+            activityTotal = total ?: 0,
+            syncOk = syncOk,
+        )
     }
 
     private fun syncServerMembersStores(serverId: String): List<SharedServerMembersStore> {
@@ -4023,7 +4109,7 @@ internal class RaftSharedStoreProvider private constructor(
                     onUnreadCountsChanged = onUnreadCountsChanged,
                     onThreadUnfollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
                     onThreadFollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
-                    onSummaryFact = activityUnreadSummaryStore::submitFact,
+                    onSummaryFact = ::submitActivitySummaryFact,
                     onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                     diagnosticsLogger = diagnosticsLogger
                 )
@@ -4052,7 +4138,7 @@ internal class RaftSharedStoreProvider private constructor(
                 onUnreadCountsChanged = onUnreadCountsChanged ?: {},
                 onThreadUnfollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
                 onThreadFollowProjection = { intent -> homeStores.get(scope)?.dispatch(intent) },
-                onSummaryFact = activityUnreadSummaryStore::submitFact,
+                onSummaryFact = ::submitActivitySummaryFact,
                 onSummaryInvalidated = activityUnreadSummaryStore::submitInvalidation,
                 onBadgeReleased = { serverId ->
                     activityUnreadSummaryStore.refresh(ServerId(serverId), reason = ActivityBadgeReleasedSummaryReason)
@@ -4729,6 +4815,7 @@ internal class RaftSharedStoreProvider private constructor(
                         storageName = "Activity unread summary"
                     ).store
                 )
+            var onActivityUnreadSettled: ((serverId: String, reason: String, syncOk: Boolean) -> Unit)? = null
             val activityUnreadSummaryStore =
                 ProcessActivityUnreadStore(
                     fetchSummary = processActivityUnreadRepository::load,
@@ -4737,7 +4824,10 @@ internal class RaftSharedStoreProvider private constructor(
                     projectionCache = processActivityUnreadProjectionCache,
                     scope = CoroutineScope(SupervisorJob()),
                     realtimeMinIntervalMillis = ActivityUnreadRealtimeMinIntervalMillis,
-                    logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread")
+                    logger = sharedInfoLogger("SlockActivityUnread", "process_activity_unread"),
+                    onLoadSettled = { serverId, reason, syncOk ->
+                        onActivityUnreadSettled?.invoke(serverId, reason, syncOk)
+                    },
                 ).also { store -> store.followAppLifecycle() }
             // ONE sink instance shared by the legacy and every scoped realtime
             // owner — the single production presence write edge.
@@ -5359,6 +5449,15 @@ internal class RaftSharedStoreProvider private constructor(
                 threadSendScope = threadSendScope
             )
             return provider.also {
+                onActivityUnreadSettled = { serverId, reason, syncOk ->
+                    if (isForegroundOrInitialBadgeReconcileReason(reason)) {
+                        provider.reportBadgeReconciledIfEligible(
+                            serverId = serverId,
+                            syncOk = syncOk,
+                            fromSyncChanges = false,
+                        )
+                    }
+                }
                 provider.followProcessServerTheme()
                 provider.installServerNotificationPreferencesRealtimeRefresh()
                 val pushLifecycleScope = CoroutineScope(SupervisorJob())
@@ -5392,6 +5491,17 @@ internal class RaftSharedStoreProvider private constructor(
         }
     }
 }
+
+/**
+ * #proj-mobile:#437: summary load reasons that correspond to initial cold launch or foreground
+ * reconciliation when incremental sync-changes does not own the foreground trigger.
+ */
+private fun isForegroundOrInitialBadgeReconcileReason(reason: String): Boolean =
+    reason == "app_foreground_return" ||
+        reason == "app_shell_server_ready" ||
+        reason == "app_shell_server_ready:owner_ready" ||
+        reason.startsWith("app_shell_") ||
+        reason == ActivityBadgeReleasedSummaryReason
 
 /**
  * Converges the legitimate same-environment authority transition where durable principal B is
