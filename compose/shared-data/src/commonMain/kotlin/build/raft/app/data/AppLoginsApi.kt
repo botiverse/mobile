@@ -20,10 +20,28 @@ private val appLoginsJson = Json { ignoreUnknownKeys = true }
  * phase 3a; botiverse/slock staging 33f441958f82ce0178cc7f48232d41b20907e50c, server
  * `routes/me.ts`, web `features/settings/account/appLoginsApi.ts`):
  *
- *     GET    /api/me/app-logins           -> [{ id, clientId, name, logoUrl, scopes, grantedAt }] (newest first)
+ *     GET    /api/me/app-logins           -> [{ id, clientId, name, logoUrl, scopes, grantedAt, kind? }] (newest first)
  *     DELETE /api/me/app-logins/:clientId -> 204, known App or not (no step-up: it only removes access)
  */
 private const val APP_LOGINS_PATH = "me/app-logins"
+
+/**
+ * How the App knows the person (`GET /api/me/app-logins`, botiverse/slock#17336):
+ * [SignIn] for an account-mode Login with Raft (also the default when an older server omits
+ * `kind`), [Card] when pressing the App's card made the person known to it.
+ */
+enum class AppLoginKind(val wire: String) {
+    SignIn("sign_in"),
+    Card("card");
+
+    companion object {
+        fun fromWire(value: String?): AppLoginKind =
+            when (value?.trim()?.lowercase()) {
+                "card" -> Card
+                else -> SignIn
+            }
+    }
+}
 
 @Serializable
 @RaftCoreInternalApi data class AppLoginDto(
@@ -33,9 +51,10 @@ private const val APP_LOGINS_PATH = "me/app-logins"
     val logoUrl: String? = null,
     val scopes: List<String> = emptyList(),
     val grantedAt: String,
+    val kind: String? = null,
 )
 
-/** One App the person signed in to with their Raft account. */
+/** One App the person signed in to with their Raft account (or that knows them through its card). */
 data class AppLogin(
     val id: String,
     /** The App's public client key: what DELETE takes. */
@@ -43,6 +62,7 @@ data class AppLogin(
     val name: String,
     val logoUrl: String?,
     val grantedAt: String,
+    val kind: AppLoginKind = AppLoginKind.SignIn,
 )
 
 /** GET /me/app-logins's array; null when the body is not that shape. */
@@ -50,7 +70,16 @@ fun parseSharedAppLogins(bodyText: String?): List<AppLogin>? {
     val body = bodyText?.takeIf { it.isNotBlank() } ?: return null
     return runCatching { appLoginsJson.decodeFromString(ListSerializer(AppLoginDto.serializer()), body) }
         .getOrNull()
-        ?.map { AppLogin(id = it.id, clientId = it.clientId, name = it.name, logoUrl = it.logoUrl?.takeIf(String::isNotBlank), grantedAt = it.grantedAt) }
+        ?.map {
+            AppLogin(
+                id = it.id,
+                clientId = it.clientId,
+                name = it.name,
+                logoUrl = it.logoUrl?.takeIf(String::isNotBlank),
+                grantedAt = it.grantedAt,
+                kind = AppLoginKind.fromWire(it.kind),
+            )
+        }
 }
 
 @RaftCoreInternalApi interface AppLoginsDataSource {

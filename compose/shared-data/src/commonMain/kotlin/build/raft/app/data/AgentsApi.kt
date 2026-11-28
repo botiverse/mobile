@@ -1511,7 +1511,7 @@ private data class AgentRuntimeProviderWireDto(
                 )
             }
             "pi-builtin" -> {
-                if (runtime != "pi") return null
+                if (runtime != "pi" && runtime != "pi-sdk") return null
                 val cleanProviderId = providerId?.trim()?.takeIf { it.isNotBlank() } ?: return null
                 RuntimeProviderConfig.PiBuiltin(cleanProviderId, apiKey.orEmpty())
             }

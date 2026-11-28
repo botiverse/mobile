@@ -26,8 +26,25 @@ class AppLoginsTest {
         assertEquals(listOf("rft_app_b", "rft_app_a"), logins.map { it.clientId })
         assertNull(logins[0].logoUrl)
         assertEquals("https://cdn.example/a.png", logins[1].logoUrl)
+        assertEquals(listOf(AppLoginKind.SignIn, AppLoginKind.SignIn), logins.map { it.kind })
         assertEquals(emptyList(), parseSharedAppLogins("[]"))
         assertNull(parseSharedAppLogins("""{"logins":[]}"""), "a wrapped body is not the list")
+    }
+
+    @Test
+    fun parsesCardKindAndDefaultsMissingOrUnknownKindToSignIn() {
+        val mixed =
+            """[
+                {"id":"card-1","clientId":"rft_app_card","name":"Approvals","logoUrl":null,"scopes":[],"grantedAt":"2026-11-20T08:00:00.000Z","kind":"card"},
+                {"id":"signin-1","clientId":"rft_app_signin","name":"Notes","logoUrl":null,"scopes":["profile"],"grantedAt":"2026-11-10T08:00:00.000Z","kind":"sign_in"},
+                {"id":"legacy-1","clientId":"rft_app_legacy","name":"Calendar","logoUrl":null,"scopes":["profile"],"grantedAt":"2026-09-01T08:00:00.000Z"},
+                {"id":"future-1","clientId":"rft_app_future","name":"Future","logoUrl":null,"scopes":[],"grantedAt":"2026-08-01T08:00:00.000Z","kind":"future_kind"}
+            ]"""
+        val logins = parseSharedAppLogins(mixed)!!
+        assertEquals(
+            listOf(AppLoginKind.Card, AppLoginKind.SignIn, AppLoginKind.SignIn, AppLoginKind.SignIn),
+            logins.map { it.kind },
+        )
     }
 
     @Test

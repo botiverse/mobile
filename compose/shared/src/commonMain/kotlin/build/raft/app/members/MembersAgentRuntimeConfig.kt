@@ -788,7 +788,7 @@ internal fun MembersAgentRuntimeConfigRows(
                 )
             }
         }
-        if (runtimeId == "pi") {
+        if (runtimeId == "pi" || runtimeId == "pi-sdk") {
             val providerId =
                 (runtimeConfig.provider as? RuntimeProviderConfig.PiBuiltin)?.providerId
             MembersAgentInfoField(stringResource(Res.string.member_label_provider), copyText = providerId) {

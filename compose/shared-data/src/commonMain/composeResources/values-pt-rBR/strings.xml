@@ -314,9 +314,11 @@
     <string name="settings_app_logins_title">Apps em que você entrou com o Raft</string>
     <string name="settings_app_logins_description">Estes apps sabem quem você é. Ao revogar, você sai do app imediatamente.</string>
     <string name="settings_app_logins_signed_in">Login em %1$s</string>
+    <string name="settings_app_logins_used_card">Usou o cartão em %1$s</string>
     <string name="settings_app_logins_revoke">Revogar</string>
     <string name="settings_app_logins_confirm_title">Revogar %1$s?</string>
     <string name="settings_app_logins_confirm_body">%1$s perde o acesso imediatamente. Para usá-lo de novo, entre novamente com o Raft.</string>
+    <string name="settings_app_logins_confirm_body_card">%1$s deixa de receber suas mudanças de função e de participação imediatamente. Usar o cartão de novo retoma isso.</string>
     <string name="settings_app_logins_revoked">Acesso de %1$s revogado</string>
     <string name="settings_app_logins_revoke_failed">Não foi possível revogar %1$s. Tente novamente.</string>
     <string name="settings_compact_month_day">%2$d de %1$s</string>
@@ -3446,6 +3448,7 @@
     <string name="settings_computers_runtime_usage_reading">Lendo o uso…</string>
     <string name="settings_computers_runtime_usage_read_failed">Não foi possível ler o uso.</string>
     <string name="settings_computers_runtime_usage_no_snapshot">Ainda sem uso</string>
+    <string name="settings_computers_runtime_usage_antigravity_unavailable_by_terms">A consulta de uso não está disponível no momento segundo os termos do Antigravity.</string>
     <string name="settings_computers_runtime_usage_stale">Desatualizado</string>
     <string name="settings_computers_runtime_usage_account_fallback">Conta do runtime</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">Uso indisponível</string>

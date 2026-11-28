@@ -314,9 +314,11 @@
     <string name="settings_app_logins_title">Raft でログインしたアプリ</string>
     <string name="settings_app_logins_description">これらのアプリには本人の識別情報が共有されています。取り消すと、すぐにそのアプリからログアウトされます。</string>
     <string name="settings_app_logins_signed_in">%1$sにログイン</string>
+    <string name="settings_app_logins_used_card">%1$sにカードを使用</string>
     <string name="settings_app_logins_revoke">取り消す</string>
     <string name="settings_app_logins_confirm_title">%1$s のアクセスを取り消しますか？</string>
     <string name="settings_app_logins_confirm_body">%1$s はすぐにアクセスできなくなります。再び使うには、もう一度 Raft でログインしてください。</string>
+    <string name="settings_app_logins_confirm_body_card">%1$sは、あなたのロールとメンバーシップの変更をすぐに受け取らなくなります。カードをもう一度使うと再開されます。</string>
     <string name="settings_app_logins_revoked">%1$s のアクセスを取り消しました</string>
     <string name="settings_app_logins_revoke_failed">%1$s のアクセスを取り消せませんでした。もう一度お試しください。</string>
     <string name="settings_compact_month_day">%1$s月%2$d日</string>
@@ -3449,6 +3451,7 @@
     <string name="settings_computers_runtime_usage_reading">使用量を読み込み中…</string>
     <string name="settings_computers_runtime_usage_read_failed">使用量を読み込めませんでした。</string>
     <string name="settings_computers_runtime_usage_no_snapshot">まだ使用量はありません</string>
+    <string name="settings_computers_runtime_usage_antigravity_unavailable_by_terms">利用規約により、現在使用量の照会はサポートされていません。</string>
     <string name="settings_computers_runtime_usage_stale">最新ではありません</string>
     <string name="settings_computers_runtime_usage_account_fallback">ランタイムアカウント</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">使用量を表示できません</string>
