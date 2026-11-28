@@ -26,6 +26,9 @@ class RaftProductEntryEventContractTest {
         /** botiverse/slock #16252 on staging: `MESSAGE_ACTIONS` gained `quote` after `convert_to_task`. */
         const val PinnedQuoteSlockSha = "35efb3b86baa4400d58cbab4444b76149bcf80e4"
 
+        /** botiverse/slock staging: `activity_item_open.item_kind` gained `artifact`. */
+        const val PinnedArtifactItemKindSlockSha = "f398772e5493e92e2aefb7890519ed3e46c47925"
+
         /** `APP_CLIENTS` = web + desktop + the native clients. */
         val AppClients = setOf("web", "desktop", "android", "ios", "harmonyos")
 
@@ -67,7 +70,7 @@ class RaftProductEntryEventContractTest {
                 "activity_item_open" to
                     EventSpec(
                         AppClients,
-                        mapOf("item_kind" to Prop(setOf("channel", "dm", "thread", "mention_action"), required = false)),
+                        mapOf("item_kind" to Prop(setOf("channel", "dm", "thread", "mention_action", "artifact"), required = false)),
                     ),
                 "activity_mark" to
                     EventSpec(

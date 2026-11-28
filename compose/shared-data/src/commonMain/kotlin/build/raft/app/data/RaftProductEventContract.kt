@@ -145,10 +145,10 @@ enum class RaftNavDestination(val wire: String) {
     /** The personal assistant (the phone Home's Assistant row, slock #14598). */
     @SerialName("assistant") Assistant("assistant"),
 
-    /** The Apps page; the app sends none yet. */
+    /** The Apps page. */
     @SerialName("apps") Apps("apps"),
 
-    /** The Artifacts page; the app sends none yet. */
+    /** The Artifacts page. */
     @SerialName("artifacts") Artifacts("artifacts"),
 }
 
@@ -193,10 +193,10 @@ enum class RaftPageRoute(val wire: String) {
     /** The personal assistant's page (web `/assistant`, registry 2026-10-23). */
     @SerialName("assistant") Assistant("assistant"),
 
-    /** The Apps page (web `/apps`); the app sends none yet. */
+    /** The Apps page (web `/apps`). */
     @SerialName("apps") Apps("apps"),
 
-    /** The Artifacts page (web `/artifacts`); the app sends none yet. */
+    /** The Artifacts page (web `/artifacts`). */
     @SerialName("artifacts") Artifacts("artifacts"),
 }
 
@@ -206,12 +206,15 @@ enum class RaftSettingsTab(val wire: String) {
     @SerialName("account") Account("account"),
     @SerialName("language-region") LanguageRegion("language-region"),
     @SerialName("appearance") Appearance("appearance"),
+    @SerialName("theme") Theme("theme"),
     @SerialName("notifications") Notifications("notifications"),
     @SerialName("server") Server("server"),
+    @SerialName("server-notifications") ServerNotifications("server-notifications"),
     @SerialName("billing") Billing("billing"),
     @SerialName("administration") Administration("administration"),
     @SerialName("im-bridges") ImBridges("im-bridges"),
     @SerialName("integrations") Integrations("integrations"),
+    @SerialName("authorized-accounts") AuthorizedAccounts("authorized-accounts"),
     @SerialName("labs") Labs("labs"),
     @SerialName("mcp") Mcp("mcp"),
     @SerialName("providers") Providers("providers"),
@@ -428,6 +431,7 @@ enum class RaftActivityItemKind(val wire: String) {
     @SerialName("dm") Dm("dm"),
     @SerialName("thread") Thread("thread"),
     @SerialName("mention_action") MentionAction("mention_action"),
+    @SerialName("artifact") Artifact("artifact"),
 }
 
 /** `activity_mark.action`. */

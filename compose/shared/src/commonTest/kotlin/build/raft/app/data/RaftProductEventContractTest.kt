@@ -40,11 +40,15 @@ class RaftProductEventContractTest {
                 "home", "more", "thread", "task", "conversation_search",
                 "assistant", "apps", "artifacts",
             )
+        /** `SETTINGS_PAGE_TABS` & `activity_item_open.item_kind` @ [PinnedSettingsAndActivitySlockSha]. */
+        const val PinnedSettingsAndActivitySlockSha = "f398772e5493e92e2aefb7890519ed3e46c47925"
         val SettingsPageTabs =
             listOf(
-                "account", "language-region", "appearance", "notifications", "server", "billing", "administration",
-                "im-bridges", "integrations", "labs", "mcp", "providers", "about", "feedback",
+                "account", "language-region", "appearance", "theme", "notifications", "server", "server-notifications",
+                "billing", "administration", "im-bridges", "integrations", "authorized-accounts", "labs", "mcp",
+                "providers", "about", "feedback",
             ) + listOf("mobile", "storage")
+        val ActivityItemKinds = listOf("channel", "dm", "thread", "mention_action", "artifact")
         val AppOpenedStart = listOf("cold", "foreground")
         val AppOpenedVia = listOf("launcher", "notification", "link", "other")
 
@@ -89,7 +93,7 @@ class RaftProductEventContractTest {
                 "NAV_DESTINATIONS@$PinnedNavDestinationsSlockSha" to (NavDestinations to RaftNavDestination.entries.map { it.wire }),
                 "NAV_SURFACES" to (NavSurfaces to RaftNavSurface.entries.map { it.wire }),
                 "PAGE_VIEW_ROUTES@$PinnedPageViewRoutesSlockSha" to (PageViewRoutes to RaftPageRoute.entries.map { it.wire }),
-                "settings_tab" to (SettingsPageTabs to RaftSettingsTab.entries.map { it.wire }),
+                "settings_tab@$PinnedSettingsAndActivitySlockSha" to (SettingsPageTabs to RaftSettingsTab.entries.map { it.wire }),
                 "app_opened.start" to (AppOpenedStart to RaftAppOpenStart.entries.map { it.wire }),
                 "app_opened.via" to (AppOpenedVia to RaftAppOpenVia.entries.map { it.wire }),
                 "native sources" to (NativeSources to RaftProductEventSource.entries.map { it.wire }),
@@ -110,6 +114,8 @@ class RaftProductEventContractTest {
                     (ActivityActions to RaftActivityAction.entries.map { it.wire }),
                 "ACTIVITY_ACTION_SURFACES@$PinnedHeadSidebarActivitySlockSha" to
                     (ActivityActionSurfaces to RaftActivityActionSurface.entries.map { it.wire }),
+                "activity_item_open.item_kind@$PinnedSettingsAndActivitySlockSha" to
+                    (ActivityItemKinds to RaftActivityItemKind.entries.map { it.wire }),
             )
         cases.forEach { (name, lists) ->
             assertEquals(lists.first.toSet(), lists.second.toSet(), "$name drifted from slock@$PinnedSlockSha")

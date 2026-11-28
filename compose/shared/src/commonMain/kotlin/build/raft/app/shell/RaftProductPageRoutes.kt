@@ -29,7 +29,11 @@ import kotlinx.serialization.json.jsonObject
  * ids or content leave this file.
  */
 
-/** A shell tab (phone bar, wide rail, child tab pages). DMs has no route of its own. */
+/**
+ * A shell tab (phone bar, wide rail, child tab pages). DMs has no route of its own; promoted
+ * phone tabs (`computers`, `apps`, `artifacts`) mount an inner `AuthenticatedProductPager` via
+ * `AppShellPromotedPhoneTabHost`, which owns `page_viewed` (matching `appShellRailInlineProductPageView`).
+ */
 internal fun appShellTabProductPageView(tab: String): RaftProductPageView? =
     when (tab.trim()) {
         "home" -> RaftProductPageView(RaftPageRoute.Home)
@@ -39,8 +43,6 @@ internal fun appShellTabProductPageView(tab: String): RaftProductPageView? =
         "more" -> RaftProductPageView(RaftPageRoute.More)
         "members" -> RaftProductPageView(RaftPageRoute.Members)
         "settings" -> RaftProductPageView(RaftPageRoute.Settings)
-        RaftAppDestination.Computers.id -> RaftProductPageView(RaftPageRoute.Computers)
-        RaftAppDestination.Apps.id -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Integrations)
         else -> null
     }
 
@@ -68,13 +70,11 @@ internal fun SettingsNativeDetailPage.productSettingsTab(): RaftSettingsTab? =
     when (this) {
         SettingsNativeDetailPage.LanguageRegion -> RaftSettingsTab.LanguageRegion
         SettingsNativeDetailPage.Appearance -> RaftSettingsTab.Appearance
+        SettingsNativeDetailPage.Theme -> RaftSettingsTab.Theme
         SettingsNativeDetailPage.Notifications -> RaftSettingsTab.Notifications
         SettingsNativeDetailPage.Server -> RaftSettingsTab.Server
+        SettingsNativeDetailPage.ServerNotifications -> RaftSettingsTab.ServerNotifications
         SettingsNativeDetailPage.About -> RaftSettingsTab.About
-        // The shared contract has `theme` (SETTINGS_PAGE_TABS); RaftSettingsTab does not mirror it yet,
-        // so no page_viewed rather than a wrong tab.
-        SettingsNativeDetailPage.Theme,
-        SettingsNativeDetailPage.ServerNotifications,
         SettingsNativeDetailPage.Developer,
         SettingsNativeDetailPage.OpenSourceLicenses,
         SettingsNativeDetailPage.ApiEnvironment,
@@ -88,10 +88,9 @@ internal fun SettingsWebViewSurface.productPageView(): RaftProductPageView? =
         SettingsWebViewSurface.Billing -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Billing)
         SettingsWebViewSurface.Administration -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Administration)
         SettingsWebViewSurface.ImBridges -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.ImBridges)
-        // The shared contract keeps `authorized-accounts` for App authorizations; RaftSettingsTab does not mirror it yet.
-        SettingsWebViewSurface.AppAuthorizations -> null
-        // Settings > Connected apps: the web's Integrations section.
-        SettingsWebViewSurface.Marketplace -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Integrations)
+        SettingsWebViewSurface.AppAuthorizations -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.AuthorizedAccounts)
+        // Apps page (`/s/<slug>/apps`, slock #17260); web suppresses `settings/integrations` in favor of `apps`.
+        SettingsWebViewSurface.Marketplace -> RaftProductPageView(RaftPageRoute.Apps)
         // The web's Account > Delete Account page.
         SettingsWebViewSurface.AccountDeletion -> RaftProductPageView(RaftPageRoute.Settings, RaftSettingsTab.Account)
         // The web's Account > Data & privacy page.
@@ -149,6 +148,7 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.ReleaseNotes -> RaftProductPageView(RaftPageRoute.ReleaseNotes)
         // Web `/s/:slug/assistant`: the pushed page on a phone, the rail's inline page on the wide layout.
         AuthenticatedProductRoute.Assistant -> RaftProductPageView(RaftPageRoute.Assistant)
+        AuthenticatedProductRoute.ArtifactsHome -> RaftProductPageView(RaftPageRoute.Artifacts)
         AuthenticatedProductRoute.ThreadMembers,
         AuthenticatedProductRoute.ChannelSettings,
         AuthenticatedProductRoute.ThreadSettings,
@@ -157,8 +157,6 @@ internal fun authenticatedProductPageView(
         AuthenticatedProductRoute.HomeDrafts,
         AuthenticatedProductRoute.FilePreview,
         AuthenticatedProductRoute.ArtifactViewer,
-        // `artifacts` is in the registry (RaftPageRoute.Artifacts); the Artifacts home's view is not wired yet.
-        AuthenticatedProductRoute.ArtifactsHome,
         // No migration log route in the shared page_viewed registry.
         AuthenticatedProductRoute.AgentMigrationLog,
         // No `external_invite` route in the shared page_viewed registry (the server records its own view).

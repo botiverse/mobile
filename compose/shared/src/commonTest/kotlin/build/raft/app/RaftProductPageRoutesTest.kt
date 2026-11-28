@@ -1,15 +1,21 @@
 package build.raft.app
 
 import build.raft.app.compat.json.JSONObject
+import build.raft.app.data.RaftNavDestination
 import build.raft.app.data.RaftPageRoute
 import build.raft.app.data.RaftProductPageView
 import build.raft.app.data.RaftSettingsTab
 import build.raft.app.settings.AppShellRailSavedKey
 import build.raft.app.settings.AppShellRailSearchKey
+import build.raft.app.settings.SettingsNativeDetailPage
+import build.raft.app.settings.SettingsWebViewSurface
 import build.raft.app.shell.AppShellSearchTabKey
+import build.raft.app.shell.appShellNavDestination
 import build.raft.app.shell.appShellRailInlineProductPageView
 import build.raft.app.shell.appShellTabProductPageView
 import build.raft.app.shell.authenticatedProductPageView
+import build.raft.app.shell.productPageView
+import build.raft.app.shell.productSettingsTab
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -42,10 +48,28 @@ class RaftProductPageRoutesTest {
                 "settings" to RaftPageRoute.Settings,
             )
         tabs.forEach { (tab, route) -> assertEquals(view(route), appShellTabProductPageView(tab), tab) }
-        assertNull(appShellTabProductPageView("dms"))
+        listOf("dms", "computers", "apps", "artifacts").forEach { tab ->
+            assertNull(appShellTabProductPageView(tab), tab)
+        }
+        assertEquals(RaftNavDestination.Artifacts, appShellNavDestination("artifacts"))
+        assertEquals(RaftNavDestination.Apps, appShellNavDestination("apps"))
         assertEquals(view(RaftPageRoute.Search), appShellRailInlineProductPageView(AppShellRailSearchKey))
         assertEquals(view(RaftPageRoute.Saved), appShellRailInlineProductPageView(AppShellRailSavedKey))
         assertNull(appShellRailInlineProductPageView(null))
+        assertEquals(RaftSettingsTab.Theme, SettingsNativeDetailPage.Theme.productSettingsTab())
+        assertEquals(RaftSettingsTab.ServerNotifications, SettingsNativeDetailPage.ServerNotifications.productSettingsTab())
+        assertEquals(
+            view(RaftPageRoute.Settings, RaftSettingsTab.AuthorizedAccounts),
+            SettingsWebViewSurface.AppAuthorizations.productPageView(),
+        )
+        assertEquals(
+            view(RaftPageRoute.Apps),
+            SettingsWebViewSurface.Marketplace.productPageView(),
+        )
+        assertEquals(
+            view(RaftPageRoute.Artifacts),
+            authenticatedProductPageView(AuthenticatedProductRoute.ArtifactsHome, JSONObject()) { false },
+        )
     }
 
     @Test

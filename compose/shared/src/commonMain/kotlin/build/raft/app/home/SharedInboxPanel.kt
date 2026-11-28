@@ -2400,6 +2400,7 @@ internal fun SharedActivityList(
         // and reading it is the row's Read, as opening it in Raft would be.
         val objectRow = currentItem.activityObject
         if (currentItem.kind == InboxItemKind.Object && objectRow != null) {
+            RaftProductEvents.activityItemOpen(currentItem.kind.productActivityItemKind())
             selectedItemKey = currentItem.key
             currentItem.activityOpenReadIntent()?.let(onIntent)
             // An Activity row always opens the latest version (web #15600, `artifactActivityTarget`):
