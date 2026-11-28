@@ -22,14 +22,18 @@ class DiagnosticsSanitizerTest {
     fun redactsVoiceDictationCallerContextFields() {
         val sanitized =
             DiagnosticsSanitizer.sanitize(
-                """{"draftBefore":"SECRET_ANDROID_DRAFT","contactHints":["SECRET_HINT"]} draft_before=SECRET2 contact_hints=[A,B]"""
+                """{"draftBefore":"SECRET_ANDROID_DRAFT","draftAfter":"\nSECRET_ANDROID_AFTER","contactHints":["SECRET_HINT"]} draft_before=SECRET2 draft_after=SECRET3 contact_hints=[A,B]"""
             )
 
         assertFalse(sanitized.contains("SECRET_ANDROID_DRAFT"))
+        assertFalse(sanitized.contains("SECRET_ANDROID_AFTER"))
         assertFalse(sanitized.contains("SECRET_HINT"))
         assertFalse(sanitized.contains("SECRET2"))
+        assertFalse(sanitized.contains("SECRET3"))
         assertFalse(sanitized.contains("draftBefore", ignoreCase = true))
         assertFalse(sanitized.contains("draft_before", ignoreCase = true))
+        assertFalse(sanitized.contains("draftAfter", ignoreCase = true))
+        assertFalse(sanitized.contains("draft_after", ignoreCase = true))
         assertFalse(sanitized.contains("contactHints", ignoreCase = true))
         assertFalse(sanitized.contains("contact_hints", ignoreCase = true))
         assertTrue(sanitized.contains("[redacted]"))

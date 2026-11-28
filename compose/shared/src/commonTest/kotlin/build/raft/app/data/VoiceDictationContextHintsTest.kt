@@ -120,6 +120,72 @@ class VoiceDictationContextHintsTest {
     }
 
     // -------------------------------------------------------------------------
+    // 1b. draftAfter normalization & selectionEnd extraction
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun normalizeDraftAfterPreservesLeadingWhitespaceNormalizesCrStripsCcCfKeepingNewlineTabAndKeepsHead200CodePointsIntact() {
+        assertNull(normalizeVoiceDictationDraftAfter(null))
+        assertNull(normalizeVoiceDictationDraftAfter(""))
+        assertNull(normalizeVoiceDictationDraftAfter("   \u0000\u200B\r\n\t  "))
+        assertNull(normalizeVoiceDictationDraftAfter(" ".repeat(250) + "far away"))
+
+        // Normalizes CRLF/CR to \n, strips Cc/Cf (including astral Cf U+E0020) EXCEPT \n and \t,
+        // preserves leading newlines/horizontal whitespace, and trims trailing whitespace only.
+        val astralTag = "\uDB40\uDC20" // U+E0020 (Cf)
+        assertEquals(
+            "\n下一段\t内容",
+            normalizeVoiceDictationDraftAfter("\r\n下一段\u0000\u200B\u202E${astralTag}\t内容  "),
+        )
+        assertEquals(" 方案有没有问题", normalizeVoiceDictationDraftAfter(" 方案有没有问题  "))
+        assertEquals("\tindented\nnext", normalizeVoiceDictationDraftAfter("\tindented\rnext"))
+        assertEquals("\n\npara", normalizeVoiceDictationDraftAfter("\r\r\npara  "))
+
+        // Idempotent under repeated normalization (including leading newline/spaces).
+        val preserved = assertNotNull(normalizeVoiceDictationDraftAfter("\n  keep leading ws  "))
+        assertEquals("\n  keep leading ws", preserved)
+        assertEquals(preserved, normalizeVoiceDictationDraftAfter(preserved))
+
+        // Keeps the HEAD immediately after the cursor (<= 200 Unicode code points) without splitting surrogate pairs.
+        val astral = "😀".repeat(250)
+        val normalizedAstral = assertNotNull(normalizeVoiceDictationDraftAfter("\n${astral}TRAILING_IGNORED"))
+        assertEquals("\n" + "😀".repeat(VOICE_DICTATION_MAX_DRAFT_AFTER_CODE_POINTS - 1), normalizedAstral)
+        assertEquals(1 + 199 * 2, normalizedAstral.length, "leading newline + 199 intact astral emoji")
+
+        // Mixed CJK + astral at exact 200 code-point head boundary.
+        val head = "方案有没有问题\uD842\uDFB7" + "b".repeat(192) // 7 CJK + 1 astral (U+20BB7) + 192 ASCII = 200 code points
+        assertEquals(head, normalizeVoiceDictationDraftAfter(head + "旧后缀".repeat(100)))
+
+        // Trailing whitespace exposed after head 200 code-point slice is trimmed cleanly.
+        val spacedHead = "a".repeat(198) + "   " + "b".repeat(50)
+        assertEquals("a".repeat(198), normalizeVoiceDictationDraftAfter(spacedHead))
+    }
+
+    @Test
+    fun extractDraftAfterCaretSlicesAfterSelectionEndOmitsEndOrWhitespaceAndProtectsSurrogatePairs() {
+        assertNull(extractVoiceDictationDraftAfterCaret("", 0))
+        assertEquals(" after", extractVoiceDictationDraftAfterCaret("Before after", 6))
+        assertEquals("Before after", extractVoiceDictationDraftAfterCaret("Before after", 0))
+        assertEquals("Before after", extractVoiceDictationDraftAfterCaret("Before after", -10))
+        assertNull(extractVoiceDictationDraftAfterCaret("Before after", 12))
+        assertNull(extractVoiceDictationDraftAfterCaret("Before after", 999))
+        assertEquals("\nNext", extractVoiceDictationDraftAfterCaret("Before\nNext", 6))
+        assertNull(extractVoiceDictationDraftAfterCaret("Before   \n  \t", 6))
+
+        // Active selection range excludes selected text from both draftBefore and draftAfter.
+        val withSelection = "Before SELECTED after"
+        assertEquals("Before", extractVoiceDictationDraftBeforeCaret(withSelection, 6))
+        assertEquals(" after", extractVoiceDictationDraftAfterCaret(withSelection, 15))
+
+        // Selection end landing mid-surrogate pair inside "A😀B" (index 2 splits 😀 at UTF-16 [1, 2]).
+        val text = "A😀B"
+        assertEquals("😀B", extractVoiceDictationDraftAfterCaret(text, 1))
+        assertEquals("B", extractVoiceDictationDraftAfterCaret(text, 2))
+        assertEquals("B", extractVoiceDictationDraftAfterCaret(text, 3))
+        assertNull(extractVoiceDictationDraftAfterCaret("A😀", 2))
+    }
+
+    // -------------------------------------------------------------------------
     // 2. contactHints normalization
     // -------------------------------------------------------------------------
 
@@ -568,15 +634,19 @@ class VoiceDictationContextHintsTest {
     @Test
     fun permitRequestsSuccessFallbackAndFailureNeverLeakDraftOrContactHintsIntoLogsOrTraces() = runBlocking {
         val secretDraft = "SECRET_MOBILE_DRAFT_SENTINEL_9f3a"
+        val secretDraftAfter = "SECRET_MOBILE_AFTER_SENTINEL_5e1f"
         val secretHintA = "SECRET_MOBILE_CONTACT_ALPHA_7b2c"
         val secretHintB = "SECRET_MOBILE_CHANNEL_BETA_4d8e"
         val forbiddenTokens =
             listOf(
                 secretDraft,
+                secretDraftAfter,
                 secretHintA,
                 secretHintB,
                 "draftBefore",
                 "draft_before",
+                "draftAfter",
+                "draft_after",
                 "contactHints",
                 "contact_hints",
             )
@@ -615,7 +685,7 @@ class VoiceDictationContextHintsTest {
                         "fallback_400_then_201" ->
                             if (attempt == 1) {
                                 respond(
-                                    """{"code":"invalid_request","error":"Unrecognized keys: 'draftBefore', 'contactHints' ($secretDraft)"}""",
+                                    """{"code":"invalid_request","error":"Unrecognized keys: 'draftBefore', 'draftAfter', 'contactHints' ($secretDraft / $secretDraftAfter)"}""",
                                     HttpStatusCode.BadRequest,
                                     headersOf("Content-Type" to listOf("application/json")),
                                 )
@@ -628,7 +698,7 @@ class VoiceDictationContextHintsTest {
                             }
                         else ->
                             respond(
-                                """{"code":"voice_dictation_unavailable","error":"Service temporarily unavailable for draftBefore=$secretDraft contactHints=[$secretHintA]"}""",
+                                """{"code":"voice_dictation_unavailable","error":"Service temporarily unavailable for draftBefore=$secretDraft draftAfter=$secretDraftAfter contactHints=[$secretHintA]"}""",
                                 HttpStatusCode.ServiceUnavailable,
                                 headersOf("Content-Type" to listOf("application/json")),
                             )
@@ -676,10 +746,12 @@ class VoiceDictationContextHintsTest {
                 language = "en-US",
                 channelId = null,
                 draftBefore = secretDraft,
+                draftAfter = "\n$secretDraftAfter",
                 contactHints = listOf(secretHintA, secretHintB),
             )
         assertIs<VoiceDictationV2PermitOutcome.Issued>(ok)
         assertTrue(sentBodies.last().contains(secretDraft), "wire payload must include draftBefore")
+        assertTrue(sentBodies.last().contains(secretDraftAfter), "wire payload must include draftAfter")
         assertTrue(sentBodies.last().contains(secretHintA), "wire payload must include contactHints")
 
         // (b) 400 invalid_request rollback fallback -> retries once stripped -> 201 success
@@ -691,12 +763,14 @@ class VoiceDictationContextHintsTest {
                 language = "en-US",
                 channelId = null,
                 draftBefore = secretDraft,
+                draftAfter = "\n$secretDraftAfter",
                 contactHints = listOf(secretHintA, secretHintB),
             )
         assertIs<VoiceDictationV2PermitOutcome.Issued>(recovered)
         assertEquals(2, attempt)
         val retryObj = Json.parseToJsonElement(sentBodies.last()).jsonObject
         assertFalse("draftBefore" in retryObj)
+        assertFalse("draftAfter" in retryObj)
         assertFalse("contactHints" in retryObj)
 
         // (c) 503 failure (does not retry)
@@ -708,6 +782,7 @@ class VoiceDictationContextHintsTest {
                 language = "en-US",
                 channelId = null,
                 draftBefore = secretDraft,
+                draftAfter = "\n$secretDraftAfter",
                 contactHints = listOf(secretHintA, secretHintB),
             )
         assertIs<VoiceDictationV2PermitOutcome.Refused>(failed)
@@ -731,6 +806,7 @@ class VoiceDictationContextHintsTest {
     @Test
     fun clientTraceAndLogSanitizersDropVoiceDictationContextFields() = runTest {
         val secretDraft = "SECRET_TRACE_DRAFT_001"
+        val secretDraftAfter = "SECRET_TRACE_AFTER_003"
         val secretHint = "SECRET_TRACE_HINT_002"
         val sanitizedAttrs =
             sanitizeRaftClientTraceAttrs(
@@ -739,6 +815,9 @@ class VoiceDictationContextHintsTest {
                     put("draftBefore", secretDraft)
                     put("draft_before", secretDraft)
                     put("voice.draft_before", secretDraft)
+                    put("draftAfter", secretDraftAfter)
+                    put("draft_after", secretDraftAfter)
+                    put("voice.draft_after", secretDraftAfter)
                     put("contactHints", buildJsonArray { add(JsonPrimitive(secretHint)) })
                     put("contact_hints", buildJsonArray { add(JsonPrimitive(secretHint)) })
                     put("raw_payload", secretDraft)
@@ -748,7 +827,18 @@ class VoiceDictationContextHintsTest {
                         buildJsonObject {
                             put("keep", "ok")
                             put("draftBefore", secretDraft)
-                            put("items", JsonArray(listOf(buildJsonObject { put("contactHints", secretHint) })))
+                            put("draftAfter", secretDraftAfter)
+                            put(
+                                "items",
+                                JsonArray(
+                                    listOf(
+                                        buildJsonObject {
+                                            put("contactHints", secretHint)
+                                            put("draft_after", secretDraftAfter)
+                                        },
+                                    ),
+                                ),
+                            )
                         },
                     )
                 },
@@ -756,7 +846,22 @@ class VoiceDictationContextHintsTest {
         val serializedAttrs = sanitizedAttrs.toString()
         assertEquals("voice/dictation/permits", sanitizedAttrs["route"]?.jsonPrimitive?.content)
         assertEquals("ok", sanitizedAttrs["nested"]?.jsonObject?.get("keep")?.jsonPrimitive?.content)
-        for (forbidden in listOf(secretDraft, secretHint, "secret-token", "draftBefore", "draft_before", "contactHints", "contact_hints", "raw_payload", "token")) {
+        for (
+            forbidden in listOf(
+                secretDraft,
+                secretDraftAfter,
+                secretHint,
+                "secret-token",
+                "draftBefore",
+                "draft_before",
+                "draftAfter",
+                "draft_after",
+                "contactHints",
+                "contact_hints",
+                "raw_payload",
+                "token",
+            )
+        ) {
             assertFalse(serializedAttrs.contains(forbidden, ignoreCase = true), "leaked '$forbidden' into sanitized trace attrs: $serializedAttrs")
         }
 
@@ -795,6 +900,7 @@ class VoiceDictationContextHintsTest {
                 buildJsonObject {
                     put("mode", "tap")
                     put("draftBefore", secretDraft)
+                    put("draftAfter", secretDraftAfter)
                     put("contact_hints", buildJsonArray { add(JsonPrimitive(secretHint)) })
                 },
         )
@@ -811,6 +917,7 @@ class VoiceDictationContextHintsTest {
                         buildJsonObject {
                             put("route", "voice/dictation/permits")
                             put("draft_before", secretDraft)
+                            put("draft_after", secretDraftAfter)
                             put("contactHints", buildJsonArray { add(JsonPrimitive(secretHint)) })
                         },
                 ),
@@ -822,13 +929,25 @@ class VoiceDictationContextHintsTest {
         val serializedBatch = Json.encodeToString(RaftWebTraceBatchRequest.serializer(), batches.single())
         assertTrue(serializedBatch.contains("test.voice.event"))
         assertTrue(serializedBatch.contains("test.voice.span"))
-        for (forbidden in listOf(secretDraft, secretHint, "draftBefore", "draft_before", "contactHints", "contact_hints")) {
+        for (
+            forbidden in listOf(
+                secretDraft,
+                secretDraftAfter,
+                secretHint,
+                "draftBefore",
+                "draft_before",
+                "draftAfter",
+                "draft_after",
+                "contactHints",
+                "contact_hints",
+            )
+        ) {
             assertFalse(serializedBatch.contains(forbidden, ignoreCase = true), "leaked '$forbidden' into trace batch: $serializedBatch")
         }
 
         // Verify RaftPlatformLogQueue / raftRedactLogMessage & toSafeDiagnosticsToken redact key/value & names.
         val rawLogLine =
-            """{"draftBefore":"$secretDraft","contactHints":["$secretHint"]} draft_before=$secretDraft contact_hints=[$secretHint]"""
+            """{"draftBefore":"$secretDraft","draftAfter":"\n$secretDraftAfter","contactHints":["$secretHint"]} draft_before=$secretDraft draft_after=$secretDraftAfter contact_hints=[$secretHint]"""
         val redactedLog = raftRedactLogMessage(rawLogLine)
         val safeToken = rawLogLine.toSafeDiagnosticsToken()
         val queuedMessages = mutableListOf<String>()
@@ -842,7 +961,19 @@ class VoiceDictationContextHintsTest {
         queue.flush()
 
         for (output in listOf(redactedLog, safeToken, queuedMessages.single())) {
-            for (forbidden in listOf(secretDraft, secretHint, "draftBefore", "draft_before", "contactHints", "contact_hints")) {
+            for (
+                forbidden in listOf(
+                    secretDraft,
+                    secretDraftAfter,
+                    secretHint,
+                    "draftBefore",
+                    "draft_before",
+                    "draftAfter",
+                    "draft_after",
+                    "contactHints",
+                    "contact_hints",
+                )
+            ) {
                 assertFalse(output.contains(forbidden, ignoreCase = true), "leaked '$forbidden' into log output: $output")
             }
         }

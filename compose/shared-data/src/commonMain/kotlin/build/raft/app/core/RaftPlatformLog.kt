@@ -464,6 +464,6 @@ private val RaftCredentialLikePatterns =
         Regex("(?i)(client[_-]?key=)[^\\s&]+"),
         Regex("(?i)(api[_-]?key=)[^\\s&]+"),
         Regex("""\beyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}(?![A-Za-z0-9_-])"""),
-        Regex("""(?:"?(?:draft_?before|contact_?hints)"?\s*[:=]\s*(?:\[[^\]]*\]|"(?:\\.|[^"\\])*"|[^\s,;}]+))""", RegexOption.IGNORE_CASE),
-        Regex("""\b(?:draft_?before|contact_?hints)\b""", RegexOption.IGNORE_CASE),
+        Regex("""(?:"?(?:draft_?(?:before|after)|contact_?hints)"?\s*[:=]\s*(?:\[[^\]]*\]|"(?:\\.|[^"\\])*"|[^\s,;}]+))""", RegexOption.IGNORE_CASE),
+        Regex("""\b(?:draft_?(?:before|after)|contact_?hints)\b""", RegexOption.IGNORE_CASE),
     )

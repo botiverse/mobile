@@ -132,12 +132,14 @@ import kotlinx.serialization.json.JsonPrimitive
 @RaftCoreInternalApi const val RaftWebTraceScope = "web-trace-batch:create"
 @RaftCoreInternalApi const val RaftStateTransitionTraceName = "slock.state.transition"
 
-/** Voice dictation caller-context trace keys dropped before export (`slock` `#wg-call:#9`). */
+/** Voice dictation caller-context trace keys dropped before export (`slock` `#wg-call:#9`, `#wg-call:#19`). */
 @RaftCoreInternalApi
 val RaftClientTraceVoiceDictationDropKeys: Set<String> =
     setOf(
         "draft_before",
         "draftBefore",
+        "draft_after",
+        "draftAfter",
         "contact_hints",
         "contactHints",
     )
@@ -175,8 +177,8 @@ private fun sanitizeRaftClientTraceElement(element: JsonElement): JsonElement =
 
 /**
  * Strips every content-safety drop attribute (`raw_payload`, `token`, `draft_before`, `draftBefore`,
- * `contact_hints`, `contactHints`) from trace attributes, including dotted leaf keys and nested
- * objects/arrays. Mirrors `slock` `sanitizeTraceContentSafetyAttrs`.
+ * `draft_after`, `draftAfter`, `contact_hints`, `contactHints`) from trace attributes, including
+ * dotted leaf keys and nested objects/arrays. Mirrors `slock` `sanitizeTraceContentSafetyAttrs`.
  */
 @RaftCoreInternalApi
 fun sanitizeRaftClientTraceAttrs(attrs: JsonObject): JsonObject {

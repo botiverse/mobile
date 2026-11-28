@@ -3,9 +3,9 @@ package build.raft.app.data
 import build.raft.app.RaftCoreInternalApi
 import kotlin.time.Instant
 
-// Caller-supplied voice dictation composer context (`draftBefore`) and local
-// server-scoped vocabulary hints (`contactHints`) (#wg-call:#10).
-// Authoritative reference: `botiverse/slock` PR `#17322` (commit `7e75a60fe`):
+// Caller-supplied voice dictation composer context (`draftBefore`, `draftAfter`) and local
+// server-scoped vocabulary hints (`contactHints`) (#wg-call:#10, #wg-live:#21).
+// Authoritative reference: `botiverse/slock` PR `#17322` (`7e75a60fe`) and PR `#17370` (`a904ef90c01f`):
 // - `docs/contracts/voice-dictation-v2.md`
 // - `packages/shared/src/voiceDictation.ts`
 // - `packages/web/src/features/composer/voiceDictationLocalHints.ts`
@@ -16,6 +16,10 @@ import kotlin.time.Instant
 /** Maximum Unicode code points retained from the tail of read-only composer draft before the caret. */
 @RaftCoreInternalApi
 const val VOICE_DICTATION_MAX_DRAFT_BEFORE_CODE_POINTS: Int = 500
+
+/** Maximum Unicode code points retained from the head of read-only composer draft after the caret/selection. */
+@RaftCoreInternalApi
+const val VOICE_DICTATION_MAX_DRAFT_AFTER_CODE_POINTS: Int = 200
 
 /** Maximum normalized local contact/agent/channel vocabulary hints sent on an initial permit request. */
 @RaftCoreInternalApi
@@ -81,6 +85,82 @@ fun extractVoiceDictationDraftBeforeCaret(
         end -= 1
     }
     return normalizeVoiceDictationDraftBefore(text.substring(0, end))
+}
+
+/**
+ * Normalizes read-only composer text immediately after the caret/selection (`#wg-live:#21`, parity
+ * with `normalizeVoiceDictationDraftAfter` in `@botiverse/raft-shared`):
+ * - Normalizes `\r\n` and `\r` to `\n`.
+ * - Strips Unicode `Cc` (control) and `Cf` (format) code points EXCEPT `\n` (`U+000A`) and `\t` (`U+0009`).
+ * - Preserves leading newlines and horizontal whitespace (only trims trailing whitespace) so
+ *   downstream models can distinguish same-line mid-sentence continuation from end-of-line before a
+ *   new paragraph.
+ * - Retains the head nearest the cursor up to [VOICE_DICTATION_MAX_DRAFT_AFTER_CODE_POINTS] (`200`)
+ *   Unicode code points without splitting UTF-16 surrogate pairs, trimming trailing whitespace again
+ *   after slicing.
+ * - Returns `null` when empty or whitespace-only.
+ */
+@RaftCoreInternalApi
+fun normalizeVoiceDictationDraftAfter(raw: String?): String? {
+    if (raw.isNullOrEmpty()) return null
+    val crNormalized =
+        if ('\r' in raw) {
+            raw.replace("\r\n", "\n").replace('\r', '\n')
+        } else {
+            raw
+        }
+    val cleaned =
+        stripControlAndFormatCodePoints(
+            raw = crNormalized,
+            preserveNewline = true,
+            preserveTab = true,
+        ).trimEnd()
+    if (cleaned.trim().isEmpty()) return null
+
+    var codePointCount = 0
+    var index = 0
+    while (index < cleaned.length && codePointCount < VOICE_DICTATION_MAX_DRAFT_AFTER_CODE_POINTS) {
+        index +=
+            if (
+                cleaned[index].isHighSurrogate() &&
+                index + 1 < cleaned.length &&
+                cleaned[index + 1].isLowSurrogate()
+            ) {
+                2
+            } else {
+                1
+            }
+        codePointCount += 1
+    }
+    val head =
+        if (index >= cleaned.length) {
+            cleaned
+        } else {
+            cleaned.substring(0, index).trimEnd()
+        }
+    return head.takeIf { it.trim().isNotEmpty() }
+}
+
+/**
+ * Extracts and normalizes the read-only composer suffix immediately following [selectionEnd]
+ * (UTF-16 offset into [text], `#wg-live:#21`, parity with `extractVoiceDictationDraftAfter` in
+ * `@botiverse/raft-shared`). Emitted only when [selectionEnd] is strictly before `text.length` and
+ * non-whitespace text follows; advances by 1 if [selectionEnd] lands between a UTF-16 high/low
+ * surrogate pair so no dangling low surrogate is ever produced.
+ */
+@RaftCoreInternalApi
+fun extractVoiceDictationDraftAfterCaret(
+    text: String,
+    selectionEnd: Int,
+): String? {
+    if (text.isEmpty()) return null
+    var start = selectionEnd.coerceIn(0, text.length)
+    if (start >= text.length) return null
+    if (start > 0 && text[start - 1].isHighSurrogate() && text[start].isLowSurrogate()) {
+        start += 1
+        if (start >= text.length) return null
+    }
+    return normalizeVoiceDictationDraftAfter(text.substring(start))
 }
 
 /**
@@ -363,6 +443,7 @@ private fun normalizeSingleContactHint(raw: String): String {
 private fun stripControlAndFormatCodePoints(
     raw: String,
     preserveNewline: Boolean,
+    preserveTab: Boolean = false,
 ): String =
     buildString(raw.length) {
         var index = 0
@@ -379,6 +460,7 @@ private fun stripControlAndFormatCodePoints(
             } else {
                 val keep =
                     (preserveNewline && ch == '\n') ||
+                        (preserveTab && ch == '\t') ||
                         (ch.category != CharCategory.CONTROL && ch.category != CharCategory.FORMAT)
                 if (keep) {
                     append(ch)

@@ -97,8 +97,8 @@ private val SignedQueryValuePattern =
 
 private val VoiceDictationDropDiagnosticsPatterns =
     listOf(
-        Regex("""(?:"?(?:draft_?before|contact_?hints)"?\s*[:=]\s*(?:\[[^\]]*\]|"(?:\\.|[^"\\])*"|[^\s,;}]+))""", RegexOption.IGNORE_CASE),
-        Regex("""\b(?:draft_?before|contact_?hints)\b""", RegexOption.IGNORE_CASE),
+        Regex("""(?:"?(?:draft_?(?:before|after)|contact_?hints)"?\s*[:=]\s*(?:\[[^\]]*\]|"(?:\\.|[^"\\])*"|[^\s,;}]+))""", RegexOption.IGNORE_CASE),
+        Regex("""\b(?:draft_?(?:before|after)|contact_?hints)\b""", RegexOption.IGNORE_CASE),
     )
 
 private val SensitiveNetworkDiagnosticsPatterns =
