@@ -1,5 +1,6 @@
 package build.raft.app.thread
 
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -863,7 +864,14 @@ internal fun ThreadVoiceDictationButton(
     val targetLevel = if (isListening) state.audioLevel else 0f
     val targetScale = voiceDictationHaloScale(audioLevel = targetLevel, reducedMotion = reducedMotion)
     val targetAlpha = voiceDictationHaloAlpha(audioLevel = targetLevel, reducedMotion = reducedMotion)
-    val haloAnimSpec = if (reducedMotion) snap<Float>() else tween(durationMillis = 100)
+    // Match web `duration-100 ease-linear` so continuous 100 ms mic level ticks interpolate smoothly
+    // instead of stalling at the start/end of every frame with FastOutSlowInEasing.
+    val haloAnimSpec =
+        if (reducedMotion) {
+            snap<Float>()
+        } else {
+            tween(durationMillis = 100, easing = LinearEasing)
+        }
     val animatedHaloScale by animateFloatAsState(
         targetValue = targetScale,
         animationSpec = haloAnimSpec,

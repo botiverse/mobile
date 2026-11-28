@@ -127,7 +127,7 @@ class DesktopVoiceDictationAudioRecorder(
             captureScope.launch {
                 val chunkBuffer = ByteArray(chunkBytes)
                 var filled = 0
-                var smoothedLevel = 0f
+                val audioLevelMeter = VoiceDictationAudioLevelMeter()
                 try {
                     while (isActive && isCurrentCapture(capture)) {
                         val read =
@@ -142,18 +142,16 @@ class DesktopVoiceDictationAudioRecorder(
                             val emit = chunkBuffer.copyOf(chunkBytes)
                             filled = 0
                             if (!isCurrentCapture(capture)) break
-                            val rawLevel = computeVoiceDictationPcm16LeLevel(emit)
-                            smoothedLevel = smoothVoiceDictationAudioLevel(smoothedLevel, rawLevel)
-                            onAudioLevel(smoothedLevel)
+                            val visualLevel = audioLevelMeter.processPcm16Le(emit)
+                            onAudioLevel(visualLevel)
                             onPcmChunk(emit)
                         }
                     }
                     val remainingEven = filled - (filled % VOICE_DICTATION_PCM16_BYTES_PER_SAMPLE)
                     if (remainingEven > 0 && isCurrentCapture(capture)) {
                         val tail = chunkBuffer.copyOf(remainingEven)
-                        val rawLevel = computeVoiceDictationPcm16LeLevel(tail)
-                        smoothedLevel = smoothVoiceDictationAudioLevel(smoothedLevel, rawLevel)
-                        onAudioLevel(smoothedLevel)
+                        val visualLevel = audioLevelMeter.processPcm16Le(tail)
+                        onAudioLevel(visualLevel)
                         onPcmChunk(tail)
                     }
                 } finally {

@@ -83,36 +83,108 @@ final class RaftIosAgentVoiceCallEngineTests: XCTestCase {
         XCTAssertEqual(registered?.isSupported, true)
     }
 
+    private func makePcm16LeChunk(sample: Int16, sampleCount: Int) -> Data {
+        var bytes = Data()
+        bytes.reserveCapacity(sampleCount * 2)
+        let littleEndian = sample.littleEndian
+        for _ in 0..<sampleCount {
+            withUnsafeBytes(of: littleEndian) { bytes.append(contentsOf: $0) }
+        }
+        return bytes
+    }
+
     func testVoiceDictationPolicyPcm16RmsAndLevelNormalization() {
         let silence = Data(repeating: 0, count: RaftIosVoiceDictationPolicy.chunkByteSize)
         XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16RawRms(data: silence), 0)
         XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: silence), 0)
 
-        // Sub-noise-floor signal (~0.01 amplitude) clamps to 0.
-        var quietBytes = Data()
-        let quietSample = Int16(300).littleEndian
-        for _ in 0..<160 {
-            withUnsafeBytes(of: quietSample) { quietBytes.append(contentsOf: $0) }
-        }
+        // Quiet room noise (~0.0031 amplitude <= 0.0045 floor) clamps to 0.
+        let quietBytes = makePcm16LeChunk(sample: 100, sampleCount: 160)
+        XCTAssertLessThan(
+            RaftIosVoiceDictationPolicy.computePcm16RawRms(data: quietBytes),
+            RaftIosVoiceDictationPolicy.rmsNoiseFloor
+        )
         XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: quietBytes), 0)
 
-        // Conversational speech (~0.10 amplitude) produces a mid-range visual level in (0, 1).
-        var speechBytes = Data()
-        let speechSample = Int16(3277).littleEndian
-        for _ in 0..<160 {
-            withUnsafeBytes(of: speechSample) { speechBytes.append(contentsOf: $0) }
-        }
+        // Un-AGC'd handheld phone speech (~0.0214 RMS) produces a strong mid-range visual level.
+        let speechBytes = makePcm16LeChunk(sample: 700, sampleCount: 160)
         let speechLevel = RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: speechBytes)
-        XCTAssertGreaterThan(speechLevel, 0.3)
-        XCTAssertLessThan(speechLevel, 1.0)
+        XCTAssertGreaterThan(speechLevel, 0.40)
+        XCTAssertLessThan(speechLevel, 0.70)
 
         // Peak signal saturates at 1.0.
-        var loudBytes = Data()
-        let loudSample = Int16(16_384).littleEndian
-        for _ in 0..<160 {
-            withUnsafeBytes(of: loudSample) { loudBytes.append(contentsOf: $0) }
-        }
+        let loudBytes = makePcm16LeChunk(sample: 16_384, sampleCount: 160)
         XCTAssertEqual(RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: loudBytes), 1.0, accuracy: 0.0001)
+    }
+
+    func testVoiceDictationAudioLevelMeterCalibratesHandheldSpeechAdaptsLoudPeaksAndPreservesRawPcm() {
+        var meter = RaftIosVoiceDictationAudioLevelMeter()
+        XCTAssertEqual(meter.peakRms, RaftIosVoiceDictationPolicy.rmsCeilingInitial, accuracy: 0.0001)
+        XCTAssertEqual(meter.smoothedLevel, 0)
+
+        // 1. Quiet room noise stays cleanly at 0.
+        let roomNoise = makePcm16LeChunk(sample: 100, sampleCount: 1_600)
+        for _ in 0..<5 {
+            XCTAssertEqual(meter.processPcm16(data: roomNoise), 0)
+        }
+
+        // 2. Normal un-AGC'd handheld speech (~0.015-0.0305 RMS) produces lively halo levels.
+        let handheld500 = meter.processPcm16(data: makePcm16LeChunk(sample: 500, sampleCount: 1_600))
+        let handheld700 = meter.processPcm16(data: makePcm16LeChunk(sample: 700, sampleCount: 1_600))
+        let handheld1000 = meter.processPcm16(data: makePcm16LeChunk(sample: 1_000, sampleCount: 1_600))
+        XCTAssertGreaterThan(handheld500, 0.30)
+        XCTAssertLessThan(handheld500, 0.50)
+        XCTAssertGreaterThan(handheld700, 0.40)
+        XCTAssertLessThan(handheld700, 0.65)
+        XCTAssertGreaterThan(handheld1000, 0.55)
+        XCTAssertLessThan(handheld1000, 0.85)
+
+        // 3. Loud close-up speech adapts peakRms upward so quieter syllables still modulate visibly.
+        var loudPeakLevel: Float = 0
+        for _ in 0..<6 {
+            loudPeakLevel = meter.processRawRms(0.18, dtMs: 100)
+        }
+        XCTAssertGreaterThan(meter.peakRms, 0.15)
+        XCTAssertLessThanOrEqual(meter.peakRms, RaftIosVoiceDictationPolicy.rmsCeilingMax)
+        XCTAssertGreaterThan(loudPeakLevel, 0.95)
+
+        let quieterSyllable1 = meter.processRawRms(0.08, dtMs: 100)
+        let quieterSyllable2 = meter.processRawRms(0.08, dtMs: 100)
+        let nextLoudSyllable = meter.processRawRms(0.18, dtMs: 100)
+        XCTAssertLessThan(quieterSyllable1, loudPeakLevel - 0.08)
+        XCTAssertLessThan(quieterSyllable2, quieterSyllable1)
+        XCTAssertGreaterThan(nextLoudSyllable, quieterSyllable2 + 0.15)
+
+        // 4. Silence decays smoothedLevel to 0 and peakRms back toward initial ceiling.
+        let peakBeforeSilence = meter.peakRms
+        for _ in 0..<30 {
+            _ = meter.processRawRms(0, dtMs: 100)
+        }
+        XCTAssertEqual(meter.smoothedLevel, 0)
+        XCTAssertLessThan(meter.peakRms, peakBeforeSilence - 0.05)
+        XCTAssertGreaterThanOrEqual(meter.peakRms, RaftIosVoiceDictationPolicy.rmsCeilingInitial)
+
+        // 5. Chunking & metering in the iOS recorder path never alters raw PCM bytes.
+        var pending = Data()
+        var chunkMeter = RaftIosVoiceDictationAudioLevelMeter()
+        let handheldChunk = makePcm16LeChunk(sample: 700, sampleCount: 1_600)
+        let firstHalf = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+            pendingBytes: &pending,
+            appending: roomNoise.prefix(1_600),
+            meter: &chunkMeter
+        )
+        XCTAssertTrue(firstHalf.isEmpty)
+        let emitted = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+            pendingBytes: &pending,
+            appending: roomNoise.suffix(1_600) + handheldChunk,
+            meter: &chunkMeter
+        )
+        XCTAssertEqual(emitted.count, 2)
+        XCTAssertEqual(emitted[0].0, roomNoise)
+        XCTAssertEqual(emitted[0].1, 0)
+        XCTAssertEqual(emitted[1].0, handheldChunk)
+        XCTAssertGreaterThan(emitted[1].1, 0.35)
+        XCTAssertLessThan(emitted[1].1, 0.70)
     }
 
     func testVoiceDictationInstallRegistersSupportedRecorder() {
