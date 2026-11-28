@@ -70,7 +70,7 @@ fun raftMeterLevel(used: Float, max: Float = 100f, warnAt: Float = RaftMeterDefa
 
 /**
  * raft-ui Meter (`wip`, 0.50): how much of an allowance is used, such as a usage limit that
- * resets. The bar fills as it is used: a `fill-muted` track (sticker radius) holding a fill of
+ * resets. The bar fills as it is used: a `fill-medium` track (sticker radius) holding a fill of
  * [used] / [max] that is a sticker with a 1.5dp `sticker-ink` inset edge. The colour follows
  * [raftMeterLevel]: `info` until [warnAt] of [max] is used, then `warning`; used up is a full
  * `warning` bar. Never `danger`, no `success`.
@@ -136,7 +136,7 @@ fun RaftMeter(
             }
         }
         Canvas(Modifier.fillMaxWidth().height(size.track)) {
-            drawMeterTrack(colors.fillMuted)
+            drawMeterTrack(colors.fillMedium)
             if (fraction > 0f) {
                 drawMeterFill(Size(this.size.width * fraction, this.size.height), fill, edge)
             }
