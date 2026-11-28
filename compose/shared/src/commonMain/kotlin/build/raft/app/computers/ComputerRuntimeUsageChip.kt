@@ -430,7 +430,7 @@ private fun RuntimeAccountUsageLoad?.availableCollectedAt(): String? =
  * so nothing read for one subject is ever shown for another.
  */
 internal class ComputerRuntimeUsageController(
-    private val key: RuntimeAccountUsageKey,
+    internal val key: RuntimeAccountUsageKey,
     private val store: SharedRuntimeAccountUsageStore,
     private val scope: CoroutineScope,
     private val log: (String) -> Unit = {},
