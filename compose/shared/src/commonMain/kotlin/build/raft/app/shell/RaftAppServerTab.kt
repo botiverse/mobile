@@ -325,6 +325,14 @@ internal fun RaftAppServerMenuOverlay(
                             onDone = { editMode = false },
                         )
                     } else {
+                        if (activeMobilePlaces != null) {
+                            RaftMobilePlacesRecentlyUsedSection(
+                                items = activeMobilePlaces.recentlyUsed,
+                                state = state,
+                                resolveAppIconUrl = activeMobilePlaces.resolveAppIconUrl,
+                                onPick = activeMobilePlaces.onPickRecent,
+                            )
+                        }
                         val serverListModifier =
                             if (activeMobilePlaces != null) {
                                 val density = LocalDensity.current
@@ -416,14 +424,6 @@ internal fun RaftAppServerMenuOverlay(
                                     leading = { RaftLucideIcon(RaftLucideIconName.UserPlus, Modifier.size(16.dp)) },
                                 )
                             }
-                        }
-                        if (activeMobilePlaces != null) {
-                            RaftMobilePlacesRecentlyUsedSection(
-                                items = activeMobilePlaces.recentlyUsed,
-                                state = state,
-                                resolveAppIconUrl = activeMobilePlaces.resolveAppIconUrl,
-                                onPick = activeMobilePlaces.onPickRecent,
-                            )
                         }
                         if (entries.isNotEmpty()) {
                             RaftMobileNavServerPopoverSeparator()

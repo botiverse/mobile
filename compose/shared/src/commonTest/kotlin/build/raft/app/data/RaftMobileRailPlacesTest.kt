@@ -10,6 +10,8 @@ import build.raft.app.shell.AppShellServerTabKey
 import build.raft.app.shell.AppShellTabHistory
 import build.raft.app.shell.MobileRecentlyUsedEntry
 import build.raft.app.shell.MobileRecentlyUsedStore
+import build.raft.app.shell.decodeMobileRecentlyUsedEntries
+import build.raft.app.shell.mobileRecentlyUsedStorageKey
 import build.raft.app.shell.RaftBottomTabItemPayload
 import build.raft.app.RaftLucideIconName
 import build.raft.app.shell.RaftMoreAttention
@@ -772,6 +774,79 @@ class RaftMobileRailPlacesTest {
         val afterDrop = MobileRecentlyUsedStore(preferenceStore = prefs, nowMillis = { 400L })
         assertEquals(emptyList(), afterDrop.recentItems("acc-1", "srv-1"))
         assertEquals(listOf("artifact:art-s2"), afterDrop.recentItems("acc-1", "srv-2").map { it.placeKey })
+    }
+
+    @Test
+    fun mobileRecentlyUsedStoreCanonicalizesShortAndPtUuidArtifactIdsAndAppClientIds() {
+        val shortId = "2QthvfPeGfDnqwr7LG6itx"
+        val canonicalId = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        val store = MobileRecentlyUsedStore()
+
+        // Opening an Artifact via a web short link stores its canonical pt_<uuid> ID.
+        store.recordArtifact("acc-1", "srv-1", shortId, "1.31.0 release notes — review")
+        val afterShort = store.recentItems("acc-1", "srv-1")
+        assertEquals(1, afterShort.size)
+        val firstArtifact = assertIs<MobileRecentlyUsedEntry.Artifact>(afterShort.single())
+        assertEquals(canonicalId, firstArtifact.id)
+        assertEquals("artifact:$canonicalId", firstArtifact.placeKey)
+
+        // Opening another Artifact, then re-opening the first via its canonical API ID (or uppercase / prefixed form)
+        // moves the single canonical entry to the front instead of creating duplicate rows.
+        store.recordArtifact("acc-1", "srv-1", "art-2", "Roadmap")
+        store.recordArtifact("acc-1", "srv-1", canonicalId, "1.31.0 release notes — review")
+        store.recordArtifact("acc-1", "srv-1", "PT_0B6F1C2E-5D4A-4C3B-9A8E-7F6D5C4B3A21", "1.31.0 release notes — final")
+        store.recordArtifact("acc-1", "srv-1", " artifact:$shortId ", "1.31.0 release notes — final")
+        val afterCanonical = store.recentItems("acc-1", "srv-1")
+        assertEquals(listOf("artifact:$canonicalId", "artifact:art-2"), afterCanonical.map { it.placeKey })
+        val updatedArtifact = assertIs<MobileRecentlyUsedEntry.Artifact>(afterCanonical.first())
+        assertEquals(canonicalId, updatedArtifact.id)
+        assertEquals("1.31.0 release notes — final", updatedArtifact.title)
+
+        // Exclusion matching also normalizes short-ID and uppercase-UUID artifact keys.
+        assertEquals(
+            listOf("artifact:art-2"),
+            store.recentItems("acc-1", "srv-1", excludedPlaceKeys = setOf("artifact:$shortId")).map { it.placeKey },
+        )
+
+        // App client IDs normalize whitespace, mixed case, and accidental `app:` prefixes.
+        store.recordApp("acc-1", "srv-1", " app:${stampId.uppercase()} ", "Stamp", null, "https://stamp.build")
+        store.recordApp("acc-1", "srv-1", stampId, "Stamp Latest", "/stamp.png", "https://stamp.build")
+        val apps = store.recentItems("acc-1", "srv-1").filterIsInstance<MobileRecentlyUsedEntry.App>()
+        assertEquals(1, apps.size)
+        assertEquals(stampId, apps.single().clientId)
+        assertEquals("app:$stampId", apps.single().placeKey)
+        assertEquals("Stamp Latest", apps.single().name)
+    }
+
+    @Test
+    fun mobileRecentlyUsedStoreSelfHealsPersistedDuplicateArtifactsAndAppsOnRead() {
+        val shortId = "2QthvfPeGfDnqwr7LG6itx"
+        val canonicalId = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+        val legacyJson =
+            """{"v":1,"items":[""" +
+                """{"kind":"artifact","id":"$shortId","title":"1.31.0 release notes — review"},""" +
+                """{"kind":"artifact","id":"$canonicalId","title":"1.31.0 release notes — older"},""" +
+                """{"kind":"artifact","id":"PT_0B6F1C2E-5D4A-4C3B-9A8E-7F6D5C4B3A21","title":"1.31.0 release notes — upper"},""" +
+                """{"kind":"app","clientId":"app:${stampId.uppercase()}","name":"Stamp","homepageUrl":"https://stamp.build"},""" +
+                """{"kind":"app","clientId":"$stampId","name":"Stamp Older","homepageUrl":"https://stamp.build"}""" +
+                """]}"""
+
+        val decoded = decodeMobileRecentlyUsedEntries(legacyJson)
+        assertEquals(listOf("artifact:$canonicalId", "app:$stampId"), decoded.map { it.placeKey })
+        val decodedArtifact = assertIs<MobileRecentlyUsedEntry.Artifact>(decoded[0])
+        assertEquals(canonicalId, decodedArtifact.id)
+        assertEquals("1.31.0 release notes — review", decodedArtifact.title)
+        val decodedApp = assertIs<MobileRecentlyUsedEntry.App>(decoded[1])
+        assertEquals(stampId, decodedApp.clientId)
+        assertEquals("Stamp", decodedApp.name)
+
+        // Hydrating a cold-start store from legacy persisted duplicates returns deduplicated entries immediately.
+        val prefs = InMemoryRaftKeyValueStore()
+        prefs.putString(mobileRecentlyUsedStorageKey("acc-1", "srv-1"), legacyJson)
+        val restoredStore = MobileRecentlyUsedStore(preferenceStore = prefs, nowMillis = { 100L })
+        val restored = restoredStore.recentItems("acc-1", "srv-1")
+        assertEquals(listOf("artifact:$canonicalId", "app:$stampId"), restored.map { it.placeKey })
+        assertEquals(canonicalId, assertIs<MobileRecentlyUsedEntry.Artifact>(restored[0]).id)
     }
 
     @Test

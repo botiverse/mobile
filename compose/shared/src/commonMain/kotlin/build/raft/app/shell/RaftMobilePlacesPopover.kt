@@ -269,8 +269,8 @@ internal fun rememberRaftServerMenuMobilePlacesConfig(
 }
 
 /**
- * "Recently used" section inside the phone Server Tab Popover (Kirby #415 v8 §7):
- * omitted completely (including its separator) when [items] is empty; shows up to 4 rows
+ * "Recently used" section at the very top of the phone Server Tab Popover (`#proj-mobile:#431`):
+ * omitted completely (including its trailing separator) when [items] is empty; shows up to 4 rows
  * (Artifact or Raft App icon + single-line title), no empty state and no "All" link.
  */
 @Composable
@@ -280,10 +280,9 @@ internal fun RaftMobilePlacesRecentlyUsedSection(
     resolveAppIconUrl: (String?) -> String?,
     onPick: (MobileRecentlyUsedEntry) -> Unit,
 ) {
-    val shown = items.take(MOBILE_RECENTLY_USED_MAX_ENTRIES)
+    val shown = items.distinctBy { it.placeKey }.take(MOBILE_RECENTLY_USED_MAX_ENTRIES)
     if (shown.isEmpty()) return
     val colors = RaftTheme.colors
-    RaftMobileNavServerPopoverSeparator()
     RaftMobileNavServerPopoverGroup(modifier = Modifier.testTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION)) {
         RaftText(
             text = stringResource(Res.string.server_panel_recently_used),
@@ -333,6 +332,7 @@ internal fun RaftMobilePlacesRecentlyUsedSection(
             }
         }
     }
+    RaftMobileNavServerPopoverSeparator()
 }
 
 /** "More" heading on left + "Edit" action button on right above the More destinations grid. */

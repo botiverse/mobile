@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -138,10 +139,32 @@ class MobilePlacesServerPopoverUiTest {
             }
 
             waitForIdle()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true).assertIsDisplayed()
+            val recentBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+            val serverListBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.SERVER_LIST, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+            val moreHeaderBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+            assertTrue(
+                recentBounds.bottom < serverListBounds.top,
+                "Expected Recently used section at the top above the server list (with a divider between), got recent=$recentBounds serverList=$serverListBounds",
+            )
+            assertTrue(
+                serverListBounds.top - recentBounds.bottom <= 2.dp,
+                "Expected only the hairline divider between Recently used and server list, got gap=${serverListBounds.top - recentBounds.bottom}",
+            )
+            assertTrue(
+                serverListBounds.bottom < moreHeaderBounds.top,
+                "Expected server list above the More section, got serverList=$serverListBounds moreHeader=$moreHeaderBounds",
+            )
             onNodeWithText("Q4 Design Spec").assertIsDisplayed()
             onNodeWithText("Stamp").assertIsDisplayed()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
             onNodeWithTag(RaftMobilePlacesPopoverTags.EDIT_BUTTON).assertIsDisplayed()
 
             // Tapping a recently used Artifact picks it and dismisses the popover.
@@ -150,7 +173,7 @@ class MobilePlacesServerPopoverUiTest {
             assertEquals(listOf("artifact:art-1"), pickedRecent.map { it.placeKey })
             assertFalse(state.open)
 
-            // Re-open with empty Recently used -> section is omitted completely.
+            // Re-open with empty Recently used -> section and its divider are omitted completely.
             recentItems = emptyList()
             state.show()
             waitForIdle()
@@ -160,7 +183,23 @@ class MobilePlacesServerPopoverUiTest {
                     .fetchSemanticsNodes()
                     .size,
             )
-            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
+            val emptyServerListBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.SERVER_LIST, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+            val emptyMoreHeaderBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+            assertTrue(
+                emptyServerListBounds.bottom < emptyMoreHeaderBounds.top,
+                "Expected server list above More when Recently used is empty, got serverList=$emptyServerListBounds moreHeader=$emptyMoreHeaderBounds",
+            )
+            assertEquals(
+                serverListBounds.height,
+                emptyServerListBounds.height,
+                "Expected server list height to remain unchanged when Recently used is omitted",
+            )
         }
 
     @Test
@@ -356,16 +395,97 @@ class MobilePlacesServerPopoverUiTest {
             }
 
             waitForIdle()
-            val listHeight =
-                onNodeWithTag(RaftMobilePlacesPopoverTags.SERVER_LIST, useUnmergedTree = true)
+            val recentBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true)
+                    .assertIsDisplayed()
                     .getUnclippedBoundsInRoot()
-                    .height
+            val serverListBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.SERVER_LIST, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+            val moreHeaderBounds =
+                onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true)
+                    .assertIsDisplayed()
+                    .getUnclippedBoundsInRoot()
+            val listHeight = serverListBounds.height
             assertTrue(
                 listHeight <= 310.dp,
                 "Expected server switcher list to cap around 5 rows instead of stretching full-screen, got $listHeight",
             )
-            onNodeWithTag(RaftMobilePlacesPopoverTags.RECENTLY_USED_SECTION, useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithTag(RaftMobilePlacesPopoverTags.MORE_HEADER, useUnmergedTree = true).assertIsDisplayed()
+            assertTrue(
+                recentBounds.bottom < serverListBounds.top,
+                "Expected Recently used section above the 5-row capped server list, got recent=$recentBounds serverList=$serverListBounds",
+            )
+            assertTrue(
+                serverListBounds.bottom < moreHeaderBounds.top,
+                "Expected server list above More header, got serverList=$serverListBounds moreHeader=$moreHeaderBounds",
+            )
+        }
+
+    @Test
+    fun recentlyUsedSectionDeduplicatesShortAndCanonicalArtifactIds() =
+        runRobolectricComposeUiTest {
+            val shortId = "2QthvfPeGfDnqwr7LG6itx"
+            val canonicalId = "pt_0b6f1c2e-5d4a-4c3b-9a8e-7f6d5c4b3a21"
+            val state = RaftMobileNavServerPopoverState().apply { show() }
+            val places = RaftMobileBuiltInPlaceIds.map(RaftRailPlace::builtIn)
+            val tabKeys =
+                appShellDynamicPhoneTabKeys(
+                    enabled = true,
+                    mobilePlaces = places,
+                    artifactsEnabled = true,
+                    isGuest = false,
+                    maxPlaceTabs = AppShellPhoneDefaultPlaceTabs,
+                )
+            val entries = appShellMobileServerMenuEntries(places, tabKeys, wide = false, guest = false, artifacts = true)
+
+            setContent {
+                val pager = remember { object : Pager() {}.apply { pageData = PageData(JSONObject()) } }
+                CompositionLocalProvider(LocalActivity provides RaftPageActivity(pager)) {
+                    RaftDesignSystemTheme {
+                        Box(Modifier.fillMaxSize()) {
+                            RaftAppServerMenuOverlay(
+                                model = model,
+                                state = state,
+                                anchor = RaftServerMenuAnchor.BottomBar,
+                                onPick = {},
+                                prefersChineseCommunity = false,
+                                onCreateServerClick = {},
+                                onInviteHumanClick = null,
+                                screenHeight = 844.dp,
+                                entries = entries,
+                                mobilePlacesConfig =
+                                    RaftServerMenuMobilePlacesConfig(
+                                        mobilePlaces = places,
+                                        artifactsEnabled = true,
+                                        isGuest = false,
+                                        recentlyUsed =
+                                            listOf(
+                                                MobileRecentlyUsedEntry.Artifact(
+                                                    id = shortId,
+                                                    title = "1.31.0 release notes — review",
+                                                ),
+                                                MobileRecentlyUsedEntry.Artifact(
+                                                    id = canonicalId,
+                                                    title = "1.31.0 release notes — review",
+                                                ),
+                                            ),
+                                        resolveAppIconUrl = { it },
+                                        onPickRecent = {},
+                                        onSaveOrder = {},
+                                        onResetToDefault = {},
+                                    ),
+                            )
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            assertEquals(
+                1,
+                onAllNodesWithText("1.31.0 release notes — review").fetchSemanticsNodes().size,
+            )
         }
 
     @Test

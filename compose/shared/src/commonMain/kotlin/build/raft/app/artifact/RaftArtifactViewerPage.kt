@@ -449,7 +449,7 @@ internal fun rememberRaftArtifactOpener(
                     host.sharedStores.mobileRecentlyUsedStore.recordArtifact(
                         accountId = scope.accountId,
                         serverId = scope.serverId,
-                        artifactId = target.id,
+                        artifactId = target.canonicalId,
                         title = recentTitle,
                     )
                 }
