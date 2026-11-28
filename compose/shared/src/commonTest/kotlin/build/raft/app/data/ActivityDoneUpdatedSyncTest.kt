@@ -251,7 +251,7 @@ class ActivityDoneUpdatedSyncTest {
             channelDone,
         )
         assertFalse(channelDone!!.affectsActivityContent())
-        assertFalse(channelDone.affectsActivityUnreadSummary())
+        assertTrue(channelDone.affectsActivityUnreadSummary())
 
         val dmDone =
             mapper.map(
