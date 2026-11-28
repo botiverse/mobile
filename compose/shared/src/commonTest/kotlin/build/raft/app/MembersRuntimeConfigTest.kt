@@ -72,6 +72,24 @@ class MembersRuntimeConfigTest {
     }
 
     @Test
+    fun runtimeResolutionPreservesPiSdkBuiltinProviderIdentity() {
+        val provider = RuntimeProviderConfig.PiBuiltin("deepseek", "")
+        val resolution =
+            AgentDetailSummary(
+                id = "agent-pi-sdk",
+                name = "Pi SDK Agent",
+                runtime = "pi-sdk",
+                model = "deepseek/deepseek-v4-pro",
+                runtimeModelKind = "preset",
+                runtimeProvider = provider,
+            ).toMembersRuntimeConfigResolution()
+
+        val config = assertIs<MembersAgentRuntimeConfigResolution.Content>(resolution).config
+        assertEquals("pi-sdk", config.runtime)
+        assertEquals(provider, config.provider)
+    }
+
+    @Test
     fun runtimeModelKindPreservesPresetVsCustomIdentity() {
         assertEquals(
             RuntimeModelConfig.Preset("minimax/MiniMax-M2.7"),

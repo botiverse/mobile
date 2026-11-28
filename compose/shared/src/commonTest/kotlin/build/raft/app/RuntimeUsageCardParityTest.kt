@@ -32,8 +32,10 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Web parity for the runtime usage card (botiverse/slock #15482, #15483, #15557, #15395, #15786,
@@ -110,6 +112,100 @@ class RuntimeUsageCardParityTest {
             assertEquals(RuntimeAccountUsageHealth.Ok, read.snapshot.accounts.single().health)
             assertEquals(ComputerRuntimeUsageCheckState.Idle, controller.checkState)
             assertEquals(4, api.calls.count { it.startsWith("GET") && it.contains("runtime-account-usage") })
+        }
+    }
+
+    // --- #17344: Antigravity usage unavailable under terms --------------------------------------
+
+    @Test
+    fun antigravityUnavailableByTermsMatchesWebConditionsAndHidesCheckButton() {
+        val unsupported = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Unsupported)
+        val missing = RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Missing)
+        val failed = RuntimeAccountUsageLoad.Failed("network", retryable = true)
+
+        assertTrue(
+            computerRuntimeUsageShowsAntigravityUnavailableByTerms(
+                provider = RuntimeAccountUsageProvider.Antigravity,
+                signedOut = false,
+                load = unsupported,
+            )
+        )
+        assertFalse(
+            computerRuntimeUsageShowsAntigravityUnavailableByTerms(
+                provider = RuntimeAccountUsageProvider.Antigravity,
+                signedOut = true,
+                load = unsupported,
+            )
+        )
+        assertFalse(
+            computerRuntimeUsageShowsAntigravityUnavailableByTerms(
+                provider = RuntimeAccountUsageProvider.Antigravity,
+                signedOut = false,
+                load = missing,
+            )
+        )
+        assertFalse(
+            computerRuntimeUsageShowsAntigravityUnavailableByTerms(
+                provider = RuntimeAccountUsageProvider.Antigravity,
+                signedOut = false,
+                load = failed,
+            )
+        )
+        assertFalse(
+            computerRuntimeUsageShowsAntigravityUnavailableByTerms(
+                provider = RuntimeAccountUsageProvider.Codex,
+                signedOut = false,
+                load = unsupported,
+            )
+        )
+        assertFalse(
+            computerRuntimeUsageShowsAntigravityUnavailableByTerms(
+                provider = null,
+                signedOut = false,
+                load = unsupported,
+            )
+        )
+        assertFalse(
+            computerRuntimeUsageShowsCheckButton(
+                ComputerRuntimeUsageSheetState(
+                    load = unsupported,
+                    loading = false,
+                    checkDue = true,
+                    provider = RuntimeAccountUsageProvider.Antigravity,
+                )
+            )
+        )
+    }
+
+    @Test
+    fun antigravityUnsupportedOpenSendsNoRefreshAndPopulatesProvider() = runTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        val api =
+            RuntimeLimitResetTest.FakeLimitResetApi(
+                usage = { ok("""{"state":"unsupported","snapshot":null}""") },
+                auth = { ok("""{"status":{"collectedAt":"2026-11-28T06:00:00.000Z","runtimes":{"antigravity":{"kind":"logged_in"}}},"availability":"ok","runtimes":["antigravity"],"canAct":true}""") },
+            )
+        val owner = RuntimeLimitResetTest.OWNER
+        val store = SharedRuntimeAccountUsageStore(RaftComputersApiClient(api), currentIdentity = { owner }, clock = { 0L })
+        val controller =
+            ComputerRuntimeUsageController(
+                key = RuntimeAccountUsageKey(owner, "s1", "m1", RuntimeAccountUsageProvider.Antigravity),
+                store = store,
+                scope = scope,
+                nowMillis = { 1_795_856_400_000L },
+            )
+        try {
+            controller.onOpen()
+            advanceUntilIdle()
+            val sheetState = controller.sheetState(runtimeVersion = "1.0.0", nowMillis = 1_795_856_400_000L)
+            assertEquals(RuntimeAccountUsageLoad.Loaded(RuntimeAccountUsageRead.Unsupported), sheetState.load)
+            assertEquals(RuntimeAccountUsageProvider.Antigravity, sheetState.provider)
+            assertFalse(sheetState.checkDue)
+            assertFalse(computerRuntimeUsageShowsCheckButton(sheetState))
+            assertEquals(0, api.calls.count { it.contains("/refresh") })
+        } finally {
+            controller.cancel()
+            scope.cancel()
         }
     }
 

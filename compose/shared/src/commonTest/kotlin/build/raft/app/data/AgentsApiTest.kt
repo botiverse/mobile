@@ -14,6 +14,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class AgentsApiTest {
@@ -561,6 +562,34 @@ class AgentsApiTest {
         assertEquals("pi", detail.runtime)
         assertEquals("deepseek/deepseek-v4-pro", detail.model)
         assertEquals(RuntimeProviderConfig.PiBuiltin("deepseek", "pi-key"), detail.runtimeProvider)
+    }
+
+    @Test
+    fun typedAgentsApiPreservesPiSdkProviderConfigurationAndRejectsOtherRuntimes() = runPortableCoroutineTest {
+        val piSdkClient =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody =
+                        """{"id":"agent-2","name":"PiSdk","runtimeConfig":{"version":1,"runtime":"pi-sdk","provider":{"kind":"pi-builtin","providerId":"deepseek","apiKey":"pi-key"},"model":{"kind":"preset","id":"deepseek/deepseek-v4-pro"},"mode":{"kind":"default"}}}"""
+                )
+            )
+        val piSdkDetail = assertIs<DataResult.Content<AgentSummary>>(piSdkClient.agent(MemberId("agent-2"))).data
+
+        assertEquals("pi-sdk", piSdkDetail.runtime)
+        assertEquals("deepseek/deepseek-v4-pro", piSdkDetail.model)
+        assertEquals(RuntimeProviderConfig.PiBuiltin("deepseek", "pi-key"), piSdkDetail.runtimeProvider)
+
+        val claudeClient =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    agentBody =
+                        """{"id":"agent-3","name":"Claude","runtimeConfig":{"version":1,"runtime":"claude","provider":{"kind":"pi-builtin","providerId":"deepseek","apiKey":"pi-key"},"model":{"kind":"preset","id":"sonnet"},"mode":{"kind":"default"}}}"""
+                )
+            )
+        val claudeDetail = assertIs<DataResult.Content<AgentSummary>>(claudeClient.agent(MemberId("agent-3"))).data
+
+        assertEquals("claude", claudeDetail.runtime)
+        assertNull(claudeDetail.runtimeProvider)
     }
 
     @Test

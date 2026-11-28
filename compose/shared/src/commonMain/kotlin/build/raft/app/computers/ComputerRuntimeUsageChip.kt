@@ -430,7 +430,7 @@ private fun RuntimeAccountUsageLoad?.availableCollectedAt(): String? =
  * so nothing read for one subject is ever shown for another.
  */
 internal class ComputerRuntimeUsageController(
-    private val key: RuntimeAccountUsageKey,
+    internal val key: RuntimeAccountUsageKey,
     private val store: SharedRuntimeAccountUsageStore,
     private val scope: CoroutineScope,
     private val log: (String) -> Unit = {},
@@ -1151,7 +1151,9 @@ private fun ComputerRuntimeUsageChip(
     // gated by the server (slock #15445).
     val authBinding = auth?.let { ComputerRuntimeAuthBinding(it, runtimeName, computerName, agents, access?.auth?.openUrl ?: {}) }
     // A Computer that reads no usage for this runtime (`unsupported`, slock #14667): as a runtime with none.
-    val usageController = controller?.takeUnless { it.load.unsupportedRead }
+    // Antigravity keeps its controller on `unsupported` so its card/sheet can show the unavailable-under-terms
+    // notice (`botiverse/slock#17344`) while still hiding the health dot and Check again button.
+    val usageController = controller?.takeUnless { it.load.unsupportedRead && key?.provider != RuntimeAccountUsageProvider.Antigravity }
     // A runtime with neither usage nor a sign-in has no card.
     if (usageController == null && authBinding == null) {
         plain()
@@ -1378,6 +1380,7 @@ internal fun ComputerRuntimeUsageController.sheetState(
         limitResetNote = limitResetNote,
         claudeLimitReset = claudeLimitResetOffer,
         claudeLimitResetNote = claudeLimitResetNote,
+        provider = key.provider,
     )
 }
 
@@ -1446,6 +1449,8 @@ internal data class ComputerRuntimeUsageSheetState(
     val claudeLimitReset: ComputerRuntimeClaudeLimitResetOffer? = null,
     /** What the last Claude limit reset did, in the status line. */
     val claudeLimitResetNote: ComputerRuntimeClaudeLimitResetText? = null,
+    /** The usage provider this state belongs to (web `provider`); null falls back to [RuntimeAccountUsageProvider.forRuntime]. */
+    val provider: RuntimeAccountUsageProvider? = null,
 )
 
 /**
@@ -1472,11 +1477,13 @@ private fun ComputerRuntimeUsageSheet(
     runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
     onOpenReadinessUrl: (String) -> Unit = {},
 ) {
-    // Signed out: there is no usage to show, only the way to sign in (web `showsUsage`).
+    // Signed out or unsupported: there is no usage to show, only the terms notice (Antigravity) and sign-in (web `showsUsage`).
     val signedOut = auth?.signedOut == true
+    val unsupported = state.load.unsupportedRead
+    val showsUsage = !signedOut && !unsupported
     RaftSheet(
         onDismissRequest = onDismiss,
-        title = if (signedOut) authRuntimeName else stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
+        title = if (showsUsage) stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel) else authRuntimeName,
         actions = {
             RaftButton(
                 text = stringResource(Res.string.common_close),
@@ -1491,7 +1498,7 @@ private fun ComputerRuntimeUsageSheet(
                 state = state,
                 timeContext = timeContext,
                 inset = 0.dp,
-                showsUsage = !signedOut,
+                showsUsage = showsUsage,
                 auth = auth,
                 onRefresh = onRefresh,
                 onRetryRead = onRetryRead,
@@ -1505,7 +1512,12 @@ private fun ComputerRuntimeUsageSheet(
                 runtimeCatalog = runtimeCatalog,
                 onOpenReadinessUrl = onOpenReadinessUrl,
                 head = {
-                    ComputerRuntimeCardHeadLines(state.runtimeVersion, auth, usageShowsAccount = !signedOut && state.showsAccount, authOnly = false)
+                    ComputerRuntimeCardHeadLines(
+                        state.runtimeVersion,
+                        auth,
+                        usageShowsAccount = showsUsage && state.showsAccount,
+                        authOnly = unsupported,
+                    )
                 },
             )
         },
@@ -1520,9 +1532,13 @@ internal fun ComputerRuntimeUsageSheetSurface(
     timeContext: RaftTimeContext?,
     modifier: Modifier = Modifier,
     auth: ComputerRuntimeAuthCardState? = null,
+    runtimeId: String? = null,
 ) {
+    val signedOut = auth?.signedOut == true
+    val unsupported = state.load.unsupportedRead
+    val showsUsage = !signedOut && !unsupported
     RaftSheetSurface(
-        title = stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel),
+        title = if (showsUsage) stringResource(Res.string.settings_computers_runtime_usage_title, runtimeLabel) else runtimeLabel,
         modifier = modifier,
         actions = {
             RaftButton(
@@ -1538,7 +1554,7 @@ internal fun ComputerRuntimeUsageSheetSurface(
                 state = state,
                 timeContext = timeContext,
                 inset = 0.dp,
-                showsUsage = true,
+                showsUsage = showsUsage,
                 auth = auth,
                 onRefresh = {},
                 onRetryRead = {},
@@ -1547,7 +1563,15 @@ internal fun ComputerRuntimeUsageSheetSurface(
                 onSignIn = {},
                 onSignOut = {},
                 onSignOutProvider = {},
-                head = { ComputerRuntimeCardHeadLines(state.runtimeVersion, auth, usageShowsAccount = state.showsAccount, authOnly = false) },
+                runtimeId = runtimeId,
+                head = {
+                    ComputerRuntimeCardHeadLines(
+                        state.runtimeVersion,
+                        auth,
+                        usageShowsAccount = showsUsage && state.showsAccount,
+                        authOnly = unsupported,
+                    )
+                },
             )
         },
     )
@@ -2035,6 +2059,21 @@ internal const val COMPUTER_RUNTIME_USAGE_REFRESH_TAG = "runtime-usage-refresh"
 internal const val COMPUTER_RUNTIME_USAGE_UPDATED_TAG = "runtime-usage-updated"
 internal const val COMPUTER_RUNTIME_USAGE_ACTIONS_TAG = "runtime-usage-actions"
 internal const val COMPUTER_RUNTIME_LIMIT_CALLOUT_TAG = "runtime-limit-callout"
+internal const val COMPUTER_RUNTIME_USAGE_UNAVAILABLE_TERMS_TAG = "runtime-usage-unavailable-terms"
+
+/**
+ * Web `RuntimeUsageSurface` (`botiverse/slock#17344`): Antigravity usage lookup is disabled under
+ * Antigravity's terms; when signed in (not [signedOut]) and the read returns `unsupported`, the
+ * surface shows the terms notice instead of usage meters or a Check again button.
+ */
+internal fun computerRuntimeUsageShowsAntigravityUnavailableByTerms(
+    provider: RuntimeAccountUsageProvider?,
+    signedOut: Boolean,
+    load: RuntimeAccountUsageLoad?,
+): Boolean =
+    provider == RuntimeAccountUsageProvider.Antigravity &&
+        !signedOut &&
+        load.unsupportedRead
 
 /** Web `runtimeUsagePercentUsed`: `round(usedRatio * 100)`. */
 internal fun runtimeUsagePercentUsed(usedRatio: Double): Int = kotlin.math.round(usedRatio * 100.0).toInt()
@@ -2286,6 +2325,7 @@ internal fun ComputerRuntimeAuthOnlyCard(
     runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
     nowMillis: Long = 0L,
     onOpenReadinessUrl: (String) -> Unit = {},
+    showAntigravityUnavailableByTerms: Boolean = false,
 ) {
     ComputerRuntimeCardHeader(title = runtimeName, runtimeVersion = runtimeVersion, onClose = onClose, auth = auth, usageShowsAccount = false, authOnly = true)
     if (runtimeReadiness.holds() && runtimeId != null) {
@@ -2298,10 +2338,17 @@ internal fun ComputerRuntimeAuthOnlyCard(
             onOpenUrl = onOpenReadinessUrl,
         )
     }
-    ComputerRuntimeAuthOnlyBody(auth, inset = 16.dp, onSignIn, onSignOut, onSignOutProvider)
+    ComputerRuntimeAuthOnlyBody(
+        auth = auth,
+        inset = 16.dp,
+        onSignIn = onSignIn,
+        onSignOut = onSignOut,
+        onSignOutProvider = onSignOutProvider,
+        showAntigravityUnavailableByTerms = showAntigravityUnavailableByTerms,
+    )
 }
 
-/** Web `Surface` without usage: the stored providers, the sign-in action (full width), and who may see it. */
+/** Web `Surface` without usage: the terms notice (when applicable), stored providers, the sign-in action (full width), and who may see it. */
 @Composable
 private fun ComputerRuntimeAuthOnlyBody(
     auth: ComputerRuntimeAuthCardState?,
@@ -2309,7 +2356,20 @@ private fun ComputerRuntimeAuthOnlyBody(
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onSignOutProvider: (RuntimeAuthSignedInProvider) -> Unit,
+    showAntigravityUnavailableByTerms: Boolean = false,
 ) {
+    if (showAntigravityUnavailableByTerms) {
+        RaftText(
+            stringResource(Res.string.settings_computers_runtime_usage_antigravity_unavailable_by_terms),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = inset, vertical = 12.dp)
+                    .testTag(COMPUTER_RUNTIME_USAGE_UNAVAILABLE_TERMS_TAG),
+            style = RaftTheme.typography.footnote,
+            color = RaftTheme.colors.foreground,
+        )
+    }
     if (auth != null) {
         ComputerRuntimeAuthProviderRows(auth, onSignOutProvider)
         if (auth.hasActions) {
@@ -2318,7 +2378,7 @@ private fun ComputerRuntimeAuthOnlyBody(
             }
         }
     }
-    ComputerRuntimeUsagePrivateLine(inset, top = if (auth?.hasActions == true) 0.dp else 10.dp)
+    ComputerRuntimeUsagePrivateLine(inset, top = if (auth?.hasActions == true || showAntigravityUnavailableByTerms) 0.dp else 10.dp)
 }
 
 /**
@@ -2527,8 +2587,11 @@ internal fun ComputerRuntimeUsageCard(
     runtimeCatalog: ServerRuntimeCatalog = BundledRuntimeCatalog,
     onOpenReadinessUrl: (String) -> Unit = {},
 ) {
-    // Signed out: there is no usage to show, only the way to sign in (web `showsUsage`).
-    if (auth?.signedOut == true) {
+    // Signed out or unsupported: there is no usage to show, only the terms notice (Antigravity) and sign-in (web `showsUsage`).
+    val signedOut = auth?.signedOut == true
+    val unsupported = state.load.unsupportedRead
+    if (signedOut || unsupported) {
+        val provider = state.provider ?: RuntimeAccountUsageProvider.forRuntime(runtimeId)
         val noticeNowMillis = currentRaftTimeContext(timeContext)?.nowEpochMillis ?: defaultNowMillis()
         ComputerRuntimeAuthOnlyCard(
             runtimeName = authRuntimeName,
@@ -2543,6 +2606,7 @@ internal fun ComputerRuntimeUsageCard(
             runtimeCatalog = runtimeCatalog,
             nowMillis = noticeNowMillis,
             onOpenReadinessUrl = onOpenReadinessUrl,
+            showAntigravityUnavailableByTerms = computerRuntimeUsageShowsAntigravityUnavailableByTerms(provider, signedOut, state.load),
         )
         return
     }
@@ -2614,7 +2678,16 @@ private fun ComputerRuntimeUsageSurfaceContent(
         )
     }
     if (!showsUsage) {
-        ComputerRuntimeAuthOnlyBody(auth, inset, onSignIn, onSignOut, onSignOutProvider)
+        val provider = state.provider ?: RuntimeAccountUsageProvider.forRuntime(runtimeId)
+        val signedOut = auth?.signedOut == true
+        ComputerRuntimeAuthOnlyBody(
+            auth = auth,
+            inset = inset,
+            onSignIn = onSignIn,
+            onSignOut = onSignOut,
+            onSignOutProvider = onSignOutProvider,
+            showAntigravityUnavailableByTerms = computerRuntimeUsageShowsAntigravityUnavailableByTerms(provider, signedOut, state.load),
+        )
         return
     }
     val usageShowsAccount = state.showsAccount
@@ -2753,6 +2826,7 @@ private fun ComputerRuntimeAccountMenu(onSignOut: () -> Unit, onOpen: () -> Unit
  * while it means something. A snapshot under 2 minutes old has none; an offline Computer has none.
  */
 internal fun computerRuntimeUsageShowsCheckButton(state: ComputerRuntimeUsageSheetState): Boolean {
+    if (state.load.unsupportedRead) return false
     val readFailed = state.load is RuntimeAccountUsageLoad.Failed
     return state.checkState == ComputerRuntimeUsageCheckState.Checking ||
         ((!state.loading || state.load != null) &&

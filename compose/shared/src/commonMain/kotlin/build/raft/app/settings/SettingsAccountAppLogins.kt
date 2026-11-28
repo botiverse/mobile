@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftLucideIconName
 import build.raft.app.data.AppLogin
+import build.raft.app.data.AppLoginKind
 import build.raft.app.data.NetworkAppLoginsDataSource
 import build.raft.app.data.RaftNetworkClient
 import build.raft.app.data.SharedAppLoginsIntent
@@ -98,11 +99,17 @@ internal fun SettingsAppLoginsOverlays(ui: SettingsAppLoginsUi) {
 /** One App: logo, name, when, and Revoke. */
 @Composable
 private fun SettingsAppLoginRow(login: AppLogin, divider: Boolean, timeContext: RaftTimeContext?, onRevoke: () -> Unit) {
+    val descriptionRes =
+        if (login.kind == AppLoginKind.Card) {
+            Res.string.settings_app_logins_used_card
+        } else {
+            Res.string.settings_app_logins_signed_in
+        }
     RaftListRow(
         title = login.name,
         variant = RaftListRowVariant.Plain,
         divider = divider,
-        description = stringResource(Res.string.settings_app_logins_signed_in, settingsCompactDateLabel(login.grantedAt, timeContext)),
+        description = stringResource(descriptionRes, settingsCompactDateLabel(login.grantedAt, timeContext)),
         leading = { RaftConnectedAppLogo(name = login.name, logoUrl = login.logoUrl, size = RaftAvatarSize.Md) },
         trailing = {
             RaftButton(
@@ -125,11 +132,17 @@ private fun SettingsAppLoginRevokeDialog(
     dispatch: (SharedAppLoginsIntent) -> Unit,
 ) {
     val dismiss = { if (!revoking) dispatch(SharedAppLoginsIntent.CloseRevoke) }
+    val confirmBodyRes =
+        if (login.kind == AppLoginKind.Card) {
+            Res.string.settings_app_logins_confirm_body_card
+        } else {
+            Res.string.settings_app_logins_confirm_body
+        }
     RaftDialog(
         onDismissRequest = dismiss,
         title = stringResource(Res.string.settings_app_logins_confirm_title, login.name),
         size = RaftDialogSize.Sm,
-        description = stringResource(Res.string.settings_app_logins_confirm_body, login.name),
+        description = stringResource(confirmBodyRes, login.name),
         dismissOnClickOutside = false,
         closeLabel = stringResource(Res.string.common_close),
         footer = {
