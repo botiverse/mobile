@@ -81,18 +81,20 @@ class VoiceDictationV2Test {
         assertNull(normalizeVoiceDictationLanguage(""))
         assertNull(normalizeVoiceDictationLanguage(null))
 
-        // Caller-supplied draftBefore & contactHints (#wg-call:#10): included when non-empty,
-        // omitted when null, blank, or all entries normalize away.
+        // Caller-supplied draftBefore, draftAfter & contactHints (#wg-call:#10, #wg-live:#21):
+        // included when non-empty, omitted when null, blank, or all entries normalize away.
         val withHintsJson =
             buildVoiceDictationV2PermitRequestBody(
                 language = "zh-CN",
                 channelId = validChannelUuid,
                 draftBefore = "  Prior\u200B draft\r\nline 2  ",
+                draftAfter = "\r\nNext\u0000\tLine  ",
                 contactHints = listOf("  Alice\nChen  ", "alice chen", "wg-call"),
             )
         val withHintsObj = Json.parseToJsonElement(withHintsJson).jsonObject
-        assertEquals(setOf("v", "language", "channelId", "draftBefore", "contactHints"), withHintsObj.keys)
+        assertEquals(setOf("v", "language", "channelId", "draftBefore", "draftAfter", "contactHints"), withHintsObj.keys)
         assertEquals("Prior draft\nline 2", withHintsObj["draftBefore"]?.jsonPrimitive?.content)
+        assertEquals("\nNext\tLine", withHintsObj["draftAfter"]?.jsonPrimitive?.content)
         assertEquals(
             """["Alice Chen","wg-call"]""",
             withHintsObj["contactHints"]?.toString(),
@@ -102,17 +104,19 @@ class VoiceDictationV2Test {
             buildVoiceDictationV2PermitRequestBody(
                 language = "en",
                 draftBefore = "   \u0000\u200B  ",
+                draftAfter = "   \r\n\t\u200B  ",
                 contactHints = listOf("", "   ", "x".repeat(65)),
             )
         assertEquals("""{"v":2,"language":"en"}""", omittedEmptyJson)
-        assertFalse(hasVoiceDictationPermitCallerContext(draftBefore = "   ", contactHints = emptyList()))
+        assertFalse(hasVoiceDictationPermitCallerContext(draftBefore = "   ", draftAfter = " \n\t ", contactHints = emptyList()))
         assertTrue(hasVoiceDictationPermitCallerContext(draftBefore = "Hi"))
+        assertTrue(hasVoiceDictationPermitCallerContext(draftAfter = "\nNext"))
         assertTrue(hasVoiceDictationPermitCallerContext(contactHints = listOf("Alice")))
     }
 
     @Test
     fun permitApiRetriesOnceStrippedOn400InvalidRequestAndDoesNotRetryOtherRefusals() = runTest {
-        // 1. 400 invalid_request when carrying draftBefore/contactHints -> retries ONCE stripped -> 201 Issued.
+        // 1. 400 invalid_request when carrying draftBefore/draftAfter/contactHints -> retries ONCE stripped -> 201 Issued.
         val client = FakeDictationNetworkClient()
         client.responseProvider = { attempt, _ ->
             if (attempt == 1) {
@@ -132,16 +136,50 @@ class VoiceDictationV2Test {
                 language = "zh-CN",
                 channelId = validChannelUuid,
                 draftBefore = "Prior draft",
+                draftAfter = "\nRemaining line",
                 contactHints = listOf("Tenny"),
             )
         assertIs<VoiceDictationV2PermitOutcome.Issued>(recovered)
         assertEquals(2, client.sentBodies.size)
         val firstObj = Json.parseToJsonElement(assertNotNull(client.sentBodies[0])).jsonObject
         assertEquals("Prior draft", firstObj["draftBefore"]?.jsonPrimitive?.content)
+        assertEquals("\nRemaining line", firstObj["draftAfter"]?.jsonPrimitive?.content)
         assertEquals("""["Tenny"]""", firstObj["contactHints"]?.toString())
         assertEquals(
             """{"v":2,"language":"zh","channelId":"$validChannelUuid"}""",
             client.sentBodies[1],
+        )
+
+        // 1b. 400 invalid_request when carrying ONLY draftAfter -> retries ONCE stripped -> 201 Issued.
+        val draftAfterOnlyClient = FakeDictationNetworkClient()
+        draftAfterOnlyClient.responseProvider = { attempt, _ ->
+            if (attempt == 1) {
+                HomeNetworkResponse(
+                    code = 400,
+                    bodyText = null,
+                    errorBodyText = """{"code":"invalid_request","error":"Unrecognized key: draftAfter"}""",
+                )
+            } else {
+                HomeNetworkResponse(code = 201, bodyText = validPermitJson)
+            }
+        }
+        val recoveredAfterOnly =
+            RaftVoiceDictationV2PermitApi(draftAfterOnlyClient).requestPermit(
+                serverId = "srv-1",
+                language = "zh-CN",
+                channelId = validChannelUuid,
+                draftBefore = null,
+                draftAfter = " suffix only",
+                contactHints = null,
+            )
+        assertIs<VoiceDictationV2PermitOutcome.Issued>(recoveredAfterOnly)
+        assertEquals(2, draftAfterOnlyClient.sentBodies.size)
+        val afterOnlyFirstObj = Json.parseToJsonElement(assertNotNull(draftAfterOnlyClient.sentBodies[0])).jsonObject
+        assertEquals(setOf("v", "language", "channelId", "draftAfter"), afterOnlyFirstObj.keys)
+        assertEquals(" suffix only", afterOnlyFirstObj["draftAfter"]?.jsonPrimitive?.content)
+        assertEquals(
+            """{"v":2,"language":"zh","channelId":"$validChannelUuid"}""",
+            draftAfterOnlyClient.sentBodies[1],
         )
 
         // 2. Persistent 400 stops after 2 attempts (never loops) and returns InvalidRequest.
@@ -158,6 +196,7 @@ class VoiceDictationV2Test {
                 language = "en",
                 channelId = null,
                 draftBefore = "Draft",
+                draftAfter = "After",
                 contactHints = listOf("Kate"),
             )
         assertIs<VoiceDictationV2PermitOutcome.Refused>(persistentOutcome)
@@ -178,6 +217,7 @@ class VoiceDictationV2Test {
                 language = "en",
                 channelId = null,
                 draftBefore = "   ",
+                draftAfter = "  \n\t  ",
                 contactHints = emptyList(),
             )
         assertIs<VoiceDictationV2PermitOutcome.Refused>(bareOutcome)
@@ -193,6 +233,7 @@ class VoiceDictationV2Test {
                     language = "en",
                     channelId = null,
                     draftBefore = "Draft",
+                    draftAfter = "After",
                     contactHints = listOf("Kate"),
                 )
             assertIs<VoiceDictationV2PermitOutcome.Refused>(refused)
@@ -204,28 +245,33 @@ class VoiceDictationV2Test {
     fun controllerForwardsDraftBeforeAndContactHintsKeepsDraftReadOnlyAndOmitsFromWsStartFrame() = runTest {
         val permit = assertNotNull(parseVoiceDictationV2Permit(validPermitJson))
         val permitApi = FakeDictationPermitApi(VoiceDictationV2PermitOutcome.Issued(permit))
-        val wsSession = FakeDictationWebSocketSession()
+        val wsSessions = mutableListOf<FakeDictationWebSocketSession>()
         val recorder = FakeDictationAudioRecorder()
         val updates = mutableListOf<VoiceDictationComposerUpdate>()
 
         val controller =
             VoiceDictationV2Controller(
                 permitApi = permitApi,
-                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsSession },
+                streamConnector =
+                    VoiceDictationV2StreamClient { _, _ ->
+                        FakeDictationWebSocketSession().also { wsSessions += it }
+                    },
                 scope = backgroundScope,
                 audioRecorderProvider = { recorder },
             )
 
-        val existingDraft = "Meet with Alice tomorrow"
-        val caret = 15 // right after "Meet with Alice"
+        val existingDraft = "Meet with Alice [OLD] tomorrow"
+        val selStart = 15 // right after "Meet with Alice"
+        val selEnd = 21 // right after " [OLD]" (selected text excluded from both draftBefore and draftAfter)
         controller.start(
             serverId = "srv-1",
             channelId = validChannelUuid,
             language = "en-US",
             baseText = existingDraft,
-            insertStart = caret,
-            insertEnd = caret,
-            draftBefore = extractVoiceDictationDraftBeforeCaret(existingDraft, caret),
+            insertStart = selStart,
+            insertEnd = selEnd,
+            draftBefore = extractVoiceDictationDraftBeforeCaret(existingDraft, selStart),
+            draftAfter = extractVoiceDictationDraftAfterCaret(existingDraft, selEnd),
             contactHints = listOf("Alice Chen", "wg-call"),
             onComposerUpdate = { updates += it },
         )
@@ -236,22 +282,62 @@ class VoiceDictationV2Test {
         assertEquals("en-US", recordedCall.language)
         assertEquals(validChannelUuid, recordedCall.channelId)
         assertEquals("Meet with Alice", recordedCall.draftBefore)
+        assertEquals(" tomorrow", recordedCall.draftAfter)
         assertEquals(listOf("Alice Chen", "wg-call"), recordedCall.contactHints)
 
         // WS start frame stays strictly v2 minimal with zero caller context fields (and mode: "tap").
-        val startObj = Json.parseToJsonElement(wsSession.sentText.single()).jsonObject
+        val firstWs = wsSessions.single()
+        val startObj = Json.parseToJsonElement(firstWs.sentText.single()).jsonObject
         assertEquals(setOf("deck", "v", "sample_rate", "mode"), startObj.keys)
         assertEquals("tap", startObj["mode"]?.jsonPrimitive?.content)
         assertFalse("draftBefore" in startObj)
         assertFalse("draft_before" in startObj)
+        assertFalse("draftAfter" in startObj)
+        assertFalse("draft_after" in startObj)
         assertFalse("contactHints" in startObj)
         assertFalse("contact_hints" in startObj)
 
-        // Read-only guarantee: spoken text inserts around the caret without mutating pre-existing prefix/suffix.
-        wsSession.pushText("""{"deck":"ready"}""")
-        wsSession.pushText("""{"deck":"text","text":"at noon","stable_len":7,"refined":true}""")
+        // Read-only guarantee: spoken text inserts without mutating pre-existing prefix/suffix and
+        // with zero client-side punctuation/casing post-processing.
+        firstWs.pushText("""{"deck":"ready"}""")
+        firstWs.pushText("""{"deck":"text","text":"at noon.","stable_len":8,"refined":true}""")
         runCurrent()
-        assertEquals("Meet with Alice at noon tomorrow", updates.last().composerText)
+        assertEquals("Meet with Alice at noon. tomorrow", updates.last().composerText)
+
+        // Caret at end of composer omits draftAfter completely.
+        val endDraft = "End of draft"
+        controller.start(
+            serverId = "srv-1",
+            channelId = validChannelUuid,
+            language = "en-US",
+            baseText = endDraft,
+            insertStart = endDraft.length,
+            insertEnd = endDraft.length,
+            draftBefore = extractVoiceDictationDraftBeforeCaret(endDraft, endDraft.length),
+            draftAfter = extractVoiceDictationDraftAfterCaret(endDraft, endDraft.length),
+            onComposerUpdate = {},
+        )
+        runCurrent()
+        assertEquals("End of draft", permitApi.contextCalls.last().draftBefore)
+        assertNull(permitApi.contextCalls.last().draftAfter)
+
+        // Caret followed only by whitespace omits draftAfter completely.
+        val trailingWsDraft = "Before trailing ws   \n  "
+        val wsCaret = "Before trailing ws".length
+        controller.start(
+            serverId = "srv-1",
+            channelId = validChannelUuid,
+            language = "en-US",
+            baseText = trailingWsDraft,
+            insertStart = wsCaret,
+            insertEnd = wsCaret,
+            draftBefore = extractVoiceDictationDraftBeforeCaret(trailingWsDraft, wsCaret),
+            draftAfter = extractVoiceDictationDraftAfterCaret(trailingWsDraft, wsCaret),
+            onComposerUpdate = {},
+        )
+        runCurrent()
+        assertEquals("Before trailing ws", permitApi.contextCalls.last().draftBefore)
+        assertNull(permitApi.contextCalls.last().draftAfter)
     }
 
     @Test
@@ -2109,16 +2195,18 @@ class VoiceDictationV2Test {
             )
 
         val secretDraft = "SECRET_DRAFT_BEFORE_CARET"
+        val secretDraftAfter = "SECRET_DRAFT_AFTER_CARET"
         val secretHint = "SECRET_CONTACT_HINT"
         val secretSpoken = "SECRET_SPOKEN_UTTERANCE"
 
         controller.start(
             serverId = "srv-telemetry",
             channelId = validChannelUuid,
-            baseText = secretDraft,
+            baseText = "$secretDraft\n$secretDraftAfter",
             insertStart = secretDraft.length,
             insertEnd = secretDraft.length,
             draftBefore = secretDraft,
+            draftAfter = "\n$secretDraftAfter",
             contactHints = listOf(secretHint),
             mode = VoiceDictationSessionMode.Tap,
             onComposerUpdate = {},
@@ -2227,7 +2315,7 @@ class VoiceDictationV2Test {
         assertFalse("error_code" in attrs)
 
         val serialized = attrs.toString()
-        for (secret in listOf(secretDraft, secretHint, secretSpoken, "srv-telemetry", validChannelUuid, "jti_session_telemetry")) {
+        for (secret in listOf(secretDraft, secretDraftAfter, secretHint, secretSpoken, "srv-telemetry", validChannelUuid, "jti_session_telemetry")) {
             assertFalse(secret in serialized, "secret '$secret' leaked into voice_dictation_session attrs: $serialized")
         }
     }
@@ -3327,6 +3415,7 @@ class VoiceDictationV2Test {
         val language: String?,
         val channelId: String?,
         val draftBefore: String?,
+        val draftAfter: String?,
         val contactHints: List<String>?,
     )
 
@@ -3347,6 +3436,7 @@ class VoiceDictationV2Test {
                 language = language,
                 channelId = channelId,
                 draftBefore = null,
+                draftAfter = null,
                 contactHints = null,
             )
 
@@ -3356,6 +3446,23 @@ class VoiceDictationV2Test {
             channelId: String?,
             draftBefore: String?,
             contactHints: List<String>?,
+        ): VoiceDictationV2PermitOutcome =
+            requestPermit(
+                serverId = serverId,
+                language = language,
+                channelId = channelId,
+                draftBefore = draftBefore,
+                draftAfter = null,
+                contactHints = contactHints,
+            )
+
+        override suspend fun requestPermit(
+            serverId: String,
+            language: String?,
+            channelId: String?,
+            draftBefore: String?,
+            draftAfter: String?,
+            contactHints: List<String>?,
         ): VoiceDictationV2PermitOutcome {
             calls += Triple(serverId, language, channelId)
             contextCalls +=
@@ -3364,6 +3471,7 @@ class VoiceDictationV2Test {
                     language = language,
                     channelId = channelId,
                     draftBefore = draftBefore,
+                    draftAfter = draftAfter,
                     contactHints = contactHints,
                 )
             return gate?.await() ?: nextOutcome

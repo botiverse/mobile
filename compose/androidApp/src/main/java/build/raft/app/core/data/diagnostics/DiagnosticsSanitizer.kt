@@ -21,7 +21,7 @@ object DiagnosticsSanitizer {
         Regex("""(?i)\b(raw\s+(?:response|body)\s*[:=]\s*).+"""),
         Regex("""\b((?:eyJ)[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.)[A-Za-z0-9_-]+\b"""),
         Regex("""\b([A-Za-z0-9._%+-]{2})[A-Za-z0-9._%+-]*(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b"""),
-        Regex("""(?:"?(?:draft_?before|contact_?hints)"?\s*[:=]\s*(?:\[[^\]]*\]|"(?:\\.|[^"\\])*"|[^\s,;}]+))""", RegexOption.IGNORE_CASE),
-        Regex("""\b(?:draft_?before|contact_?hints)\b""", RegexOption.IGNORE_CASE),
+        Regex("""(?:"?(?:draft_?(?:before|after)|contact_?hints)"?\s*[:=]\s*(?:\[[^\]]*\]|"(?:\\.|[^"\\])*"|[^\s,;}]+))""", RegexOption.IGNORE_CASE),
+        Regex("""\b(?:draft_?(?:before|after)|contact_?hints)\b""", RegexOption.IGNORE_CASE),
     )
 }

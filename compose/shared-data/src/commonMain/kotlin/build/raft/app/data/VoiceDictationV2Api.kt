@@ -207,27 +207,31 @@ sealed interface VoiceDictationV2PermitOutcome {
 }
 
 /**
- * Returns `true` when [draftBefore] or [contactHints] carries at least one non-empty normalized
- * caller-context value to attach to an initial `POST /api/voice/dictation/permits` request.
+ * Returns `true` when [draftBefore], [draftAfter], or [contactHints] carries at least one
+ * non-empty normalized caller-context value to attach to an initial
+ * `POST /api/voice/dictation/permits` request.
  */
 @RaftCoreInternalApi
 fun hasVoiceDictationPermitCallerContext(
     draftBefore: String? = null,
+    draftAfter: String? = null,
     contactHints: List<String>? = null,
 ): Boolean =
     normalizeVoiceDictationDraftBefore(draftBefore) != null ||
+        normalizeVoiceDictationDraftAfter(draftAfter) != null ||
         normalizeVoiceDictationContactHints(contactHints) != null
 
 /**
  * Encodes the strict JSON body for `POST /api/voice/dictation/permits`:
- * `{ "v": 2, "language"?: <iso639-1>, "channelId"?: <uuid>, "draftBefore"?: <string>, "contactHints"?: [<string>, ...] }`.
- * Omits `draftBefore` when null/blank and omits `contactHints` when null/empty.
+ * `{ "v": 2, "language"?: <iso639-1>, "channelId"?: <uuid>, "draftBefore"?: <string>, "draftAfter"?: <string>, "contactHints"?: [<string>, ...] }`.
+ * Omits `draftBefore` / `draftAfter` when null/blank and omits `contactHints` when null/empty.
  */
 @RaftCoreInternalApi
 fun buildVoiceDictationV2PermitRequestBody(
     language: String? = null,
     channelId: String? = null,
     draftBefore: String? = null,
+    draftAfter: String? = null,
     contactHints: List<String>? = null,
 ): String =
     buildJsonObject {
@@ -235,6 +239,7 @@ fun buildVoiceDictationV2PermitRequestBody(
         normalizeVoiceDictationLanguage(language)?.let { put("language", it) }
         normalizeVoiceDictationChannelId(channelId)?.let { put("channelId", it) }
         normalizeVoiceDictationDraftBefore(draftBefore)?.let { put("draftBefore", it) }
+        normalizeVoiceDictationDraftAfter(draftAfter)?.let { put("draftAfter", it) }
         normalizeVoiceDictationContactHints(contactHints)?.let { hints ->
             put(
                 "contactHints",
@@ -408,6 +413,28 @@ interface VoiceDictationV2PermitApi {
             language = language,
             channelId = channelId,
         )
+
+    /**
+     * Initial-session permit request carrying optional normalized read-only [draftBefore],
+     * read-only [draftAfter] (`#wg-live:#21`), and server-scoped [contactHints] (`#wg-call:#10`).
+     * Defaults to delegating to the 5-arg overload so legacy fakes/implementations stay
+     * source-compatible without overload ambiguity.
+     */
+    suspend fun requestPermit(
+        serverId: String,
+        language: String?,
+        channelId: String?,
+        draftBefore: String?,
+        draftAfter: String?,
+        contactHints: List<String>?,
+    ): VoiceDictationV2PermitOutcome =
+        requestPermit(
+            serverId = serverId,
+            language = language,
+            channelId = channelId,
+            draftBefore = draftBefore,
+            contactHints = contactHints,
+        )
 }
 
 /**
@@ -415,9 +442,10 @@ interface VoiceDictationV2PermitApi {
  * Always passes `serverIdOverride = ServerId(serverId)` so `X-Server-Id` stays bound to the
  * dictation session's server even across concurrent server switches.
  *
- * Rollback compatibility (`#wg-call:#10`): if an initial request carrying `draftBefore` and/or
- * `contactHints` receives HTTP `400` (`invalid_request`) from an older/rolled-back server whose
- * strict permit schema does not yet accept those keys, silently retries ONCE without them.
+ * Rollback compatibility (`#wg-call:#10`, `#wg-live:#21`): if an initial request carrying
+ * `draftBefore`, `draftAfter`, and/or `contactHints` receives HTTP `400` (`invalid_request`) from
+ * an older/rolled-back server whose strict permit schema does not yet accept those keys, silently
+ * retries ONCE without them.
  */
 @RaftCoreInternalApi
 class RaftVoiceDictationV2PermitApi(
@@ -433,6 +461,7 @@ class RaftVoiceDictationV2PermitApi(
             language = language,
             channelId = channelId,
             draftBefore = null,
+            draftAfter = null,
             contactHints = null,
         )
 
@@ -442,6 +471,23 @@ class RaftVoiceDictationV2PermitApi(
         channelId: String?,
         draftBefore: String?,
         contactHints: List<String>?,
+    ): VoiceDictationV2PermitOutcome =
+        requestPermit(
+            serverId = serverId,
+            language = language,
+            channelId = channelId,
+            draftBefore = draftBefore,
+            draftAfter = null,
+            contactHints = contactHints,
+        )
+
+    override suspend fun requestPermit(
+        serverId: String,
+        language: String?,
+        channelId: String?,
+        draftBefore: String?,
+        draftAfter: String?,
+        contactHints: List<String>?,
     ): VoiceDictationV2PermitOutcome {
         val cleanServerId = serverId.trim()
         if (cleanServerId.isEmpty()) {
@@ -450,8 +496,12 @@ class RaftVoiceDictationV2PermitApi(
             )
         }
         val normalizedDraftBefore = normalizeVoiceDictationDraftBefore(draftBefore)
+        val normalizedDraftAfter = normalizeVoiceDictationDraftAfter(draftAfter)
         val normalizedContactHints = normalizeVoiceDictationContactHints(contactHints)
-        val hasCallerContext = normalizedDraftBefore != null || normalizedContactHints != null
+        val hasCallerContext =
+            normalizedDraftBefore != null ||
+                normalizedDraftAfter != null ||
+                normalizedContactHints != null
 
         val initialOutcome =
             executePermitRequest(
@@ -461,6 +511,7 @@ class RaftVoiceDictationV2PermitApi(
                         language = language,
                         channelId = channelId,
                         draftBefore = normalizedDraftBefore,
+                        draftAfter = normalizedDraftAfter,
                         contactHints = normalizedContactHints,
                     ),
             )

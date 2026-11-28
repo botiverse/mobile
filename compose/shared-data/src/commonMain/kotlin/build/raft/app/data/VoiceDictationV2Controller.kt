@@ -736,6 +736,7 @@ class VoiceDictationV2Controller(
         insertStart: Int = baseText.length,
         insertEnd: Int = insertStart,
         draftBefore: String? = null,
+        draftAfter: String? = null,
         contactHints: List<String>? = null,
         mode: VoiceDictationSessionMode = VoiceDictationSessionMode.Tap,
         deferStartMode: Boolean = false,
@@ -747,6 +748,7 @@ class VoiceDictationV2Controller(
         // Normalize once at session start; pass transiently to Step 2 permit request only (never
         // retained in VoiceDictationV2State, outcome tracker, feedback target, logs, or traces).
         val normalizedDraftBefore = normalizeVoiceDictationDraftBefore(draftBefore)
+        val normalizedDraftAfter = normalizeVoiceDictationDraftAfter(draftAfter)
         val normalizedContactHints = normalizeVoiceDictationContactHints(contactHints)
         val owner =
             VoiceDictationV2Owner(
@@ -915,6 +917,7 @@ class VoiceDictationV2Controller(
                                 language = session.language,
                                 channelId = session.owner.channelId,
                                 draftBefore = normalizedDraftBefore,
+                                draftAfter = normalizedDraftAfter,
                                 contactHints = normalizedContactHints,
                             )
                         } catch (cancellation: CancellationException) {
