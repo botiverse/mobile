@@ -12,6 +12,7 @@ import build.raft.app.data.RealConversationRepository
 import build.raft.app.data.RaftAuthSessionStore
 import build.raft.app.data.candidateCacheScopeId
 import build.raft.app.data.stripQuoteReplyRefsForPreview
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.get
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ForwardMessageBundle
@@ -42,6 +43,34 @@ internal data class ThreadForwardBundleRoute(
     val channelId: ChannelId,
     val messageId: MessageId
 )
+
+/**
+ * Resolves the channel that owns [messageId] when opening its forwarded bundle detail page.
+ *
+ * In a reply thread, the thread's own `timelineChannelId` is the reply stream channel, whereas
+ * the parent/origin message lives in [RaftThreadScreenPayload.parentChannelId] (both in
+ * [SharedThreadMessageStore] and on the server). Routing a reply-thread origin message with its
+ * parent channel avoids cache misses, route-identity mismatches, and missing stream IDs on
+ * 0-reply threads.
+ */
+internal fun RaftThreadScreenPayload.forwardBundleChannelIdForMessage(messageId: String): String? {
+    val routeIdentity = resolveThreadRouteIdentity()
+    val isReplyOrigin =
+        surfaceKind == RaftThreadSurfaceKind.ReplyThread &&
+            (originMessage?.id == messageId ||
+                originParentMessageId == messageId ||
+                parentMessageId == messageId)
+    if (isReplyOrigin) {
+        val parentFromKey =
+            routeIdentity.parentKey
+                ?.substringBefore(':', missingDelimiterValue = "")
+                ?.takeIf { it.isNotBlank() }
+        return parentChannelId?.takeIf { it.isNotBlank() }
+            ?: parentFromKey
+            ?: routeIdentity.timelineChannelId
+    }
+    return routeIdentity.timelineChannelId
+}
 
 internal fun JSONObject.toThreadForwardBundleRouteOrNull(): ThreadForwardBundleRoute? {
     val serverId = optString("serverId").trim().takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null

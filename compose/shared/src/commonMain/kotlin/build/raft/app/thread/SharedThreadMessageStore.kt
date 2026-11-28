@@ -88,6 +88,7 @@ internal class SharedThreadMessageStore(
                 message
                     .withKnownDelegatedByFrom(existing)
                     .withKnownExternalMentionSpansFrom(existing)
+                    .withKnownForwardBundleFrom(existing)
                     .withKnownRetractionFrom(existing)
             }
         messages.remove(key)
@@ -248,6 +249,13 @@ internal class SharedThreadMessageStore(
         }
     }
 }
+
+private fun Message.withKnownForwardBundleFrom(known: Message?): Message =
+    if (forwardBundle != null || isRetracted || known == null || known.id != id || known.forwardBundle == null) {
+        this
+    } else {
+        copy(forwardBundle = known.forwardBundle)
+    }
 
 private fun Message.needsSharedThreadMessageStoreHydration(): Boolean =
     body.isBlank() && attachments.isEmpty() && forwardBundle == null

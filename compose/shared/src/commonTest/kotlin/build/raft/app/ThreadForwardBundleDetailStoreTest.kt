@@ -21,9 +21,13 @@ import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.model.Message
 import build.raft.app.model.MessageId
+import build.raft.app.model.MessageMention
 import build.raft.app.model.ServerId
 import build.raft.app.model.ThreadId
 import build.raft.app.thread.AuthenticatedThreadForwardBundleDetailRepository
+import build.raft.app.thread.RaftThreadAttachmentItem
+import build.raft.app.thread.RaftThreadMessageItem
+import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.SharedThreadMessageStore
 import build.raft.app.thread.ThreadForwardBundleDetailIntent
 import build.raft.app.thread.ThreadForwardBundleDetailRepository
@@ -33,7 +37,12 @@ import build.raft.app.thread.ThreadForwardBundleInlinePreviewLimit
 import build.raft.app.thread.ThreadForwardBundlePreviewLineLimit
 import build.raft.app.thread.ThreadForwardBundleRoute
 import build.raft.app.thread.dispatch
+import build.raft.app.thread.forwardBundleChannelIdForMessage
 import build.raft.app.thread.inlinePreviewMessages
+import build.raft.app.thread.mergeRealtimeUpdate
+import build.raft.app.thread.needsReplyOriginContextHydration
+import build.raft.app.thread.toMessage
+import build.raft.app.thread.toRaftThreadMessageItem
 import build.raft.app.thread.toThreadForwardBundleRouteOrNull
 import build.raft.app.compat.json.JSONObject
 import kotlinx.coroutines.CompletableDeferred
@@ -47,6 +56,8 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.assertIs
@@ -280,6 +291,148 @@ class ThreadForwardBundleDetailStoreTest {
             )
         assertEquals(ThreadForwardBundleDetailStatus.Loading, retryStore.state.value.status)
         storeJob.cancelAndJoin()
+    }
+
+    @Test
+    fun raftThreadMessageItemToMessagePreservesForwardBundleAndReplyOriginHydration() {
+        val bundle =
+            ForwardMessageBundle(
+                messages = listOf(forwardItem("f-1", "Forwarded body 1"), forwardItem("f-2", "Forwarded body 2")),
+                totalCount = 5,
+            )
+        val item =
+            RaftThreadMessageItem(
+                id = "parent-msg-1",
+                authorId = "user-artea",
+                authorName = "Artea",
+                authorKind = "human",
+                isOwn = false,
+                avatarLabel = "AR",
+                timestampLabel = "13:13",
+                body = "clean workspace",
+                randomId = "rand-1",
+                senderMembershipStatus = "active",
+                attachments =
+                    listOf(
+                        RaftThreadAttachmentItem(
+                            id = "att-1",
+                            name = "pic.png",
+                            mimeType = "image/png",
+                            sizeBytes = 1024L,
+                            sizeLabel = "1 KB",
+                            width = 800,
+                            height = 600,
+                        )
+                    ),
+                forwardBundle = bundle,
+                mentions = listOf(MessageMention(name = "Cachet", type = "agent", id = "agent-1")),
+            )
+
+        val domain = assertNotNull(item.toMessage(ThreadId("parent-ch"), ChannelId("parent-ch")))
+        assertEquals(bundle, domain.forwardBundle)
+        assertEquals("rand-1", domain.randomId)
+        assertEquals("active", domain.senderMembershipStatus)
+        assertEquals(item.mentions, domain.mentions)
+        assertEquals(800, domain.attachments.single().width)
+        assertEquals(600, domain.attachments.single().height)
+
+        val roundTripped = domain.toRaftThreadMessageItem(currentUserId = "viewer-1")
+        assertEquals(bundle, roundTripped.forwardBundle)
+
+        val noteLessForwardedItem = item.copy(body = "", attachments = emptyList())
+        assertFalse(noteLessForwardedItem.needsReplyOriginContextHydration())
+        val noteLessForwardedDomain = assertNotNull(noteLessForwardedItem.toMessage(ThreadId("parent-ch"), ChannelId("parent-ch")))
+        assertFalse(noteLessForwardedDomain.needsReplyOriginContextHydration())
+    }
+
+    @Test
+    fun sharedThreadMessageStorePreservesForwardBundleAcrossSparseUpsertAndClearsOnRetraction() {
+        val route = threadForwardBundleRoute()
+        val messageStore = SharedThreadMessageStore()
+        val full = cachedMessage(route, body = "Note on forwarded bundle")
+        val bundle = assertNotNull(full.forwardBundle)
+        messageStore.upsertScoped("scope-1", route.channelId, full)
+
+        // Sparse non-retracted copy without forwardBundle must not wipe the cached bundle.
+        val sparse = full.copy(forwardBundle = null, replyCount = 4)
+        val merged = messageStore.upsertScoped("scope-1", route.channelId, sparse)
+        assertEquals(bundle, merged.forwardBundle)
+        assertEquals(4, merged.replyCount)
+        assertEquals(bundle, messageStore.getScoped("scope-1", route.channelId, route.messageId)?.forwardBundle)
+
+        // Retracted copy must clear forwardBundle.
+        val retracted = full.copy(forwardBundle = null, deletedAt = "2026-11-28T05:00:00Z", body = "Retracted")
+        val afterRetract = messageStore.upsertScoped("scope-1", route.channelId, retracted)
+        assertNull(afterRetract.forwardBundle)
+    }
+
+    @Test
+    fun mergeRealtimeUpdatePreservesAndMergesForwardBundleAndClearsOnRetraction() {
+        val bundle = ForwardMessageBundle(messages = listOf(forwardItem("f-1", "Forwarded item")))
+        val base =
+            RaftThreadMessageItem(
+                id = "msg-1",
+                authorId = "user-1",
+                authorName = "Artea",
+                authorKind = "human",
+                isOwn = false,
+                avatarLabel = "AR",
+                timestampLabel = "13:13",
+                body = "Note",
+                forwardBundle = null,
+            )
+
+        val hydrated = base.mergeRealtimeUpdate(base.copy(forwardBundle = bundle))
+        assertEquals(bundle, hydrated.forwardBundle)
+
+        val afterSparse = hydrated.mergeRealtimeUpdate(base.copy(replyCount = 4, forwardBundle = null))
+        assertEquals(bundle, afterSparse.forwardBundle)
+        assertEquals(4, afterSparse.replyCount)
+
+        val afterRetract =
+            afterSparse.mergeRealtimeUpdate(
+                base.copy(deletedAt = "2026-11-28T05:00:00Z", body = "Retracted", forwardBundle = null)
+            )
+        assertNull(afterRetract.forwardBundle)
+    }
+
+    @Test
+    fun forwardBundleChannelIdForMessageUsesParentChannelForReplyOrigin() {
+        val originItem =
+            RaftThreadMessageItem(
+                id = "parent-msg-1",
+                authorId = "user-1",
+                authorName = "Artea",
+                authorKind = "human",
+                isOwn = false,
+                avatarLabel = "AR",
+                timestampLabel = "13:13",
+                body = "Note",
+                forwardBundle = ForwardMessageBundle(messages = listOf(forwardItem("f-1", "Forwarded"))),
+            )
+        val replyThreadPayload =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                streamChannelId = "thread-stream-1",
+                parentChannelId = "parent-channel-1",
+                parentMessageId = "parent-msg-1",
+                parentChannelKind = "channel",
+                originParentMessageId = "parent-msg-1",
+                originMessage = originItem,
+            )
+        assertEquals("parent-channel-1", replyThreadPayload.forwardBundleChannelIdForMessage("parent-msg-1"))
+        assertEquals("thread-stream-1", replyThreadPayload.forwardBundleChannelIdForMessage("reply-msg-2"))
+
+        // Uncreated 0-reply thread has no streamChannelId yet, but opening the parent's forward bundle still resolves parentChannelId.
+        val zeroReplyPayload = replyThreadPayload.copy(streamChannelId = null)
+        assertEquals("parent-channel-1", zeroReplyPayload.forwardBundleChannelIdForMessage("parent-msg-1"))
+
+        val channelPayload =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                streamChannelId = "channel-1",
+            )
+        assertEquals("channel-1", channelPayload.forwardBundleChannelIdForMessage("msg-9"))
     }
 
     private fun threadForwardBundleRoute(): ThreadForwardBundleRoute =

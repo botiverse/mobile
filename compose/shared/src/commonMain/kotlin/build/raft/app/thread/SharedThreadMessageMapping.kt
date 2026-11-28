@@ -315,7 +315,7 @@ internal fun ThreadSnapshot.toRaftThreadPayload(
 }
 
 private fun Message.isSparseReplyOriginParentCandidate(): Boolean =
-    body.isBlank() && attachments.isEmpty()
+    needsReplyOriginContextHydration()
 
 private fun String?.withRouteChannelKindFallback(routeKind: String?): String? {
     val normalized = normalizedThreadChannelKind()
@@ -489,7 +489,11 @@ internal fun RaftThreadMessageItem.toMessage(
         isThreadFollowed = isThreadFollowed,
         isSaved = isSaved,
         reactions = reactions.toMessageReactions(currentUserId, currentUserName),
+        senderMembershipStatus = senderMembershipStatus,
         commentRef = commentRef?.toMessageCommentRef(),
+        forwardBundle = forwardBundle,
+        randomId = randomId,
+        mentions = mentions,
         externalMentionSpans = if (authorMemberKind == MemberKind.External) externalMentionSpans else emptyList(),
         resolvedQuotes = resolvedQuotes
     )
@@ -559,6 +563,8 @@ private fun RaftThreadAttachmentItem.toAttachment(): Attachment =
         sizeBytes = sizeBytes,
         sizeLabel = sizeLabel,
         thumbnailUrl = thumbnailUrl,
+        width = width,
+        height = height,
         commentCount = commentCount
     )
 

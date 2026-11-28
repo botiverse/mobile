@@ -734,6 +734,7 @@ internal fun RaftThreadMessageItem.mergeRealtimeUpdate(
             },
         attachments = mergeAttachmentCommentMetadata(update.attachments),
         commentRef = update.commentRef ?: commentRef,
+        forwardBundle = update.forwardBundle ?: forwardBundle,
         // Every message row carries `delegatedBy`; a later row wins (the assistant may since
         // have been deleted), a sparse patch without it keeps the label.
         delegatedBy = keepKnownDelegatedBy(update.delegatedBy, delegatedBy),
