@@ -28,6 +28,8 @@ import build.raft.designsystem.components.RaftField
 import build.raft.designsystem.components.RaftSaveStatus
 import build.raft.designsystem.components.RaftSaveStatusDefaults
 import build.raft.designsystem.components.RaftSaveStatusState
+import build.raft.designsystem.components.RaftStatusDot
+import build.raft.designsystem.components.RaftStatusVariant
 import build.raft.designsystem.components.RaftTextField
 import build.raft.app.components.RaftSlotIcon
 import build.raft.designsystem.components.RaftSwitch
@@ -117,7 +119,9 @@ internal data class RaftSharedSettingsRow(
      * A hidden tap target on a row that does not look like a control (About's version row: 7 taps
      * open Developer): taps reach the action with no press wash, the row keeps its [enabled] look.
      */
-    val hiddenTap: Boolean = false
+    val hiddenTap: Boolean = false,
+    /** Attention dot in the trailing slot (e.g. About's Check for update row when an update is available). */
+    val attentionDot: Boolean = false
 )
 
 /** A settings row's "Beta" (or similar) mark: the raft-ui solid `primary` Badge. */
@@ -511,8 +515,25 @@ private fun SharedSettingsRow(
                     Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            row.status.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1)
+            if (row.attentionDot) {
+                val hasStatus = row.status.isNotBlank()
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RaftStatusDot(
+                        variant = RaftStatusVariant.Accent,
+                        contentDescription =
+                            if (!hasStatus) stringResource(Res.string.more_row_attention_dot) else null
+                    )
+                    if (hasStatus) {
+                        Text(row.status, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1)
+                    }
+                }
+            } else {
+                row.status.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = RaftType.Caption.copy(color = RaftColor.TextMutedGray), color = RaftColor.TextMutedGray, maxLines = 1)
+                }
             }
             if (row.external) {
                 // raft-ui 0.26 (#758): a row that leaves Raft ends in ↗ in its trailing slot, in the

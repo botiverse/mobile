@@ -2062,7 +2062,8 @@ class SharedSettingsStoreTest {
                         apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
                         platformCapabilities = capabilities
                     ),
-                scope = scope
+                scope = scope,
+                cachedUpdateSnapshotProvider = { null }
             )
 
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
@@ -2071,7 +2072,7 @@ class SharedSettingsStoreTest {
         assertEquals(true, developer.updateCheck.supported)
         assertEquals("Current", developer.updateCheck.statusLabel)
         assertEquals("Check", developer.updateCheck.actionLabel)
-        assertEquals(listOf("about", "handsUpdateStatus"), capabilities.calls)
+        assertEquals(listOf("about", "developer", "handsUpdateStatus"), capabilities.calls)
         scope.cancel()
     }
 
@@ -2099,7 +2100,8 @@ class SharedSettingsStoreTest {
                         apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
                         platformCapabilities = capabilities
                     ),
-                scope = scope
+                scope = scope,
+                cachedUpdateSnapshotProvider = { null }
             )
 
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
@@ -2108,7 +2110,271 @@ class SharedSettingsStoreTest {
         assertEquals(false, developer.updateCheck.supported)
         assertEquals("Check failed", developer.updateCheck.statusLabel)
         assertEquals("settings_capability_unknown", developer.updateCheck.errorCode)
-        assertEquals(listOf("about", "handsUpdateStatus"), capabilities.calls)
+        assertEquals(listOf("about", "developer", "handsUpdateStatus"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun aboutPublishesLocalDeveloperAndMatchingCachedUpdateImmediatelyBeforeNetworkStatusReturns() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val pendingStatus = CompletableDeferred<DataResult<SharedSettingsUpdateCheckSnapshot>>()
+        val localUpdate =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                statusLabel = "Ready",
+                updateChannel = "beta",
+                updateChannelSwitchSupported = true,
+            )
+        val cachedSnapshot =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                statusLabel = "Update available",
+                detail = "Version 1.32.0 is available on beta.",
+                updateAvailable = true,
+                currentVersionCode = 13100018L,
+                latestVersionLabel = "1.32.0",
+                latestVersionCode = 13200001L,
+                updateChannel = "beta",
+            )
+        val capabilities =
+            FakeSettingsCapabilities(
+                developerSnapshot =
+                    SharedSettingsDeveloperSnapshot(
+                        environmentKey = "production",
+                        environmentLabel = "Production",
+                        apiBaseUrl = "https://api.raft.build/api/",
+                        socketBaseUrl = "https://api.raft.build",
+                        webUrl = "https://app.raft.build",
+                        updateCheck = localUpdate,
+                    ),
+                onCheckHandsUpdateStatus = { pendingStatus.await() },
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+                        platformCapabilities = capabilities,
+                    ),
+                scope = scope,
+                cachedUpdateSnapshotProvider = { cachedSnapshot },
+            )
+
+        val loadJob =
+            launch(Dispatchers.Unconfined) {
+                store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
+            }
+
+        assertFalse(loadJob.isCompleted)
+        val immediateDeveloper =
+            assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertTrue(immediateDeveloper.updateCheck.supported)
+        assertTrue(immediateDeveloper.updateCheck.updateAvailable)
+        assertEquals("1.32.0", immediateDeveloper.updateCheck.latestVersionLabel)
+        assertEquals("beta", immediateDeveloper.updateCheck.updateChannel)
+        assertTrue(immediateDeveloper.updateCheck.updateChannelSwitchSupported)
+
+        pendingStatus.complete(
+            DataResult.Content(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+                    statusLabel = "Ready",
+                    detail = "Version 1.32.1 is ready to install.",
+                    updateAvailable = true,
+                    currentVersionCode = 13100018L,
+                    latestVersionLabel = "1.32.1",
+                    latestVersionCode = 13200002L,
+                    updateChannel = "beta",
+                )
+            )
+        )
+        loadJob.join()
+
+        val liveDeveloper =
+            assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals(SharedSettingsUpdateTransactionState.ReadyToInstall, liveDeveloper.updateCheck.transactionState)
+        assertEquals("1.32.1", liveDeveloper.updateCheck.latestVersionLabel)
+        assertEquals("beta", liveDeveloper.updateCheck.updateChannel)
+        assertTrue(liveDeveloper.updateCheck.updateChannelSwitchSupported)
+        scope.cancel()
+    }
+
+    @Test
+    fun aboutIgnoresCachedUpdateSnapshotFromDifferentChannelWhileNetworkCheckRuns() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val pendingStatus = CompletableDeferred<DataResult<SharedSettingsUpdateCheckSnapshot>>()
+        val localUpdate =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                statusLabel = "Ready",
+                updateChannel = "beta",
+                updateChannelSwitchSupported = true,
+            )
+        val staleOtherChannelSnapshot =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                statusLabel = "Update available",
+                updateAvailable = true,
+                latestVersionLabel = "1.32.0-alpha",
+                latestVersionCode = 13200001L,
+                updateChannel = "alpha",
+            )
+        val capabilities =
+            FakeSettingsCapabilities(
+                developerSnapshot =
+                    SharedSettingsDeveloperSnapshot(
+                        environmentKey = "production",
+                        environmentLabel = "Production",
+                        apiBaseUrl = "https://api.raft.build/api/",
+                        socketBaseUrl = "https://api.raft.build",
+                        webUrl = "https://app.raft.build",
+                        updateCheck = localUpdate,
+                    ),
+                onCheckHandsUpdateStatus = { pendingStatus.await() },
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+                        platformCapabilities = capabilities,
+                    ),
+                scope = scope,
+                cachedUpdateSnapshotProvider = { staleOtherChannelSnapshot },
+            )
+
+        val loadJob =
+            launch(Dispatchers.Unconfined) {
+                store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
+            }
+
+        assertFalse(loadJob.isCompleted)
+        val immediateDeveloper =
+            assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertTrue(immediateDeveloper.updateCheck.supported)
+        assertFalse(immediateDeveloper.updateCheck.updateAvailable)
+        assertEquals("beta", immediateDeveloper.updateCheck.updateChannel)
+        assertTrue(immediateDeveloper.updateCheck.updateChannelSwitchSupported)
+
+        pendingStatus.complete(
+            DataResult.Content(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    statusLabel = "Current",
+                    updateAvailable = false,
+                    updateChannel = "beta",
+                )
+            )
+        )
+        loadJob.join()
+
+        val liveDeveloper =
+            assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertFalse(liveDeveloper.updateCheck.updateAvailable)
+        assertEquals("beta", liveDeveloper.updateCheck.updateChannel)
+        assertTrue(liveDeveloper.updateCheck.updateChannelSwitchSupported)
+        scope.cancel()
+    }
+
+    @Test
+    fun aboutKeepsCheckForUpdateAndEarlyAccessVisibleWhenOfflineWithApiEnvironmentStore() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities =
+            FakeSettingsCapabilities(
+                developerSnapshot =
+                    SharedSettingsDeveloperSnapshot(
+                        environmentKey = "production",
+                        environmentLabel = "Production",
+                        apiBaseUrl = "https://api.raft.build/api/",
+                        socketBaseUrl = "https://api.raft.build",
+                        webUrl = "https://app.raft.build",
+                        updateCheck =
+                            SharedSettingsUpdateCheckSnapshot(
+                                supported = true,
+                                statusLabel = "Ready",
+                                updateChannel = "beta",
+                                updateChannelSwitchSupported = true,
+                            ),
+                    ),
+                updateStatusResult = DataResult.Error(ScreenError("network_offline")),
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+                        platformCapabilities = capabilities,
+                    ),
+                scope = scope,
+                cachedUpdateSnapshotProvider = { null },
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
+
+        val developer = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertTrue(developer.updateCheck.supported)
+        assertEquals("beta", developer.updateCheck.updateChannel)
+        assertTrue(developer.updateCheck.updateChannelSwitchSupported)
+        assertEquals("network_offline", developer.updateCheck.errorCode)
+        scope.cancel()
+    }
+
+    @Test
+    fun refreshHandsUpdateStatusPopulatesDeveloperWhenPreviouslyLoading() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities =
+            FakeSettingsCapabilities(
+                developerSnapshot =
+                    SharedSettingsDeveloperSnapshot(
+                        environmentKey = "production",
+                        environmentLabel = "Production",
+                        apiBaseUrl = "https://api.raft.build/api/",
+                        socketBaseUrl = "https://api.raft.build",
+                        webUrl = "https://app.raft.build",
+                        updateCheck =
+                            SharedSettingsUpdateCheckSnapshot(
+                                supported = true,
+                                updateChannel = "beta",
+                                updateChannelSwitchSupported = true,
+                            ),
+                    ),
+                updateStatusResult =
+                    DataResult.Content(
+                        SharedSettingsUpdateCheckSnapshot(
+                            supported = true,
+                            statusLabel = "Update available",
+                            updateAvailable = true,
+                            latestVersionLabel = "1.32.0",
+                            latestVersionCode = 13200001L,
+                        )
+                    ),
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore()),
+                        platformCapabilities = capabilities,
+                    ),
+                scope = scope,
+                cachedUpdateSnapshotProvider = { null },
+            )
+
+        assertIs<ScreenLoadState.Loading>(store.state.value.developer)
+
+        store.accept(SharedSettingsIntent.RefreshHandsUpdateStatus)
+
+        val developer = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertTrue(developer.updateCheck.supported)
+        assertTrue(developer.updateCheck.updateAvailable)
+        assertEquals("1.32.0", developer.updateCheck.latestVersionLabel)
+        assertEquals("beta", developer.updateCheck.updateChannel)
+        assertTrue(developer.updateCheck.updateChannelSwitchSupported)
         scope.cancel()
     }
 
@@ -2363,7 +2629,8 @@ class SharedSettingsStoreTest {
                         sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities
                     ),
-                scope = scope
+                scope = scope,
+                cachedUpdateSnapshotProvider = { null }
             )
 
         store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.About))
@@ -2372,9 +2639,9 @@ class SharedSettingsStoreTest {
         assertEquals("Artin", about.signedInUserLabel)
         assertEquals("Slock Community", about.selectedServerLabel)
         assertEquals("Signed in", about.sessionStatusLabel)
-        // Opening About also fetches the hands update status and the developer
-        // snapshot (48631ed3: refresh update notices periodically).
-        assertEquals(listOf("about", "handsUpdateStatus", "developer"), capabilities.calls)
+        // Opening About immediately loads local developer/channel metadata before
+        // checking the remote hands update status (48631ed3, hands 6c9901d3).
+        assertEquals(listOf("about", "developer", "handsUpdateStatus"), capabilities.calls)
         scope.cancel()
     }
 
@@ -3224,7 +3491,8 @@ class SharedSettingsStoreTest {
             DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable")),
         private val mobileOAuthLinkResult: DataResult<Unit> =
             DataResult.Empty(EmptyReason.NoSettingsAvailable),
-        private val systemNotificationPermission: SettingsMobileActionSnapshot? = null
+        private val systemNotificationPermission: SettingsMobileActionSnapshot? = null,
+        private val onCheckHandsUpdateStatus: (suspend () -> DataResult<SharedSettingsUpdateCheckSnapshot>)? = null
     ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
 
@@ -3302,7 +3570,7 @@ class SharedSettingsStoreTest {
 
         override suspend fun checkHandsUpdateStatus(): DataResult<SharedSettingsUpdateCheckSnapshot> {
             calls += "handsUpdateStatus"
-            return updateStatusResult
+            return onCheckHandsUpdateStatus?.invoke() ?: updateStatusResult
         }
 
         override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
