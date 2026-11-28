@@ -912,7 +912,7 @@ jobs:
   create_hands_draft:
     name: Create Hands draft + optional share page
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     needs: [resolve, build_android_release]
     if: |
       github.event_name == 'workflow_dispatch' &&
