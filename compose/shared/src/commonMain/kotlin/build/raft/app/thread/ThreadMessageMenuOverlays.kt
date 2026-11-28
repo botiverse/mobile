@@ -1,5 +1,7 @@
 package build.raft.app.thread
 
+import build.raft.app.composer.ThreadComposerQuoteInsert
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.NonRestartableComposable
