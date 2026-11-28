@@ -17,17 +17,22 @@ import build.raft.app.shell.raftNativeNavBarSymbolFor
 import build.raft.app.thread.PhoneConversationHeaderActionSlot
 import build.raft.app.thread.PhoneConversationHeaderPrimaryConfig
 import build.raft.app.thread.PhoneConversationHeaderPrimaryEntry
+import build.raft.app.thread.THREAD_FOLLOWERS_MENU_ITEM_ID
+import build.raft.app.thread.ThreadHeaderOverflowMenuLabels
 import build.raft.app.thread.ThreadHeaderOwnActionSpec
 import build.raft.app.thread.icon
 import build.raft.app.thread.parsePhoneConversationHeaderPrimaryConfig
 import build.raft.app.thread.phoneConversationHeaderPrimaryConfig
 import build.raft.app.thread.splitPhoneConversationHeaderActions
 import build.raft.app.thread.threadHeaderConversationOwnActions
+import build.raft.app.thread.threadHeaderFollowersFolded
+import build.raft.app.thread.threadHeaderOverflowMenuItems
 import build.raft.app.thread.threadHeaderPhoneShownOwnActions
 import build.raft.app.thread.threadHeaderShownOwnActions
 import build.raft.app.thread.wrapThreadHeaderNativeNavBarActionsForAnalytics
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -523,5 +528,102 @@ class ThreadConversationHeadActionsTest {
         } finally {
             RaftProductEvents.testEntryEventObserver = previous
         }
+    }
+
+    @Test
+    fun threadHeaderFollowersFoldIntoOverflowMenuWhenNarrowOrCrowdedByRowTabs() {
+        // Unmeasured width or no followers never folds.
+        assertFalse(
+            threadHeaderFollowersFolded(
+                hasFollowers = false,
+                widthDp = 180f,
+                leadOverheadDp = 38f,
+                actionSizeDp = 28f,
+                fixedTrailingCount = 2,
+                existingMenuItems = true,
+            )
+        )
+        assertFalse(
+            threadHeaderFollowersFolded(
+                hasFollowers = true,
+                widthDp = 0f,
+                leadOverheadDp = 38f,
+                actionSizeDp = 28f,
+                fixedTrailingCount = 2,
+                existingMenuItems = true,
+            )
+        )
+        // Standard 360dp side thread pane keeps followers inline beside ⋯, Expand, Close.
+        assertFalse(
+            threadHeaderFollowersFolded(
+                hasFollowers = true,
+                widthDp = 360f,
+                leadOverheadDp = 38f,
+                actionSizeDp = 28f,
+                fixedTrailingCount = 2,
+                existingMenuItems = true,
+            )
+        )
+        // Narrow 220dp side thread pane folds followers into ⋯ so the title keeps >= 56dp.
+        assertTrue(
+            threadHeaderFollowersFolded(
+                hasFollowers = true,
+                widthDp = 220f,
+                leadOverheadDp = 38f,
+                actionSizeDp = 28f,
+                fixedTrailingCount = 2,
+                existingMenuItems = true,
+            )
+        )
+        // Crowded split view with inline row tabs reserves 120dp for tabs, folding followers at 300dp.
+        assertTrue(
+            threadHeaderFollowersFolded(
+                hasFollowers = true,
+                widthDp = 300f,
+                leadOverheadDp = 38f,
+                actionSizeDp = 28f,
+                fixedTrailingCount = 2,
+                existingMenuItems = true,
+                hasRowTabs = true,
+            )
+        )
+
+        // When folded, "Following agents" joins the conversation group after Search / Timeline / View in Channel.
+        val menuItems =
+            threadHeaderOverflowMenuItems(
+                labels =
+                    ThreadHeaderOverflowMenuLabels(
+                        followLabel = "Unfollow thread",
+                        markUnreadLabel = "Mark as unread",
+                        searchLabel = "Search in thread",
+                        viewInChannelLabel = "View in channel",
+                    ),
+                foldedActions =
+                    listOf(
+                        ThreadHeaderOwnActionSpec(
+                            id = THREAD_FOLLOWERS_MENU_ITEM_ID,
+                            label = "Following agents",
+                            icon = RaftLucideIconName.Users,
+                            onClick = {},
+                        )
+                    ),
+                followed = true,
+                hasToggleFollow = true,
+                hasMarkUnread = true,
+                hasSearch = true,
+                hasViewInChannel = true,
+            )
+        assertEquals(
+            listOf(
+                "thread-toggle-follow",
+                "thread-mark-unread",
+                "task-search",
+                "task-view-in-channel",
+                THREAD_FOLLOWERS_MENU_ITEM_ID,
+            ),
+            menuItems.map { it.id },
+        )
+        assertEquals(RaftLucideIconName.Users, menuItems.last().icon)
+        assertFalse(menuItems.last().dividerBefore)
     }
 }

@@ -145,12 +145,59 @@ class ThreadMessageMenuParityTest {
                 onConvertToTask = { routed += ThreadNewMessageMenuTool.ConvertToTask },
                 onSelectText = { routed += ThreadNewMessageMenuTool.SelectText },
                 onMarkThreadUnread = { routed += ThreadNewMessageMenuTool.MarkThreadUnread },
-                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection }
+                onCopySelection = { routed += ThreadNewMessageMenuTool.CopySelection },
+                onQuote = { routed += ThreadNewMessageMenuTool.Quote }
             )
 
         ThreadNewMessageMenuSecondaryToolOrder.forEach { it.dispatch(callbacks) }
 
         assertEquals(ThreadNewMessageMenuSecondaryToolOrder, routed)
+    }
+
+    @Test
+    fun quoteActionAppearsInCompactMenuAndHoverToolbarAndHidesInSelectionContext() {
+        val baseAvailability =
+            capabilities(message())
+                .toThreadNewMessageMenuActionAvailability(message(), message().toThreadReplyMetadata())
+                .copy(quote = true)
+        assertTrue(baseAvailability.enabled(ThreadNewMessageMenuTool.Quote))
+        assertEquals(Res.string.thread_action_quote, ThreadNewMessageMenuTool.Quote.compactLabelResource(baseAvailability))
+        assertEquals(RaftLucideIconName.TextQuote, ThreadNewMessageMenuTool.Quote.compactIcon(baseAvailability))
+
+        val selectionAvailability = baseAvailability.copy(selectionContext = true)
+        assertFalse(selectionAvailability.enabled(ThreadNewMessageMenuTool.Quote))
+
+        val msg = message()
+        val caps = capabilities(msg)
+        val hoverWithQuote =
+            kotlin.test.assertNotNull(
+                build.raft.app.thread.threadMessageHoverToolbarActions(
+                    message = msg,
+                    capabilities = caps,
+                    onShowReactions = {},
+                    onForward = {},
+                    onToggleSave = {},
+                    quote = true,
+                    onQuote = {},
+                )
+            )
+        assertTrue(hoverWithQuote.quote)
+        assertEquals(6, hoverWithQuote.buttonCount)
+
+        val hoverWithoutQuote =
+            kotlin.test.assertNotNull(
+                build.raft.app.thread.threadMessageHoverToolbarActions(
+                    message = msg,
+                    capabilities = caps,
+                    onShowReactions = {},
+                    onForward = {},
+                    onToggleSave = {},
+                    quote = false,
+                    onQuote = {},
+                )
+            )
+        assertFalse(hoverWithoutQuote.quote)
+        assertEquals(5, hoverWithoutQuote.buttonCount)
     }
 
     @Test
@@ -209,6 +256,7 @@ class ThreadMessageMenuParityTest {
         assertEquals(
             listOf(
                 ThreadNewMessageMenuTool.CopySelection,
+                ThreadNewMessageMenuTool.Quote,
                 ThreadNewMessageMenuTool.SelectText,
                 ThreadNewMessageMenuTool.CopyLink,
                 ThreadNewMessageMenuTool.FollowThread,

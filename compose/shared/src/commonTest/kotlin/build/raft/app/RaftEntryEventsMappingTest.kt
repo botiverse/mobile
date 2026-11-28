@@ -57,6 +57,7 @@ class RaftEntryEventsMappingTest {
         assertEquals(RaftConversationHeaderAction.Expand, threadHeaderOwnActionProductEvent(FOCUS_MODE_MENU_ITEM_ID, settingsOpen = false, focusModeActive = false))
         assertEquals(RaftConversationHeaderAction.Restore, threadHeaderOwnActionProductEvent(FOCUS_MODE_MENU_ITEM_ID, settingsOpen = false, focusModeActive = true))
         assertEquals(RaftConversationHeaderAction.Close, threadHeaderOwnActionProductEvent("thread-pane-close", settingsOpen = false, focusModeActive = false))
+        assertEquals(RaftConversationHeaderAction.OpenFollowers, threadHeaderOwnActionProductEvent(build.raft.app.thread.THREAD_FOLLOWERS_MENU_ITEM_ID, settingsOpen = false, focusModeActive = false))
         assertNull(threadHeaderOwnActionProductEvent("thread-side-card-tasks", settingsOpen = false, focusModeActive = false))
         assertNull(threadHeaderOwnActionProductEvent("thread-side-card-files", settingsOpen = false, focusModeActive = false))
 

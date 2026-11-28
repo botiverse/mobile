@@ -140,6 +140,7 @@ import build.raft.app.resolve
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -1040,7 +1041,8 @@ internal fun ThreadPageHeader(
                     if (showHeaderActions && controlsInColumn) {
                         if (headRowTabs == null) agentFollowersHeader()
                     } else if (showHeaderActions) {
-                    if (headRowTabs == null) agentFollowersHeader()
+                    val followersFoldAnchorRef = remember { RaftLiveRootAnchorRef("thread_header_followers_fold") }
+                    val followersFoldSlot = remember(followersFoldAnchorRef) { ThreadAgentFollowersFoldSlot(followersFoldAnchorRef) }
                     // Web ThreadPanel: a reply thread's Search in Thread and View in Channel live in
                     // its ⋯ menu ("thread commands live in the menu"), not as header buttons.
                     val replyThreadMenu = headerDisplay.surfaceKind == RaftThreadSurfaceKind.ReplyThread
@@ -1192,7 +1194,48 @@ internal fun ThreadPageHeader(
                                 )
                             }
                         }
-                    val foldedOwnActions = (phoneHeadSplit?.folded ?: ownActions.drop(shownOwnCount)) + foldedWindowActions
+                    val taskColumnButtons =
+                        if (taskColumnHead == null) 0
+                        else 1 + if (taskColumnHead.onToggleExpand != null) 1 else 0
+                    val followersGeometryFolded =
+                        threadHeaderFollowersFolded(
+                            hasFollowers = true,
+                            widthDp = headerWidthDp,
+                            leadOverheadDp = leadOverheadDp,
+                            actionSizeDp = actionSizeDp,
+                            fixedTrailingCount =
+                                visibleOwnActions.size +
+                                    (if (!fit.expandInMenu && toggleFocus != null) 1 else 0) +
+                                    (if (paneCloses && !fit.closeInMenu) 1 else 0) +
+                                    taskColumnButtons,
+                            existingMenuItems =
+                                hasPanelMenu ||
+                                    (phoneHeadSplit?.folded ?: ownActions.drop(shownOwnCount)).isNotEmpty() ||
+                                    foldedWindowActions.isNotEmpty(),
+                            hasRowTabs = headRowTabs != null,
+                        )
+                    val followersFolded = followersGeometryFolded && followersFoldSlot.hasFollowers
+                    SideEffect { followersFoldSlot.folded = followersGeometryFolded }
+                    CompositionLocalProvider(LocalThreadAgentFollowersFoldSlot provides followersFoldSlot) {
+                        agentFollowersHeader()
+                    }
+                    val foldedFollowersAction =
+                        if (followersFolded) {
+                            followersFoldSlot.openFromMenu?.let { openFollowers ->
+                                ThreadHeaderOwnActionSpec(
+                                    id = THREAD_FOLLOWERS_MENU_ITEM_ID,
+                                    label = stringResource(Res.string.thread_followers_title),
+                                    icon = RaftLucideIconName.Users,
+                                    onClick = openFollowers,
+                                )
+                            }
+                        } else {
+                            null
+                        }
+                    val foldedOwnActions =
+                        (phoneHeadSplit?.folded ?: ownActions.drop(shownOwnCount)) +
+                            listOfNotNull(foldedFollowersAction) +
+                            foldedWindowActions
                     val headerCompact = baseCompact || foldedOwnActions.isNotEmpty()
                     trailingCompact = headerCompact
                     val trackedFoldedOwnActions =
@@ -1245,31 +1288,33 @@ internal fun ThreadPageHeader(
                         }
                     }
                     if (hasPanelMenu || trackedFoldedOwnActions.isNotEmpty()) {
-                        ThreadHeaderFocusModeMenu(
-                            foldedActions = trackedFoldedOwnActions,
-                            followed = threadFollowed,
-                            onToggleFollow = onToggleThreadFollow,
-                            onMarkUnread = onMarkThreadUnread,
-                            onSearchInTask = onOpenSearch.takeIf { taskConversation } ?: replyThreadSearch,
-                            onTimeline = onOpenTimeline,
-                            onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation } ?: replyThreadViewInChannel,
-                            taskFollowLabels = taskConversation,
-                            onDeleteTask = taskConversationChrome?.onDeleteTask.takeIf { taskConversation },
-                            drawLocally = toggleFocus == null,
-                            notificationLevelTargetInput = notificationLevelTarget,
-                            onMenuOpen = {
-                                trackHeader(RaftConversationHeaderAction.OpenMenu, RaftConversationHeaderSurface.Header, compact = headerCompact)
-                            },
-                            onMenuItemSelected = { selectedId ->
-                                threadHeaderOverflowMenuProductEvent(
-                                    actionId = selectedId,
-                                    followed = threadFollowed,
-                                    taskConversation = taskConversation,
-                                )?.let { eventAction ->
-                                    trackHeader(eventAction, RaftConversationHeaderSurface.MoreMenu, compact = headerCompact)
-                                }
-                            },
-                        )
+                        Box(Modifier.raftCaptureLiveRootAnchor(followersFoldAnchorRef)) {
+                            ThreadHeaderFocusModeMenu(
+                                foldedActions = trackedFoldedOwnActions,
+                                followed = threadFollowed,
+                                onToggleFollow = onToggleThreadFollow,
+                                onMarkUnread = onMarkThreadUnread,
+                                onSearchInTask = onOpenSearch.takeIf { taskConversation } ?: replyThreadSearch,
+                                onTimeline = onOpenTimeline,
+                                onViewInChannel = taskConversationChrome?.onViewInChannel.takeIf { taskConversation } ?: replyThreadViewInChannel,
+                                taskFollowLabels = taskConversation,
+                                onDeleteTask = taskConversationChrome?.onDeleteTask.takeIf { taskConversation },
+                                drawLocally = toggleFocus == null,
+                                notificationLevelTargetInput = notificationLevelTarget,
+                                onMenuOpen = {
+                                    trackHeader(RaftConversationHeaderAction.OpenMenu, RaftConversationHeaderSurface.Header, compact = headerCompact)
+                                },
+                                onMenuItemSelected = { selectedId ->
+                                    threadHeaderOverflowMenuProductEvent(
+                                        actionId = selectedId,
+                                        followed = threadFollowed,
+                                        taskConversation = taskConversation,
+                                    )?.let { eventAction ->
+                                        trackHeader(eventAction, RaftConversationHeaderSurface.MoreMenu, compact = headerCompact)
+                                    }
+                                },
+                            )
+                        }
                     }
                     // web ThreadPanelHeader (slock #12211): Focus mode is the head's Expand, a window
                     // control after ⋯ and never in it, so a wide layout always shows it.
@@ -1373,6 +1418,10 @@ internal fun ThreadHeaderViewInChannelLink(
 }
 
 internal const val ThreadHeaderMinTitleWidthDp = 56f
+/** Web `headFit.ts` `TABS_MIN` (120px): least room inline row tabs keep before header actions fold. */
+internal const val ThreadHeaderMinTabsWidthDp = 120f
+/** Web `headFit.ts` `FOLLOWERS_HEAD_WIDTH` (64px): the agent followers chip (up to three faces + count). */
+internal const val ThreadHeaderFollowersWidthDp = 64f
 // Web `ThreadPanelHeader` `@[32rem]/panel-head:` threshold: a narrow side thread pane stacks the
 // subtitle under the swapped title so the channel link, reply count, and task summary keep room.
 private const val ThreadHeaderReplyInlineMinWidthDp = 512f
@@ -1496,6 +1545,35 @@ internal fun threadHeaderShownOwnActions(
         if (need <= room) return shown
     }
     return 0
+}
+
+/**
+ * Web `headFit.ts` (`shownOwnActions` with `own: [FOLLOWERS_HEAD_WIDTH]`, #189 rule 6):
+ * whether a thread or task header is too narrow to keep the Agent Followers chip inline beside
+ * the title (or inline row tabs) and should fold it into `⋯`.
+ * When [widthDp] is not measured yet (`<= 0`), or when there are no followers, returns false.
+ */
+internal fun threadHeaderFollowersFolded(
+    hasFollowers: Boolean,
+    widthDp: Float,
+    leadOverheadDp: Float,
+    actionSizeDp: Float,
+    actionGapDp: Float = ThreadHeaderActionGroupSpacing.value,
+    fixedTrailingCount: Int = 0,
+    existingMenuItems: Boolean = false,
+    hasRowTabs: Boolean = false,
+    followersWidthDp: Float = ThreadHeaderFollowersWidthDp,
+    minTitleWidthDp: Float = ThreadHeaderMinTitleWidthDp,
+    minTabsWidthDp: Float = ThreadHeaderMinTabsWidthDp,
+): Boolean {
+    if (!hasFollowers) return false
+    if (widthDp <= 0f) return false
+    val reservedTitleDp = if (hasRowTabs) minTabsWidthDp else minTitleWidthDp
+    val room = widthDp - leadOverheadDp - reservedTitleDp
+    val trailingButtons = fixedTrailingCount + if (existingMenuItems) 1 else 0
+    val totalSlots = 1 + trailingButtons
+    val need = followersWidthDp + actionSizeDp * trailingButtons + actionGapDp * (totalSlots - 1).coerceAtLeast(0)
+    return need > room
 }
 
 /**
@@ -2736,6 +2814,7 @@ internal const val THREAD_TIMELINE_MENU_ITEM_ID = "thread-timeline"
 internal const val VIEW_TASK_IN_CHANNEL_MENU_ITEM_ID = "task-view-in-channel"
 internal const val DELETE_TASK_MENU_ITEM_ID = "task-delete"
 internal const val NOTIFICATION_LEVEL_MENU_ITEM_ID = "thread-notification-level"
+internal const val THREAD_FOLLOWERS_MENU_ITEM_ID = "thread-followers"
 
 @Composable
 internal fun ThreadHeaderActionButton(

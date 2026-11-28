@@ -159,6 +159,7 @@ internal fun ThreadNewMessageMenu(
     onSelectText: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
+    onQuote: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
     link: ThreadMessageLinkMenuSection? = null,
     viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
@@ -222,6 +223,7 @@ internal fun ThreadNewMessageMenu(
             onSelectText = onSelectText,
             onMarkThreadUnread = onMarkThreadUnread,
             onCopySelection = onCopySelection,
+            onQuote = onQuote,
             link = link,
             viewContextState = viewContextState,
             onViewContext = onViewContext,
@@ -251,6 +253,7 @@ internal fun ThreadNewMessageMenuChrome(
     onSelectAll: () -> Unit = {},
     onMarkThreadUnread: () -> Unit = {},
     onCopySelection: () -> Unit = {},
+    onQuote: () -> Unit = {},
     /** A long press on a link opened the menu: that link's section on top (ThreadMessageLinkMenu.kt). */
     link: ThreadMessageLinkMenuSection? = null,
     viewContextState: AgentContextViewMenuEntryState = AgentContextViewMenuEntryState.Hidden,
@@ -273,7 +276,8 @@ internal fun ThreadNewMessageMenuChrome(
             onSelectText = onSelectText,
             onSelectAll = onSelectAll,
             onMarkThreadUnread = onMarkThreadUnread,
-            onCopySelection = onCopySelection
+            onCopySelection = onCopySelection,
+            onQuote = onQuote
         )
     // The link section's "Copy link" sits above: the message's own reads "Copy Message Link".
     val menuAvailability = if (link != null) availability.copy(linkSection = true) else availability
@@ -433,6 +437,7 @@ internal fun ThreadNewMessageMenuTool.compactLabelResource(
         ThreadNewMessageMenuTool.SelectAll -> Res.string.thread_text_selection_select_all
         ThreadNewMessageMenuTool.MarkThreadUnread -> Res.string.thread_action_mark_thread_unread
         ThreadNewMessageMenuTool.CopySelection -> Res.string.common_copy
+        ThreadNewMessageMenuTool.Quote -> Res.string.thread_action_quote
     }
 
 internal fun ThreadNewMessageMenuTool.compactIcon(
@@ -458,6 +463,7 @@ internal fun ThreadNewMessageMenuTool.compactIcon(
         ThreadNewMessageMenuTool.MarkThreadUnread -> RaftLucideIconName.MessageSquareDot
         // Not Copy: that is Copy Markdown beside it in the same menu (web's icon for it).
         ThreadNewMessageMenuTool.CopySelection -> RaftLucideIconName.Type
+        ThreadNewMessageMenuTool.Quote -> RaftLucideIconName.TextQuote
     }
 
 @Composable
@@ -1064,7 +1070,7 @@ internal data class ThreadQuickReactionBarRequest(
 /**
  * web MessageHoverToolbar (slock packages/web/src/components/message/MessageHoverToolbar.tsx):
  * which buttons one message's hover toolbar has, in the web's order (the message menu's: Add
- * Reaction, Reply in Thread, Forward, Save, then More Actions, which opens that menu). Built from
+ * Reaction, Reply in Thread, Quote, Forward, Save, then More Actions, which opens that menu). Built from
  * the message menu's capabilities ([threadMessageHoverToolbarActions]), so a button is there
  * exactly when its menu item is.
  */
@@ -1076,6 +1082,8 @@ internal class ThreadMessageHoverToolbarActions(
      * shows its thread, which the menu drops it from (botiverse/slock #15524).
      */
     val reply: Boolean,
+    /** Quote: inserts the message as a quote chip into the active composer (web `canQuoteThisMessage`). */
+    val quote: Boolean = false,
     /** Forward: where the message can be forwarded (web `canForwardThisMessage`). */
     val forward: Boolean,
     val save: Boolean,
@@ -1083,6 +1091,7 @@ internal class ThreadMessageHoverToolbarActions(
     /** More Actions: the message menu under the button (web `canOpenMenuFromToolbar`). */
     val more: Boolean,
     val onShowReactions: (RaftPopoverAnchor) -> Unit,
+    val onQuote: () -> Unit = {},
     val onForward: () -> Unit,
     val onToggleSave: () -> Unit,
     /** Whether the toolbar shows: the list draws that row over its neighbours, as the toolbar reaches into the row above. */
@@ -1096,7 +1105,7 @@ internal class ThreadMessageHoverToolbarActions(
         get() = buttonCount == 0
 
     val buttonCount: Int
-        get() = listOf(reaction, reply, forward, save, more).count { it }
+        get() = listOf(reaction, reply, quote, forward, save, more).count { it }
 }
 
 internal fun threadMessageHoverToolbarActions(
@@ -1105,6 +1114,8 @@ internal fun threadMessageHoverToolbarActions(
     onShowReactions: (RaftPopoverAnchor) -> Unit,
     onForward: () -> Unit,
     onToggleSave: () -> Unit,
+    quote: Boolean = false,
+    onQuote: () -> Unit = {},
     onShownChange: (Boolean) -> Unit = {},
     onQuickReact: ((String) -> Unit)? = null,
     hasViewerReaction: ((String) -> Boolean)? = null,
@@ -1114,11 +1125,13 @@ internal fun threadMessageHoverToolbarActions(
         ThreadMessageHoverToolbarActions(
             reaction = capabilities.quickReactions,
             reply = capabilities.reply,
+            quote = quote,
             forward = capabilities.forward,
             save = capabilities.save,
             saved = message.isSaved,
             more = !message.isSystemMessage(),
             onShowReactions = onShowReactions,
+            onQuote = onQuote,
             onForward = onForward,
             onToggleSave = onToggleSave,
             onShownChange = onShownChange,
@@ -1249,6 +1262,14 @@ internal fun ThreadMessageHoverToolbar(
                 label = stringResource(Res.string.thread_action_reply_in_thread),
             ) {
                 RaftConversationKindIcon(RaftConversationKindGlyph.Thread, size = RaftMessageItemToolbarDefaults.IconSize)
+            }
+        }
+        if (actions.quote) {
+            RaftMessageItemToolbarButton(
+                onClick = actions.onQuote,
+                label = stringResource(Res.string.thread_action_quote),
+            ) {
+                RaftSlotIcon(RaftLucideIconName.TextQuote)
             }
         }
         if (actions.forward) {

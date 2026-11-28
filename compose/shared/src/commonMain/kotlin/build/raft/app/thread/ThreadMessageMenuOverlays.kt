@@ -79,6 +79,9 @@ internal fun ThreadMessageMenuOverlays(
             threadMessageIsReplyInThread(renderPayload.replyThreadSurface, renderPayload.originMessage?.id, message.id)
         )
     }
+    // New Message Menu toggle: a text selection shows this same Compact menu in place
+    // (ThreadInPlaceTextSelection.kt positions it against the visible selection).
+    val inPlaceSelectionMenuHost = LocalThreadInPlaceTextSelectionHost.current
     // The Compact menu's message actions, shared by the long-press menu and the in-place
     // selection menu; [close] dismisses whichever surface showed them. [track] is off for the
     // in-place selection menu, which is not the long-press menu. [anchor]: where the menu
@@ -86,6 +89,7 @@ internal fun ThreadMessageMenuOverlays(
     fun compactMenuMessageActions(
         message: RaftThreadMessageItem,
         replyMetadata: ThreadReplyMetadata,
+        authorDisplayName: String,
         close: () -> Unit,
         track: Boolean = true,
         anchor: RaftPopoverAnchor? = null
@@ -117,6 +121,14 @@ internal fun ThreadMessageMenuOverlays(
                 )
             )
         }
+        val quoteIntoComposer = inPlaceSelectionMenuHost?.quoteIntoComposer
+        val insertQuoteIntoComposer = inPlaceSelectionMenuHost?.insertQuoteIntoComposer
+        val menuPendingQuote =
+            if (insertQuoteIntoComposer != null || quoteIntoComposer != null) {
+                threadMessageMenuPendingQuote(message, authorDisplayName)
+            } else {
+                null
+            }
         return ThreadNewMessageMenuMessageActions(
             onReact = { emoji ->
                 close()
@@ -204,6 +216,22 @@ internal fun ThreadMessageMenuOverlays(
                         )?.let { threadChannelId ->
                                 onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
                             }
+                    },
+                    onQuote = {
+                        if (menuPendingQuote != null) {
+                            close()
+                            trackTool(ThreadNewMessageMenuTool.Quote)
+                            val insert =
+                                ThreadComposerQuoteInsert(
+                                    quote = menuPendingQuote,
+                                    fallbackMarkdown = formatThreadMessageQuote(menuPendingQuote.excerpt),
+                                )
+                            if (insertQuoteIntoComposer != null) {
+                                insertQuoteIntoComposer(insert)
+                            } else {
+                                threadMessageMenuQuote(message)?.let { quoteIntoComposer?.invoke(it) }
+                            }
+                        }
                     }
                 )
         )
@@ -225,14 +253,18 @@ internal fun ThreadMessageMenuOverlays(
                 ),
             originReplyMetadata = renderPayload.originMessage?.let(replyMetadataByParentId::threadReplyMetadataFor)
         ).toThreadNewMessageMenuActionAvailability(message, replyMetadata)
-    // New Message Menu toggle: a text selection shows this same Compact menu in place
-    // (ThreadInPlaceTextSelection.kt positions it against the visible selection).
-    val inPlaceSelectionMenuHost = LocalThreadInPlaceTextSelectionHost.current
     if (inPlaceSelectionMenuHost?.enabled == true) {
         val selectionMenu: @Composable (ThreadInPlaceSelectionMenuRequest) -> Unit = { request ->
             renderPayload.threadActionMessage(request.messageId, linkedTasksProjection)?.let { message ->
                 val replyMetadata = replyMetadataByParentId.threadReplyMetadataFor(message)
-                val actions = compactMenuMessageActions(message, replyMetadata, close = request.dismiss, track = false)
+                val actions =
+                    compactMenuMessageActions(
+                        message = message,
+                        replyMetadata = replyMetadata,
+                        authorDisplayName = message.localizedAuthorName(),
+                        close = request.dismiss,
+                        track = false,
+                    )
                 ThreadNewMessageMenuChrome(
                     availability =
                         threadInPlaceSelectionMenuAvailability(
@@ -514,13 +546,28 @@ internal fun ThreadMessageMenuOverlays(
                     followTarget = capabilities.followTarget,
                 )
             } else if (variant == ThreadMessageMenuVariant.Compact) {
+                val authorDisplayName = message.localizedAuthorName()
                 val actions =
-                    compactMenuMessageActions(message, replyMetadata, close = closeActionMenu, anchor = resolvedActionAnchor)
+                    compactMenuMessageActions(
+                        message = message,
+                        replyMetadata = replyMetadata,
+                        authorDisplayName = authorDisplayName,
+                        close = closeActionMenu,
+                        anchor = resolvedActionAnchor,
+                    )
+                val compactCanQuote =
+                    capabilities.copyText &&
+                        (inPlaceSelectionMenuHost?.insertQuoteIntoComposer != null ||
+                            inPlaceSelectionMenuHost?.quoteIntoComposer != null) &&
+                        threadMessageMenuPendingQuote(message, authorDisplayName) != null
                 ThreadNewMessageMenu(
                     anchor = resolvedActionAnchor,
                     availability =
                         capabilities.toThreadNewMessageMenuActionAvailability(message, replyMetadata)
-                            .copy(copySelection = onCopySelection != null && capabilities.copyText),
+                            .copy(
+                                copySelection = onCopySelection != null && capabilities.copyText,
+                                quote = compactCanQuote,
+                            ),
                     onDismiss = closeActionMenu,
                     onReact = actions.onReact,
                     onCopy = actions.tools.onCopy,
@@ -541,6 +588,7 @@ internal fun ThreadMessageMenuOverlays(
                     onSelectText = actions.tools.onSelectText,
                     onMarkThreadUnread = actions.tools.onMarkThreadUnread,
                     onCopySelection = onCopySelection ?: {},
+                    onQuote = actions.tools.onQuote,
                     link = linkSection,
                     viewContextState = viewContextState,
                     onViewContext = onViewContext,
