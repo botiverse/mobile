@@ -382,7 +382,8 @@ class SettingsFeedbackVoiceDictationUiTest {
                     .isNotEmpty()
             }
 
-            // Case 1: Tapping Send while actively listening stops/releases the mic and submits the text.
+            // Case 1: Tapping Send while actively listening stops/releases the mic (0 ms post-roll),
+            // waits <= 1 s for the final post-stop snapshot, and submits the complete text.
             onNodeWithContentDescription("Voice dictation").performClick()
             waitForIdle()
             val controller = assertNotNull(controllerRef)
@@ -393,11 +394,21 @@ class SettingsFeedbackVoiceDictationUiTest {
 
             onNodeWithContentDescription("Send").assertIsEnabled().performClick()
             waitForIdle()
+            assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
+            assertTrue(controller.state.value.hasBackgroundDrain)
+            assertTrue(controller.state.value.awaitingSubmitFinal)
+            assertTrue(recorder.stopCount >= 1)
+            assertTrue(firstConnection.stopSent)
+            assertTrue(sentMessages.isEmpty(), "Send while active should wait briefly for post-stop final")
+            onNodeWithContentDescription("Send").assertIsNotEnabled()
 
-            assertEquals(listOf("Missing mic in feedback"), sentMessages)
+            firstConnection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Missing mic in feedback.", stableLen = 24, refined = false))
+            waitForIdle()
+
+            assertEquals(listOf("Missing mic in feedback."), sentMessages)
             assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
             assertFalse(controller.state.value.hasBackgroundDrain)
-            assertTrue(recorder.stopCount >= 1)
+            assertFalse(controller.state.value.awaitingSubmitFinal)
             assertTrue(firstConnection.closed)
 
             // Late frame after submit must never pollute the cleared composer.
@@ -424,7 +435,7 @@ class SettingsFeedbackVoiceDictationUiTest {
 
             secondConnection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Add voice button.", stableLen = 17, refined = true))
             waitForIdle()
-            assertEquals(listOf("Missing mic in feedback", "Add voice button."), sentMessages)
+            assertEquals(listOf("Missing mic in feedback.", "Add voice button."), sentMessages)
             assertFalse(controller.state.value.awaitingSubmitFinal)
             assertFalse(controller.state.value.hasBackgroundDrain)
         }
@@ -649,8 +660,11 @@ class SettingsFeedbackVoiceDictationUiTest {
 
             onNodeWithContentDescription("Send").assertIsEnabled().performClick()
             waitForIdle()
-            assertEquals(listOf("Works great now"), sentReplies)
             assertTrue(recorder.stopCount >= 1)
+            assertTrue(connection.stopSent)
+            connection.emitFrame(VoiceDictationV2ServerFrame.Done)
+            waitForIdle()
+            assertEquals(listOf("Works great now"), sentReplies)
             assertTrue(connection.closed)
         }
 

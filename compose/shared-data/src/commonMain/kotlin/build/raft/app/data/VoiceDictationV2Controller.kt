@@ -676,12 +676,17 @@ class VoiceDictationV2Controller(
 
     /**
      * True when composer Send should call [awaitPendingFinalBeforeSend] before reading text and
-     * dispatching the message (either already waiting, or a background session has not yet
-     * delivered a confirmed post-stop snapshot and the user has not edited the composer).
+     * dispatching the message (either already waiting, an active listening session whose mic is
+     * live, or a background session that has not yet delivered a confirmed post-stop snapshot and
+     * whose composer has not been manually edited).
      */
     fun needsSubmitFinalWait(): Boolean =
         synchronized(stateLock) {
             if (pendingSubmitWait != null) return@synchronized true
+            val active = activeSession
+            if (active != null && !active.aborted && active.recorderNeedsStop && !active.span.ignoreSubsequentText) {
+                return@synchronized true
+            }
             val bg = backgroundSession ?: return@synchronized false
             !bg.aborted && !bg.postStopFinalReceived && !bg.span.ignoreSubsequentText
         }
@@ -1052,6 +1057,13 @@ class VoiceDictationV2Controller(
      * If stopped before microphone acquisition even resolved, aborts cleanly with no background work.
      */
     fun stop(stoppedBy: VoiceDictationStopReason = VoiceDictationStopReason.Button) {
+        stopInternal(stoppedBy = stoppedBy, postRollMs = stopPostRollMs)
+    }
+
+    private fun stopInternal(
+        stoppedBy: VoiceDictationStopReason,
+        postRollMs: Long,
+    ) {
         var sessionToDrain: Session? = null
         var abortImmediately = false
         var previousBg: Session? = null
@@ -1133,7 +1145,7 @@ class VoiceDictationV2Controller(
             }
         val stopJob =
             scope.launch {
-                val postRoll = stopPostRollMs.coerceAtLeast(0L)
+                val postRoll = postRollMs.coerceAtLeast(0L)
                 if (postRoll > 0L) {
                     delay(postRoll)
                 }
@@ -1175,16 +1187,30 @@ class VoiceDictationV2Controller(
     }
 
     /**
-     * Waits briefly (up to [timeoutMs], default 1 s) before sending when a just-stopped background
-     * session has not yet delivered its confirmed post-stop snapshot.
+     * Waits briefly (up to [timeoutMs], default 1 s) before sending when either an active listening
+     * session is still capturing audio or a just-stopped background session has not yet delivered
+     * its confirmed post-stop snapshot.
      *
-     * - Returns `true` immediately when no background drain needs to wait or the user already edited.
+     * - If an active listening session has a live mic (`recorderNeedsStop`) and untouched composer,
+     *   immediately stops it with 0 ms post-roll (`VoiceDictationStopReason.Submit`) so native tail
+     *   audio flushes and `{"deck":"stop"}` sends right away within the bounded [timeoutMs] budget.
+     * - Returns `true` immediately when no live/background drain needs to wait or the user already edited.
      * - Returns `false` when a submit wait is already in progress (prevents duplicate sends) or if
      *   aborted by [start], [cancel], or [onOwnerChanged].
      * - Resolves `true` as soon as a confirmed post-stop `text` applies, `done`/close completes
      *   background drain, the user edits the composer, or [timeoutMs] elapses.
      */
     suspend fun awaitPendingFinalBeforeSend(timeoutMs: Long = submitFinalWaitMs): Boolean {
+        val shouldStopActiveFirst =
+            synchronized(stateLock) {
+                if (pendingSubmitWait != null) return false
+                val active = activeSession
+                active != null && !active.aborted && active.recorderNeedsStop && !active.span.ignoreSubsequentText
+            }
+        if (shouldStopActiveFirst) {
+            stopInternal(stoppedBy = VoiceDictationStopReason.Submit, postRollMs = 0L)
+        }
+
         val waitDeferred: CompletableDeferred<Boolean> =
             synchronized(stateLock) {
                 if (pendingSubmitWait != null) return false

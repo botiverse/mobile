@@ -576,20 +576,33 @@ class ThreadVoiceDictationUiTest {
             val controller = assertNotNull(controllerRef)
             assertEquals(VoiceDictationV2Phase.Listening, controller.state.value.phase)
 
-            // Tapping Send while still actively listening stops dictation immediately and clears composer.
+            // Tapping Send while still actively listening stops mic (0 ms post-roll), sends WS stop,
+            // waits <= 1 s for the confirmed post-stop tail, dispatches complete text, and rejects late frames.
             onNodeWithContentDescription("Send").assertIsEnabled().performClick()
             waitForIdle()
-            assertEquals(listOf("Testing one two."), sentMessages)
+            assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
+            assertTrue(controller.state.value.hasBackgroundDrain)
+            assertTrue(controller.state.value.awaitingSubmitFinal)
+            assertTrue(connection.stopSent)
+            assertTrue(recorder.stopCount >= 1)
+            assertTrue(sentMessages.isEmpty(), "send should wait briefly for post-stop tail word")
+            onNodeWithContentDescription("Send").assertIsNotEnabled()
+            onNodeWithContentDescription("Loading").assertDoesNotExist()
+
+            // Confirmed post-stop snapshot arrives -> composer updates, sends complete text, and clears composer.
+            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Testing one two three.", stableLen = 22, refined = false))
+            waitForIdle()
+            assertEquals(listOf("Testing one two three."), sentMessages)
             assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
             assertFalse(controller.state.value.hasBackgroundDrain)
-            assertTrue(recorder.stopCount >= 1)
-            onNodeWithText("Testing one two.").assertDoesNotExist()
+            assertFalse(controller.state.value.awaitingSubmitFinal)
+            onNodeWithText("Testing one two three.").assertDoesNotExist()
 
             // Any late server frame after Send must never repopulate the cleared composer.
-            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Testing one two. Late tail.", stableLen = 27, refined = true))
+            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Testing one two three. Late tail.", stableLen = 33, refined = true))
             waitForIdle()
-            onNodeWithText("Testing one two. Late tail.").assertDoesNotExist()
-            onNodeWithText("Testing one two.").assertDoesNotExist()
+            onNodeWithText("Testing one two three. Late tail.").assertDoesNotExist()
+            onNodeWithText("Testing one two three.").assertDoesNotExist()
         }
 
     @Test

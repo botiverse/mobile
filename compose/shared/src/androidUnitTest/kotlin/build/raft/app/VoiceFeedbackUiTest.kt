@@ -55,6 +55,7 @@ import build.raft.app.data.SharedServerFeatureFlags
 import build.raft.app.data.StoredAuthServer
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS
 import build.raft.app.data.VOICE_DICTATION_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.VOICE_FEEDBACK_SAMPLE_V0_FEATURE_FLAG_KEY
 import build.raft.app.data.VoiceDictationAudioStartResult
@@ -624,7 +625,7 @@ class VoiceFeedbackUiTest {
             assertEquals(false, reports[0].clientMetrics.sentBeforeRefineDone)
             assertEquals("Ship it now", assertNotNull(controllerRef).state.value.recentFeedbackTarget?.sent)
 
-            // Second dictation sent while still actively listening -> reports sentBeforeRefineDone = true.
+            // Second dictation sent while still actively listening -> waits <= 1 s for final; on timeout sends and reports sentBeforeRefineDone = true.
             onNodeWithContentDescription("Voice dictation").performClick()
             waitForIdle()
             secondConnection.emitFrame(VoiceDictationV2ServerFrame.Ready)
@@ -633,6 +634,9 @@ class VoiceFeedbackUiTest {
             assertEquals(VoiceDictationV2Phase.Listening, assertNotNull(controllerRef).state.value.phase)
 
             onNodeWithContentDescription("Send").assertIsEnabled().performClick()
+            waitForIdle()
+            assertTrue(assertNotNull(controllerRef).state.value.awaitingSubmitFinal)
+            mainClock.advanceTimeBy(VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS + 32L)
             waitForIdle()
             assertEquals(listOf("Ship it now", "Quick send"), sentTexts)
             assertEquals(2, reports.size)

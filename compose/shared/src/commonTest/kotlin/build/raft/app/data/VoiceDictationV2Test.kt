@@ -2795,6 +2795,114 @@ class VoiceDictationV2Test {
         runCurrent()
     }
 
+    @Test
+    fun controllerAwaitPendingFinalBeforeSendFlushesActiveSessionWithZeroPostRollAndBounded1sTimeout() = runTest {
+        // 1. Connecting (mic not yet live) -> needsSubmitFinalWait() is false; once Listening -> true;
+        //    after manual edit -> false.
+        val micGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+        val ws1 = FakeDictationWebSocketSession()
+        val tail1 = byteArrayOf(21, 22, 23, 24)
+        val rec1 = FakeDictationAudioRecorder(startGate = micGate, onStopTailChunks = listOf(tail1))
+        val updates1 = mutableListOf<VoiceDictationComposerUpdate>()
+        val c1 =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws1 },
+                scope = backgroundScope,
+                audioRecorderProvider = { rec1 },
+            )
+        c1.start(serverId = "srv-1", baseText = "", onComposerUpdate = { updates1 += it })
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Connecting, c1.state.value.phase)
+        assertFalse(c1.needsSubmitFinalWait(), "Connecting before mic starts must not block Send")
+
+        micGate.complete(VoiceDictationAudioStartResult.Started)
+        runCurrent()
+        ws1.pushText("""{"deck":"ready"}""")
+        ws1.pushText("""{"deck":"text","text":"Ship this","stable_len":9}""")
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Listening, c1.state.value.phase)
+        assertTrue(c1.needsSubmitFinalWait(), "live Listening session must wait briefly on Send for final tail")
+
+        // Sending while actively listening immediately stops mic with 0 ms post-roll, flushes native
+        // tail chunk before WS stop, and waits up to 1 s for the confirmed post-stop snapshot.
+        val wait1 = async { c1.awaitPendingFinalBeforeSend() }
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Idle, c1.state.value.phase)
+        assertTrue(c1.state.value.hasBackgroundDrain)
+        assertTrue(c1.state.value.awaitingSubmitFinal)
+        assertEquals(1, rec1.stopCalls, "Send-while-active must stop recorder with 0 ms post-roll")
+        assertEquals(1, ws1.sentBinary.size)
+        assertContentEquals(tail1, ws1.sentBinary.single())
+        assertEquals(
+            listOf("""{"deck":"start","v":2,"sample_rate":16000}""", """{"deck":"stop"}"""),
+            ws1.sentText.toList(),
+        )
+        assertFalse(wait1.isCompleted)
+
+        // Confirmed post-stop snapshot with final word resolves wait immediately with true.
+        ws1.pushText("""{"deck":"text","text":"Ship this now.","stable_len":14}""")
+        runCurrent()
+        assertTrue(wait1.await())
+        assertEquals("Ship this now.", updates1.last().composerText)
+        assertFalse(c1.state.value.awaitingSubmitFinal)
+        c1.finishForSubmit()
+        runCurrent()
+
+        // 2. Manual user edit while actively listening disables submit wait immediately.
+        val wsEdit = FakeDictationWebSocketSession()
+        val cEdit =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsEdit },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cEdit.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsEdit.pushText("""{"deck":"ready"}""")
+        wsEdit.pushText("""{"deck":"text","text":"Draft","stable_len":5}""")
+        runCurrent()
+        assertTrue(cEdit.needsSubmitFinalWait())
+        cEdit.onUserEditedComposer("Draft edited")
+        assertFalse(cEdit.needsSubmitFinalWait())
+        assertTrue(cEdit.awaitPendingFinalBeforeSend())
+        cEdit.finishForSubmit()
+        runCurrent()
+
+        // 3. Server stalls after active-Send stop -> times out cleanly at 1,000 ms (not 1,300 ms) and returns true.
+        val wsTimeout = FakeDictationWebSocketSession()
+        val recTimeout = FakeDictationAudioRecorder()
+        val cTimeout =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsTimeout },
+                scope = backgroundScope,
+                audioRecorderProvider = { recTimeout },
+            )
+        cTimeout.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsTimeout.pushText("""{"deck":"ready"}""")
+        wsTimeout.pushText("""{"deck":"text","text":"Still waiting","stable_len":13}""")
+        runCurrent()
+
+        val waitTimeout = async { cTimeout.awaitPendingFinalBeforeSend() }
+        runCurrent()
+        assertEquals(1, recTimeout.stopCalls)
+        assertTrue(cTimeout.state.value.awaitingSubmitFinal)
+
+        advanceTimeBy(VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS - 1L)
+        runCurrent()
+        assertFalse(waitTimeout.isCompleted)
+
+        advanceTimeBy(1L)
+        runCurrent()
+        assertTrue(waitTimeout.await())
+        assertFalse(cTimeout.state.value.awaitingSubmitFinal)
+        cTimeout.finishForSubmit()
+        runCurrent()
+    }
+
     // -------------------------------------------------------------------------
     // Test helpers
     // -------------------------------------------------------------------------
