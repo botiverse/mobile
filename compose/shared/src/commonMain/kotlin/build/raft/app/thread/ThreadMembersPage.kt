@@ -1239,6 +1239,7 @@ private fun ThreadMembersPageScreen() {
             // Web jointMemberGroups (#12853): a joint channel's roster as "Members of {server}" / "Other servers".
             channelKind = channelKind,
             viewerServerName = viewerServerName,
+            viewerIsGuest = build.raft.app.data.isGuestServerRole(viewerServerRole),
             externalInvites =
                 ExternalInvitesSection(
                     state = externalInvitesState,
@@ -1746,6 +1747,8 @@ internal fun ThreadMembersPageContent(
     channelKind: String? = null,
     /** The viewed server's name, for "Members of {server}" (web `currentServerName`). */
     viewerServerName: String = "",
+    /** True when the viewer is a Guest on the server (slock #17190): Workers render as presence-only. */
+    viewerIsGuest: Boolean = false,
     /** Guest "Connect your servers" entry in Add Member's place (slock #16375/#16389). */
     guestConnectEntry: Boolean = false,
     onGuestConnect: () -> Unit = {},
@@ -1949,6 +1952,7 @@ internal fun ThreadMembersPageContent(
                                     roleChanging = roleChange.changingKey == rows[index].memberKey,
                                     onRoleAction = onRoleAction,
                                     alsoInSpokenAsSentence = groupedByViewerServer,
+                                    viewerIsGuest = viewerIsGuest,
                                 )
                             }
                         }
@@ -2103,11 +2107,12 @@ internal fun ThreadMembersPagerRow(
      * `sourceOf`, given to people's rows only).
      */
     alsoInSpokenAsSentence: Boolean = false,
+    viewerIsGuest: Boolean = false,
 ) {
     // web `ChannelMemberRow` / `AgentActivityInfo`: an App Bot has no presence (it would read
     // "Offline" forever); the Bot badge follows its name instead.
     val appBot = rememberRaftMemberAppBot(member.threadMemberAppBotLookupId())
-    val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver) else null
+    val status = if (appBot == null) member.modalAgentStatusIndicatorState(agentStatusResolver, viewerIsGuest = viewerIsGuest) else null
     val readinessCopy =
         if (appBot == null && member.kind.equals("agent", ignoreCase = true)) {
             rememberAgentReadinessDisplayCopy(status)
@@ -2562,7 +2567,8 @@ private fun RaftThreadMemberItem.localizedModalRoleLabel(): String =
 
 @Composable
 internal fun RaftThreadMemberItem.modalAgentStatusIndicatorState(
-    agentStatusResolver: RaftAgentStatusResolver
+    agentStatusResolver: RaftAgentStatusResolver,
+    viewerIsGuest: Boolean = false,
 ): RaftAgentStatusIndicatorState? {
     val canonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, id)
     val resolved =
@@ -2570,8 +2576,8 @@ internal fun RaftThreadMemberItem.modalAgentStatusIndicatorState(
             memberKind = kind,
             canonicalState = canonicalState
         ) ?: return null
-    // Joint channel peer (#16819): another server's agent reads its Workers as presence only, never a count.
-    return if (originServers.isNotEmpty() && resolved.runningWorkers != null && !resolved.runningWorkersPresenceOnly) {
+    // Joint channel peer (#16819) & Guest viewer (#17190): agent reads its Workers as presence only, never a count.
+    return if ((originServers.isNotEmpty() || viewerIsGuest) && resolved.runningWorkers != null && !resolved.runningWorkersPresenceOnly) {
         resolved.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
     } else {
         resolved

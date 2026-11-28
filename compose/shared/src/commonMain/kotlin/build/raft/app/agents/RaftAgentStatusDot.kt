@@ -108,6 +108,7 @@ fun raftAgentWidgetStatusText(
     runtime: String?,
     description: String?,
     runningWorkers: Int? = null,
+    runningWorkersPresenceOnly: Boolean = false,
 ): StringDesc {
     if (!external) agentBlockedState(blockedReason, runtime)?.let { return it.statusLabelRes.desc() }
     val status = AgentStatus.fromWireValue(statusWireValue)
@@ -122,10 +123,12 @@ fun raftAgentWidgetStatusText(
                 agentRunningWorkersDisplayOf(
                     status = status,
                     runningWorkers = runningWorkers,
+                    runningWorkersPresenceOnly = runningWorkersPresenceOnly,
                     external = external,
                 )
             when {
                 workers == null -> Res.string.member_row_status_online.desc()
+                workers.presenceOnly -> Res.string.agent_status_working_through_workers_presence.desc()
                 workers.count == 1 -> Res.string.agent_status_working_through_worker.desc()
                 else -> Res.string.agent_status_working_through_workers.format(workers.count)
             }

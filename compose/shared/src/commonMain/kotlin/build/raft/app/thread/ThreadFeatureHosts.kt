@@ -331,13 +331,14 @@ internal fun rememberThreadFeatureHosts(
             )
         }
     val memberPreviewCardSource =
-        remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId, channelJointServers) {
+        remember(serverMembersStore, headerProjectionServerId, agentStatusResolver, memberAvatarResolver, threadMembersServerId, threadMembersChannelId, channelJointServers, threadViewerIsGuest) {
             RaftMemberPreviewCardSource(
                 serverMembersStore = serverMembersStore,
                 serverId = headerProjectionServerId?.value,
                 agentStatusResolver = agentStatusResolver,
                 memberAvatarResolver = memberAvatarResolver,
                 knownServers = channelJointServers,
+                viewerIsGuest = threadViewerIsGuest,
                 resolveMention = { label ->
                     val serverMembers =
                         if (serverMembersStore == null || threadMembersServerId == null) {

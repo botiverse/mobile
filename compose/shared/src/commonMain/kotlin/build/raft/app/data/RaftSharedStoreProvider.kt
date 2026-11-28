@@ -3343,6 +3343,14 @@ internal class RaftSharedStoreProvider private constructor(
                     presenceRegistry = processMemberPresenceRegistry,
                     presenceOwner = { serverId -> presenceOwnerResolver(serverId.value) },
                     presenceOwnerFlow = { serverId -> presenceOwnerFlowResolver(serverId.value) },
+                    viewerServerRole = { serverId ->
+                        authStore.readCommittedSessionSnapshot()?.servers?.firstOrNull { it.id == serverId.value }?.role
+                    },
+                    viewerServerRoleFlow = { serverId ->
+                        raftStoredSessionFlow(authStore.authSessionEvents) { authStore.readSession() }
+                            .map { session -> session?.servers?.firstOrNull { it.id == serverId.value }?.role }
+                            .distinctUntilChanged()
+                    },
                     presenceWrite = { serverId -> presenceWriteResolver(serverId.value) },
                     processOwner = { serverId -> processServerMembersOwner(authStore(scope), serverId) },
                     avatarRefStore = memberAvatarRefStore,
@@ -4980,6 +4988,14 @@ internal class RaftSharedStoreProvider private constructor(
                     presenceRegistry = processMemberPresenceRegistry,
                     presenceOwner = { serverId -> resolvePresenceOwner(serverId.value) },
                     presenceOwnerFlow = { serverId -> resolvePresenceOwnerFlow(serverId.value) },
+                    viewerServerRole = { serverId ->
+                        authStore.readCommittedSessionSnapshot()?.servers?.firstOrNull { it.id == serverId.value }?.role
+                    },
+                    viewerServerRoleFlow = { serverId ->
+                        raftStoredSessionFlow(authStore.authSessionEvents) { authStore.readSession() }
+                            .map { session -> session?.servers?.firstOrNull { it.id == serverId.value }?.role }
+                            .distinctUntilChanged()
+                    },
                     presenceWrite = { serverId -> resolvePresenceWrite(serverId.value) },
                     processOwner = { serverId ->
                         authStore.readSession()?.let { session ->

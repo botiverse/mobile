@@ -2676,6 +2676,80 @@ class SharedServerMembersStoreTest {
         assertEquals(listOf(serverAWithLogo, serverBWithLogo), suggestion.originServers)
     }
 
+    @Test
+    fun guestViewerSeesRunningWorkersAsPresenceOnlyAndUpdatesWhenRoleChanges() = runBlocking {
+        val serverId = ServerId("server-1")
+        val roleFlow = kotlinx.coroutines.flow.MutableStateFlow<String?>("guest")
+        val store =
+            SharedServerMembersStore(
+                memberRepository = FakeMemberRepository(),
+                viewerServerRole = { sid -> if (sid == serverId) roleFlow.value else null },
+                viewerServerRoleFlow = { sid -> if (sid == serverId) roleFlow else kotlinx.coroutines.flow.flowOf(null) },
+            )
+        store.seed(
+            MemberSnapshot(
+                server(serverId.value),
+                listOf(
+                    member("agent-1", "Kirby").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Online,
+                        presence = Presence.Active,
+                        agentRunningWorkers = 3,
+                        serverId = serverId,
+                    ),
+                    member("agent-2", "Nova").copy(
+                        kind = MemberKind.Agent,
+                        agentStatus = AgentStatus.Online,
+                        presence = Presence.Active,
+                        agentRunningWorkers = 1,
+                        serverId = serverId,
+                    ),
+                ),
+            )
+        )
+
+        // Roster-only (before presence fact arrives): Guest gets presence-only even when count == 1.
+        val rosterGuest = assertNotNull(store.memberStatusFlow(serverId, "agent-2").first())
+        assertEquals(1, rosterGuest.runningWorkers)
+        assertTrue(rosterGuest.runningWorkersPresenceOnly)
+
+        // Presence fact populates presenceRegistry -> workerBusyAgentsFlow & status flows both clamp for Guest.
+        store.applyPresence(
+            serverId,
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = Presence.Active,
+                agentStatus = AgentStatus.Online,
+                runningWorkers = 3,
+                serverSeq = 1L,
+            ),
+        )
+        val guestFlowStatus = assertNotNull(store.memberStatusFlow(serverId, "agent-1").first())
+        assertEquals(1, guestFlowStatus.runningWorkers)
+        assertTrue(guestFlowStatus.runningWorkersPresenceOnly)
+        val guestCurrentStatus = assertNotNull(store.currentMemberStatus(serverId, "agent-1"))
+        assertEquals(1, guestCurrentStatus.runningWorkers)
+        assertTrue(guestCurrentStatus.runningWorkersPresenceOnly)
+        val guestWorkerBusy = store.workerBusyAgentsFlow(serverId).first().single()
+        assertEquals(1, guestWorkerBusy.runningWorkers)
+        assertTrue(guestWorkerBusy.runningWorkersPresenceOnly)
+
+        // When viewer's role upgrades from guest to member, the exact count flows through immediately.
+        roleFlow.value = "member"
+        val memberFlowStatus = assertNotNull(store.memberStatusFlow(serverId, "agent-1").first())
+        assertEquals(3, memberFlowStatus.runningWorkers)
+        assertEquals(false, memberFlowStatus.runningWorkersPresenceOnly)
+        val memberWorkerBusy = store.workerBusyAgentsFlow(serverId).first().single()
+        assertEquals(3, memberWorkerBusy.runningWorkers)
+        assertEquals(false, memberWorkerBusy.runningWorkersPresenceOnly)
+
+        // Downgrading back to guest re-clamps to presence-only.
+        roleFlow.value = "guest"
+        val downgradedStatus = assertNotNull(store.memberStatusFlow(serverId, "agent-1").first())
+        assertEquals(1, downgradedStatus.runningWorkers)
+        assertTrue(downgradedStatus.runningWorkersPresenceOnly)
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()

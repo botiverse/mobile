@@ -482,6 +482,8 @@ internal fun MembersDetailContent(
     val issueTicketRetryFailed = stringResource(Res.string.member_report_issue_retry_ticket_failed)
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val remoteProfile = membersAgentProfileIsRemote(accessMode)
+    val viewerIsGuest = remoteControls?.serverRole?.trim()?.equals("guest", ignoreCase = true) == true
+    val workersPresenceOnly = remoteProfile || viewerIsGuest
     // task #256: observed-or-null drives the dot. The label-facing resolution below may
     // substitute the unknown placeholder, which is grey and would impersonate Offline.
     // task #258: cross-server joint-channel agents (RemoteProfileOnly) have no live status
@@ -492,7 +494,7 @@ internal fun MembersDetailContent(
         if (member.kind == MemberKind.Agent) {
             val rawCanonicalState = rememberRaftAgentStatusIndicatorState(agentStatusResolver, member.id.value)
             val canonicalState =
-                if (remoteProfile && rawCanonicalState?.runningWorkers != null && !rawCanonicalState.runningWorkersPresenceOnly) {
+                if (workersPresenceOnly && rawCanonicalState?.runningWorkers != null && !rawCanonicalState.runningWorkersPresenceOnly) {
                     rawCanonicalState.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
                 } else {
                     rawCanonicalState
@@ -507,7 +509,7 @@ internal fun MembersDetailContent(
                         model = detail?.summary?.model,
                         deliveryHold = detail?.summary?.deliveryHold,
                         runningWorkers = detail?.summary?.runningWorkers,
-                        runningWorkersPresenceOnly = remoteProfile,
+                        runningWorkersPresenceOnly = workersPresenceOnly,
                         serviceTier = detail?.summary?.serviceTier,
                     )
                 } else {
@@ -1537,7 +1539,8 @@ internal fun MembersDetailContent(
                                                         )
                                                     },
                                                 computerOfflineCard = computerOfflineCard,
-                                                computerRevokedNote = computerRevokedNote
+                                                computerRevokedNote = computerRevokedNote,
+                                                viewerIsGuest = viewerIsGuest
                                             ),
                                             machineStatusRow = machineStatusRow,
                                             timeContext = timeContext,

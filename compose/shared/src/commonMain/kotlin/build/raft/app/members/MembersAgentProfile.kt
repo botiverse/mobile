@@ -528,6 +528,8 @@ internal fun MembersAgentProfileHeader(
     showStatus: Boolean = true,
     /** Web `AgentComputerRevokedNote` (#16468): shown under the revoked status notice when present. */
     computerRevokedNote: MembersAgentComputerRevokedNoteState? = null,
+    /** True when the viewer is a Guest on the server (slock #17190): Workers render as presence-only. */
+    viewerIsGuest: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -644,6 +646,7 @@ internal fun MembersAgentProfileHeader(
                         retryInProgress = retryInProgress,
                         onOpenComputer = onOpenComputer,
                         computerRevokedNote = computerRevokedNote,
+                        viewerIsGuest = viewerIsGuest,
                     )
                 }
             }
@@ -677,6 +680,7 @@ internal fun MembersAgentProfileStatus(
     onOpenComputer: (() -> Unit)? = null,
     itemTop: Dp = 6.dp,
     computerRevokedNote: MembersAgentComputerRevokedNoteState? = null,
+    viewerIsGuest: Boolean = false,
 ) {
     val appBot = !member.managedByAppInstallId.isNullOrBlank()
     // Web AgentDisplayState.blocked (botiverse/slock #13575): held agents say why, not their activity.
@@ -872,7 +876,7 @@ internal fun MembersAgentProfileStatus(
                 paused = !member.assistantPausedAt.isNullOrBlank(),
                 nowMs = timeContext?.nowEpochMillis ?: build.raft.app.data.defaultNowMillis(),
                 appBot = appBot,
-                presenceOnly = member.inViewerServer == false,
+                presenceOnly = member.inViewerServer == false || viewerIsGuest,
                 hasResolvedDeliveryHold = true,
                 resolvedDeliveryHold = deliveryHold,
             )
@@ -1191,6 +1195,8 @@ internal class MembersAgentLifecycleInputs(
      * access revoked" status when the machine list carries its revocation cause; null otherwise.
      */
     val computerRevokedNote: MembersAgentComputerRevokedNoteState? = null,
+    /** True when the viewer is a Guest on the server (slock #17190): Workers render as presence-only. */
+    val viewerIsGuest: Boolean = false,
 )
 
 /**
@@ -2226,6 +2232,7 @@ private fun MembersAgentProfileIdentity(
                 // With Recent activity the status is the card's first line (web).
                 showStatus = recentActivity == null,
                 computerRevokedNote = lifecycle.computerRevokedNote,
+                viewerIsGuest = lifecycle.viewerIsGuest,
             )
             lifecycle.computerOfflineCard?.let { offlineCard ->
                 // Web AgentDetailPanel: `<div className="px-5 pb-4"><AgentComputerOfflineCard /></div>`,
@@ -2263,6 +2270,7 @@ private fun MembersAgentProfileIdentity(
                             onStopTurn = lifecycle.onStopTurn,
                             stopTurnInProgress = lifecycle.stopTurnInProgress,
                             showActivityDetail = lifecycle.showActivityDetail,
+                            viewerIsGuest = lifecycle.viewerIsGuest,
                             spawnFailure = spawnFailure,
                             onChangeModel = lifecycle.onOpenModelSettings,
                             timeContext = lifecycle.timeContext,

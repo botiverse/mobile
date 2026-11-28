@@ -34,6 +34,8 @@ data class RaftWorkingAgent(
     val signal: RaftLiveAgentSignal? = null,
     /** Positive count when this entry comes from `workerBusyAgentsFlow` (botiverse/slock #16819). */
     val runningWorkers: Int = 0,
+    /** True when the viewer (peer or Guest, slock #17190) sees Workers as presence-only. */
+    val runningWorkersPresenceOnly: Boolean = false,
 )
 
 /**
@@ -69,6 +71,8 @@ data class RaftLiveAgentActivityItem(
     val heldUntilChange: Boolean = true,
     /** Positive count when this workspace-summary row represents an agent busy only through its Workers (#16819). */
     val runningWorkers: Int = 0,
+    /** True when the viewer (peer or Guest, slock #17190) sees Workers as presence-only. */
+    val runningWorkersPresenceOnly: Boolean = false,
 )
 
 /**
@@ -244,7 +248,8 @@ fun nextLiveAgentActivityExpiry(items: List<RaftLiveAgentActivityItem>): Long? =
                 avatarWireValue = agent.avatarWireValue,
                 status = AgentStatus.Online,
                 startedAt = 0L,
-                runningWorkers = count,
+                runningWorkers = if (agent.runningWorkersPresenceOnly) 1 else count,
+                runningWorkersPresenceOnly = agent.runningWorkersPresenceOnly,
             )
         }
     return if (extra.isEmpty()) liveItems else liveItems + extra
