@@ -1545,8 +1545,8 @@ internal class RaftSharedStoreProvider private constructor(
         onFailed: (() -> Unit)? = null,
         transientRetry: Boolean = false,
         onFinished: ((Boolean) -> Unit)? = null,
-        onResult: ((RaftSyncPullResult?) -> Unit)? = null,
-    ): Boolean = launchSyncChangesPull(serverId, trigger, jitterSnapshots, jitterPull, onFailed, transientRetry, onFinished, onResult) != null
+        onOutcome: ((RaftSyncPullOutcome?) -> Unit)? = null,
+    ): Boolean = launchSyncChangesPull(serverId, trigger, jitterSnapshots, jitterPull, onFailed, transientRetry, onFinished, onOutcome) != null
 
     /** [requestSyncChangesPull], returning the pull's job (null when skipped). */
     private fun launchSyncChangesPull(
@@ -1557,7 +1557,7 @@ internal class RaftSharedStoreProvider private constructor(
         onFailed: (() -> Unit)? = null,
         transientRetry: Boolean = false,
         onFinished: ((Boolean) -> Unit)? = null,
-        onResult: ((RaftSyncPullResult?) -> Unit)? = null,
+        onOutcome: ((RaftSyncPullOutcome?) -> Unit)? = null,
     ): Job? {
         val scope = currentSyncScope(serverId) ?: return null
         if (scopesForServer(scope.serverId).isEmpty()) return null
@@ -1567,19 +1567,20 @@ internal class RaftSharedStoreProvider private constructor(
         // It reads after every realtime hint so far: a waiting realtime pull is moot too.
         syncRealtimePull.onTriggerPull(scope)
         val finishedNotified = kotlinx.atomicfu.atomic(false)
-        val notifyFinished: (Boolean, RaftSyncPullResult?) -> Unit = { ok, pullResult ->
+        val notifyFinished: (Boolean, RaftSyncPullOutcome?) -> Unit = { ok, pullOutcome ->
             if (finishedNotified.compareAndSet(expect = false, update = true)) {
-                onResult?.invoke(pullResult)
+                onOutcome?.invoke(pullOutcome)
                 onFinished?.invoke(ok)
             }
         }
         val job =
             threadSendScope.launch(start = CoroutineStart.LAZY) {
                 var succeeded = false
-                var pullResult: RaftSyncPullResult? = null
+                var pullOutcome: RaftSyncPullOutcome? = null
                 try {
-                    val result = syncChangesEngine.pull(scope, trigger, jitterSnapshots, jitterPull)
-                    pullResult = result
+                    val outcome = syncChangesEngine.pullWithOutcome(scope, trigger, jitterSnapshots, jitterPull)
+                    val result = outcome.result
+                    pullOutcome = outcome
                     succeeded = result is RaftSyncPullResult.Synced
                     when (result) {
                         is RaftSyncPullResult.Failed -> if (result.needsFullRefetchFallback) onFailed?.invoke()
@@ -1610,7 +1611,7 @@ internal class RaftSharedStoreProvider private constructor(
                         }
                     }
                 } finally {
-                    notifyFinished(succeeded, pullResult)
+                    notifyFinished(succeeded, pullOutcome)
                 }
             }
         synchronized(syncPullJobsLock) { syncPullJobs.getOrPut(scope.serverId) { mutableSetOf() } += job }
@@ -5035,17 +5036,15 @@ internal class RaftSharedStoreProvider private constructor(
                                     }
                                 },
                                 onFinished = { ok -> syncOutcome.complete(ok) },
-                                onResult = { result ->
-                                    if (result != null) {
-                                        val synced = result as? RaftSyncPullResult.Synced
+                                onOutcome = { outcome ->
+                                    if (outcome != null) {
                                         RaftClientTraceEvents.emitForegroundSyncUpdated(
                                             serverId = serverId.value,
                                             telemetry =
-                                                ActivityForegroundSyncUpdated(
+                                                activityForegroundSyncUpdatedOf(
                                                     serverId = serverId.value,
                                                     durationMillis = returnBoundary.elapsedNow().inWholeMilliseconds,
-                                                    inboxRowsApplied = synced?.inboxRowsApplied ?: 0,
-                                                    syncedOk = synced != null,
+                                                    outcome = outcome,
                                                     timestampMillis = ProcessRaftDatetimeFoundationOwner.nowEpochMillis(),
                                                 ),
                                         )
