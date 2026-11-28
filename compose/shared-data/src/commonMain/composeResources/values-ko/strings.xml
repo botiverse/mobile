@@ -6593,7 +6593,15 @@
     <string name="settings_computers_runtime_install_installed_version">%1$s %2$s을(를) 설치했어요.</string>
     <string name="settings_computers_runtime_install_installed">%1$s을(를) 설치했어요.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s이(가) 이 컴퓨터에 이미 설치되어 있어요.</string>
-    <string name="settings_computers_runtime_install_failed">%1$s 설치 프로그램이 끝나지 않아 아직 설치되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_not_found">%1$s 설치 프로그램은 끝났지만 %1$s이(가) 아직 이 컴퓨터에 없어요.</string>
+    <string name="settings_computers_runtime_install_failed_exit_code">%1$s 설치 프로그램이 오류 코드 %2$s(으)로 멈춰서 아직 설치되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_timeout">%1$s 설치 프로그램이 끝나기 전에 중지되어(%2$s분 제한 또는 시스템에 의해) 아직 설치되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_download_failed">%1$s 설치 프로그램을 다운로드하지 못해서 아무것도 설치되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_not_a_script">%1$s 설치 프로그램으로 다운로드된 것이 설치 스크립트가 아니어서(예: 웹 페이지나 네트워크 차단) 아무것도 실행되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_timed_out">%1$s 설치 프로그램이 %2$s분 제한에 걸려 중지되어 아직 설치되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_no_exit_code">%1$s 설치 프로그램이 중지되었거나 시작하지 못해서 아직 설치되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_unusable">%1$s 설치 프로그램은 끝났지만 이 컴퓨터의 %1$s을(를) 사용할 수 없어요.</string>
+    <string name="settings_computers_runtime_install_failed_manual">직접 설치하려면 %1$s에서 다음을 실행하세요. 거기서도 실패하면 출력에 이유가 나와요:</string>
     <string name="settings_computers_runtime_install_failed_output_tail">설치 출력의 마지막 몇 줄:</string>
     <string name="settings_computers_runtime_install_in_progress">이 컴퓨터에서 %1$s을(를) 이미 설치하고 있어요.</string>
     <string name="settings_computers_runtime_install_error">%1$s을(를) 설치하지 못했어요. 다시 시도하세요.</string>

@@ -3,11 +3,13 @@ package build.raft.app
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import build.raft.app.data.RUNTIME_INSTALL_TIMEOUT_MILLIS
 import build.raft.app.data.ResolvedServerRefusal
 import build.raft.app.data.RuntimeAuthCall
 import build.raft.app.data.RuntimeAuthRequestError
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeInstallFailureReason
 import build.raft.app.data.RuntimeInstallPlan
 import build.raft.app.data.RuntimeInstallResult
 import build.raft.app.data.RuntimeInstallUnsupportedReason
@@ -281,6 +283,8 @@ internal sealed interface ComputerRuntimeInstallState {
         override val raftRuntimeId: String,
         override val runtimeName: String,
         val result: RuntimeInstallResult,
+        /** The plan that ran, when confirmed: a failed install offers its steps to run by hand (botiverse/slock #17185). */
+        val plan: RuntimeInstallPlan.Plan? = null,
     ) : ForRuntime
 
     data class Refused(
@@ -335,7 +339,7 @@ internal fun computerRuntimeInstallCopy(state: ComputerRuntimeInstallState): Com
                     }
                 }
                 is RuntimeInstallResult.AlreadyInstalled -> ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_already_installed, success = true)
-                is RuntimeInstallResult.Failed -> ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed, success = false)
+                is RuntimeInstallResult.Failed -> computerRuntimeInstallFailedCopy(result)
                 is RuntimeInstallResult.Unsupported -> ComputerRuntimeOperationCopy(computerRuntimeInstallUnsupportedCopy(result.reason), success = false)
                 is RuntimeInstallResult.Error ->
                     ComputerRuntimeOperationCopy(
@@ -348,6 +352,57 @@ internal fun computerRuntimeInstallCopy(state: ComputerRuntimeInstallState): Com
                     )
             }
         else -> null
+    }
+
+private val RuntimeInstallTimeoutMinutes: String = (RUNTIME_INSTALL_TIMEOUT_MILLIS / 60_000L).toString()
+
+/**
+ * Web `failedCopy` / `exitCodeCopy` (botiverse/slock #17185, #17210): why the installer failed.
+ * OAR 0.138's reason when the Computer sends a known one, otherwise the exit code alone (an older
+ * Computer, OAR gave none, or a reason this build does not know).
+ */
+private fun computerRuntimeInstallFailedCopy(result: RuntimeInstallResult.Failed): ComputerRuntimeOperationCopy =
+    when (result.reason) {
+        RuntimeInstallFailureReason.DownloadFailed ->
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_download_failed, success = false)
+        RuntimeInstallFailureReason.NonScriptResponse ->
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_not_a_script, success = false)
+        RuntimeInstallFailureReason.TimedOut ->
+            ComputerRuntimeOperationCopy(
+                Res.string.settings_computers_runtime_install_failed_timed_out,
+                args = listOf(RuntimeInstallTimeoutMinutes),
+                success = false,
+            )
+        RuntimeInstallFailureReason.InstallerFailed ->
+            if (result.exitCode == null) {
+                ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_no_exit_code, success = false)
+            } else {
+                ComputerRuntimeOperationCopy(
+                    Res.string.settings_computers_runtime_install_failed_exit_code,
+                    args = listOf(result.exitCode.toString()),
+                    success = false,
+                )
+            }
+        RuntimeInstallFailureReason.NotFoundAfterInstall ->
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_not_found, success = false)
+        RuntimeInstallFailureReason.UnusableAfterInstall ->
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_unusable, success = false)
+        null ->
+            when (val exitCode = result.exitCode) {
+                null ->
+                    ComputerRuntimeOperationCopy(
+                        Res.string.settings_computers_runtime_install_failed_timeout,
+                        args = listOf(RuntimeInstallTimeoutMinutes),
+                        success = false,
+                    )
+                0 -> ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_not_found, success = false)
+                else ->
+                    ComputerRuntimeOperationCopy(
+                        Res.string.settings_computers_runtime_install_failed_exit_code,
+                        args = listOf(exitCode.toString()),
+                        success = false,
+                    )
+            }
     }
 
 /**
@@ -448,7 +503,14 @@ internal class ComputerRuntimeInstallController(
             log("computer_runtime_install runtime=${open.runtime.wire} result=${answer.operationLabel()}")
             state =
                 when (answer) {
-                    is RuntimeAuthCall.Done -> ComputerRuntimeInstallState.Done(open.runtime, open.raftRuntimeId, open.runtimeName, answer.value)
+                    is RuntimeAuthCall.Done ->
+                        ComputerRuntimeInstallState.Done(
+                            runtime = open.runtime,
+                            raftRuntimeId = open.raftRuntimeId,
+                            runtimeName = open.runtimeName,
+                            result = answer.value,
+                            plan = open.plan,
+                        )
                     is RuntimeAuthCall.Refused -> {
                         val (reason, serverMessage) = answer.error.toOperationRefusal()
                         ComputerRuntimeInstallState.Refused(

@@ -191,6 +191,7 @@ internal fun ComputerRuntimeInstallChip(
  */
 @Composable
 internal fun ComputerRuntimeInstallStatus(controller: ComputerRuntimeInstallController, computerName: String?, openUrl: (String) -> Unit) {
+    val resolvedComputerName = computerName?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.settings_computers_runtime_auth_this_computer)
     when (val state = controller.state) {
         is ComputerRuntimeInstallState.Running ->
             RaftText(
@@ -202,38 +203,55 @@ internal fun ComputerRuntimeInstallStatus(controller: ComputerRuntimeInstallCont
         is ComputerRuntimeInstallState.Confirm, is ComputerRuntimeInstallState.Manual ->
             ComputerRuntimeInstallDialog(
                 state = state as ComputerRuntimeInstallState.ForRuntime,
-                computerName = computerName ?: stringResource(Res.string.settings_computers_runtime_auth_this_computer),
+                computerName = resolvedComputerName,
                 onConfirm = controller::confirm,
                 onClose = controller::cancel,
                 openUrl = openUrl,
             )
         is ComputerRuntimeInstallState.ForRuntime ->
-            ComputerRuntimeInstallOutcome(state)
+            ComputerRuntimeInstallOutcome(
+                state = state,
+                computerName = resolvedComputerName,
+                openUrl = openUrl,
+            )
         ComputerRuntimeInstallState.Idle -> Unit
     }
 }
 
 /**
- * Web `RuntimeInstallOutcome`: one plain sentence per outcome; for a failed install that carried
- * the installer's redacted last lines (`outputTail`, botiverse/slock #17305), shows those lines in
- * a scrollable monospace code block directly under the failure sentence. Failure outcomes without
- * `outputTail` render identically to [ComputerRuntimeOperationOutcome].
+ * Web `RuntimeInstallOutcome`: one plain sentence per outcome; for a failed install, shows the
+ * installer's redacted last lines (`outputTail`, botiverse/slock #17305) when sent, followed by
+ * the confirmed plan's manual install steps and vendor documentation link (botiverse/slock #17185).
  */
 @Composable
 internal fun ComputerRuntimeInstallOutcome(
     state: ComputerRuntimeInstallState.ForRuntime,
     modifier: Modifier = Modifier,
+    computerName: String = stringResource(Res.string.settings_computers_runtime_auth_this_computer),
+    openUrl: (String) -> Unit = {},
 ) {
     val copy = computerRuntimeInstallCopy(state) ?: return
-    val failed = (state as? ComputerRuntimeInstallState.Done)?.result as? RuntimeInstallResult.Failed
+    val done = state as? ComputerRuntimeInstallState.Done
+    val failed = done?.result as? RuntimeInstallResult.Failed
     val outputTail = failed?.outputTail?.trim()?.takeIf { it.isNotEmpty() }
-    if (outputTail == null) {
+    val manual = if (failed != null) done?.plan?.takeIf { it.steps.isNotEmpty() } else null
+    if (outputTail == null && manual == null) {
         ComputerRuntimeOperationOutcome(copy, runtimeName = state.runtimeName, modifier = modifier)
         return
     }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         ComputerRuntimeOperationOutcome(copy, runtimeName = state.runtimeName)
-        ComputerRuntimeInstallOutputTail(outputTail)
+        if (outputTail != null) {
+            ComputerRuntimeInstallOutputTail(outputTail)
+        }
+        if (manual != null) {
+            ComputerRuntimeInstallFailedManualSteps(
+                computerName = computerName,
+                steps = manual.steps,
+                source = manual.source,
+                openUrl = openUrl,
+            )
+        }
     }
 }
 
@@ -276,6 +294,65 @@ internal fun ComputerRuntimeInstallOutputTail(
                 color = colors.foreground,
             )
         }
+    }
+}
+
+/**
+ * Manual install steps shown under a failed runtime install (web `RuntimeInstallOutcome`
+ * `runtime-install-failed-manual`, botiverse/slock #17185): localized guidance naming the Computer,
+ * the confirmed plan's commands in a monospace code block, and the vendor documentation link.
+ */
+@Composable
+internal fun ComputerRuntimeInstallFailedManualSteps(
+    computerName: String,
+    steps: List<String>,
+    source: String?,
+    openUrl: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RaftText(
+            stringResource(Res.string.settings_computers_runtime_install_failed_manual, computerName),
+            style = RaftTheme.typography.caption,
+            color = RaftTheme.colors.foreground,
+        )
+        ComputerRuntimeInstallSteps(
+            steps = steps,
+            source = source,
+            openUrl = openUrl,
+            stepsTestTag = COMPUTER_RUNTIME_INSTALL_FAILED_STEPS_TAG,
+            sourceTestTag = COMPUTER_RUNTIME_INSTALL_FAILED_SOURCE_TAG,
+        )
+    }
+}
+
+/**
+ * Web `RuntimeInstallSteps` (botiverse/slock #17185): the plan's commands in [RaftCodeBlock] and
+ * the vendor's documentation link, shared by the confirm/manual dialog and a failed install's
+ * manual steps.
+ */
+@Composable
+private fun ComputerRuntimeInstallSteps(
+    steps: List<String>,
+    source: String?,
+    openUrl: (String) -> Unit,
+    stepsTestTag: String,
+    sourceTestTag: String,
+) {
+    RaftCodeBlock(text = steps.joinToString("\n"), modifier = Modifier.testTag(stepsTestTag))
+    val link = source?.takeIf { it.isNotBlank() }
+    if (link != null) {
+        RaftTextLink(
+            text = stringResource(Res.string.settings_computers_runtime_install_source),
+            onClick = { openUrl(link) },
+            modifier = Modifier.testTag(sourceTestTag),
+            variant = RaftTextLinkVariant.Strong,
+            style = RaftTheme.typography.footnote,
+            leavesRaft = true,
+        )
     }
 }
 
@@ -350,16 +427,13 @@ internal fun ComputerRuntimeInstallDialog(
                         color = colors.foreground,
                     )
                 }
-                RaftCodeBlock(text = steps.joinToString("\n"), modifier = Modifier.testTag(COMPUTER_RUNTIME_INSTALL_STEPS_TAG))
-                if (source != null) {
-                    RaftTextLink(
-                        text = stringResource(Res.string.settings_computers_runtime_install_source),
-                        onClick = { openUrl(source) },
-                        variant = RaftTextLinkVariant.Strong,
-                        style = typography.footnote,
-                        leavesRaft = true,
-                    )
-                }
+                ComputerRuntimeInstallSteps(
+                    steps = steps,
+                    source = source,
+                    openUrl = openUrl,
+                    stepsTestTag = COMPUTER_RUNTIME_INSTALL_STEPS_TAG,
+                    sourceTestTag = COMPUTER_RUNTIME_INSTALL_SOURCE_TAG,
+                )
             }
         }
     }
@@ -373,5 +447,9 @@ internal const val COMPUTER_RUNTIME_INSTALL_CHIP_TAG = "machine-runtime-install-
 internal const val COMPUTER_RUNTIME_INSTALL_DIALOG_TAG = "runtime-install-dialog"
 internal const val COMPUTER_RUNTIME_INSTALL_CONFIRM_TAG = "runtime-install-confirm"
 internal const val COMPUTER_RUNTIME_INSTALL_STEPS_TAG = "runtime-install-steps"
+internal const val COMPUTER_RUNTIME_INSTALL_SOURCE_TAG = "runtime-install-source"
 internal const val COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG = "runtime-install-failed-output"
 internal const val COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG = "runtime-install-failed-output-tail"
+internal const val COMPUTER_RUNTIME_INSTALL_MANUAL_TAG = "runtime-install-failed-manual"
+internal const val COMPUTER_RUNTIME_INSTALL_FAILED_STEPS_TAG = "runtime-install-failed-steps"
+internal const val COMPUTER_RUNTIME_INSTALL_FAILED_SOURCE_TAG = "runtime-install-failed-source"

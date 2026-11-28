@@ -162,8 +162,9 @@ interface RaftComputersApi {
         error("runtimeAuthProviders is not implemented")
     /**
      * `POST servers/:id/machines/:machineId/runtimes/:runtime/:operation` with `{respondAsync}`
-     * (and `outputTail: true` on `install`, slock #17305), for [operation] `upgrade`,
-     * `install-plan` or `install` (slock #15117 / #15214, RuntimeUpgradeInstall.kt).
+     * (and `failureReason: true`, `outputTail: true` on `install`, slock #17210 / #17305), for
+     * [operation] `upgrade`, `install-plan` or `install` (slock #15117 / #15214,
+     * RuntimeUpgradeInstall.kt).
      */
     suspend fun runtimeOperation(serverId: ServerId, machineId: String, runtime: String, operation: String, body: String): HomeNetworkResponse =
         error("runtimeOperation is not implemented")
@@ -885,7 +886,8 @@ interface RaftComputersApi {
 
     /**
      * Runs the runtime's own installer on the Computer (the person confirmed its plan; web
-     * `installRuntime`). `outputTail: true` opts into a failed install's redacted last lines
+     * `installRuntime`). `failureReason: true` opts into OAR 0.138's typed failure reason
+     * (botiverse/slock #17210); `outputTail: true` opts into a failed install's redacted last lines
      * (botiverse/slock #17305; answered only to the person who attached the Computer).
      */
     suspend fun installRuntime(serverId: ServerId, machineId: String, runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeInstallResult> =
@@ -895,7 +897,7 @@ interface RaftComputersApi {
             runtime = runtime,
             operation = "install",
             budgetMillis = RUNTIME_INSTALL_RELAY_BUDGET_MILLIS,
-            body = RuntimeMachineOperationBody(respondAsync = true, outputTail = true),
+            body = RuntimeMachineOperationBody(respondAsync = true, failureReason = true, outputTail = true),
         ) { wire ->
             (wire as? JsonObject)?.get("result")?.toRuntimeInstallResult()
         }

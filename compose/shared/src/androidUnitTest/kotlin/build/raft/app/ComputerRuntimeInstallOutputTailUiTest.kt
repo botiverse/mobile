@@ -10,20 +10,26 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import build.raft.app.data.AppLocale
 import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthCall
 import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeInstallFailureReason
 import build.raft.app.data.RuntimeInstallPlan
 import build.raft.app.data.RuntimeInstallResult
 import build.raft.app.data.stringDescLocaleType
+import build.raft.app.resources.ResourceFormatted
 import build.raft.app.resources.StringDesc
+import build.raft.app.resources.resolve
 import build.raft.designsystem.theme.RaftAppearance
 import build.raft.designsystem.theme.RaftTheme
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import org.junit.Rule
 import org.junit.runner.RunWith
@@ -75,10 +81,11 @@ class ComputerRuntimeInstallOutputTailUiTest {
         waitForIdle()
 
         onNodeWithTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG).assertIsDisplayed()
-        onNodeWithText("Grok's installer didn't finish, so it is still not installed.").assertIsDisplayed()
+        onNodeWithText("Grok's installer stopped with error code 1, so it is still not installed.").assertIsDisplayed()
         onNodeWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).assertIsDisplayed()
         onNodeWithText("Last lines of the install output:").assertIsDisplayed()
         onNodeWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG).assertIsDisplayed().assertTextEquals(SAMPLE_TAIL)
+        onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertCountEquals(0)
 
         val outcomeBounds = onNodeWithTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG).fetchSemanticsNode().boundsInRoot
         val outputBounds = onNodeWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).fetchSemanticsNode().boundsInRoot
@@ -107,10 +114,11 @@ class ComputerRuntimeInstallOutputTailUiTest {
         waitForIdle()
 
         onNodeWithTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG).assertIsDisplayed()
-        onNodeWithText("Grok's installer didn't finish, so it is still not installed.").assertIsDisplayed()
+        onNodeWithText("Grok's installer stopped with error code 1, so it is still not installed.").assertIsDisplayed()
         onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).assertCountEquals(0)
         onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG).assertCountEquals(0)
         onAllNodesWithText("Last lines of the install output:").assertCountEquals(0)
+        onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertCountEquals(0)
     }
 
     @Test
@@ -138,11 +146,171 @@ class ComputerRuntimeInstallOutputTailUiTest {
     }
 
     @Test
+    fun failedInstallWithOutputTailAndPlanRendersReasonOutputTailAndManualStepsInOrder() = runRobolectricComposeUiTest {
+        val openedUrls = mutableListOf<String>()
+        val state =
+            ComputerRuntimeInstallState.Done(
+                runtime = RuntimeAuthRuntime.Grok,
+                raftRuntimeId = "grok",
+                runtimeName = "Grok",
+                result =
+                    RuntimeInstallResult.Failed(
+                        exitCode = 2,
+                        reason = RuntimeInstallFailureReason.InstallerFailed,
+                        outputTail = SAMPLE_TAIL,
+                    ),
+                plan = RuntimeInstallPlan.Plan(listOf(SAMPLE_STEP), SAMPLE_SOURCE),
+            )
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                RaftComputersTheme {
+                    ComputerRuntimeInstallOutcome(
+                        state = state,
+                        computerName = "Build Box",
+                        openUrl = { openedUrls += it },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        onNodeWithTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG).assertIsDisplayed()
+        onNodeWithText("Grok's installer stopped with error code 2, so it is still not installed.").assertIsDisplayed()
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).assertIsDisplayed()
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG).assertIsDisplayed().assertTextEquals(SAMPLE_TAIL)
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertIsDisplayed()
+        onNodeWithText("To install it yourself, run this on Build Box. If it fails there too, its output says why:").assertIsDisplayed()
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_FAILED_STEPS_TAG).assertIsDisplayed()
+        onNodeWithText(SAMPLE_STEP).assertIsDisplayed()
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_FAILED_SOURCE_TAG).assertIsDisplayed().performClick()
+        assertEquals(listOf(SAMPLE_SOURCE), openedUrls)
+
+        val outcomeBounds = onNodeWithTag(COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG).fetchSemanticsNode().boundsInRoot
+        val outputBounds = onNodeWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).fetchSemanticsNode().boundsInRoot
+        val manualBounds = onNodeWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).fetchSemanticsNode().boundsInRoot
+        assertTrue(outputBounds.top >= outcomeBounds.bottom, "expected output tail ($outputBounds) below failure outcome ($outcomeBounds)")
+        assertTrue(manualBounds.top >= outputBounds.bottom, "expected manual steps ($manualBounds) below output tail ($outputBounds)")
+    }
+
+    @Test
+    fun failedInstallWithPlanWithoutOutputTailRendersManualStepsAndHidesOutputTail() = runRobolectricComposeUiTest {
+        val state =
+            ComputerRuntimeInstallState.Done(
+                runtime = RuntimeAuthRuntime.Grok,
+                raftRuntimeId = "grok",
+                runtimeName = "Grok",
+                result =
+                    RuntimeInstallResult.Failed(
+                        exitCode = null,
+                        reason = RuntimeInstallFailureReason.NonScriptResponse,
+                        outputTail = null,
+                    ),
+                plan = RuntimeInstallPlan.Plan(listOf(SAMPLE_STEP), SAMPLE_SOURCE),
+            )
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                RaftComputersTheme {
+                    ComputerRuntimeInstallOutcome(state = state, computerName = "Build Box")
+                }
+            }
+        }
+        waitForIdle()
+
+        onNodeWithText(
+            "The download for Grok's installer wasn't an installer script (for example a web page or a network block), so nothing was run."
+        ).assertIsDisplayed()
+        onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).assertCountEquals(0)
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertIsDisplayed()
+        onNodeWithText(SAMPLE_STEP).assertIsDisplayed()
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_FAILED_SOURCE_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun installedOutcomeWithPlanHidesManualSteps() = runRobolectricComposeUiTest {
+        val state =
+            ComputerRuntimeInstallState.Done(
+                runtime = RuntimeAuthRuntime.Grok,
+                raftRuntimeId = "grok",
+                runtimeName = "Grok",
+                result = RuntimeInstallResult.Installed("0.1.9"),
+                plan = RuntimeInstallPlan.Plan(listOf(SAMPLE_STEP), SAMPLE_SOURCE),
+            )
+        setContent {
+            RaftTheme(appearance = RaftAppearance.Light) {
+                RaftComputersTheme {
+                    ComputerRuntimeInstallOutcome(state = state, computerName = "Build Box")
+                }
+            }
+        }
+        waitForIdle()
+
+        onNodeWithText("Installed Grok 0.1.9.").assertIsDisplayed()
+        onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).assertCountEquals(0)
+        onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertCountEquals(0)
+    }
+
+    @Test
+    fun failedInstallFormatsAllEightFailureCopyVariants() {
+        fun formatted(result: RuntimeInstallResult.Failed): String {
+            val copy =
+                assertNotNull(
+                    computerRuntimeInstallCopy(
+                        ComputerRuntimeInstallState.Done(
+                            runtime = RuntimeAuthRuntime.Grok,
+                            raftRuntimeId = "grok",
+                            runtimeName = "Grok",
+                            result = result,
+                        )
+                    )
+                )
+            return StringDesc.ResourceFormatted(copy.message, listOf("Grok") + copy.args).resolve()
+        }
+        assertEquals(
+            "Grok's installer finished, but Grok still isn't on this Computer.",
+            formatted(RuntimeInstallResult.Failed(exitCode = 0, reason = RuntimeInstallFailureReason.NotFoundAfterInstall)),
+        )
+        assertEquals(
+            "Grok's installer stopped with error code 2, so it is still not installed.",
+            formatted(RuntimeInstallResult.Failed(exitCode = 2, reason = RuntimeInstallFailureReason.InstallerFailed)),
+        )
+        assertEquals(
+            "Grok's installer was stopped before it finished (by the 10-minute limit or by the system), so it is still not installed.",
+            formatted(RuntimeInstallResult.Failed(exitCode = null, reason = null)),
+        )
+        assertEquals(
+            "Couldn't download Grok's installer, so nothing was installed.",
+            formatted(RuntimeInstallResult.Failed(exitCode = 6, reason = RuntimeInstallFailureReason.DownloadFailed)),
+        )
+        assertEquals(
+            "The download for Grok's installer wasn't an installer script (for example a web page or a network block), so nothing was run.",
+            formatted(RuntimeInstallResult.Failed(exitCode = null, reason = RuntimeInstallFailureReason.NonScriptResponse)),
+        )
+        assertEquals(
+            "Grok's installer was stopped at the 10-minute limit, so it is still not installed.",
+            formatted(RuntimeInstallResult.Failed(exitCode = null, reason = RuntimeInstallFailureReason.TimedOut)),
+        )
+        assertEquals(
+            "Grok's installer was stopped or couldn't start, so it is still not installed.",
+            formatted(RuntimeInstallResult.Failed(exitCode = null, reason = RuntimeInstallFailureReason.InstallerFailed)),
+        )
+        assertEquals(
+            "Grok's installer finished, but the Grok on this Computer can't be used.",
+            formatted(RuntimeInstallResult.Failed(exitCode = 0, reason = RuntimeInstallFailureReason.UnusableAfterInstall)),
+        )
+    }
+
+    @Test
     fun retryingFailedInstallClearsDisplayedOutputTail() = runRobolectricComposeUiTest {
         val answers =
             ArrayDeque<RuntimeAuthCall<RuntimeInstallResult>>(
                 listOf(
-                    RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = SAMPLE_TAIL)),
+                    RuntimeAuthCall.Done(
+                        RuntimeInstallResult.Failed(
+                            exitCode = 1,
+                            reason = RuntimeInstallFailureReason.InstallerFailed,
+                            outputTail = SAMPLE_TAIL,
+                        )
+                    ),
                     RuntimeAuthCall.Done(RuntimeInstallResult.Installed("0.1.9")),
                 )
             )
@@ -176,16 +344,21 @@ class ComputerRuntimeInstallOutputTailUiTest {
         }
         onNodeWithText("Last lines of the install output:").assertIsDisplayed()
         onNodeWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG).assertTextEquals(SAMPLE_TAIL)
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertIsDisplayed()
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_FAILED_STEPS_TAG).assertIsDisplayed()
+        onNodeWithTag(COMPUTER_RUNTIME_INSTALL_FAILED_SOURCE_TAG).assertIsDisplayed()
 
         runOnIdle { controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok") }
         waitUntil(timeoutMillis = 5_000) { controller.state is ComputerRuntimeInstallState.Confirm }
         onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).assertCountEquals(0)
+        onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertCountEquals(0)
         runOnIdle { controller.confirm() }
         waitUntil(timeoutMillis = 5_000) {
             onAllNodesWithText("Installed Grok 0.1.9.").fetchSemanticsNodes().isNotEmpty()
         }
         onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG).assertCountEquals(0)
         onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG).assertCountEquals(0)
+        onAllNodesWithTag(COMPUTER_RUNTIME_INSTALL_MANUAL_TAG).assertCountEquals(0)
     }
 
     private companion object {

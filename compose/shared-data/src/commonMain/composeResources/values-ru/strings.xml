@@ -6593,7 +6593,15 @@
     <string name="settings_computers_runtime_install_installed_version">%1$s %2$s установлен.</string>
     <string name="settings_computers_runtime_install_installed">%1$s установлен.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s уже установлен на этом компьютере.</string>
-    <string name="settings_computers_runtime_install_failed">Установщик %1$s не завершился, поэтому он по-прежнему не установлен.</string>
+    <string name="settings_computers_runtime_install_failed_not_found">Установщик %1$s завершился, но %1$s так и не появился на этом компьютере.</string>
+    <string name="settings_computers_runtime_install_failed_exit_code">Установщик %1$s остановился с кодом ошибки %2$s, поэтому он по-прежнему не установлен.</string>
+    <string name="settings_computers_runtime_install_failed_timeout">Установщик %1$s был остановлен до завершения (лимитом в %2$s мин. или системой), поэтому он по-прежнему не установлен.</string>
+    <string name="settings_computers_runtime_install_failed_download_failed">Не удалось скачать установщик %1$s, поэтому ничего не установлено.</string>
+    <string name="settings_computers_runtime_install_failed_not_a_script">Скачанный установщик %1$s оказался не установочным скриптом (например, веб-страницей или страницей сетевой блокировки), поэтому ничего не запускалось.</string>
+    <string name="settings_computers_runtime_install_failed_timed_out">Установщик %1$s был остановлен по лимиту в %2$s мин., поэтому он по-прежнему не установлен.</string>
+    <string name="settings_computers_runtime_install_failed_no_exit_code">Установщик %1$s был остановлен или не смог запуститься, поэтому он по-прежнему не установлен.</string>
+    <string name="settings_computers_runtime_install_failed_unusable">Установщик %1$s завершился, но %1$s на этом компьютере нельзя использовать.</string>
+    <string name="settings_computers_runtime_install_failed_manual">Чтобы установить самостоятельно, выполните это на %1$s. Если и там не получится, вывод покажет причину:</string>
     <string name="settings_computers_runtime_install_failed_output_tail">Последние строки вывода установки:</string>
     <string name="settings_computers_runtime_install_in_progress">%1$s уже устанавливается на этом компьютере.</string>
     <string name="settings_computers_runtime_install_error">Не удалось установить %1$s. Попробуйте ещё раз.</string>

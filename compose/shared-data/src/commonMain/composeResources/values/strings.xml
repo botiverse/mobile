@@ -3616,7 +3616,15 @@
     <string name="settings_computers_runtime_install_installed_version">Installed %1$s %2$s.</string>
     <string name="settings_computers_runtime_install_installed">Installed %1$s.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s is already installed on this Computer.</string>
-    <string name="settings_computers_runtime_install_failed">%1$s's installer didn't finish, so it is still not installed.</string>
+    <string name="settings_computers_runtime_install_failed_not_found">%1$s's installer finished, but %1$s still isn't on this Computer.</string>
+    <string name="settings_computers_runtime_install_failed_exit_code">%1$s's installer stopped with error code %2$s, so it is still not installed.</string>
+    <string name="settings_computers_runtime_install_failed_timeout">%1$s's installer was stopped before it finished (by the %2$s-minute limit or by the system), so it is still not installed.</string>
+    <string name="settings_computers_runtime_install_failed_download_failed">Couldn't download %1$s's installer, so nothing was installed.</string>
+    <string name="settings_computers_runtime_install_failed_not_a_script">The download for %1$s's installer wasn't an installer script (for example a web page or a network block), so nothing was run.</string>
+    <string name="settings_computers_runtime_install_failed_timed_out">%1$s's installer was stopped at the %2$s-minute limit, so it is still not installed.</string>
+    <string name="settings_computers_runtime_install_failed_no_exit_code">%1$s's installer was stopped or couldn't start, so it is still not installed.</string>
+    <string name="settings_computers_runtime_install_failed_unusable">%1$s's installer finished, but the %1$s on this Computer can't be used.</string>
+    <string name="settings_computers_runtime_install_failed_manual">To install it yourself, run this on %1$s. If it fails there too, its output says why:</string>
     <string name="settings_computers_runtime_install_failed_output_tail">Last lines of the install output:</string>
     <string name="settings_computers_runtime_install_in_progress">%1$s is already being installed on this Computer.</string>
     <string name="settings_computers_runtime_install_error">Couldn't install %1$s. Try again.</string>
