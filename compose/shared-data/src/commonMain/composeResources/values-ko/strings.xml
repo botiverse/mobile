@@ -7325,4 +7325,9 @@
     <string name="action_card_upgrade_done">Pro로 업그레이드됐어요</string>
     <string name="action_card_upgrade_done_not_free">이제 무료 요금제 제한을 받지 않아요</string>
     <string name="app_setup_continue">설정 계속하기</string>
+    <string name="settings_translation_default_view">기본 보기</string>
+    <string name="settings_translation_display_translated">번역문</string>
+    <string name="settings_translation_display_original">원문</string>
+    <string name="settings_translation_display_bilingual">둘 다</string>
+    <string name="message_bilingual_original">원문</string>
 </resources>

@@ -5752,6 +5752,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
 @RaftCoreInternalApi const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"
 @RaftCoreInternalApi const val LANGUAGE_REGION_ACTION_TIME_FORMAT = "languageRegionTimeFormat"
 @RaftCoreInternalApi const val LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY = "languageRegionTranslationDisplay"
+@RaftCoreInternalApi const val LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW = "languageRegionTranslationDefaultView"
 @RaftCoreInternalApi const val APPEARANCE_ACTION_MESSAGE_FONT_SIZE = "appearanceMessageFontSize"
 @RaftCoreInternalApi const val APPEARANCE_ACTION_COMPOSER_SEND_KEY = "appearanceComposerSendKey"
 @RaftCoreInternalApi const val CONNECTED_APPS_ACTION_REGISTER = "connectedAppsRegister"
@@ -5807,7 +5808,7 @@ private fun SettingsLanguageRegionPreferenceUpdateRequest.toLanguageRegionAction
         preferredTimezone != null || clearPreferredTimezone -> LANGUAGE_REGION_ACTION_TIMEZONE
         preferredTimeFormat != null || clearPreferredTimeFormat -> LANGUAGE_REGION_ACTION_TIME_FORMAT
         autoTranslationEnabled != null -> LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
-        preferredTranslationDisplay != null -> LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
+        preferredTranslationDisplay != null -> LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW
         else -> "languageRegionPreference"
     }
 

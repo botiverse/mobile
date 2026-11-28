@@ -168,6 +168,8 @@ internal fun rememberStandaloneSettingsEnvironment(
                         onTimeFormatUpdated = RaftTimeFormatRuntime::update,
                         onTimeZoneUpdated = RaftTimeZoneRuntime::update,
                         onComposerSendKeyUpdated = RaftComposerSendKeyRuntime::setSendKey,
+                        onPreferredTranslationDisplayUpdated =
+                            sharedStores.messageTranslationStore::updatePreferredTranslationDisplay,
                     ),
                 serverMembersStore = serverMembersStore,
                 // Data-layer plan step 5: the shell's owner-fenced, durable machine cache.

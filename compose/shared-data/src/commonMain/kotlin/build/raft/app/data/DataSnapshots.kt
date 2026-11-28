@@ -2968,6 +2968,21 @@ data class SettingsMobileSelectionOptionSnapshot(
     val label: String
 )
 
+enum class TranslationDisplayPreference(val wireValue: String) {
+    Translated("translated"),
+    Original("original"),
+    Bilingual("bilingual");
+
+    companion object {
+        fun fromWire(value: String?): TranslationDisplayPreference =
+            when (value?.trim()?.lowercase()) {
+                "original" -> Original
+                "bilingual" -> Bilingual
+                else -> Translated
+            }
+    }
+}
+
 data class SettingsLanguageRegionSnapshot(
     val serverTranslation: SettingsMobileToggleSnapshot,
     val autoTranslation: SettingsMobileToggleSnapshot,
@@ -2985,6 +3000,19 @@ data class SettingsLanguageRegionSnapshot(
                     SettingsMobileSelectionOptionSnapshot("automatic", "Auto"),
                     SettingsMobileSelectionOptionSnapshot("manual", "Manual"),
                     SettingsMobileSelectionOptionSnapshot("original", "Off")
+                )
+        ),
+    val translationDefaultView: SettingsMobileSelectionSnapshot =
+        SettingsMobileSelectionSnapshot(
+            selectedKey = TranslationDisplayPreference.Translated.wireValue,
+            selectedLabel = "Translated",
+            statusLabel = "Translated",
+            detail = "Choose how translated messages appear by default.",
+            options =
+                listOf(
+                    SettingsMobileSelectionOptionSnapshot(TranslationDisplayPreference.Translated.wireValue, "Translated"),
+                    SettingsMobileSelectionOptionSnapshot(TranslationDisplayPreference.Original.wireValue, "Original"),
+                    SettingsMobileSelectionOptionSnapshot(TranslationDisplayPreference.Bilingual.wireValue, "Bilingual")
                 )
         )
 )

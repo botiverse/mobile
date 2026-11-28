@@ -7326,4 +7326,9 @@
     <string name="action_card_upgrade_done">Pro にアップグレードしました</string>
     <string name="action_card_upgrade_done_not_free">無料プランの制限がなくなりました</string>
     <string name="app_setup_continue">設定を続行</string>
+    <string name="settings_translation_default_view">デフォルトの表示</string>
+    <string name="settings_translation_display_translated">訳文</string>
+    <string name="settings_translation_display_original">原文</string>
+    <string name="settings_translation_display_bilingual">併記</string>
+    <string name="message_bilingual_original">原文</string>
 </resources>

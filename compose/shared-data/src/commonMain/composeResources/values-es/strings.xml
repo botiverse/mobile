@@ -7325,4 +7325,9 @@
     <string name="action_card_upgrade_done">Ya está en Pro</string>
     <string name="action_card_upgrade_done_not_free">Ya no tiene los límites del plan Free</string>
     <string name="app_setup_continue">Continuar configuración</string>
+    <string name="settings_translation_default_view">Vista predeterminada</string>
+    <string name="settings_translation_display_translated">Traducción</string>
+    <string name="settings_translation_display_original">Original</string>
+    <string name="settings_translation_display_bilingual">Bilingüe</string>
+    <string name="message_bilingual_original">Original</string>
 </resources>

@@ -8,16 +8,23 @@ import build.raft.app.data.SharedMessageTranslationEntry
 import build.raft.app.data.SharedMessageTranslationSettings
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
+import build.raft.app.data.TranslationDisplayPreference
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.data.isSilentTranslationEntry
 import build.raft.app.raftArgbHex
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.testTag
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -70,6 +77,7 @@ internal data class ThreadMessageTranslationIndicatorUi(
 internal data class ThreadMessageTranslationUi(
     val messageId: String,
     val displayBody: String? = null,
+    val bilingualOriginalBody: String? = null,
     val pendingPlaceholder: Boolean = false,
     val showOriginal: Boolean = false,
     val indicator: ThreadMessageTranslationIndicatorUi? = null,
@@ -141,20 +149,38 @@ internal fun resolveThreadMessageTranslationUi(
         return null
     }
     if (entry.isSilentTranslationEntry()) return null
-    // With the local translation mode as the single signal there is no
-    // account-level "prefer original" display anymore: entries only exist in
-    // Automatic/Manual modes, where the translation is shown unless the user
-    // toggled this message back to the original.
-    val showOriginal = entry.showOriginal ?: false
+    // Web MessageItem parity: per-message toggle overrides account default view; toggling from
+    // "original" default flips to "translated", while toggling from "bilingual" flips between
+    // "original" and "bilingual".
+    val preferredDisplay = translationState.settings.preferredTranslationDisplay
+    val activeDisplay =
+        when (entry.showOriginal) {
+            true -> TranslationDisplayPreference.Original
+            false ->
+                if (preferredDisplay == TranslationDisplayPreference.Original) {
+                    TranslationDisplayPreference.Translated
+                } else {
+                    preferredDisplay
+                }
+            null -> preferredDisplay
+        }
+    val showOriginal = activeDisplay == TranslationDisplayPreference.Original
     val translatedBody =
         entry.translatedContent?.takeIf {
-            entry.status == SharedMessageTranslationStatus.Translated && !showOriginal
+            entry.status == SharedMessageTranslationStatus.Translated && !showOriginal && it.isNotBlank()
+        }
+    val bilingualOriginalBody =
+        message.body.takeIf {
+            translatedBody != null &&
+                activeDisplay == TranslationDisplayPreference.Bilingual &&
+                it.isNotBlank()
         }
     val pendingPlaceholder =
         entry.status == SharedMessageTranslationStatus.Pending && !showOriginal
     return ThreadMessageTranslationUi(
         messageId = message.id,
         displayBody = translatedBody,
+        bilingualOriginalBody = bilingualOriginalBody,
         pendingPlaceholder = pendingPlaceholder,
         showOriginal = showOriginal,
         indicator = entry.toTranslationIndicatorUi(showOriginal),
@@ -359,6 +385,55 @@ internal fun ThreadMessageTranslationPendingFrame(
                 bar.place(if (alignEnd) width - bar.width else 0, y)
                 y += bar.height + gap
             }
+        }
+    }
+}
+
+/**
+ * Bilingual view's original-text block under the translated message body (web `MessageItem`
+ * `MessageItemTranslationOriginal` + `MessageItemTranslationOriginalLabel`).
+ */
+@Composable
+internal fun ThreadMessageBilingualOriginalBlock(
+    messageId: String,
+    alignEnd: Boolean = false,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    RaftDesignSystemTheme {
+        val colors = RaftTheme.colors
+        val typography = RaftTheme.typography
+        val borderColor = colors.lineSeam
+        Column(
+            modifier =
+                modifier
+                    .padding(top = 2.dp)
+                    .testTag("message-translation-bilingual-original-$messageId")
+                    .drawBehind {
+                        val barWidth = 2.dp.toPx()
+                        val x = if (alignEnd) size.width - barWidth else 0f
+                        drawRect(
+                            color = borderColor,
+                            topLeft = Offset(x, 0f),
+                            size = Size(barWidth, size.height),
+                        )
+                    }
+                    .padding(
+                        start = if (alignEnd) 0.dp else 10.dp,
+                        end = if (alignEnd) 10.dp else 0.dp,
+                        top = 2.dp,
+                        bottom = 2.dp,
+                    ),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+        ) {
+            RaftText(
+                text = stringResource(Res.string.message_bilingual_original),
+                style = typography.monoMeta,
+                color = colors.foregroundHint,
+                maxLines = 1,
+            )
+            content()
         }
     }
 }

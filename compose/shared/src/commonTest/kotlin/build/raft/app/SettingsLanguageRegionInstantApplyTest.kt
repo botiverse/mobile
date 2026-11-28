@@ -3,6 +3,7 @@ package build.raft.app
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
+import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
 import build.raft.app.data.SettingsLanguageRegionSnapshot
@@ -42,6 +43,16 @@ class SettingsLanguageRegionInstantApplyTest {
         assertEquals(
             SharedSettingsIntent.UpdateLanguageRegionPreference(SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = "12h")),
             settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_TIME_FORMAT, "12h"))
+        )
+        assertEquals(
+            SharedSettingsIntent.UpdateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTranslationDisplay = "bilingual")
+            ),
+            settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW, "bilingual"))
+        )
+        assertEquals(
+            null,
+            settingsLanguageRegionApplyIntent(snapshot, pick(LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW, "translated"))
         )
     }
 

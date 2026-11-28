@@ -39,6 +39,7 @@ private class FakeAuthSessionStore(private var session: StoredAuthSession? = tes
 
 private class FakeMessageTranslationApi(
     var serverBody: String = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":false}""",
+    var accountBody: String? = null,
     var batchResponses: MutableList<HomeNetworkResponse> = mutableListOf()
 ) : RaftMessageTranslationApi {
     val batchCalls = mutableListOf<Triple<List<String>, String, String>>()
@@ -55,6 +56,9 @@ private class FakeMessageTranslationApi(
 
     override suspend fun serverTranslationSettings(serverId: String): HomeNetworkResponse =
         HomeNetworkResponse(200, serverBody)
+
+    override suspend fun accountPreferences(): HomeNetworkResponse? =
+        accountBody?.let { HomeNetworkResponse(200, it) }
 }
 
 private fun translatedResultBody(messageId: String, translated: String): String =
@@ -333,5 +337,55 @@ class SharedMessageTranslationStoreTest {
         )
         assertTrue(silent.isSilentTranslationEntry())
         assertFalse(loud.isSilentTranslationEntry())
+    }
+
+    @Test
+    fun ensureSettingsLoadedReadsPreferredTranslationDisplayAndSupportsLiveUpdates() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeMessageTranslationApi(
+                accountBody = """{"id":"user-1","email":"user@example.com","name":"alice","preferredTranslationDisplay":"bilingual"}"""
+            )
+        val store = store(api, scope)
+
+        store.ensureSettingsLoaded()
+        assertEquals(TranslationDisplayPreference.Bilingual, store.state.value.settings.preferredTranslationDisplay)
+
+        store.updatePreferredTranslationDisplay(TranslationDisplayPreference.Original)
+        assertEquals(TranslationDisplayPreference.Original, store.state.value.settings.preferredTranslationDisplay)
+
+        // When accountPreferences returns null (unavailable), existing preference is preserved.
+        api.accountBody = null
+        store.ensureSettingsLoaded(force = true)
+        assertEquals(TranslationDisplayPreference.Original, store.state.value.settings.preferredTranslationDisplay)
+
+        // Forced retry and manual translateNow both flip showOriginal=false so translation displays under Original default.
+        api.batchResponses += HomeNetworkResponse(500, "")
+        store.requestAutoTranslations(listOf(candidate()))
+        assertEquals(SharedMessageTranslationStatus.Failed, store.state.value.entries.getValue("m1").status)
+
+        api.batchResponses += HomeNetworkResponse(200, translatedResultBody("m1", "Hello"))
+        store.retryTranslation(candidate())
+        val retried = store.state.value.entries.getValue("m1")
+        assertEquals(SharedMessageTranslationStatus.Translated, retried.status)
+        assertEquals(false, retried.showOriginal)
+
+        api.batchResponses += HomeNetworkResponse(200, translatedResultBody("m2", "Hi"))
+        store.translateNow(candidate(messageId = "m2", body = "嗨"))
+        assertEquals(false, store.state.value.entries.getValue("m2").showOriginal)
+
+        // Server switch preserves account-level preferredTranslationDisplay even if accountPreferences is unavailable.
+        val switchingAuth = FakeAuthSessionStore(testSession("server-1"))
+        val switchingStore = store(api, scope, authStore = switchingAuth)
+        api.accountBody = """{"id":"user-1","email":"user@example.com","name":"alice","preferredTranslationDisplay":"bilingual"}"""
+        switchingStore.ensureSettingsLoaded()
+        assertEquals(TranslationDisplayPreference.Bilingual, switchingStore.state.value.settings.preferredTranslationDisplay)
+
+        api.accountBody = null
+        switchingAuth.updateSelectedServer("server-2", "srv2")
+        switchingStore.ensureSettingsLoaded()
+        assertEquals("server-2", switchingStore.state.value.settings.serverId)
+        assertEquals(TranslationDisplayPreference.Bilingual, switchingStore.state.value.settings.preferredTranslationDisplay)
+        scope.cancel()
     }
 }

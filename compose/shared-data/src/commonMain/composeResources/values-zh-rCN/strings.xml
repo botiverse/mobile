@@ -7326,4 +7326,9 @@
     <string name="action_card_upgrade_done">已升级到 Pro</string>
     <string name="action_card_upgrade_done_not_free">已不受免费版限制</string>
     <string name="app_setup_continue">前往配置</string>
+    <string name="settings_translation_default_view">默认视图</string>
+    <string name="settings_translation_display_translated">译文</string>
+    <string name="settings_translation_display_original">原文</string>
+    <string name="settings_translation_display_bilingual">双语</string>
+    <string name="message_bilingual_original">原文</string>
 </resources>

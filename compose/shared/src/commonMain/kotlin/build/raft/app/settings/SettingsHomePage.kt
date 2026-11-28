@@ -1557,6 +1557,8 @@ private fun RaftAppShellReadyContent(
                 onTimeFormatUpdated = RaftTimeFormatRuntime::update,
                 onTimeZoneUpdated = RaftTimeZoneRuntime::update,
                 onComposerSendKeyUpdated = RaftComposerSendKeyRuntime::setSendKey,
+                onPreferredTranslationDisplayUpdated =
+                    sharedStores.messageTranslationStore::updatePreferredTranslationDisplay,
             )
         }
     val myMessageAlignmentState = remember { mutableStateOf(MyMessageAlignmentPreference.Default) }

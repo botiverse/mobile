@@ -317,6 +317,7 @@ class RealSettingsRepository(
     private val onTimeFormatUpdated: (String) -> Unit = {},
     private val onTimeZoneUpdated: (String?) -> Unit = {},
     private val onComposerSendKeyUpdated: (RaftComposerSendKey) -> Unit = {},
+    private val onPreferredTranslationDisplayUpdated: (TranslationDisplayPreference) -> Unit = {},
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = RaftComputersApiClient(RaftComputersNetworkApi(networkClient))
     private val secondFactorStepUpRepository = SecondFactorStepUpRepository(networkClient)
@@ -1568,7 +1569,12 @@ class RealSettingsRepository(
         val account = fetchLanguageRegionAccountPreferences(DataRequestPriority.Visible)
         val translation = fetchServerTranslation(server.id)
         return when (account) {
-            is DataResult.Content -> DataResult.Content(account.data.toLanguageRegionSnapshot(translation, server.canManageServer))
+            is DataResult.Content -> {
+                onPreferredTranslationDisplayUpdated(
+                    TranslationDisplayPreference.fromWire(account.data.preferredTranslationDisplay)
+                )
+                DataResult.Content(account.data.toLanguageRegionSnapshot(translation, server.canManageServer))
+            }
             is DataResult.Empty -> DataResult.Empty(account.reason)
             is DataResult.Error -> DataResult.Error(account.error)
             is DataResult.NoPermission -> DataResult.NoPermission(account.blocker)
@@ -1616,6 +1622,11 @@ class RealSettingsRepository(
                     request = request,
                     preferredTimezone = result.data.preferredTimezone,
                 )
+                if (request.preferredTranslationDisplay != null) {
+                    onPreferredTranslationDisplayUpdated(
+                        TranslationDisplayPreference.fromWire(result.data.preferredTranslationDisplay)
+                    )
+                }
                 DataResult.Content(snapshot)
             }
             is DataResult.Empty -> DataResult.Empty(result.reason)
@@ -3981,9 +3992,42 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
                         SettingsMobileSelectionOptionSnapshot("original", "Original")
                     ),
                 available = true
-            )
+            ),
+        translationDefaultView =
+            TranslationDisplayPreference.fromWire(preferredTranslationDisplay).let { display ->
+                val label = display.defaultViewLabel()
+                SettingsMobileSelectionSnapshot(
+                    selectedKey = display.wireValue,
+                    selectedLabel = label,
+                    statusLabel = label,
+                    detail = "Choose how translated messages appear by default.",
+                    options =
+                        listOf(
+                            SettingsMobileSelectionOptionSnapshot(
+                                TranslationDisplayPreference.Translated.wireValue,
+                                "Translated"
+                            ),
+                            SettingsMobileSelectionOptionSnapshot(
+                                TranslationDisplayPreference.Original.wireValue,
+                                "Original"
+                            ),
+                            SettingsMobileSelectionOptionSnapshot(
+                                TranslationDisplayPreference.Bilingual.wireValue,
+                                "Bilingual"
+                            )
+                        ),
+                    available = true
+                )
+            }
     )
 }
+
+private fun TranslationDisplayPreference.defaultViewLabel(): String =
+    when (this) {
+        TranslationDisplayPreference.Translated -> "Translated"
+        TranslationDisplayPreference.Original -> "Original"
+        TranslationDisplayPreference.Bilingual -> "Bilingual"
+    }
 
 private val languageRegionLanguageOptions =
     TranslationTargetLanguages.options.map { option ->

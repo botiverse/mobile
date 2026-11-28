@@ -124,6 +124,9 @@ fun parseSharedMessageTranslationBatch(bodyText: String): List<SharedMessageTran
 
     /** `GET servers/:id/translation-settings` — server toggle + provider availability. */
     suspend fun serverTranslationSettings(serverId: String): HomeNetworkResponse
+
+    /** `GET auth/me` — account-level `preferredTranslationDisplay` (`translated` / `original` / `bilingual`). */
+    suspend fun accountPreferences(): HomeNetworkResponse? = null
 }
 
 @RaftCoreInternalApi class NetworkRaftMessageTranslationApi(
@@ -152,5 +155,11 @@ fun parseSharedMessageTranslationBatch(bodyText: String): List<SharedMessageTran
             priority = DataRequestPriority.Visible,
             path = "servers/$serverId/translation-settings",
             serverIdOverride = ServerId(serverId)
+        )
+
+    override suspend fun accountPreferences(): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "auth/me",
         )
 }

@@ -7325,4 +7325,9 @@
     <string name="action_card_upgrade_done">Тариф Pro подключён</string>
     <string name="action_card_upgrade_done_not_free">Ограничения тарифа Free больше не действуют</string>
     <string name="app_setup_continue">Продолжить настройку</string>
+    <string name="settings_translation_default_view">Вид по умолчанию</string>
+    <string name="settings_translation_display_translated">Перевод</string>
+    <string name="settings_translation_display_original">Оригинал</string>
+    <string name="settings_translation_display_bilingual">Оба варианта</string>
+    <string name="message_bilingual_original">Оригинал</string>
 </resources>
