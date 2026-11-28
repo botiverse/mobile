@@ -1500,6 +1500,13 @@ internal class SharedThreadDataSource(
 
     suspend fun prefetchAttachmentUploadCapabilities() = attachmentTransfers.prefetchAttachmentUploadCapabilities()
 
+    suspend fun discardDraftAttachment(
+        serverId: String?,
+        attachmentId: String,
+    ): DataResult<Unit> = attachmentTransfers.discardDraftAttachment(serverId, attachmentId)
+
+    suspend fun refreshAttachmentUploadCapabilities() = attachmentTransfers.refreshAttachmentUploadCapabilities()
+
     suspend fun attachmentUploadMaxBytes(
         expectedAuthority: RaftExpectedAuthBinding? = null,
     ): DataResult<Long> = attachmentTransfers.attachmentUploadMaxBytes(expectedAuthority)

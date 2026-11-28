@@ -158,6 +158,22 @@ interface RaftNetworkClient {
         serverIdOverride: ServerId? = null,
     ): HomeNetworkResponse = authorityBindingRequiredResponse()
 
+    /**
+     * Release a completed, unsent draft attachment (`DELETE /api/attachments/:id/draft`,
+     * botiverse/slock #17244) with a 15 s whole-call budget.
+     */
+    suspend fun discardDraftAttachment(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        serverIdOverride: ServerId? = null,
+    ): HomeNetworkResponse =
+        request(
+            priority = priority,
+            path = "attachments/${attachmentId.trim()}/draft",
+            method = "DELETE",
+            serverIdOverride = serverIdOverride,
+        )
+
     suspend fun putAttachmentUploadBytes(
         priority: DataRequestPriority,
         upload: AttachmentUploadSessionPut,
@@ -300,6 +316,19 @@ interface RaftNetworkClient {
         expectedAuthority: RaftExpectedAuthBinding,
     ): HomeNetworkResponse = HomeNetworkResponse(code = 501, bodyText = null)
 
+    suspend fun discardDraftAttachmentBound(
+        priority: DataRequestPriority,
+        attachmentId: String,
+        expectedAuthority: RaftExpectedAuthBinding,
+    ): HomeNetworkResponse =
+        requestBound(
+            priority = priority,
+            path = "attachments/${attachmentId.trim()}/draft",
+            method = "DELETE",
+            serverIdOverride = ServerId(expectedAuthority.serverId),
+            expectedAuthority = expectedAuthority,
+        )
+
     /** Presigned PUTs carry no bearer token, but are still fenced to the captured route authority. */
     suspend fun putAttachmentUploadBytesBound(
         priority: DataRequestPriority,
@@ -430,6 +459,14 @@ interface RaftNetworkClient {
             serverIdOverride: ServerId?,
         ): HomeNetworkResponse =
             bound?.statusAttachmentUploadSessionBound(priority, uploadId, expectedAuthority)
+                ?: authorityBindingUnsupportedResponse()
+
+        override suspend fun discardDraftAttachment(
+            priority: DataRequestPriority,
+            attachmentId: String,
+            serverIdOverride: ServerId?,
+        ): HomeNetworkResponse =
+            bound?.discardDraftAttachmentBound(priority, attachmentId, expectedAuthority)
                 ?: authorityBindingUnsupportedResponse()
 
         override suspend fun putAttachmentUploadBytes(

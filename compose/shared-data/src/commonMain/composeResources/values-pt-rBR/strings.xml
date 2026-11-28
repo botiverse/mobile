@@ -894,6 +894,8 @@
     <string name="thread_composer_attachment_uploading">Enviando</string>
     <string name="thread_composer_attachment_checking">Verificando arquivo…</string>
     <string name="thread_composer_attachment_finishing">Concluindo o envio…</string>
+    <string name="thread_composer_attachment_removing">Removendo o anexo…</string>
+    <string name="thread_composer_attachment_discard_failed">Não foi possível remover o anexo. Selecione Remover para tentar novamente.</string>
     <string name="thread_composer_attachment_file">arquivo</string>
     <string name="thread_composer_attachment_move_left">Mover para a esquerda</string>
     <string name="thread_composer_attachment_move_right">Mover para a direita</string>

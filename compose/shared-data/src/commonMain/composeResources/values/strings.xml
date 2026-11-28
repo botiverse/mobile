@@ -894,6 +894,8 @@
     <string name="thread_composer_attachment_uploading">Uploading</string>
     <string name="thread_composer_attachment_checking">Checking file…</string>
     <string name="thread_composer_attachment_finishing">Finishing upload…</string>
+    <string name="thread_composer_attachment_removing">Removing attachment…</string>
+    <string name="thread_composer_attachment_discard_failed">Removal failed. Choose Remove to try again.</string>
     <string name="thread_composer_attachment_file">file</string>
     <string name="thread_composer_attachment_move_left">Move left</string>
     <string name="thread_composer_attachment_move_right">Move right</string>

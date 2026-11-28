@@ -19,6 +19,7 @@ import build.raft.app.SharedThreadComposerExternalShareSource
 import build.raft.app.ThreadAttachmentUploadAttemptIdentity
 import build.raft.app.ThreadAttachmentUploadOrchestrator
 import build.raft.app.ThreadComposerAttachImageAction
+import build.raft.app.ThreadComposerAttachmentRemovalDispatchResult
 import build.raft.app.ThreadComposerCaptureImageAction
 import build.raft.app.ThreadComposerDismissUnresolvedMentionsEvent
 import build.raft.app.ThreadComposerImagePasteMaxImages
@@ -44,8 +45,12 @@ import build.raft.app.data.ThreadApiResult
 import build.raft.app.data.parseSharedThreadPickedPlatformFiles
 import build.raft.app.data.runCatchingPreservingCancellation
 import build.raft.app.decodeThreadComposerMentionEvent
+import build.raft.app.dispatchThreadComposerAttachmentRemoval
 import build.raft.app.hasBlockingThreadAttachmentUpload
+import build.raft.app.hasDiscardFailedThreadAttachment
 import build.raft.app.hasFailedThreadAttachmentUpload
+import build.raft.app.hasRemovingThreadAttachment
+import build.raft.app.isCompletedServerDraftAttachment
 import build.raft.app.mentionScopeChannelLabel
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ServerId
@@ -199,6 +204,8 @@ internal class ThreadRouteComposerActions(
         val attachmentIds = currentComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
         val hasBlockingAttachmentUpload = currentComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
         val hasFailedAttachmentUpload = currentComposer.pendingAttachments.hasFailedThreadAttachmentUpload()
+        val hasRemovingAttachment = currentComposer.pendingAttachments.hasRemovingThreadAttachment()
+        val hasDiscardFailedAttachment = currentComposer.pendingAttachments.hasDiscardFailedThreadAttachment()
         val allowOptimisticLoadingSend =
             threadViewModel.state.value.allowsOptimisticSendWhileAccessLoading(
                 sendChannelId = threadId,
@@ -208,6 +215,8 @@ internal class ThreadRouteComposerActions(
             when {
                 !payload.canSend && !allowOptimisticLoadingSend -> "payload_can_send_false"
                 threadId == null -> "missing_send_channel"
+                hasDiscardFailedAttachment -> "attachment_discard_failed"
+                hasRemovingAttachment -> "attachment_discard_in_progress"
                 hasFailedAttachmentUpload -> "attachment_upload_failed"
                 hasBlockingAttachmentUpload -> "attachment_upload_in_progress"
                 draftText.isBlank() && attachmentIds.isEmpty() -> "empty_draft"
@@ -384,6 +393,11 @@ internal class ThreadRouteComposerActions(
             }
         val externalShareSources = currentDraftState.externalShareSources
         if (externalShareSources.isNotEmpty()) {
+            val pendingNow = currentComposerPayload().pendingAttachments
+            if (pendingNow.hasRemovingThreadAttachment() || pendingNow.hasDiscardFailedThreadAttachment()) {
+                bridge.log("thread_composer_send_gate result=blocked reason=attachment_discard_unresolved")
+                return ThreadComposerSendAdmission.Rejected
+            }
             externalShareSendRequested = true
             coroutineScope.launch {
                 val expected = dataSource.captureExternalShareSendAuthority()
@@ -937,30 +951,59 @@ internal class ThreadRouteComposerActions(
                 }
                 "removeAttachment" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
-                        val removal =
-                            resolveThreadComposerAttachmentRemoval(
-                                attachments = composerDraftViewModel.state.value.uploadedAttachments,
-                                removedAttachmentIds = composerDraftViewModel.state.value.removedAttachmentIds,
-                                attachmentId = id,
-                                draftKey = draftKey
-                            )
-                        if (!removal.accepted) {
-                            bridge.logWarn(
-                                "thread_composer_attachment_remove_rejected attachmentId=$id reason=${removal.reason}"
-                            )
-                            return@ThreadPageContent
-                        }
-                        // Removing the tile is what cancels its upload (leaving the conversation does not).
-                        attachmentUploads.remove(draftKey, id)
-                        attachmentUploadFilesByLocalId =
-                            attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(id, draftKey)
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
-                        if (removal.fileRefToRetire != null) {
-                            bridge.retireFilePreviewTemporaryFiles(
-                                sessionId = "thread-composer-${draftKey.orEmpty()}",
-                                fileRefs = listOf(removal.fileRefToRetire)
-                            )
+                        val draftState = composerDraftViewModel.state.value
+                        val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
+                        val targetServerId =
+                            draftState.serverId?.trim()?.takeIf(String::isNotBlank)
+                                ?: attachmentUploads.serverId.trim().takeIf(String::isNotBlank)
+                                ?: currentServerId?.trim()?.takeIf(String::isNotBlank)
+                                ?: currentSession?.currentServerId?.trim()?.takeIf(String::isNotBlank)
+                        when (
+                            val outcome =
+                                dispatchThreadComposerAttachmentRemoval(
+                                    attachmentId = id,
+                                    currentState = draftState,
+                                    attachmentUploads = attachmentUploads,
+                                    dispatch = composerDraftViewModel::dispatch,
+                                    discardCall = { serverAttachmentId ->
+                                        dataSource.discardDraftAttachment(
+                                            serverId = targetServerId,
+                                            attachmentId = serverAttachmentId,
+                                        )
+                                    },
+                                    onQuotaRefresh = {
+                                        dataSource.refreshAttachmentUploadCapabilities()
+                                    },
+                                )
+                        ) {
+                            is ThreadComposerAttachmentRemovalDispatchResult.Rejected -> {
+                                bridge.logWarn(
+                                    "thread_composer_attachment_remove_rejected attachmentId=$id reason=${outcome.reason}"
+                                )
+                                return@ThreadPageContent
+                            }
+                            ThreadComposerAttachmentRemovalDispatchResult.DiscardAlreadyInFlight -> {
+                                bridge.log(
+                                    "thread_composer_attachment_discard_skipped attachmentId=$id reason=in_flight"
+                                )
+                                return@ThreadPageContent
+                            }
+                            is ThreadComposerAttachmentRemovalDispatchResult.DiscardStarted -> {
+                                bridge.log(
+                                    "thread_composer_attachment_discard_started attachmentId=${outcome.attachmentId} attempt=${outcome.attemptToken}"
+                                )
+                                return@ThreadPageContent
+                            }
+                            is ThreadComposerAttachmentRemovalDispatchResult.RemovedLocally -> {
+                                attachmentUploadFilesByLocalId =
+                                    attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(outcome.attachmentId, draftKey)
+                                if (outcome.fileRefToRetire != null) {
+                                    bridge.retireFilePreviewTemporaryFiles(
+                                        sessionId = "thread-composer-${draftKey.orEmpty()}",
+                                        fileRefs = listOf(outcome.fileRefToRetire)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -968,6 +1011,14 @@ internal class ThreadRouteComposerActions(
                     composerDraftViewModel.reorderThreadComposerAttachments(value, bridge::log)
                 "retryAttachments" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
+                        val existingRow =
+                            composerDraftViewModel.state.value.uploadedAttachments.firstOrNull { it.id == id }
+                        if (existingRow != null && existingRow.isCompletedServerDraftAttachment()) {
+                            bridge.log(
+                                "thread_composer_attachment_retry result=not_upload_retryable attachmentId=$id status=${existingRow.status}"
+                            )
+                            return@ThreadPageContent
+                        }
                         val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
                         if (draftKey == null) {
                             bridge.log("thread_composer_attachment_retry result=missing_draft_key attachmentId=$id")

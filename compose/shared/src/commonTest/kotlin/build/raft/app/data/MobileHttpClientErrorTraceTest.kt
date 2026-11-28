@@ -44,6 +44,10 @@ class MobileHttpClientErrorTraceTest {
             raftMobileApiRouteTemplate("https://api.raft.build/api/servers/srv-99/scope-attestation"),
         )
         assertEquals(
+            "/api/attachments/:id/draft",
+            raftMobileApiRouteTemplate("https://api.raft.build/api/attachments/att_123/draft"),
+        )
+        assertEquals(
             ":other",
             raftMobileApiRouteTemplate("https://bucket.r2.test/obj/key?X-Amz-Signature=secret"),
         )

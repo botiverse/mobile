@@ -21,7 +21,7 @@ import build.raft.app.RaftCoreInternalApi
     "connect-my-servers", "connect-new-server", "connect-servers", "context", "context-view",
     "context-views", "conversation", "conversation-read-all", "conversations", "conversion-jobs",
     "convert-to-joint", "counts", "credentials", "dashboard", "data-export-settings", "default", "delegated", "deny",
-    "describe", "desktop-download", "device", "disconnect", "disconnect-preview", "discover", "dismiss", "dm", "domains", "done", "enabled",
+    "describe", "desktop-download", "device", "disconnect", "disconnect-preview", "discover", "dismiss", "dm", "domains", "done", "draft", "enabled",
     "evaluate", "events", "execute", "external-availability", "external-connect-servers", "external-diagnostics",
     "external-invite-addresses", "external-invites", "external-setup-method", "external-status", "fcm-probe",
     "feature-flags", "feedback", "files", "findings", "follow", "followers", "forgot-password", "forward", "grant",

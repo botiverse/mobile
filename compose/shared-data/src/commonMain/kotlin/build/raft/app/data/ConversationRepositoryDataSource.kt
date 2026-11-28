@@ -678,6 +678,44 @@ class RealConversationRepository private constructor(
             mapper = ::parseSharedAttachmentUploadSessionView,
         )
     }
+
+    override suspend fun discardDraftAttachment(
+        serverId: ServerId?,
+        attachmentId: AttachmentId,
+    ): DataResult<Unit> {
+        val context = currentContext() ?: return authRequired()
+        val normalizedId = attachmentId.value.trim()
+        if (!isSafeDraftAttachmentIdSegment(normalizedId)) {
+            return DataResult.Error(ScreenError(code = "invalid_input", retryable = false, traceId = null))
+        }
+        val targetServerId =
+            directSessionAuthority?.serverId?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
+                ?: serverId?.value?.trim()?.takeIf { it.isNotEmpty() }?.let(::ServerId)
+                ?: context.server.id
+        return try {
+            val response =
+                networkClient.discardDraftAttachment(
+                    priority = DataRequestPriority.Foreground,
+                    attachmentId = normalizedId,
+                    serverIdOverride = targetServerId,
+                )
+            if (isDraftAttachmentDiscardSuccess(response)) {
+                warningLogger(
+                    "conversation_draft_attachment_discard code=${response.code} result=content"
+                )
+                DataResult.Content(Unit)
+            } else {
+                response.toConversationDataError()
+            }
+        } catch (cancellation: kotlinx.coroutines.CancellationException) {
+            throw cancellation
+        } catch (exception: Exception) {
+            warningLogger(
+                "conversation_draft_attachment_discard_failed exception=${exception::class.simpleName}"
+            )
+            DataResult.Error(ScreenError(code = "network_request_failed", retryable = true, traceId = null))
+        }
+    }
     override suspend fun getThread(
         threadId: ThreadId,
         includeFollowedSummaries: Boolean,
@@ -2870,6 +2908,33 @@ private fun HomeNetworkResponse.conversationRouteStructuredErrorCodeOrNull(): St
         }.getOrNull()
     return dto?.code?.trim()?.takeIf { it.isNotBlank() }
         ?: dto?.errorCode?.trim()?.takeIf { it.isNotBlank() }
+}
+
+/**
+ * Validate a single path segment for `DELETE /api/attachments/:id/draft`: non-blank, no path
+ * separators, query/fragment delimiters, whitespace, control chars, or dot segments.
+ */
+@RaftCoreInternalApi fun isSafeDraftAttachmentIdSegment(value: String): Boolean {
+    val trimmed = value.trim()
+    if (trimmed.isEmpty() || trimmed == "." || trimmed == "..") return false
+    return trimmed.none { ch ->
+        ch == '/' || ch == '\\' || ch == '?' || ch == '#' || ch.isWhitespace() || ch.isISOControl()
+    }
+}
+
+/**
+ * Server contract for `DELETE /api/attachments/:id/draft` (botiverse/slock #17244):
+ * - `204` (any 2xx): draft reservation canceled and bytes released immediately.
+ * - `404` with `code == "attachment_not_found"`: reservation is already gone.
+ * - `409` with `code == "attachment_already_consumed"`: attachment was already linked to a sent message.
+ * Every other error (including bare 404/409 without matching structured code, 5xx, network/timeout)
+ * stays an error so the composer retains the ID and offers retry.
+ */
+@RaftCoreInternalApi fun isDraftAttachmentDiscardSuccess(response: HomeNetworkResponse): Boolean {
+    if (response.isSuccessful) return true
+    val serverCode = response.conversationRouteStructuredErrorCodeOrNull()
+    return (response.code == 404 && serverCode == "attachment_not_found") ||
+        (response.code == 409 && serverCode == "attachment_already_consumed")
 }
 
 private fun HomeNetworkResponse.conversationRouteErrorTextOrNull(): String? {

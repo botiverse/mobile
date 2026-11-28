@@ -3,8 +3,8 @@ package build.raft.app.transfer
 import build.raft.app.resources.*
 
 
-/** What a composer attachment chip says about its upload (the web's chip states). */
-enum class RaftComposerUploadPhase { Checking, Uploading, Finishing, Failed }
+/** What a composer attachment chip says about its upload or discard (the web's chip states). */
+enum class RaftComposerUploadPhase { Checking, Uploading, Finishing, Removing, Failed, DiscardFailed }
 
 /**
  * The upload state the composer attachment tray renders, derived from the upload meter only
@@ -12,9 +12,10 @@ enum class RaftComposerUploadPhase { Checking, Uploading, Finishing, Failed }
  *
  * - [percent]: the bar value. 0 before the first byte, 1..99 while uploading, 99 while
  *   finishing, never 100 (a server confirmed upload is a ready attachment with no overlay). Null
- *   means no bar: checking, failed, or an unknown total.
+ *   means no bar: checking, removing, failed, discard-failed, or an unknown total.
  * - [label]: "Checking file…", "Uploading" (0% or unknown), "42%", "Finishing upload…" (finishing
- *   or 99%), "Upload failed". Render with `label.localized()`.
+ *   or 99%), "Removing attachment…", "Upload failed", "Removal failed. Choose Remove to try again.".
+ *   Render with `label.localized()`.
  */
 data class RaftComposerUploadDisplay(
     val phase: RaftComposerUploadPhase,
@@ -24,16 +25,30 @@ data class RaftComposerUploadDisplay(
 
 /**
  * The chip state of one composer attachment: [status] is the attachment's status word
- * ("queued", "uploading", "failed", "ready"), [transfer] its upload meter state, null until the
- * upload has started sending (the file is still being checked: size, limits, upload session).
- * Null for a ready attachment and for one queued behind others (no overlay, like the web).
+ * ("queued", "uploading", "failed", "ready", "removing", "discard_failed"), [transfer] its upload
+ * meter state, null until the upload has started sending (the file is still being checked: size,
+ * limits, upload session). Null for a ready attachment and for one queued behind others (no
+ * overlay, like the web).
  *
  * Mirrors the web composer (MessageInput.tsx): `Math.max(1, Math.min(99, …))` while sending,
  * "Finishing upload…" at 99 and above until the server confirms, "Uploading" before the first
- * percent.
+ * percent, and "Removing attachment…" / "Removal failed. Choose Remove to try again." while
+ * releasing a completed draft reservation (`DELETE /api/attachments/:id/draft`).
  */
 fun raftComposerUploadDisplay(status: String, transfer: RaftTransferProgress?): RaftComposerUploadDisplay? =
     when (status) {
+        "removing" ->
+            RaftComposerUploadDisplay(
+                RaftComposerUploadPhase.Removing,
+                null,
+                Res.string.thread_composer_attachment_removing.desc()
+            )
+        "discard_failed" ->
+            RaftComposerUploadDisplay(
+                RaftComposerUploadPhase.DiscardFailed,
+                null,
+                Res.string.thread_composer_attachment_discard_failed.desc()
+            )
         "failed" ->
             RaftComposerUploadDisplay(RaftComposerUploadPhase.Failed, null, Res.string.thread_composer_attachment_upload_failed.desc())
         "uploading" -> {

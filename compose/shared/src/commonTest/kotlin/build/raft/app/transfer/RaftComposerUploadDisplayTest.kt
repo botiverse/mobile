@@ -17,4 +17,17 @@ class RaftComposerUploadDisplayTest {
         assertEquals(shown.filterNotNull().sorted(), shown.filterNotNull(), "never goes back")
         assertNull(raftComposerUploadDisplay("ready", meter.done()), "a confirmed upload is a ready attachment")
     }
+
+    @Test
+    fun removingAndDiscardFailedMapToDedicatedOverlayPhasesWithoutProgressBar() {
+        val removing = raftComposerUploadDisplay("removing", null)
+        assertEquals(RaftComposerUploadPhase.Removing, removing?.phase)
+        assertNull(removing?.percent)
+        assertEquals(Res.string.thread_composer_attachment_removing.desc(), removing?.label)
+
+        val discardFailed = raftComposerUploadDisplay("discard_failed", null)
+        assertEquals(RaftComposerUploadPhase.DiscardFailed, discardFailed?.phase)
+        assertNull(discardFailed?.percent)
+        assertEquals(Res.string.thread_composer_attachment_discard_failed.desc(), discardFailed?.label)
+    }
 }

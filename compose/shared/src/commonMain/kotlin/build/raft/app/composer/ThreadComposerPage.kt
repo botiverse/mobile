@@ -3321,6 +3321,8 @@ private fun ThreadComposerContentLeafBody(
             state.composerMode != "uploading" &&
             state.composerMode != "no_permission" &&
             !state.pendingAttachments.hasFailedThreadAttachmentUpload() &&
+            !state.pendingAttachments.hasRemovingThreadAttachment() &&
+            !state.pendingAttachments.hasDiscardFailedThreadAttachment() &&
             (hasReplyTextForSend || state.pendingAttachments.isNotEmpty())
     val activeComposerSendKey =
         threadComposerActiveSendKey(
@@ -5000,8 +5002,20 @@ internal fun List<RaftPendingAttachmentItem>.hasUploadingThreadAttachment(): Boo
             attachment.status == "uploading"
     }
 
+internal fun List<RaftPendingAttachmentItem>.hasRemovingThreadAttachment(): Boolean =
+    any { attachment ->
+        attachment.id.isNotBlank() &&
+            attachment.status == ThreadComposerAttachmentStatusRemoving
+    }
+
 internal fun List<RaftPendingAttachmentItem>.hasFailedThreadAttachmentUpload(): Boolean =
     any { attachment -> attachment.id.isNotBlank() && attachment.status == "failed" }
+
+internal fun List<RaftPendingAttachmentItem>.hasDiscardFailedThreadAttachment(): Boolean =
+    any { attachment ->
+        attachment.id.isNotBlank() &&
+            attachment.status == ThreadComposerAttachmentStatusDiscardFailed
+    }
 
 internal fun RaftPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
     id.isNotBlank() && status == "ready" && !id.startsWith("picked-")
@@ -6405,7 +6419,10 @@ private fun ComposerAttachmentPreviewChip(
     val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
     val onOpen = onPreview.takeIf { attachment.canOpenComposerAttachmentPreview(previewEnabled) }
     // The upload meter's chip state (phase, percent, words); a failed tile only while enabled.
-    val upload = attachment.uploadDisplay?.takeIf { it.phase != RaftComposerUploadPhase.Failed || enabled }
+    val upload =
+        attachment.uploadDisplay?.takeIf {
+            (it.phase != RaftComposerUploadPhase.Failed && it.phase != RaftComposerUploadPhase.DiscardFailed) || enabled
+        }
     RaftComposerAttachment(modifier) {
         if (attachment.isComposerImageAttachment()) {
             RaftComposerAttachmentImage(
@@ -6445,20 +6462,33 @@ private fun ComposerAttachmentPreviewChip(
                 RaftLucideIcon(RaftLucideIconName.FileText, modifier = Modifier.size(16.dp), color = raftArgbHex(RaftTheme.colors.foregroundMuted))
             }
         }
-        // The web's overlays on file and image tiles alike; mobile keeps Retry on a failed one.
+        // The web's overlays on file and image tiles alike; mobile keeps Retry on a failed upload
+        // and Remove on a failed draft discard (never re-uploading a completed server reservation).
         if (upload != null) {
             val failed = upload.phase == RaftComposerUploadPhase.Failed
+            val discardFailed = upload.phase == RaftComposerUploadPhase.DiscardFailed
             RaftComposerAttachmentOverlay(
                 phase = upload.phase.toComposerAttachmentPhase(),
                 percent = upload.percent,
                 label = upload.label.localized(),
-                action = stringResource(Res.string.common_retry).takeIf { failed },
-                onAction = onRetry.takeIf { failed }
+                action =
+                    when {
+                        failed -> stringResource(Res.string.common_retry)
+                        discardFailed -> stringResource(Res.string.common_remove)
+                        else -> null
+                    },
+                onAction =
+                    when {
+                        failed -> onRetry
+                        discardFailed -> onRemove
+                        else -> null
+                    }
             )
         }
         if (enabled) {
             RaftComposerAttachmentRemove(
                 onClick = onRemove,
+                enabled = upload?.phase != RaftComposerUploadPhase.Removing,
                 contentDescription = "${stringResource(Res.string.common_remove)} ${attachment.fileName}"
             )
         }
@@ -6470,13 +6500,15 @@ private fun ComposerAttachmentPreviewChip(
  * enabled (Retry needs it). Main has no checking/finishing state yet; the transfer-progress
  * model maps onto [RaftComposerAttachmentPhase] here.
  */
-/** The design system's overlay phase for the upload meter's chip phase (same four states). */
+/** The design system's overlay phase for the upload/discard chip phase. */
 private fun RaftComposerUploadPhase.toComposerAttachmentPhase(): RaftComposerAttachmentPhase =
     when (this) {
         RaftComposerUploadPhase.Checking -> RaftComposerAttachmentPhase.Checking
         RaftComposerUploadPhase.Uploading -> RaftComposerAttachmentPhase.Uploading
         RaftComposerUploadPhase.Finishing -> RaftComposerAttachmentPhase.Finishing
+        RaftComposerUploadPhase.Removing -> RaftComposerAttachmentPhase.Checking
         RaftComposerUploadPhase.Failed -> RaftComposerAttachmentPhase.Failed
+        RaftComposerUploadPhase.DiscardFailed -> RaftComposerAttachmentPhase.Failed
     }
 
 internal fun RaftPendingAttachmentItem.isComposerImageAttachment(): Boolean {

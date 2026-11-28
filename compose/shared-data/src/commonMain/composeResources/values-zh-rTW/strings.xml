@@ -894,6 +894,8 @@
     <string name="thread_composer_attachment_uploading">上傳中</string>
     <string name="thread_composer_attachment_checking">正在檢查檔案…</string>
     <string name="thread_composer_attachment_finishing">正在完成上傳…</string>
+    <string name="thread_composer_attachment_removing">正在移除附件…</string>
+    <string name="thread_composer_attachment_discard_failed">移除失敗。請選擇「移除」再試一次。</string>
     <string name="thread_composer_attachment_file">檔案</string>
     <string name="thread_composer_attachment_move_left">左移</string>
     <string name="thread_composer_attachment_move_right">右移</string>

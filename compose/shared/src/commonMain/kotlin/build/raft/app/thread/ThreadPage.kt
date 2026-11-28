@@ -3880,51 +3880,88 @@ private fun SharedThreadRouteContentContent(
     val composerDraftUploadApplier =
         remember(composerDraftViewModel) { RaftComposerDraftUploadApplier(log = { message -> bridge.logWarn(message) }) }
     LaunchedEffect(composerDraftViewModel, attachmentUploads) {
-        combine(composerDraftViewModel.state, attachmentUploads.byDraft) { draftState, uploads ->
+        combine(
+            composerDraftViewModel.state,
+            attachmentUploads.byDraft,
+            attachmentUploads.discardsByDraft,
+        ) { draftState, uploads, discards ->
             val draftKey = normalizeThreadAttachmentUploadDraftKey(draftState.draftKey)
-            draftKey to draftKey?.let { key -> uploads[key] }.orEmpty()
-        }.collect { (draftKey, uploads) ->
-            if (draftKey == null || uploads.isEmpty()) return@collect
-            composerDraftUploadApplier.apply(
-                draftKey = draftKey,
-                uploads = uploads,
-                currentState = { composerDraftViewModel.state.value },
-                acceptWithState = composerDraftViewModel::acceptWithState,
-                onAdopted = { upload ->
-                    val file = upload.file
-                    threadAttachmentUploadAttemptIdentity(upload.localAttachmentId, draftKey)?.let { identity ->
-                        if (file != null && attachmentUploadFilesByLocalId[identity] == null) {
-                            attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + (identity to file)
-                        }
-                    }
-                },
-                onSucceeded = { upload ->
-                    attachmentUploadFilesByLocalId =
-                        attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(upload.localAttachmentId, draftKey)
-                },
-                onFailed = { upload, errorCode ->
-                    val failed = upload.outcome as? RaftComposerDraftUploadOutcome.Failed
-                    showAttachmentUploadFailure(
-                        errorCode = errorCode,
-                        traceId = failed?.traceId,
-                        monthlyUploadQuota = failed?.monthlyUploadQuota,
-                        failedFiles =
-                            upload.file
-                                ?.let { file ->
-                                    listOf(
-                                        build.raft.app.settings.RaftUpgradeUploadFile(
-                                            name = file.fileName,
-                                            sizeBytes = file.sizeBytes?.takeIf { it > 0L } ?: file.bytes.size.toLong(),
-                                        )
-                                    )
-                                }
-                                .orEmpty(),
-                    )
-                },
-                onDelivered = { upload ->
-                    attachmentUploads.markDelivered(draftKey, upload.localAttachmentId, upload.attemptToken)
-                }
+            Triple(
+                draftKey,
+                draftKey?.let { key -> uploads[key] }.orEmpty(),
+                draftKey?.let { key -> discards[key] }.orEmpty(),
             )
+        }.collect { (draftKey, uploads, discards) ->
+            if (draftKey == null) return@collect
+            if (uploads.isNotEmpty()) {
+                composerDraftUploadApplier.apply(
+                    draftKey = draftKey,
+                    uploads = uploads,
+                    currentState = { composerDraftViewModel.state.value },
+                    acceptWithState = composerDraftViewModel::acceptWithState,
+                    onAdopted = { upload ->
+                        val file = upload.file
+                        threadAttachmentUploadAttemptIdentity(upload.localAttachmentId, draftKey)?.let { identity ->
+                            if (file != null && attachmentUploadFilesByLocalId[identity] == null) {
+                                attachmentUploadFilesByLocalId = attachmentUploadFilesByLocalId + (identity to file)
+                            }
+                        }
+                    },
+                    onSucceeded = { upload ->
+                        attachmentUploadFilesByLocalId =
+                            attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(upload.localAttachmentId, draftKey)
+                    },
+                    onFailed = { upload, errorCode ->
+                        val failed = upload.outcome as? RaftComposerDraftUploadOutcome.Failed
+                        showAttachmentUploadFailure(
+                            errorCode = errorCode,
+                            traceId = failed?.traceId,
+                            monthlyUploadQuota = failed?.monthlyUploadQuota,
+                            failedFiles =
+                                upload.file
+                                    ?.let { file ->
+                                        listOf(
+                                            build.raft.app.settings.RaftUpgradeUploadFile(
+                                                name = file.fileName,
+                                                sizeBytes = file.sizeBytes?.takeIf { it > 0L } ?: file.bytes.size.toLong(),
+                                            )
+                                        )
+                                    }
+                                    .orEmpty(),
+                        )
+                    },
+                    onDelivered = { upload ->
+                        attachmentUploads.markDelivered(draftKey, upload.localAttachmentId, upload.attemptToken)
+                    }
+                )
+            }
+            if (discards.isNotEmpty()) {
+                composerDraftUploadApplier.applyDiscards(
+                    draftKey = draftKey,
+                    discards = discards,
+                    currentState = { composerDraftViewModel.state.value },
+                    acceptWithState = composerDraftViewModel::acceptWithState,
+                    onSucceeded = { discard ->
+                        attachmentUploads.remove(draftKey, discard.attachmentId)
+                        attachmentUploadFilesByLocalId =
+                            attachmentUploadFilesByLocalId.withoutThreadAttachmentUploadFile(discard.attachmentId, draftKey)
+                        if (discard.fileRefToRetire != null) {
+                            bridge.retireFilePreviewTemporaryFiles(
+                                sessionId = "thread-composer-$draftKey",
+                                fileRefs = listOf(discard.fileRefToRetire)
+                            )
+                        }
+                        attachmentUploads.clearDiscard(draftKey, discard.attachmentId, discard.attemptToken)
+                    },
+                    onFailed = { discard, outcome ->
+                        val handledAuth = outcome.noPermission?.let(::routeAuthRequired) == true
+                        if (!handledAuth) {
+                            bridge.errorToast(labels.attachmentDiscardFailedLabel, outcome.traceId)
+                        }
+                        attachmentUploads.markDiscardDelivered(draftKey, discard.attachmentId, discard.attemptToken)
+                    },
+                )
+            }
         }
     }
     // Image viewer > Edit (artin, task #32): the edited copy goes into this conversation's
