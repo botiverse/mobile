@@ -350,10 +350,21 @@ private fun RaftWorkingNowRow(
     val nowMillis = currentRaftTimeContextProvider?.current?.nowEpochMillis ?: defaultNowMillis()
     val deliveryHold = rememberAgentDeliveryHoldView(indicator)
     val workersBusy =
-        indicator?.busyThroughWorkers(nowMs = nowMillis)
+        indicator?.busyThroughWorkers(nowMs = nowMillis)?.let { display ->
+            if (item.runningWorkersPresenceOnly && !display.presenceOnly) {
+                AgentRunningWorkersDisplay(count = 1, presenceOnly = true)
+            } else {
+                display
+            }
+        }
             ?: item.runningWorkers
                 .takeIf { it > 0 && item.status == AgentStatus.Online && indicator == null }
-                ?.let { AgentRunningWorkersDisplay(count = it) }
+                ?.let {
+                    AgentRunningWorkersDisplay(
+                        count = if (item.runningWorkersPresenceOnly) 1 else it,
+                        presenceOnly = item.runningWorkersPresenceOnly,
+                    )
+                }
     val workersBusyText = workersBusy?.localizedText()
     // What it is doing, as the Home DM row says it (Web `formatActivityText`): the detail when the
     // runtime gave one, else "Working through a Worker / N Workers" when busy only through Workers

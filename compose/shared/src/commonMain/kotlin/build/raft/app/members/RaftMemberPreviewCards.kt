@@ -47,6 +47,7 @@ internal class RaftMemberPreviewCardSource(
     val memberAvatarResolver: RaftMemberAvatarResolver,
     val resolveMention: (label: String) -> MemberDetailIdentity?,
     val knownServers: List<MemberServerRef> = emptyList(),
+    val viewerIsGuest: Boolean = false,
     val model: @Composable (
         identity: MemberDetailIdentity,
         fallbackHandle: String?,
@@ -64,6 +65,7 @@ internal class RaftMemberPreviewCardSource(
             // Where the member is from is read against the server the card opens on.
             viewerServerId = serverId,
             knownServers = knownServers,
+            viewerIsGuest = viewerIsGuest,
         )
     },
     /** Looks up a Slack-bridge external member by projection id for `externalMentionSpans` cards. */

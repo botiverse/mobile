@@ -298,11 +298,13 @@ data class SharedServerMembersState(
         // member is therefore suppressed here and published there.
         // Web resolveAgentDisplayState: a held agent reads why, whatever its last activity.
         member.blockedMemberStatusOrNull()?.let { return it }
+        val viewerIsGuest = isGuestServerRole(entriesByServerId[cleanServerId]?.server?.role)
         return applySeedOnlyOfflinePolicy(
             resolved =
                 member.toSharedServerMemberStatus(
                     presenceFact = null,
                     viewerServerId = cleanServerId,
+                    viewerIsGuest = viewerIsGuest,
                     authoritativeReadiness = rosterMember != null,
                 ),
             seedOnly = rosterMember == null
@@ -691,9 +693,13 @@ private fun MemberProfile?.startFailureAttentionMemberStatusOrNull(
     )
 }
 
+@RaftCoreInternalApi fun isGuestServerRole(role: String?): Boolean =
+    role?.trim()?.equals("guest", ignoreCase = true) == true
+
 private fun MemberProfile?.toSharedServerMemberStatus(
     presenceFact: MemberPresenceUpdated?,
     viewerServerId: String? = null,
+    viewerIsGuest: Boolean = false,
     authoritativeReadiness: Boolean = true,
 ): SharedServerMemberStatus? {
     val resolvedLastSeenAt =
@@ -719,6 +725,8 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             cleanViewerServerId != null -> isOtherServerFor(cleanViewerServerId)
             else -> inViewerServer == false
         }
+    // slock #17190: both joint-channel peers and Guests see an agent's running Workers as presence-only.
+    val workersPresenceOnly = otherServer || viewerIsGuest
     if (
         presenceFact != null &&
         (
@@ -736,7 +744,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         val resolvedRunningWorkers =
             when {
                 rawRunningWorkers == null -> null
-                otherServer -> 1
+                workersPresenceOnly -> 1
                 else -> rawRunningWorkers
             }
         return SharedServerMemberStatus(
@@ -766,7 +774,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
             credentialHold = presenceFact.credentialHold,
             deliveryHold = presenceFact.deliveryHold,
             runningWorkers = resolvedRunningWorkers,
-            runningWorkersPresenceOnly = resolvedRunningWorkers != null && otherServer,
+            runningWorkersPresenceOnly = resolvedRunningWorkers != null && workersPresenceOnly,
             serviceTier = normalizeAgentServiceTier(presenceFact.serviceTier),
             creatorUserId = creatorUserId,
         )
@@ -783,7 +791,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
     val resolvedProfileRunningWorkers =
         when {
             rawProfileRunningWorkers == null -> null
-            otherServer -> 1
+            workersPresenceOnly -> 1
             else -> rawProfileRunningWorkers
         }
     return SharedServerMemberStatus(
@@ -802,7 +810,7 @@ private fun MemberProfile?.toSharedServerMemberStatus(
         readiness = resolvedReadiness,
         deliveryHold = resolvedProfileDeliveryHold,
         runningWorkers = resolvedProfileRunningWorkers,
-        runningWorkersPresenceOnly = resolvedProfileRunningWorkers != null && otherServer,
+        runningWorkersPresenceOnly = resolvedProfileRunningWorkers != null && workersPresenceOnly,
         serviceTier = if (authoritativeReadiness) normalizeAgentServiceTier(agentServiceTier) else null,
         creatorUserId = creatorUserId,
     )
@@ -865,6 +873,11 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
     // A→B switches subscribed to A). Test default mirrors the sync resolver.
     private val presenceOwnerFlow: (ServerId) -> Flow<ProcessServerMembersOwner?> = { serverId ->
         flowOf(presenceOwner(serverId))
+    },
+    /** The viewer's server role for [ServerId] (used for Guest Workers presence-only, slock #17190). */
+    private val viewerServerRole: (ServerId) -> String? = { null },
+    private val viewerServerRoleFlow: (ServerId) -> Flow<String?> = { serverId ->
+        flowOf(viewerServerRole(serverId))
     },
     // Write binding: owner + registry write generation frozen from ONE
     // immutable auth-context snapshot (post-merge audit on PR #1054 — owner
@@ -1347,9 +1360,11 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
             presenceOwnerFlow(scopedServerId).flatMapLatest { owner ->
                 owner?.let { presenceRegistry.factsFlow(it) } ?: flowOf(emptyMap())
             }
-        return combine(state, factsFlow) { _, facts ->
-            facts to currentKnownMemberProfilesById(scopedServerId)
-        }.transformLatest { (facts, profiles) ->
+        return combine(state, factsFlow, viewerServerRoleFlow(scopedServerId)) { snapshot, facts, role ->
+            val viewerIsGuest =
+                isGuestServerRole(role?.takeIf { it.isNotBlank() } ?: snapshot.entriesByServerId[serverKey]?.server?.role)
+            Triple(facts, currentKnownMemberProfilesById(scopedServerId), viewerIsGuest)
+        }.transformLatest { (facts, profiles, viewerIsGuest) ->
             var clockFloorMs = Long.MIN_VALUE
             while (true) {
                 val nowMs = maxOf(defaultNowMillis(), clockFloorMs)
@@ -1390,7 +1405,8 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                             name = profile.displayName.ifBlank { profile.handle },
                             avatarWireValue = profile.avatarWireValueForRenderedAvatar(),
                             status = AgentStatus.Online,
-                            runningWorkers = count,
+                            runningWorkers = if (viewerIsGuest) 1 else count,
+                            runningWorkersPresenceOnly = viewerIsGuest,
                         )
                     }
                 emit(busy)
@@ -1781,11 +1797,24 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                         ?: flowOf(ProcessPresenceOwnerSnapshot(emptyMap(), transport = null))
                 }
                 .distinctUntilChanged()
+        val viewerIsGuestFlow: Flow<Boolean> =
+            combine(viewerServerRoleFlow(scopedServerId), state) { role, snapshot ->
+                isGuestServerRole(
+                    role?.takeIf { it.isNotBlank() } ?: snapshot.entriesByServerId[scopedServerId.value]?.server?.role
+                )
+            }.distinctUntilChanged()
         return combine(
             scopedMemberProfileResolutionFlow(scopedServerId, cleanMemberId),
-            presenceOwnerSnapshotFlow
-        ) { resolution, presenceOwnerSnapshot ->
-            memberStatusOf(resolution, presenceOwnerSnapshot, cleanMemberId, viewerServerId = scopedServerId.value)
+            presenceOwnerSnapshotFlow,
+            viewerIsGuestFlow,
+        ) { resolution, presenceOwnerSnapshot, viewerIsGuest ->
+            memberStatusOf(
+                resolution = resolution,
+                presenceOwnerSnapshot = presenceOwnerSnapshot,
+                memberId = cleanMemberId,
+                viewerServerId = scopedServerId.value,
+                viewerIsGuest = viewerIsGuest,
+            )
         }.distinctUntilChanged()
     }
 
@@ -1803,11 +1832,17 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
         val presenceOwnerSnapshot =
             presenceOwner(scopedServerId)?.let(presenceRegistry::currentOwnerSnapshot)
                 ?: ProcessPresenceOwnerSnapshot(emptyMap(), transport = null)
+        val viewerIsGuest =
+            isGuestServerRole(
+                viewerServerRole(scopedServerId)?.takeIf { it.isNotBlank() }
+                    ?: state.value.entriesByServerId[cleanServerId]?.server?.role
+            )
         return memberStatusOf(
             resolution = currentScopedMemberProfileResolution(scopedServerId, cleanMemberId),
             presenceOwnerSnapshot = presenceOwnerSnapshot,
             memberId = cleanMemberId,
             viewerServerId = cleanServerId,
+            viewerIsGuest = viewerIsGuest,
         )
     }
 
@@ -1816,6 +1851,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
         presenceOwnerSnapshot: ProcessPresenceOwnerSnapshot,
         memberId: String,
         viewerServerId: String,
+        viewerIsGuest: Boolean = false,
     ): SharedServerMemberStatus? {
         val member = resolution.profile
         val presenceFact = presenceOwnerSnapshot.facts[memberId]
@@ -1865,6 +1901,7 @@ class SharedServerMembersStore @RaftCoreInternalApi constructor(
                     member.toSharedServerMemberStatus(
                         presenceFact,
                         viewerServerId = viewerServerId,
+                        viewerIsGuest = viewerIsGuest,
                         authoritativeReadiness = resolution.authoritative,
                     ),
                 seedOnly = !resolution.authoritative && presenceFact == null

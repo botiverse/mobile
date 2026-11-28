@@ -163,8 +163,9 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             if (!response.isSuccessful) {
                 return previous.asStale(RaftWidgetStaleReason.Code("http_${response.code}"))
             }
+            val viewerIsGuest = selectedServer.role?.trim()?.equals("guest", ignoreCase = true) == true
             val agents =
-                runCatching { response.bodyText?.toAgentWidgetSummaries().orEmpty() }
+                runCatching { response.bodyText?.toAgentWidgetSummaries(viewerIsGuest = viewerIsGuest).orEmpty() }
                     .getOrElse { return previous.asStale(RaftWidgetStaleReason.Code("agents_contract")) }
             val rows = agents
                 .filter { it.hasSignal }
@@ -224,11 +225,13 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
 
         internal fun parseAgentWidgetSummaries(
             bodyText: String,
-            nowEpochMillis: Long = System.currentTimeMillis()
-        ): List<AgentWidgetSummary> = bodyText.toAgentWidgetSummaries(nowEpochMillis)
+            nowEpochMillis: Long = System.currentTimeMillis(),
+            viewerIsGuest: Boolean = false,
+        ): List<AgentWidgetSummary> = bodyText.toAgentWidgetSummaries(nowEpochMillis, viewerIsGuest = viewerIsGuest)
 
         internal fun String.toAgentWidgetSummaries(
-            nowEpochMillis: Long = System.currentTimeMillis()
+            nowEpochMillis: Long = System.currentTimeMillis(),
+            viewerIsGuest: Boolean = false,
         ): List<AgentWidgetSummary> {
             val array = toAgentWidgetArray() ?: return emptyList()
             return buildList {
@@ -267,12 +270,14 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                     val hasCredentialHold = item.optCredentialHoldOrNull(activityDetailKind) != null
                     val readinessState = item.optJSONObject("readiness")?.optString("state")?.trim()?.lowercase()
                     val holdingReadiness = readinessState == "blocked" || readinessState == "waiting" || readinessState == "offline"
-                    val runningWorkers =
+                    val rawRunningWorkers =
                         if (paused || appBot || hasActiveDeliveryHold || hasCredentialHold || holdingReadiness) {
                             null
                         } else {
                             item.optRunningWorkersCountOrNull()
                         }
+                    val runningWorkers =
+                        if (rawRunningWorkers != null && viewerIsGuest) 1 else rawRunningWorkers
                     // The app's words (raft-design patterns/status.md): "Working…", "Computer update
                     // required", the daemon's detail while it works; an unknown status says Offline,
                     // as the gray light does (was "Online", which also made every agent count as live).
@@ -285,6 +290,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                             runtime = runtime,
                             description = description,
                             runningWorkers = runningWorkers,
+                            runningWorkersPresenceOnly = runningWorkers != null && viewerIsGuest,
                         )
                     val latestAt =
                         item.optString("updatedAt").takeIf { it.isNotBlank() }

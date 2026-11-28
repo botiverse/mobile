@@ -147,6 +147,8 @@ internal fun raftProfilePreviewCardModel(
     /** Connected servers of the active joint channel (`jointServers[]`, slock #15809/#15817). */
     knownServers: List<MemberServerRef> = emptyList(),
     modelLabelCatalog: build.raft.app.data.ServerModelLabelCatalog? = null,
+    /** True when the viewer is a Guest on the server (slock #17190): Workers render as presence-only. */
+    viewerIsGuest: Boolean = false,
 ): RaftProfilePreviewCardModel {
     val appBot = profile.appBotIdentityOrNull()
     val isAgent = profile.kind == MemberKind.Agent
@@ -171,7 +173,7 @@ internal fun raftProfilePreviewCardModel(
         appBot = appBot,
         status =
             if (isAgent && appBot == null) {
-                if (origin.external && status?.runningWorkers != null && !status.runningWorkersPresenceOnly) {
+                if ((origin.external || viewerIsGuest) && status?.runningWorkers != null && !status.runningWorkersPresenceOnly) {
                     status.copy(runningWorkers = 1, runningWorkersPresenceOnly = true)
                 } else {
                     status
@@ -222,6 +224,7 @@ internal fun rememberRaftProfilePreviewCardModel(
     viewerServerId: String? = serverId,
     /** Connected servers of the active joint channel (`jointServers[]`, slock #15809/#15817). */
     knownServers: List<MemberServerRef> = emptyList(),
+    viewerIsGuest: Boolean = false,
 ): RaftProfilePreviewCardModel {
     val cleanServerId = remember(serverId) { serverId?.trim()?.takeIf { it.isNotBlank() }?.let(::ServerId) }
     val profileFlow =
@@ -240,11 +243,11 @@ internal fun rememberRaftProfilePreviewCardModel(
     if (kind == MemberKind.Agent) build.raft.app.data.EnsureServerModelLabelCatalog(catalogServerId)
     val modelLabelCatalog = if (kind == MemberKind.Agent) build.raft.app.data.RaftModelLabelCatalogs.observeCatalog(catalogServerId) else null
     val runtimeCatalogs = if (kind == MemberKind.Agent) build.raft.app.data.RaftRuntimeCatalogNames.observeCatalogs() else null
-    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId, knownServers, modelLabelCatalog, runtimeCatalogs) {
+    return remember(current, status, avatar, readReceipt, memberId, kind, fallbackHandle, viewerServerId, knownServers, modelLabelCatalog, runtimeCatalogs, viewerIsGuest) {
         if (current == null) {
             RaftProfilePreviewCardModel.unavailable(memberId, kind, fallbackHandle)
         } else {
-            raftProfilePreviewCardModel(current, status, avatar, readReceipt, viewerServerId, knownServers, modelLabelCatalog)
+            raftProfilePreviewCardModel(current, status, avatar, readReceipt, viewerServerId, knownServers, modelLabelCatalog, viewerIsGuest = viewerIsGuest)
         }
     }
 }

@@ -6,11 +6,13 @@ import build.raft.app.data.AgentDetailSummary
 import build.raft.app.data.RaftLiveAgentActivityItem
 import build.raft.app.data.RaftWorkingAgent
 import build.raft.app.data.SharedServerMemberStatus
+import build.raft.app.data.isGuestServerRole
 import build.raft.app.data.mergeWorkingNowWithWorkerBusy
 import build.raft.app.data.parseAgentRunningWorkers
 import build.raft.app.members.isMembersWorkingCountAgent
 import build.raft.app.members.membersRemoteProfileAgentStatusIndicatorStateOrNull
 import build.raft.app.members.nextMembersWorkingCountHoldExpiryMs
+import build.raft.app.members.raftProfilePreviewCardModel
 import build.raft.app.model.AgentCredentialHoldReason
 import build.raft.app.model.AgentDeliveryHold
 import build.raft.app.model.AgentDeliveryHoldReason
@@ -18,7 +20,11 @@ import build.raft.app.model.AgentProviderLimitHoldKind
 import build.raft.app.model.AgentReadiness
 import build.raft.app.model.AgentReadinessFact
 import build.raft.app.model.AgentStatus
+import build.raft.app.model.MemberId
+import build.raft.app.model.MemberKind
+import build.raft.app.model.MemberProfile
 import build.raft.app.model.Presence
+import build.raft.app.model.ServerId
 import build.raft.app.resources.*
 import build.raft.app.thread.workingAmong
 import kotlinx.serialization.json.Json
@@ -435,8 +441,133 @@ class AgentRunningWorkersStatusTest {
             raftAgentWidgetStatusText("online", null, null, external = false, runtime = "claude", description = null, runningWorkers = 3),
         )
         assertEquals(
+            Res.string.agent_status_working_through_workers_presence.desc(),
+            raftAgentWidgetStatusText(
+                "online",
+                null,
+                null,
+                external = false,
+                runtime = "claude",
+                description = null,
+                runningWorkers = 3,
+                runningWorkersPresenceOnly = true,
+            ),
+        )
+        assertEquals(
             Res.string.member_row_status_working.desc(),
             raftAgentWidgetStatusText("working", null, null, external = false, runtime = "claude", description = null, runningWorkers = 2),
         )
+    }
+
+    @Test
+    fun guestViewerForcesRunningWorkersPresenceOnlyAcrossSurfaces() {
+        assertTrue(isGuestServerRole("guest"))
+        assertTrue(isGuestServerRole(" GUEST "))
+        assertFalse(isGuestServerRole("member"))
+        assertFalse(isGuestServerRole(null))
+
+        val singleWorkerStatus =
+            SharedServerMemberStatus(
+                status = AgentStatus.Online,
+                presence = Presence.Active,
+                external = false,
+                runningWorkers = 1,
+            ).toRaftAgentStatusIndicatorState(nowEpochMillis = 5_000L)
+        val multiWorkerStatus =
+            SharedServerMemberStatus(
+                status = AgentStatus.Online,
+                presence = Presence.Active,
+                external = false,
+                runningWorkers = 3,
+            ).toRaftAgentStatusIndicatorState(nowEpochMillis = 5_000L)
+
+        // Profile preview card hides exact count for Guest viewers (even when runningWorkers == 1).
+        val agentProfile =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Kirby",
+                handle = "kirby",
+                kind = MemberKind.Agent,
+                serverId = ServerId("server-1"),
+            )
+        val previewSingle =
+            raftProfilePreviewCardModel(
+                profile = agentProfile,
+                status = singleWorkerStatus,
+                avatarWireValue = null,
+                viewerServerId = "server-1",
+                viewerIsGuest = true,
+            )
+        assertEquals(1, previewSingle.status?.runningWorkers)
+        assertEquals(true, previewSingle.status?.runningWorkersPresenceOnly)
+        assertEquals(
+            AgentRunningWorkersTextSpec(res = Res.string.agent_status_working_through_workers_presence),
+            previewSingle.status?.busyThroughWorkers(nowMs = 5_000L)?.textSpec(),
+        )
+
+        val previewMulti =
+            raftProfilePreviewCardModel(
+                profile = agentProfile,
+                status = multiWorkerStatus,
+                avatarWireValue = null,
+                viewerServerId = "server-1",
+                viewerIsGuest = true,
+            )
+        assertEquals(1, previewMulti.status?.runningWorkers)
+        assertEquals(true, previewMulti.status?.runningWorkersPresenceOnly)
+
+        // Local agent profile summary fallback before live status arrives stays presence-only for Guest.
+        val summaryOneWorker =
+            AgentDetailSummary(
+                id = "agent-1",
+                name = "Kirby",
+                status = "active",
+                activity = "online",
+                runningWorkers = 1,
+            )
+        assertEquals(
+            AgentRunningWorkersDisplay(count = 1, presenceOnly = true),
+            membersAgentRunningWorkersDisplay(
+                indicator = null,
+                summary = summaryOneWorker,
+                external = false,
+                blocked = null,
+                paused = false,
+                nowMs = 5_000L,
+                presenceOnly = true,
+            ),
+        )
+
+        // Composer @mention forwards presenceOnly already clamped by SharedServerMembersStore.
+        val storeClampedStatus = singleWorkerStatus.copy(runningWorkersPresenceOnly = true)
+        val mentionStatus =
+            resolveComposerMentionAgentStatusIndicatorState(
+                inChannel = true,
+                kind = MemberKind.Agent,
+                isAppBot = false,
+                isOtherServer = false,
+                rawStatus = storeClampedStatus,
+            )
+        assertEquals(1, mentionStatus?.runningWorkers)
+        assertEquals(true, mentionStatus?.runningWorkersPresenceOnly)
+
+        // Working now merge propagates runningWorkersPresenceOnly.
+        val mergedGuest =
+            mergeWorkingNowWithWorkerBusy(
+                liveItems = emptyList(),
+                workerBusy =
+                    listOf(
+                        RaftWorkingAgent(
+                            agentId = "a-workers",
+                            name = "Kirby",
+                            avatarWireValue = null,
+                            status = AgentStatus.Online,
+                            runningWorkers = 1,
+                            runningWorkersPresenceOnly = true,
+                        ),
+                    ),
+            )
+        assertEquals(1, mergedGuest.single().runningWorkers)
+        assertTrue(mergedGuest.single().runningWorkersPresenceOnly)
     }
 }

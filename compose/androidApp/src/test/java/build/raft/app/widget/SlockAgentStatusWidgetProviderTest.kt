@@ -4,7 +4,9 @@ import android.app.Application
 import build.raft.app.RaftAgentStatusDotKind
 import build.raft.app.raftAgentStatusDotKind
 import build.raft.app.resources.Res
+import build.raft.app.resources.agent_status_working_through_worker
 import build.raft.app.resources.agent_status_working_through_workers
+import build.raft.app.resources.agent_status_working_through_workers_presence
 import build.raft.app.resources.desc
 import build.raft.app.resources.format
 import build.raft.app.resources.member_row_status_online
@@ -114,5 +116,50 @@ class SlockAgentStatusWidgetProviderTest {
         val plain = byId.getValue("a-plain")
         assertEquals(3, plain.runningWorkers)
         assertEquals(Res.string.agent_status_working_through_workers.format(3), plain.detail)
+    }
+
+    @Test
+    fun guestViewerSeesRunningWorkersAsPresenceOnly() {
+        val nowMs = 10_000L
+        val payload =
+            """
+            {"agents":[
+              {"id":"a-one","name":"One","activity":"online","runningWorkers":1},
+              {"id":"a-many","name":"Many","activity":"online","runningWorkers":4}
+            ]}
+            """.trimIndent()
+        val guestById =
+            SlockAgentStatusWidgetProvider.parseAgentWidgetSummaries(
+                payload,
+                nowEpochMillis = nowMs,
+                viewerIsGuest = true,
+            ).associateBy { it.id }
+        for (id in listOf("a-one", "a-many")) {
+            val guestAgent = guestById.getValue(id)
+            assertEquals(1, guestAgent.runningWorkers)
+            assertEquals(Res.string.agent_status_working_through_workers_presence.desc(), guestAgent.detail)
+            assertEquals(
+                RaftAgentStatusDotKind.Yellow,
+                raftAgentStatusDotKind(
+                    guestAgent.statusWireValue,
+                    external = guestAgent.external,
+                    nowEpochMillis = nowMs,
+                    blockedReason = guestAgent.blockedReason,
+                    deliveryHold = guestAgent.deliveryHold,
+                    runningWorkers = guestAgent.runningWorkers,
+                    runtime = guestAgent.runtime,
+                ),
+            )
+        }
+
+        // Member viewer keeps singular "Working through a Worker" for count == 1.
+        val memberOne =
+            SlockAgentStatusWidgetProvider.parseAgentWidgetSummaries(
+                payload,
+                nowEpochMillis = nowMs,
+                viewerIsGuest = false,
+            ).first { it.id == "a-one" }
+        assertEquals(1, memberOne.runningWorkers)
+        assertEquals(Res.string.agent_status_working_through_worker.desc(), memberOne.detail)
     }
 }
