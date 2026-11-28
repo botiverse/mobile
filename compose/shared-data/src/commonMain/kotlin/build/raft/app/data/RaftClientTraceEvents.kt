@@ -3,6 +3,7 @@ package build.raft.app.data
 import build.raft.app.RaftCoreInternalApi
 
 import build.raft.app.model.ServerId
+import build.raft.app.model.raftEpochDayForDate
 import build.raft.app.model.raftEpochMillisUtcIso
 import build.raft.app.network.RaftAppIdentityRegistry
 import kotlin.time.Instant
@@ -193,6 +194,159 @@ fun sanitizeRaftClientTraceAttrs(attrs: JsonObject): JsonObject {
     return if (changed) JsonObject(out) else attrs
 }
 
+/** Maximum absolute client-vs-server clock offset accepted for push delivery calibration (±24h). */
+@RaftCoreInternalApi const val RaftPushClockOffsetMaxAbsMillis = 86_400_000L
+
+@RaftCoreInternalApi const val RaftPushClockOffsetAttr = "clock_offset_ms"
+@RaftCoreInternalApi const val RaftPushClockRttAttr = "clock_rtt_ms"
+@RaftCoreInternalApi const val RaftPushClockSourceAttr = "clock_source"
+
+/** Closed source enum for push delivery clock calibration (`#proj-mobile:#405`). */
+@RaftCoreInternalApi enum class RaftPushClockSource(val wireName: String) {
+    /** Parsed from `POST /api/servers/:id/scope-attestation` JSON field `serverTime`. */
+    ServerTime("server_time"),
+
+    /** Fallback parsed from the HTTP `Date` response header (RFC 7231 IMF-fixdate). */
+    HttpDate("http_date"),
+}
+
+/**
+ * Calibrated device-vs-server clock offset from a `scope-attestation` round trip (`#proj-mobile:#405`).
+ *
+ * [offsetMs] is `client_mid_ms - server_ms`, so server-side queries recover server time via
+ * `occurred_at_ms - clock_offset_ms`.
+ */
+@RaftCoreInternalApi data class RaftClientClockCalibration(
+    val offsetMs: Long,
+    val rttMs: Long,
+    val source: RaftPushClockSource,
+)
+
+private val HttpImfFixdateRegex =
+    Regex("""^(Mon|Tue|Wed|Thu|Fri|Sat|Sun), (\d{2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2}):(\d{2}) GMT$""")
+
+private val RaftPushDeliveryClockEventNames: Set<String> =
+    setOf(
+        RAFT_PUSH_DELIVERY_EVENT_RECEIVED,
+        RAFT_PUSH_DELIVERY_EVENT_PRESENTED,
+        RAFT_PUSH_DELIVERY_EVENT_OPENED,
+    )
+
+/**
+ * Pure multiplatform RFC 7231 IMF-fixdate parser (e.g. `"Sat, 28 Nov 2026 07:51:56 GMT"`) returning
+ * UTC epoch milliseconds, or `null` when malformed, non-GMT, pre-1970, or out of calendar bounds.
+ */
+@RaftCoreInternalApi fun raftParseHttpDateEpochMillis(raw: String): Long? {
+    val match = HttpImfFixdateRegex.matchEntire(raw.trim()) ?: return null
+    val day = match.groupValues[2].toIntOrNull() ?: return null
+    val month =
+        when (match.groupValues[3]) {
+            "Jan" -> 1
+            "Feb" -> 2
+            "Mar" -> 3
+            "Apr" -> 4
+            "May" -> 5
+            "Jun" -> 6
+            "Jul" -> 7
+            "Aug" -> 8
+            "Sep" -> 9
+            "Oct" -> 10
+            "Nov" -> 11
+            "Dec" -> 12
+            else -> return null
+        }
+    val year = match.groupValues[4].toIntOrNull() ?: return null
+    if (year < 1970) return null
+    val hour = match.groupValues[5].toIntOrNull() ?: return null
+    val minute = match.groupValues[6].toIntOrNull() ?: return null
+    val second = match.groupValues[7].toIntOrNull() ?: return null
+    val isLeap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+    val maxDay =
+        when (month) {
+            1, 3, 5, 7, 8, 10, 12 -> 31
+            4, 6, 9, 11 -> 30
+            2 -> if (isLeap) 29 else 28
+            else -> return null
+        }
+    if (day !in 1..maxDay || hour !in 0..23 || minute !in 0..59 || second !in 0..59) return null
+    val epochDays = raftEpochDayForDate(year, month, day)
+    return epochDays * 86_400_000L +
+        hour * 3_600_000L +
+        minute * 60_000L +
+        second * 1_000L
+}
+
+/**
+ * Computes push delivery clock calibration from a `scope-attestation` round trip (`#proj-mobile:#405`).
+ *
+ * Returns `null` (so callers omit all three clock attributes rather than clamping) when:
+ * - [t1Millis] < [t0Millis] (device wall clock stepped backwards during the request),
+ * - neither [serverTimeIso] nor [httpDateHeader] parses cleanly, or
+ * - the resulting `offsetMs = (t0Millis + rttMs / 2) - serverMs` lies outside
+ *   `±[RaftPushClockOffsetMaxAbsMillis]` (±24h).
+ */
+@RaftCoreInternalApi fun raftComputePushClockCalibration(
+    t0Millis: Long,
+    t1Millis: Long,
+    serverTimeIso: String?,
+    httpDateHeader: String?,
+): RaftClientClockCalibration? {
+    if (t1Millis < t0Millis) return null
+    val rttMs = t1Millis - t0Millis
+    if (rttMs < 0L) return null
+    val serverTimeMs =
+        serverTimeIso
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() }
+    val (serverMs, source) =
+        if (serverTimeMs != null) {
+            serverTimeMs to RaftPushClockSource.ServerTime
+        } else {
+            val httpDateMs =
+                httpDateHeader
+                    ?.let(::raftParseHttpDateEpochMillis)
+                    ?: return null
+            httpDateMs to RaftPushClockSource.HttpDate
+        }
+    val clientMidMs = t0Millis + (rttMs / 2L)
+    val offsetMs = clientMidMs - serverMs
+    if (((clientMidMs xor serverMs) and (clientMidMs xor offsetMs)) < 0L) return null
+    if (offsetMs !in -RaftPushClockOffsetMaxAbsMillis..RaftPushClockOffsetMaxAbsMillis) {
+        return null
+    }
+    return RaftClientClockCalibration(
+        offsetMs = offsetMs,
+        rttMs = rttMs,
+        source = source,
+    )
+}
+
+private fun RaftWebEventRecord.withPushClockCalibration(
+    calibration: RaftClientClockCalibration?,
+): RaftWebEventRecord {
+    if (calibration == null || name !in RaftPushDeliveryClockEventNames) return this
+    if (
+        RaftPushClockOffsetAttr in attrs &&
+        RaftPushClockRttAttr in attrs &&
+        RaftPushClockSourceAttr in attrs
+    ) {
+        return this
+    }
+    val enriched = LinkedHashMap<String, JsonElement>(attrs.size + 3)
+    enriched.putAll(attrs)
+    if (RaftPushClockOffsetAttr !in enriched) {
+        enriched[RaftPushClockOffsetAttr] = JsonPrimitive(calibration.offsetMs)
+    }
+    if (RaftPushClockRttAttr !in enriched) {
+        enriched[RaftPushClockRttAttr] = JsonPrimitive(calibration.rttMs)
+    }
+    if (RaftPushClockSourceAttr !in enriched) {
+        enriched[RaftPushClockSourceAttr] = JsonPrimitive(calibration.source.wireName)
+    }
+    return copy(attrs = JsonObject(enriched))
+}
+
 /** The web reuses an attestation until this long before it expires (ATTESTATION_REUSE_MARGIN_MS). */
 private const val AttestationReuseMarginMillis = 60_000L
 
@@ -207,7 +361,11 @@ private val clientTraceJson =
 @RaftCoreInternalApi data class RaftScopeAttestationRequest(val scope: String)
 
 @Serializable
-@RaftCoreInternalApi data class RaftScopeAttestationResponse(val attestation: String? = null, val expiresAt: String? = null)
+@RaftCoreInternalApi data class RaftScopeAttestationResponse(
+    val attestation: String? = null,
+    val expiresAt: String? = null,
+    val serverTime: String? = null,
+)
 
 /** Web `WebEventRecord`; inside a span it carries that span's [traceId] / [spanId]. */
 @Serializable
@@ -249,8 +407,15 @@ private val clientTraceJson =
     val events: List<RaftWebEventRecord>,
 )
 
-/** The attestation request's HTTP [status] (0 without a response) and, for a readable 2xx, its body. */
-@RaftCoreInternalApi class RaftScopeAttestationAnswer(val status: Int, val response: RaftScopeAttestationResponse? = null)
+/**
+ * The attestation request's HTTP [status] (0 without a response), for a readable 2xx its body,
+ * and any HTTP `Date` response header for push clock-offset fallback calibration.
+ */
+@RaftCoreInternalApi class RaftScopeAttestationAnswer(
+    val status: Int,
+    val response: RaftScopeAttestationResponse? = null,
+    val httpDateHeader: String? = null,
+)
 
 @RaftCoreInternalApi interface RaftClientTraceTransport {
     /**
@@ -303,9 +468,17 @@ private val clientTraceJson =
             )
         if (!response.isSuccessful) return RaftScopeAttestationAnswer(response.code)
         val body = response.bodyText?.takeIf { it.isNotBlank() }
+        val httpDateHeader =
+            response.responseHeaders.entries
+                .asSequence()
+                .filter { (name, _) -> name.equals("date", ignoreCase = true) }
+                .flatMap { (_, values) -> values.asSequence() }
+                .map { it.trim() }
+                .firstOrNull { it.isNotEmpty() }
         return RaftScopeAttestationAnswer(
             status = response.code,
             response = body?.let { runCatching { clientTraceJson.decodeFromString<RaftScopeAttestationResponse>(it) }.getOrNull() },
+            httpDateHeader = httpDateHeader,
         )
     }
 
@@ -358,6 +531,7 @@ private val clientTraceJson =
         val traceBaseUrl: String,
         val value: String,
         val expiresAtMillis: Long,
+        val clockCalibration: RaftClientClockCalibration? = null,
     )
 
     /** Records given up for one reason and not yet carried by an event. */
@@ -951,35 +1125,55 @@ private val clientTraceJson =
                         it.expiresAtMillis - AttestationReuseMarginMillis > now
                 }
             }
-        val value =
-            cached?.value
-                ?: run {
+        val (value, clockCalibration) =
+            if (cached != null) {
+                cached.value to cached.clockCalibration
+            } else {
+                synchronized(lock) { attestation = null }
+                val t0 = nowEpochMillis()
+                val answer = transport.attest(serverId)
+                val t1 = nowEpochMillis()
+                // Environment may have switched while the attestation request was in flight.
+                val postAttestReceiverUrl = traceUploadBaseUrl(transport)
+                if (postAttestReceiverUrl == null) {
                     synchronized(lock) { attestation = null }
-                    val answer = transport.attest(serverId)
-                    // Environment may have switched while the attestation request was in flight.
-                    val postAttestReceiverUrl = traceUploadBaseUrl(transport)
-                    if (postAttestReceiverUrl == null) {
-                        synchronized(lock) { attestation = null }
-                        return SendResult(SendOutcome.NoReceiver, "attestation", answer.status)
-                    }
-                    if (postAttestReceiverUrl != receiverBaseUrl) {
-                        synchronized(lock) { attestation = null }
-                        return SendResult(SendOutcome.NoReceiver, "environment_changed", answer.status)
-                    }
-                    if (raftClientTraceShouldResend(answer.status)) return SendResult(SendOutcome.Resend, "attestation", answer.status)
-                    val token =
-                        answer.response?.attestation?.takeIf { answer.status in 200..299 && it.isNotBlank() }
-                            ?: return SendResult(SendOutcome.Refused, "attestation", answer.status)
-                    val expiresAt = answer.response?.expiresAt?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() }
-                    // The session changed while it was asked for: it may be the other account's.
-                    if (sessionAccount(transport) != work.account) return SendResult(SendOutcome.AccountChanged, "attestation", answer.status)
-                    synchronized(lock) {
-                        // Signed out or another account meanwhile: this attestation is not theirs to use.
-                        if (work.accountEpoch != accountEpoch) return SendResult(SendOutcome.AccountChanged, "attestation", answer.status)
-                        if (expiresAt != null) attestation = Attestation(serverId, work.account, receiverBaseUrl, token, expiresAt)
-                    }
-                    token
+                    return SendResult(SendOutcome.NoReceiver, "attestation", answer.status)
                 }
+                if (postAttestReceiverUrl != receiverBaseUrl) {
+                    synchronized(lock) { attestation = null }
+                    return SendResult(SendOutcome.NoReceiver, "environment_changed", answer.status)
+                }
+                if (raftClientTraceShouldResend(answer.status)) return SendResult(SendOutcome.Resend, "attestation", answer.status)
+                val token =
+                    answer.response?.attestation?.takeIf { answer.status in 200..299 && it.isNotBlank() }
+                        ?: return SendResult(SendOutcome.Refused, "attestation", answer.status)
+                val expiresAt = answer.response?.expiresAt?.let { raw -> runCatching { Instant.parse(raw).toEpochMilliseconds() }.getOrNull() }
+                val calibration =
+                    raftComputePushClockCalibration(
+                        t0Millis = t0,
+                        t1Millis = t1,
+                        serverTimeIso = answer.response?.serverTime,
+                        httpDateHeader = answer.httpDateHeader,
+                    )
+                // The session changed while it was asked for: it may be the other account's.
+                if (sessionAccount(transport) != work.account) return SendResult(SendOutcome.AccountChanged, "attestation", answer.status)
+                synchronized(lock) {
+                    // Signed out or another account meanwhile: this attestation is not theirs to use.
+                    if (work.accountEpoch != accountEpoch) return SendResult(SendOutcome.AccountChanged, "attestation", answer.status)
+                    if (expiresAt != null) {
+                        attestation =
+                            Attestation(
+                                serverId = serverId,
+                                account = work.account,
+                                traceBaseUrl = receiverBaseUrl,
+                                value = token,
+                                expiresAtMillis = expiresAt,
+                                clockCalibration = calibration,
+                            )
+                    }
+                }
+                token to calibration
+            }
         // Re-verify right before POST so an environment switch never sends a mismatched attestation.
         val preSendReceiverUrl = traceUploadBaseUrl(transport)
         if (preSendReceiverUrl == null || preSendReceiverUrl != receiverBaseUrl) {
@@ -995,7 +1189,7 @@ private val clientTraceJson =
                 RaftWebTraceBatchRequest(
                     attestation = value,
                     records = work.batch.mapNotNull { it.span },
-                    events = work.batch.mapNotNull { it.record },
+                    events = work.batch.mapNotNull { it.record?.withPushClockCalibration(clockCalibration) },
                 ),
             )
         // If environment switched to one without a receiver right as send ran, skip without retry.
