@@ -511,14 +511,73 @@ fun runtimeChoiceModel(runtime: String): RuntimeModelInfo? =
 
 const val NAME_MIN_LENGTH: Int = 1
 const val NAME_MAX_LENGTH: Int = 32
-val RESERVED_AGENT_NAMES: List<String> = listOf(
-    "all", "human", "humans", "agent", "agents", "here", "idle", "busy", "system"
+
+/** Two-tier handle reservation scope (`botiverse/slock` #17291 `RESERVED_HANDLES`). */
+enum class HandleReservedScope {
+    Everyone,
+    People,
+}
+
+enum class HandlePrincipal {
+    Person,
+    Agent,
+}
+
+/**
+ * Reserved handles by tier (`botiverse/slock` `packages/shared/src/index.ts` #17291):
+ * - [HandleReservedScope.Everyone]: blocked for both people and agents.
+ * - [HandleReservedScope.People]: blocked for people only (agents may still claim them).
+ */
+val RESERVED_HANDLES: Map<String, HandleReservedScope> = linkedMapOf(
+    "all" to HandleReservedScope.Everyone,
+    "human" to HandleReservedScope.Everyone,
+    "humans" to HandleReservedScope.Everyone,
+    "agent" to HandleReservedScope.Everyone,
+    "agents" to HandleReservedScope.Everyone,
+    "here" to HandleReservedScope.Everyone,
+    "idle" to HandleReservedScope.Everyone,
+    "busy" to HandleReservedScope.Everyone,
+    "system" to HandleReservedScope.Everyone,
+    "reminders" to HandleReservedScope.Everyone,
+    "raft" to HandleReservedScope.Everyone,
+    "official" to HandleReservedScope.Everyone,
+    "staff" to HandleReservedScope.Everyone,
+    "slack" to HandleReservedScope.Everyone,
+    "external" to HandleReservedScope.Everyone,
+    "admin" to HandleReservedScope.People,
+    "administrator" to HandleReservedScope.People,
+    "owner" to HandleReservedScope.People,
+    "root" to HandleReservedScope.People,
+    "support" to HandleReservedScope.People,
+    "security" to HandleReservedScope.People,
+    "moderator" to HandleReservedScope.People,
 )
 
-fun isReservedAgentName(name: String): Boolean {
-    val normalized = name.trim().removePrefix("@").lowercase()
-    return normalized in RESERVED_AGENT_NAMES
+val RESERVED_AGENT_NAMES: List<String> =
+    RESERVED_HANDLES.entries.filter { it.value == HandleReservedScope.Everyone }.map { it.key }
+
+private val reservedHandleScopesByKey: Map<String, HandleReservedScope> by lazy {
+    buildMap(RESERVED_HANDLES.size) {
+        for ((handle, scope) in RESERVED_HANDLES) {
+            put(handleConfusableKeys(handle).a, scope)
+        }
+    }
 }
+
+/**
+ * True when [name] is reserved for [principal], matching both exact names and UTS #39 confusable
+ * look-alikes (`botiverse/slock` `isReservedHandle`, #17291).
+ */
+fun isReservedHandle(name: String, principal: HandlePrincipal): Boolean {
+    val keys = handleConfusableKeys(name)
+    val scopes = reservedHandleScopesByKey
+    fun blocks(scope: HandleReservedScope?): Boolean =
+        scope == HandleReservedScope.Everyone ||
+            (scope == HandleReservedScope.People && principal == HandlePrincipal.Person)
+    return blocks(scopes[keys.a]) || blocks(scopes[keys.b.lowercase()])
+}
+
+fun isReservedAgentName(name: String): Boolean = isReservedHandle(name, HandlePrincipal.Agent)
 
 fun validateAgentName(name: String, label: String = "Agent name"): String? {
     val trimmed = name.trim()
@@ -534,6 +593,9 @@ fun validateAgentName(name: String, label: String = "Agent name"): String? {
     }
     if (!trimmed.isValidAgentNameCharacters()) {
         return "$label must start with a letter and can only contain letters, numbers, hyphens, and underscores"
+    }
+    if (!isSingleScriptHandle(trimmed)) {
+        return "$label must use letters from one script only (Latin may be combined with Chinese, Japanese or Korean)"
     }
     return null
 }

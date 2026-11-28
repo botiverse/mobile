@@ -2506,6 +2506,8 @@
     <string name="auth_validation_username_max_length">Имя пользователя слишком длинное. Максимум символов: %1$s.</string>
     <string name="auth_validation_username_format">Имя пользователя должно начинаться с буквы и может содержать только буквы, цифры, дефисы и подчёркивания.</string>
     <string name="auth_validation_username_reserved">Это имя пользователя зарезервировано. Выберите другое.</string>
+    <string name="auth_validation_username_mixed_script">Используйте буквы только одной письменности; латиницу можно сочетать с китайскими, японскими или корейскими символами</string>
+    <string name="auth_validation_username_confusable">Имя пользователя слишком похоже на существующее имя. Выберите другое.</string>
     <string name="auth_validation_display_name_required">Введите отображаемое имя.</string>
     <string name="auth_validation_display_name_max_length">Отображаемое имя слишком длинное. Максимум символов: %1$s.</string>
     <string name="auth_action_sign_in">Войти</string>
@@ -2685,6 +2687,8 @@
     <string name="agent_create_error_name_min">Имя агента должно содержать хотя бы 1 символ</string>
     <string name="agent_create_error_name_max">Имя агента должно быть не длиннее 32 символов</string>
     <string name="agent_create_error_name_characters">Начните с буквы; допустимы буквы, цифры, - и _</string>
+    <string name="agent_create_error_name_mixed_script">Используйте буквы только одной письменности; латиницу можно сочетать с китайскими, японскими или корейскими символами</string>
+    <string name="agent_create_error_name_confusable">Имя агента слишком похоже на существующее имя. Выберите другое.</string>
     <string name="agent_create_label_advanced">Дополнительно</string>
     <string name="agent_create_action_add_env_var">+ Добавить переменную</string>
     <string name="agent_runtime_config_copy_from_agent">Скопировать у агента</string>

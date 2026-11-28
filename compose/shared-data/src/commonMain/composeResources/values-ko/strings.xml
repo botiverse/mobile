@@ -2506,6 +2506,8 @@
     <string name="auth_validation_username_max_length">사용자 이름은 %1$s자 이하여야 해요.</string>
     <string name="auth_validation_username_format">사용자 이름은 영문자로 시작해야 하며 영문자, 숫자, 하이픈, 밑줄만 사용할 수 있어요.</string>
     <string name="auth_validation_username_reserved">예약된 사용자 이름이에요. 다른 이름을 선택해 주세요.</string>
+    <string name="auth_validation_username_mixed_script">한 가지 문자 체계의 글자만 사용할 수 있어요. 영문자는 한자, 일본어, 한글과 함께 쓸 수 있어요</string>
+    <string name="auth_validation_username_confusable">사용자 이름이 기존 이름과 너무 비슷해요. 다른 이름을 선택해 주세요.</string>
     <string name="auth_validation_display_name_required">표시 이름을 입력해 주세요.</string>
     <string name="auth_validation_display_name_max_length">표시 이름은 %1$s자 이하여야 해요.</string>
     <string name="auth_action_sign_in">로그인</string>
@@ -2685,6 +2687,8 @@
     <string name="agent_create_error_name_min">에이전트 이름은 1자 이상이어야 해요</string>
     <string name="agent_create_error_name_max">에이전트 이름은 32자 이하여야 해요</string>
     <string name="agent_create_error_name_characters">영문자로 시작해야 하며 영문자, 숫자, -, _만 사용할 수 있어요</string>
+    <string name="agent_create_error_name_mixed_script">한 가지 문자 체계의 글자만 사용할 수 있어요. 영문자는 한자, 일본어, 한글과 함께 쓸 수 있어요</string>
+    <string name="agent_create_error_name_confusable">에이전트 이름이 기존 이름과 너무 비슷해요. 다른 이름을 선택해 주세요.</string>
     <string name="agent_create_label_advanced">고급</string>
     <string name="agent_create_action_add_env_var">+ 환경 변수 추가</string>
     <string name="agent_runtime_config_copy_from_agent">에이전트에서 복사</string>

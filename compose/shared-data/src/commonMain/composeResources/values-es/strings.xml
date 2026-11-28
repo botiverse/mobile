@@ -2506,6 +2506,8 @@
     <string name="auth_validation_username_max_length">El nombre de usuario debe tener como máximo %1$s caracteres.</string>
     <string name="auth_validation_username_format">El nombre de usuario debe empezar con una letra y solo puede contener letras, números, guiones y guiones bajos.</string>
     <string name="auth_validation_username_reserved">Este nombre de usuario está reservado. Elige otro.</string>
+    <string name="auth_validation_username_mixed_script">Usa letras de un solo sistema de escritura; el latino puede combinarse con chino, japonés o coreano</string>
+    <string name="auth_validation_username_confusable">El nombre de usuario es demasiado parecido a un nombre existente. Elige otro nombre.</string>
     <string name="auth_validation_display_name_required">Escribe un nombre visible.</string>
     <string name="auth_validation_display_name_max_length">El nombre visible debe tener como máximo %1$s caracteres.</string>
     <string name="auth_action_sign_in">Iniciar sesión</string>
@@ -2685,6 +2687,8 @@
     <string name="agent_create_error_name_min">El nombre del agente debe tener al menos 1 carácter</string>
     <string name="agent_create_error_name_max">El nombre del agente debe tener como máximo 32 caracteres</string>
     <string name="agent_create_error_name_characters">Empieza con una letra, seguida de letras, números, - o _</string>
+    <string name="agent_create_error_name_mixed_script">Usa letras de un solo sistema de escritura; el latino puede combinarse con chino, japonés o coreano</string>
+    <string name="agent_create_error_name_confusable">El nombre del agente es demasiado parecido a un nombre existente. Elige otro nombre.</string>
     <string name="agent_create_label_advanced">Avanzado</string>
     <string name="agent_create_action_add_env_var">+ Agregar variable de entorno</string>
     <string name="agent_runtime_config_copy_from_agent">Copiar de un agente</string>

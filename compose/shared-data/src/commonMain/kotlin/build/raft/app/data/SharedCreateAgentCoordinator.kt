@@ -201,6 +201,7 @@ import build.raft.app.model.canonicalizeRuntimeModelPresentation
 }
 
 @RaftCoreInternalApi const val AGENT_CREATE_NAME_TAKEN = "agent_create_name_taken"
+@RaftCoreInternalApi const val AGENT_CREATE_NAME_CONFUSABLE = "agent_create_name_confusable"
 
 /**
  * task #193 honest-states fallback: an unmapped create error must always show

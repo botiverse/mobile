@@ -485,6 +485,8 @@ internal fun RaftCreateExternalAgentDialog(host: RaftExternalAgentCreateHost, on
     val scope = rememberCoroutineScope()
     val stepUp = rememberExternalAgentStepUp(client)
     val createFailed = stringResource(Res.string.external_agent_create_failed)
+    val createAgentNameTaken = stringResource(Res.string.agent_create_error_name_taken)
+    val createAgentNameConfusable = stringResource(Res.string.agent_create_error_name_confusable)
     val discardFailed = stringResource(Res.string.external_agent_create_discard_failed)
     val serverUrl = remember(host.serverUrl) { externalAgentServerUrl(host.serverUrl) }
     var name by remember { mutableStateOf("") }
@@ -531,7 +533,13 @@ internal fun RaftCreateExternalAgentDialog(host: RaftExternalAgentCreateHost, on
                         )
                     )
                 if (made !is DataResult.Content) {
-                    failure = (made as? DataResult.Error)?.error?.serverMessage?.takeIf { it.isNotBlank() } ?: createFailed
+                    val err = (made as? DataResult.Error)?.error
+                    failure =
+                        when (err?.code) {
+                            build.raft.app.data.AGENT_CREATE_NAME_TAKEN -> createAgentNameTaken
+                            build.raft.app.data.AGENT_CREATE_NAME_CONFUSABLE -> createAgentNameConfusable
+                            else -> err?.serverMessage?.takeIf { it.isNotBlank() } ?: createFailed
+                        }
                     return@launch
                 }
                 val profile = made.data

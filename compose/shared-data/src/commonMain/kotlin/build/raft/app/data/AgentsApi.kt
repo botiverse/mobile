@@ -1123,8 +1123,11 @@ private fun HomeNetworkResponse.serverErrorCodeOrNull(): String? {
 
 private fun HomeNetworkResponse.agentNameConflictCodeOrNull(): String? {
     if (code != 409) return null
-    // Refusal P3 B4 (slock #16912/#16913): prefer the listed `agent_name_taken` code when sent.
-    if (serverErrorCodeOrNull() == "agent_name_taken") return AGENT_CREATE_NAME_TAKEN
+    // Refusal P3 B4 (slock #16912/#16913) & confusable handles (slock #17291): prefer listed machine codes.
+    when (serverErrorCodeOrNull()) {
+        "agent_name_taken" -> return AGENT_CREATE_NAME_TAKEN
+        "handle_confusable" -> return AGENT_CREATE_NAME_CONFUSABLE
+    }
     val body = (bodyText ?: errorBodyText)?.takeIf { it.isNotBlank() } ?: return null
     // task #191: legacy principal-handle conflicts carry only a human-readable
     // `error` string, no issues codes ("Agent name X is already taken" /

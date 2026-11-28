@@ -2510,6 +2510,8 @@
     <string name="auth_validation_username_max_length">Username must be at most %1$s characters.</string>
     <string name="auth_validation_username_format">Username must start with a letter and can only contain letters, numbers, hyphens, and underscores.</string>
     <string name="auth_validation_username_reserved">This username is reserved. Choose another name.</string>
+    <string name="auth_validation_username_mixed_script">Use letters from one script only; Latin can be combined with Chinese, Japanese or Korean</string>
+    <string name="auth_validation_username_confusable">Username is too similar to an existing name. Choose another name.</string>
     <string name="auth_validation_display_name_required">Enter a display name.</string>
     <string name="auth_validation_display_name_max_length">Display name must be at most %1$s characters.</string>
     <string name="auth_action_sign_in">Sign in</string>
@@ -2689,6 +2691,8 @@
     <string name="agent_create_error_name_min">Agent name must be at least 1 character</string>
     <string name="agent_create_error_name_max">Agent name must be at most 32 characters</string>
     <string name="agent_create_error_name_characters">Start with a letter, then letters, numbers, - or _</string>
+    <string name="agent_create_error_name_mixed_script">Use letters from one script only; Latin can be combined with Chinese, Japanese or Korean</string>
+    <string name="agent_create_error_name_confusable">Agent name is too similar to an existing name. Choose another name.</string>
     <string name="agent_create_label_advanced">Advanced</string>
     <string name="agent_create_action_add_env_var">+ Add env var</string>
     <string name="agent_runtime_config_copy_from_agent">Copy from an agent</string>

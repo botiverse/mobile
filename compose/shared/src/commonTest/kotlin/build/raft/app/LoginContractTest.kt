@@ -47,11 +47,27 @@ class LoginContractTest {
         assertEquals(null, identityHandleValidationError("Artin_用户1"))
         assertEquals(null, identityHandleValidationError("Artin²"))
         assertEquals(null, identityHandleValidationError("ArtinⅫ"))
-        assertEquals(null, identityHandleValidationError("𐐀user"))
-        assertEquals(null, identityHandleValidationError("𑎀user"))
-        assertEquals(null, identityHandleValidationError("Ᲊuser"))
-        assertEquals(null, identityHandleValidationError("𑯀user"))
-        assertEquals(null, identityHandleValidationError("Artin𐵀"))
+        // Supplementary single-script handles pass both canonical character and UTS #39 checks.
+        assertEquals(null, identityHandleValidationError("𐐀𐐀𐐀𐐀𐐀"))
+        assertEquals(null, identityHandleValidationError("𑎀𑎀𑎀𑎀𑎀"))
+        assertEquals(null, identityHandleValidationError("ᲉᲉᲉᲉᲉ"))
+        assertEquals(null, identityHandleValidationError("𑯀𑯀𑯀𑯀𑯀"))
+        // U+10D50 is a Garay letter; U+10D40 is a Garay digit (valid after a Garay letter).
+        assertEquals(null, identityHandleValidationError("𐵐𐵀𐵐𐵀𐵐"))
+        // Mixing non-CJK scripts with Latin is refused by UTS #39 Highly Restrictive single-script (#17270).
+        assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("𐐀user"))
+        assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("𑎀user"))
+        assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("Ᲊuser"))
+        assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("𑯀user"))
+        assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("Artin𐵀"))
+        assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("оwner"))
+        assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("raft한국かな"))
+        // Format rules run before mixed-script, and two-tier reserved + confusable checks apply to people (#17291).
+        assertEquals(AuthValidationError.UsernameReserved, identityHandleValidationError("admin"))
+        assertEquals(AuthValidationError.UsernameReserved, identityHandleValidationError("Adrnin"))
+        assertEquals(AuthValidationError.UsernameReserved, identityHandleValidationError("SIack"))
+        assertEquals(AuthValidationError.UsernameReserved, identityHandleValidationError("reminders"))
+        assertEquals(AuthValidationError.UsernameReserved, identityHandleValidationError("external"))
         assertEquals(
             AuthValidationError.UsernameInvalidFormat,
             identityHandleValidationError("Artin🙂")

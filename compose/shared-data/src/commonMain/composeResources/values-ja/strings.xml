@@ -2509,6 +2509,8 @@
     <string name="auth_validation_username_max_length">ユーザー名は %1$s 文字以内で入力してください。</string>
     <string name="auth_validation_username_format">ユーザー名は英字で始め、英字、数字、ハイフン、アンダースコアのみを使用してください。</string>
     <string name="auth_validation_username_reserved">このユーザー名は予約されています。別の名前を選択してください。</string>
+    <string name="auth_validation_username_mixed_script">1 種類の文字体系の文字のみを使用してください。英字は中国語・日本語・韓国語の文字と組み合わせられます</string>
+    <string name="auth_validation_username_confusable">ユーザー名は既存の名前に似すぎています。別の名前を選択してください。</string>
     <string name="auth_validation_display_name_required">表示名を入力してください。</string>
     <string name="auth_validation_display_name_max_length">表示名は %1$s 文字以内で入力してください。</string>
     <string name="auth_action_sign_in">ログイン</string>
@@ -2688,6 +2690,8 @@
     <string name="agent_create_error_name_min">エージェント名は 1 文字以上にしてください</string>
     <string name="agent_create_error_name_max">エージェント名は 32 文字以内にしてください</string>
     <string name="agent_create_error_name_characters">英字で始め、英字、数字、- または _ のみを使用してください</string>
+    <string name="agent_create_error_name_mixed_script">1 種類の文字体系の文字のみを使用してください。英字は中国語・日本語・韓国語の文字と組み合わせられます</string>
+    <string name="agent_create_error_name_confusable">エージェント名は既存の名前に似すぎています。別の名前を選択してください。</string>
     <string name="agent_create_label_advanced">詳細設定</string>
     <string name="agent_create_action_add_env_var">+ 環境変数を追加</string>
     <string name="agent_runtime_config_copy_from_agent">エージェントからコピー</string>

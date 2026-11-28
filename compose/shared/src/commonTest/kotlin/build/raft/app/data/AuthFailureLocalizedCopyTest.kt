@@ -101,5 +101,19 @@ class AuthFailureLocalizedCopyTest {
             ).toSharedAuthFailure()
         assertNull(unknownForbidden.display)
         assertEquals("Your organization paused access for this account.".desc(), unknownForbidden.userMessage)
+
+        val confusableHandle =
+            AuthApiResult.Failure(
+                code = 409,
+                errorBodyText = """{"code":"PROFILE_SETUP_NAME_CONFUSABLE","error":"Username is too similar to an existing name. Choose another name."}"""
+            ).toSharedAuthFailure()
+        assertEquals(Res.string.auth_validation_username_confusable.desc(), confusableHandle.userMessage)
+
+        val reservedHandle =
+            AuthApiResult.Failure(
+                code = 400,
+                errorBodyText = """{"code":"PROFILE_SETUP_NAME_RESERVED","error":"This username is reserved. Choose another name."}"""
+            ).toSharedAuthFailure()
+        assertEquals(Res.string.auth_validation_username_reserved.desc(), reservedHandle.userMessage)
     }
 }
