@@ -2554,6 +2554,16 @@ private fun SharedThreadRouteContentContent(
     FlushComposerDraftOnLeave(composerDraftViewModel, threadInstanceKey)
     val pendingOptimisticSendState =
         remember(threadInstanceKey) { mutableStateOf<ThreadComposerSendRequest?>(null) }
+    val stableComposerInstanceId =
+        remember(threadInstanceKey) {
+            payload.composer.instanceId.ifBlank { payload.instanceId }.ifBlank { threadInstanceKey }
+        }
+    val chatLayoutPreferenceStore =
+        remember(pager) {
+            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
+        }
+    val composerSendKeyEnabled = rememberComposerSendKeyEnabled(chatLayoutPreferenceStore, eventBus)
+    val composerSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
     var loadingSlotsBuilder: (@Composable () -> ThreadRouteScaffoldSlots)? = null
     var featureSlotsBuilder: (@Composable () -> ThreadRouteScaffoldSlots)? = null
     if (routeMountPlan == ThreadRouteMountPlan.LoadingShell) {
@@ -2642,7 +2652,6 @@ private fun SharedThreadRouteContentContent(
                 projections = billingDirectoryProjections,
                 nowEpochMillis = loadingNowEpochMillis,
             )
-        val loadingSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
         loadingSlotsBuilder = {
             rememberThreadDeferredLoadingScaffoldSlots(
                 payload = payload,
@@ -2656,11 +2665,14 @@ private fun SharedThreadRouteContentContent(
                         accessResolution = renderSlice.accessResolution,
                         replyParentAuthority = renderSlice.replyParentAuthority,
                         composerDraftViewModel = composerDraftViewModel,
+                        composerInstanceId = stableComposerInstanceId,
                         serverId = loadingServerId,
                         jointChannelId = composerJointChannelId,
                         composerLocked = threadLimitLocksWrites(loadingJointBillingNotice, loadingExternalFreezeState),
                         externalFrozen = loadingExternalFreezeState == ExternalFreezeState.Active,
-                        composerSendKey = loadingSendKey,
+                        composerSendKeyEnabled = composerSendKeyEnabled,
+                        composerSendKey = composerSendKey,
+                        onKeyboardHeightChange = { adaptivePageKeyboardInsetDp = it },
                         onSendRequest = { request ->
                             composerDraftViewModel.dispatch(
                                 SharedThreadComposerDraftIntent.Change(
@@ -2928,14 +2940,8 @@ private fun SharedThreadRouteContentContent(
     val composerImageEventSessionTracker = remember(threadInstanceKey, eventBus) {
         ThreadComposerImageEventSessionTracker()
     }
-    val chatLayoutPreferenceStore =
-        remember(pager) {
-            KeyValueChatLayoutPreferenceStore(raftSharedPreferenceStore())
-        }
     val labels = threadRouteLabels()
     val genericActionCardSuccessLabel = labels.genericActionCardSuccessLabel
-    val composerSendKeyEnabled = rememberComposerSendKeyEnabled(chatLayoutPreferenceStore, eventBus)
-    val composerSendKey = build.raft.app.data.RaftComposerSendKeyRuntime.observeSendKey()
     val newMessageMenuEnabled = rememberNewMessageMenuEnabled(chatLayoutPreferenceStore, eventBus)
     val attachmentUploadFailedDetailTemplate = labels.attachmentUploadFailedDetailTemplate
     val unableToOpenTaskLabel = labels.unableToOpenTaskLabel
@@ -3540,10 +3546,19 @@ private fun SharedThreadRouteContentContent(
         ) {
             renderedPayload.resolveThreadComposer(displayName = headerDisplayModel.title)
         }
+    val effectiveComposerChannelId =
+        resolvedAuxiliaryThreadId ?: renderedPayload.optimisticComposerChannelId(resolvedAuxiliaryThreadId)
     val scopedBaseComposerState =
-        remember(baseComposerState, renderedPayload.canSend, resolvedAuxiliaryThreadId) {
+        remember(
+            baseComposerState,
+            stableComposerInstanceId,
+            renderedPayload.canSend,
+            effectiveComposerChannelId,
+            resolvedAuxiliaryThreadId,
+        ) {
             baseComposerState.copy(
-                streamChannelId = resolvedAuxiliaryThreadId,
+                instanceId = stableComposerInstanceId,
+                streamChannelId = effectiveComposerChannelId,
                 enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null
             )
         }
@@ -3554,7 +3569,7 @@ private fun SharedThreadRouteContentContent(
     val composerSurface =
         remember(
             scopedBaseComposerState,
-            resolvedAuxiliaryThreadId,
+            effectiveComposerChannelId,
             renderedPayload.parentChannelId,
             composerJointChannelId,
             headerDisplayModel.title,
@@ -3564,7 +3579,7 @@ private fun SharedThreadRouteContentContent(
             assistantPanelContext
         ) {
             scopedBaseComposerState.toThreadComposerSurface(
-                channelId = resolvedAuxiliaryThreadId.orEmpty(),
+                channelId = effectiveComposerChannelId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId,
                 jointChannelId = composerJointChannelId,
                 mentionChannelLabel = headerDisplayModel.threadComposerMentionScopeChannelLabel(),
@@ -3829,6 +3844,7 @@ private fun SharedThreadRouteContentContent(
             latestCurrentSessionState = latestCurrentSessionState,
             composerDraftViewModel = composerDraftViewModel,
             composerSurface = composerSurface,
+            resolvedSendChannelId = renderedPayload.composerSendTargetChannelId(resolvedAuxiliaryThreadId),
             attachmentUploads = attachmentUploads,
             attachmentUploadOrchestrator = attachmentUploadOrchestrator,
             attachmentUploadSemaphore = attachmentUploadSemaphore,
@@ -4746,6 +4762,10 @@ private fun SharedThreadRouteContentContent(
             },
             lounge = threadLounge,
             onStartCall = threadLoungeSelectionQuote.onStartCall,
+                initialComposerKeyboardInsetDp =
+                    androidx.compose.runtime.snapshots.Snapshot.withoutReadObservation {
+                        adaptivePageKeyboardInsetDp
+                    },
                 onComposerKeyboardInsetChanged = { adaptivePageKeyboardInsetDp = it },
                 // task #180: forwarded from the route scope, which owns the workspace store.
                 onToggleFocusMode = threadFocusModeToggle,
@@ -5048,7 +5068,7 @@ private fun SharedThreadRouteContentContent(
                                 ThreadComposerFileDropFolderNotice.None -> Unit
                             }
                             if (drop.fileRefs.isEmpty()) return@launch
-                            if (composerSurface.sendChannelId == null) {
+                            if (renderedThread.composerSendTargetChannelId(resolvedAuxiliaryThreadId) == null) {
                                 bridge.toast(attachmentPickerUnavailableLabel)
                                 return@launch
                             }

@@ -1943,7 +1943,8 @@ internal class SharedThreadComposerDraftPersistSlice(
         when (intent) {
             is SharedThreadComposerDraftIntent.Start -> {
                 val draftKey = intent.draftKey?.takeIf { it.isNotBlank() }
-                previous.draftKey?.takeIf { it != draftKey }?.let(::flushPendingWrite)
+                val previousDraftKey = previous.draftKey?.takeIf { it.isNotBlank() }
+                previousDraftKey?.takeIf { it != draftKey }?.let(::flushPendingWrite)
                 draftKey?.let { key ->
                     flushPendingWrite(key)
                     persistence.recordForKey(key)?.let { targetRecord ->
@@ -1956,16 +1957,36 @@ internal class SharedThreadComposerDraftPersistSlice(
                             .forEach(::flushPendingWrite)
                     }
                 }
-                val sameDraftKey = draftKey != null && previous.draftKey == draftKey
+                val sameDraftKey = draftKey != null && previousDraftKey == draftKey
+                val sameComposerInstanceRefiningDraft =
+                    previous.instanceId.isNotBlank() &&
+                        previous.instanceId == intent.composer.instanceId &&
+                        previousDraftKey != null &&
+                        draftKey != null &&
+                        previousDraftKey != draftKey &&
+                        run {
+                            val previousRecord = persistence.recordForKey(previousDraftKey)
+                            val targetRecord = persistence.recordForKey(draftKey)
+                            previousRecord != null &&
+                                targetRecord != null &&
+                                (
+                                    previousRecord.matchesSharedDraftIdentity(targetRecord) ||
+                                        (
+                                            previousRecord.sendChannelId == targetRecord.sendChannelId &&
+                                                previousRecord.isRootComposer &&
+                                                !targetRecord.isRootComposer
+                                        )
+                                )
+                        }
                 val stagedUploadedAttachments = consumeStagedUploadedAttachments(draftKey)
                 val sessionAttachments =
-                    if (sameDraftKey) {
+                    if (sameDraftKey || sameComposerInstanceRefiningDraft) {
                         previous.visibleSessionThreadComposerDraftAttachments()
                     } else {
                         emptyList()
                     }
                 val removedAttachmentIds =
-                    if (sameDraftKey) {
+                    if (sameDraftKey || sameComposerInstanceRefiningDraft) {
                         previous.removedAttachmentIds
                     } else {
                         emptySet()
@@ -1973,6 +1994,11 @@ internal class SharedThreadComposerDraftPersistSlice(
                 val restoredDraft =
                     draftKey
                         ?.let(persistence::readWithReplyFallback)
+                        ?: if (sameComposerInstanceRefiningDraft && previousDraftKey != null) {
+                            persistence.read(previousDraftKey)?.let { previousDraftKey to it }
+                        } else {
+                            null
+                        }
                 if (draftKey != null) {
                     val siblingKeys = persistence.matchingSiblingKeys(draftKey)
                     val fallbackSourceKey = restoredDraft?.first?.takeIf { it != draftKey }
@@ -2014,19 +2040,32 @@ internal class SharedThreadComposerDraftPersistSlice(
                                     .filterNot { attachment -> attachment.id in removedAttachmentIds }
                         )
                     }
-                val synchronized =
-                    if (withStagedAttachments.requiresComposerHostSync(reduced)) {
-                        withStagedAttachments.copy(syncNonce = reduced.syncNonce + 1)
+                val synchronizedBase =
+                    if (sameComposerInstanceRefiningDraft) {
+                        withStagedAttachments.copy(
+                            editorCommandNonce = maxOf(withStagedAttachments.editorCommandNonce, previous.editorCommandNonce),
+                            editorCommand = previous.editorCommand,
+                        )
                     } else {
                         withStagedAttachments
                     }
-                (if (withStagedAttachments.requiresComposerEditorReplace(reduced)) {
+                val synchronized =
+                    if (synchronizedBase.requiresComposerHostSync(reduced)) {
+                        synchronizedBase.copy(syncNonce = reduced.syncNonce + 1)
+                    } else {
+                        synchronizedBase
+                    }
+                val editorAlreadyMatchesRestored =
+                    sameComposerInstanceRefiningDraft &&
+                        withStagedAttachments.seedText == previous.seedText &&
+                        withStagedAttachments.seedAsTask == previous.seedAsTask
+                (if (!editorAlreadyMatchesRestored && withStagedAttachments.requiresComposerEditorReplace(if (sameComposerInstanceRefiningDraft) previous else reduced)) {
                     synchronized.withThreadComposerEditorCommand(
                         kind = ThreadComposerEditorCommandKind.Replace,
                         text = withStagedAttachments.seedText,
                         asTask = withStagedAttachments.seedAsTask,
-                        expectedText = reduced.seedText,
-                        expectedAsTask = reduced.seedAsTask,
+                        expectedText = if (sameComposerInstanceRefiningDraft) previous.seedText else reduced.seedText,
+                        expectedAsTask = if (sameComposerInstanceRefiningDraft) previous.seedAsTask else reduced.seedAsTask,
                     )
                 } else {
                     synchronized

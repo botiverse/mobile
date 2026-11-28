@@ -924,5 +924,17 @@ internal fun RaftThreadScreenPayload.optimisticComposerChannelId(
         ?: resolveThreadRouteIdentity().timelineChannelId?.takeIf { it.isNotBlank() }
         ?: parentChannelId?.takeIf { surfaceKind == RaftThreadSurfaceKind.ReplyThread && it.isNotBlank() }
 
+/**
+ * Authoritative send and attachment-upload target channel id for the composer: matches
+ * [resolvedAuxiliaryThreadId], or the route's concrete `timelineChannelId` while a reply thread
+ * with a known stream id is still loading. Unlike [optimisticComposerChannelId], this never falls
+ * back to `parentChannelId` for a reply thread whose stream channel id has not resolved yet.
+ */
+internal fun RaftThreadScreenPayload.composerSendTargetChannelId(
+    resolvedAuxiliaryThreadId: String? = resolvedAuxiliaryThreadId(),
+): String? =
+    resolvedAuxiliaryThreadId?.takeIf { it.isNotBlank() }
+        ?: resolveThreadRouteIdentity().timelineChannelId?.takeIf { it.isNotBlank() }
+
 internal fun shouldDeliverToActiveThreadRealtimeSignal(event: RealtimeEvent): Boolean =
     RealtimeRoutePolicy.shouldForwardToActiveThread(event) || event is Heartbeat

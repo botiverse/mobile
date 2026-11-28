@@ -528,22 +528,39 @@ fun RaftWindowFocusScope(
     }
 }
 
-/** Reports the composer editor's focus to its window's [ComposerFocusHolders] for its page [focus]. */
+/**
+ * Reports the composer editor's focus to its window's [ComposerFocusHolders] for its page [focus].
+ *
+ * Keeps a single stable `onFocusChanged` node in the modifier chain even when [focus] is `null`
+ * (such as during `LoadingShell`), so transitioning `focus: null -> non-null` into
+ * `FeatureSurfaces` never mutates `BasicTextField`'s modifier node chain and immediately registers
+ * an already-focused editor with [ComposerFocusHolders].
+ */
 @Composable
 internal fun Modifier.composerReportsFocus(focus: ComposerFocusOnOpen?): Modifier {
-    if (focus == null) return this
     val holders = LocalComposerFocusHolders.current
     val region = LocalRaftFocusRegion.current
-    var currentlyFocused by remember(focus) { mutableStateOf(false) }
+    val currentFocus by rememberUpdatedState(focus)
+    val currentHolders by rememberUpdatedState(holders)
+    val currentRegion by rememberUpdatedState(region)
+    var currentlyFocused by remember { mutableStateOf(false) }
     SideEffect {
-        if (currentlyFocused) holders.set(focus, true, region)
+        if (focus != null && currentlyFocused) {
+            holders.set(focus, true, region)
+        }
     }
     DisposableEffect(focus, holders) {
-        onDispose { holders.set(focus, false, region) }
+        onDispose {
+            if (focus != null) {
+                holders.set(focus, false, currentRegion)
+            }
+        }
     }
     return onFocusChanged {
         currentlyFocused = it.isFocused
-        holders.set(focus, it.isFocused, region)
+        currentFocus?.let { activeFocus ->
+            currentHolders.set(activeFocus, it.isFocused, currentRegion)
+        }
     }
 }
 

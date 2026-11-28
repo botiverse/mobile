@@ -688,7 +688,20 @@ internal fun ThreadComposerRoute(
         ThreadRemovedAppBotReadOnlyComposer(handle = removedAppBot.handle)
         return
     }
-    val composerDraftState by composerDraftViewModel.state.collectAsState()
+    // Subscribe to StateFlow emissions while also reading `.value` synchronously: when the parent
+    // called `ensureThreadComposerDraftStarted(...)` earlier in this exact composition pass (for
+    // example when a reply thread or joint channel refines `expectedDraftKey` mid-load),
+    // `collectAsState()` still returns the previous emission for 1 frame. Falling back to the
+    // stale collected value would fail `threadComposerEditorReadyToMount`, flash
+    // `ThreadComposerRestingHeightPlaceholder`, detach `BasicTextField`, and dismiss the IME.
+    val collectedDraftState by composerDraftViewModel.state.collectAsState()
+    val liveDraftState = composerDraftViewModel.state.value
+    val composerDraftState =
+        if (liveDraftState != collectedDraftState) {
+            liveDraftState
+        } else {
+            collectedDraftState
+        }
     // The editor mounts as soon as its draft is loaded, also while the push slide runs, so the
     // composer slides in with the page (artin 11-22, 1.28). Holding it back until the slide
     // settled (#5320) left an empty strip sliding in and the input box popping in last; a static

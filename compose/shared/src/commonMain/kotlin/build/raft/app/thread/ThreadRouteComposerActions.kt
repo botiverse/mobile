@@ -11,6 +11,7 @@ import build.raft.app.RaftFilePreviewCompressedImageResult
 import build.raft.app.RaftFilePreviewPayload
 import build.raft.app.RaftPendingAttachmentItem
 import build.raft.app.RaftThreadComposerPayload
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.ReplyCacheProvenance
 import build.raft.app.SharedThreadComposerDraftIntent
 import build.raft.app.SharedThreadComposerDraftPersistSlice
@@ -176,7 +177,7 @@ internal class ThreadRouteComposerActions(
         val currentComposer = currentComposerPayload()
         val currentDraftState = composerDraftViewModel.state.value
         val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
-        val threadId = composerSurface.sendChannelId
+        val threadId = payload.composerSendTargetChannelId()
         val externalShareAttachments =
             currentComposer.pendingAttachments.filter { attachment -> attachment.source == "external_share" }
         val externalShareSources = currentDraftState.externalShareSources
@@ -336,13 +337,32 @@ internal class ThreadRouteComposerActions(
             return ThreadComposerSendAdmission.Rejected
         }
         val currentThreadState = threadViewModel.state.value
+        val sendTargetChannelId = payload.composerSendTargetChannelId()
         val allowOptimisticLoadingSend =
             currentThreadState.allowsOptimisticSendWhileAccessLoading(
-                sendChannelId = composerSurface.sendChannelId,
+                sendChannelId = sendTargetChannelId,
                 limitLocked = threadLimitLocked,
             )
-        if (!renderSlice.writeActionsEnabled && !allowOptimisticLoadingSend) {
-            if (currentThreadState.canDeferOptimisticSendWhileAccessLoading(limitLocked = threadLimitLocked)) {
+        val canDeferWhileTargetOrAccessResolving =
+            currentThreadState.canDeferOptimisticSendWhileAccessLoading(limitLocked = threadLimitLocked) ||
+                (
+                    !threadLimitLocked &&
+                        !payload.channelArchived &&
+                        payload.status != "error" &&
+                        payload.status != "no_permission" &&
+                        (
+                            (sendTargetChannelId == null && payload.status == "loading") ||
+                                (
+                                    renderSlice.accessResolution == ThreadAccessResolution.Resolved &&
+                                        !renderSlice.canonicalAccessResolved &&
+                                        !renderSlice.writeActionsEnabled &&
+                                        payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread &&
+                                        payload.joined
+                                )
+                        )
+                )
+        if ((!renderSlice.writeActionsEnabled && !allowOptimisticLoadingSend) || sendTargetChannelId == null) {
+            if (canDeferWhileTargetOrAccessResolving) {
                 composerDraftViewModel.dispatch(
                     SharedThreadComposerDraftIntent.Change(
                         seedText = request.value.text,
@@ -359,11 +379,14 @@ internal class ThreadRouteComposerActions(
                 bridge.log(
                     "thread_composer_send_deferred_for_access instanceId=${payload.instanceId} " +
                         "surface=${payload.surfaceKind} textLen=${request.value.text.length} " +
-                        "sendChannelId=${composerSurface.sendChannelId.orEmpty()}"
+                        "sendChannelId=${sendTargetChannelId.orEmpty()}"
                 )
                 return ThreadComposerSendAdmission.Deferred
             }
-            bridge.log("thread_composer_action_blocked action=send reason=read_only_access_fallback")
+            bridge.log(
+                "thread_composer_action_blocked action=send reason=" +
+                    if (sendTargetChannelId == null) "missing_send_channel" else "read_only_access_fallback"
+            )
             return ThreadComposerSendAdmission.Rejected
         }
         if (externalShareSendRequested) {
@@ -866,7 +889,7 @@ internal class ThreadRouteComposerActions(
                     // Images the host already read inside its paste action (no clipboard read here).
                     val hostPasted = ThreadComposerImagePasteRequests.takePending()
                     coroutineScope.launch {
-                        if (composerSurface.sendChannelId == null) {
+                        if (payload.composerSendTargetChannelId() == null) {
                             bridge.toast(attachmentPickerUnavailableLabel)
                             return@launch
                         }
@@ -925,7 +948,7 @@ internal class ThreadRouteComposerActions(
                     if (opensImageEditor) composerKeyboardHandoff.leave(keyboardOpen = adaptivePageKeyboardInsetDp > 0f)
                     coroutineScope.launch {
                         try {
-                            val channelId = composerSurface.sendChannelId
+                            val channelId = payload.composerSendTargetChannelId()
                             if (channelId == null) {
                                 bridge.toast(attachmentPickerUnavailableLabel)
                                 return@launch

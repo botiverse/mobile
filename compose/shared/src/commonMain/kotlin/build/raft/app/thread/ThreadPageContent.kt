@@ -225,6 +225,8 @@ internal data class ThreadPageContentData(
     val adaptiveStoreScope: RaftShellStoreScope,
     val adaptiveEventBus: RaftEventBus,
     val onThreadEvent: ThreadEventHandler,
+    /** Keyboard inset already reported while LoadingShell hosted the optimistic composer. */
+    val initialComposerKeyboardInsetDp: Float = 0f,
     /** The window's "something is about to open" signal: an open Tasks / Files cover closes on it. */
     val incomingNavigation: RaftIncomingNavigationSignal? = null,
 )
@@ -383,6 +385,7 @@ fun rememberThreadPageContentScaffoldSlots(
     onClearChannelProfileUpdateStatus: () -> Unit = {},
     onForwardMessagesDelivered: (ForwardMessageBatchResult) -> Unit = {},
     onOpenForwardDestination: (ThreadForwardSuccessBanner) -> Unit = {},
+    initialComposerKeyboardInsetDp: Float = 0f,
     onComposerKeyboardInsetChanged: (Float) -> Unit = {},
     onThreadEvent: ThreadEventHandler,
     onComposerSendRequest: (ThreadComposerSendRequest) -> ThreadComposerSendAdmission,
@@ -471,6 +474,7 @@ fun rememberThreadPageContentScaffoldSlots(
                 adaptiveStoreScope = adaptiveStoreScope,
                 adaptiveEventBus = adaptiveEventBus,
                 onThreadEvent = onThreadEvent,
+                initialComposerKeyboardInsetDp = initialComposerKeyboardInsetDp,
                 incomingNavigation = incomingNavigation,
             ),
         callbacks =
@@ -882,7 +886,8 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
         shareState.forwardNote = TextFieldValue()
         activeModal = "forwardTargets"
     }
-    val composerKeyboardInsetDpState = remember(threadInstanceKey) { mutableStateOf(0f) }
+    val composerKeyboardInsetDpState =
+        remember(threadInstanceKey) { mutableStateOf(data.initialComposerKeyboardInsetDp) }
     var composerKeyboardInsetDp by composerKeyboardInsetDpState
     val isReplyThread = payload.surfaceKind == RaftThreadSurfaceKind.ReplyThread && !payload.isTaskConversationSurface()
     val originalPullController =
@@ -1006,8 +1011,18 @@ private fun rememberThreadPageContentScaffoldSlotsContent(
     }
     val loungeFooterKind = agentLoungeFooterKind(conversationLounge, pageLounge)
     val archivedFooterActive = pageLounge == null && threadFooterShowsArchived(payload)
+    // Non-reply surfaces whose timeline landed without attested membership (for example a task
+    // conversation waiting for its parent channel detail or initial Home lookup) transition
+    // `accessResolution` to `Resolved` while keeping `canonicalAccessResolved = false` and
+    // `writeActionsEnabled = false`. Keep the optimistic composer mounted across that pending
+    // authority window so an already-focused editor is not unmounted and its IME is not dismissed.
+    val unresolvedNonReplyWriteAuthority =
+        accessResolution == ThreadAccessResolution.Resolved &&
+            !canonicalAccessResolved &&
+            !writeActionsEnabled &&
+            payload.surfaceKind != RaftThreadSurfaceKind.ReplyThread
     val optimisticComposerActive =
-        !primaryFooterReady &&
+        (!primaryFooterReady || unresolvedNonReplyWriteAuthority) &&
             !taskConversationReadOnly &&
             threadShowsOptimisticComposer(
                 accessResolution = accessResolution,

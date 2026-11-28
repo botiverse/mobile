@@ -76,6 +76,7 @@ internal class ThreadRouteAttachmentUploader(
     val latestCurrentSessionState: State<StoredAuthSession?>,
     val composerDraftViewModel: SharedThreadComposerDraftViewModel,
     val composerSurface: ThreadComposerSurface,
+    val resolvedSendChannelId: String? = composerSurface.sendChannelId,
     val attachmentUploads: RaftComposerServerUploads,
     val attachmentUploadOrchestrator: ThreadAttachmentUploadOrchestrator,
     val attachmentUploadSemaphore: Semaphore,
@@ -191,7 +192,7 @@ internal class ThreadRouteAttachmentUploader(
         // the key captured here makes every progress/success/failure publication fail closed.
         val draftKey = normalizeThreadAttachmentUploadDraftKey(composerDraftViewModel.state.value.draftKey)
             ?: return false
-        val channelId = composerSurface.sendChannelId
+        val channelId = resolvedSendChannelId
         if (channelId == null) {
             bridge.toast(attachmentPickerUnavailableLabel)
             return false
