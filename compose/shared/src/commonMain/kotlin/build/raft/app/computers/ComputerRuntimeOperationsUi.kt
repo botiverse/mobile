@@ -1,21 +1,31 @@
 package build.raft.app
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import build.raft.app.data.RuntimeAuthRuntime
+import build.raft.app.data.RuntimeInstallResult
 import build.raft.app.members.MembersRuntimeAccountUsageAccess
 import build.raft.app.resources.*
 import build.raft.designsystem.components.RaftBadge
@@ -33,6 +43,8 @@ import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
 
 /*
  * Upgrade on a runtime's card and Install on a not-installed runtime chip (web RuntimeUpgradeButton,
@@ -196,8 +208,74 @@ internal fun ComputerRuntimeInstallStatus(controller: ComputerRuntimeInstallCont
                 openUrl = openUrl,
             )
         is ComputerRuntimeInstallState.ForRuntime ->
-            ComputerRuntimeOperationOutcome(computerRuntimeInstallCopy(state), runtimeName = state.runtimeName)
+            ComputerRuntimeInstallOutcome(state)
         ComputerRuntimeInstallState.Idle -> Unit
+    }
+}
+
+/**
+ * Web `RuntimeInstallOutcome`: one plain sentence per outcome; for a failed install that carried
+ * the installer's redacted last lines (`outputTail`, botiverse/slock #17305), shows those lines in
+ * a scrollable monospace code block directly under the failure sentence. Failure outcomes without
+ * `outputTail` render identically to [ComputerRuntimeOperationOutcome].
+ */
+@Composable
+internal fun ComputerRuntimeInstallOutcome(
+    state: ComputerRuntimeInstallState.ForRuntime,
+    modifier: Modifier = Modifier,
+) {
+    val copy = computerRuntimeInstallCopy(state) ?: return
+    val failed = (state as? ComputerRuntimeInstallState.Done)?.result as? RuntimeInstallResult.Failed
+    val outputTail = failed?.outputTail?.trim()?.takeIf { it.isNotEmpty() }
+    if (outputTail == null) {
+        ComputerRuntimeOperationOutcome(copy, runtimeName = state.runtimeName, modifier = modifier)
+        return
+    }
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ComputerRuntimeOperationOutcome(copy, runtimeName = state.runtimeName)
+        ComputerRuntimeInstallOutputTail(outputTail)
+    }
+}
+
+/**
+ * Redacted last lines of a failed runtime install (web `RuntimeInstallOutcome`
+ * `runtime-install-failed-output`, botiverse/slock #17305): localized label above a bounded
+ * vertically-scrollable monospace code block.
+ */
+@Composable
+internal fun ComputerRuntimeInstallOutputTail(
+    outputTail: String,
+    modifier: Modifier = Modifier,
+) {
+    val colors = RaftTheme.colors
+    val shape = RoundedCornerShape(RaftRadius.Control)
+    Column(
+        modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RaftText(
+            stringResource(Res.string.settings_computers_runtime_install_failed_output_tail),
+            style = RaftTheme.typography.caption,
+            color = colors.foreground,
+        )
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .clip(shape)
+                    .background(colors.layerCode, shape)
+                    .border(RaftStroke.Hairline, colors.lineHairline, shape)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            RaftText(
+                text = outputTail,
+                modifier = Modifier.fillMaxWidth().testTag(COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG),
+                style = RaftTheme.typography.monoCode.copy(lineBreak = LineBreak.Simple),
+                color = colors.foreground,
+            )
+        }
     }
 }
 
@@ -295,3 +373,5 @@ internal const val COMPUTER_RUNTIME_INSTALL_CHIP_TAG = "machine-runtime-install-
 internal const val COMPUTER_RUNTIME_INSTALL_DIALOG_TAG = "runtime-install-dialog"
 internal const val COMPUTER_RUNTIME_INSTALL_CONFIRM_TAG = "runtime-install-confirm"
 internal const val COMPUTER_RUNTIME_INSTALL_STEPS_TAG = "runtime-install-steps"
+internal const val COMPUTER_RUNTIME_INSTALL_OUTPUT_TAG = "runtime-install-failed-output"
+internal const val COMPUTER_RUNTIME_INSTALL_OUTPUT_TAIL_TAG = "runtime-install-failed-output-tail"

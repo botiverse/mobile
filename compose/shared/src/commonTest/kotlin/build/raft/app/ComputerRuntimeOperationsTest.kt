@@ -161,6 +161,59 @@ class ComputerRuntimeOperationsTest {
         assertEquals(RuntimeInstallResult.Installed("0.1.9"), assertIs<ComputerRuntimeInstallState.Done>(controller.state).result)
     }
 
+    /**
+     * botiverse/slock #17305: a failed install carries the redacted `outputTail` in state, never
+     * writes the raw tail into diagnostics logs, and clears it on retry or identity reset.
+     */
+    @Test
+    fun failedInstallCarriesOutputTailClearsOnRetryAndNeverLogsRawTail() = runTest {
+        val tail = "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@deepseek-ai%2fdsh"
+        val answers =
+            ArrayDeque<RuntimeAuthCall<RuntimeInstallResult>>(
+                listOf(
+                    RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)),
+                    RuntimeAuthCall.Done(RuntimeInstallResult.Installed("0.1.9")),
+                    RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)),
+                    RuntimeAuthCall.Superseded,
+                )
+            )
+        val logs = mutableListOf<String>()
+        val ops = FakeInstallOps(installAnswer = { answers.removeFirst() })
+        val controller = ComputerRuntimeInstallController(ops, backgroundScope, log = { logs += it })
+
+        controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
+        runCurrent()
+        controller.confirm()
+        runCurrent()
+
+        val failedDone = assertIs<ComputerRuntimeInstallState.Done>(controller.state)
+        assertEquals(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail), failedDone.result)
+        assertEquals("Failed", RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)).operationLabel())
+        assertTrue(logs.any { it == "computer_runtime_install runtime=grok result=Failed" }, logs.toString())
+        assertTrue(logs.none { "E404" in it || "registry.npmjs.org" in it }, "raw outputTail must never be logged: $logs")
+
+        // Starting a retry immediately drops the failed outcome and its outputTail.
+        controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
+        assertIs<ComputerRuntimeInstallState.Planning>(controller.state)
+        runCurrent()
+        assertIs<ComputerRuntimeInstallState.Confirm>(controller.state)
+        controller.confirm()
+        runCurrent()
+        assertEquals(RuntimeInstallResult.Installed("0.1.9"), assertIs<ComputerRuntimeInstallState.Done>(controller.state).result)
+
+        // A second failure followed by a retry that gets superseded resets cleanly to Idle.
+        controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
+        runCurrent()
+        controller.confirm()
+        runCurrent()
+        assertEquals(tail, assertIs<RuntimeInstallResult.Failed>(assertIs<ComputerRuntimeInstallState.Done>(controller.state).result).outputTail)
+        controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
+        runCurrent()
+        controller.confirm()
+        runCurrent()
+        assertEquals(ComputerRuntimeInstallState.Idle, controller.state)
+    }
+
     @Test
     fun upgradeIsOfferedOnTheCardOnlyWhereTheServerSaysAndRunsOncePerPress() = runTest {
         val ops = FakeUpgradeOps()
@@ -302,6 +355,7 @@ class ComputerRuntimeOperationsTest {
     private class FakeInstallOps(
         private val plan: RuntimeAuthCall<RuntimeInstallPlan> =
             RuntimeAuthCall.Done(RuntimeInstallPlan.Plan(listOf("curl -fsSL https://x.ai/cli/install.sh | bash"), "https://docs.x.ai/docs/grok-build")),
+        private val installAnswer: () -> RuntimeAuthCall<RuntimeInstallResult> = { RuntimeAuthCall.Done(RuntimeInstallResult.Installed("0.1.9")) },
     ) : ComputerRuntimeInstallOps {
         val calls = mutableListOf<String>()
 
@@ -317,7 +371,7 @@ class ComputerRuntimeOperationsTest {
 
         override suspend fun install(runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeInstallResult> {
             calls += "install ${runtime.wire}"
-            return RuntimeAuthCall.Done(RuntimeInstallResult.Installed("0.1.9"))
+            return installAnswer()
         }
     }
 

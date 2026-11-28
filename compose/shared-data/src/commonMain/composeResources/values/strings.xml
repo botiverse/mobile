@@ -3579,6 +3579,7 @@
     <string name="settings_computers_runtime_install_installed">Installed %1$s.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s is already installed on this Computer.</string>
     <string name="settings_computers_runtime_install_failed">%1$s's installer didn't finish, so it is still not installed.</string>
+    <string name="settings_computers_runtime_install_failed_output_tail">Last lines of the install output:</string>
     <string name="settings_computers_runtime_install_in_progress">%1$s is already being installed on this Computer.</string>
     <string name="settings_computers_runtime_install_error">Couldn't install %1$s. Try again.</string>
     <string name="settings_computers_runtime_install_computer_too_old">This Computer is too old to install runtimes from here. Update the Computer first.</string>

@@ -6547,6 +6547,7 @@
     <string name="settings_computers_runtime_install_installed">Se instaló %1$s.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s ya está instalado en esta computadora.</string>
     <string name="settings_computers_runtime_install_failed">El instalador de %1$s no terminó, así que sigue sin estar instalado.</string>
+    <string name="settings_computers_runtime_install_failed_output_tail">Últimas líneas de la salida de la instalación:</string>
     <string name="settings_computers_runtime_install_in_progress">%1$s ya se está instalando en esta computadora.</string>
     <string name="settings_computers_runtime_install_error">No se pudo instalar %1$s. Inténtalo de nuevo.</string>
     <string name="settings_computers_runtime_install_computer_too_old">Esta computadora es demasiado antigua para instalar runtimes desde aquí. Actualiza la computadora primero.</string>

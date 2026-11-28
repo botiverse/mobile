@@ -10,6 +10,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /*
  * Upgrading and installing a Computer's runtimes from its page, as the web does: botiverse/slock
@@ -49,9 +50,22 @@ import kotlinx.serialization.json.JsonObject
 /** slock `RUNTIME_INSTALL_PLAN_RELAY_BUDGET_MS`: the plan runs no installer, only local reads. */
 @RaftCoreInternalApi const val RUNTIME_INSTALL_PLAN_RELAY_BUDGET_MILLIS = 60_000L
 
-/** The body of an upgrade, an install plan or an install: only the async flag; the runtime is the path's. */
+/**
+ * slock `RUNTIME_INSTALL_OUTPUT_TAIL_MAX_CHARS`: at most 2 KB of redacted last output lines
+ * returned on a failed runtime install (botiverse/slock #17305).
+ */
+@RaftCoreInternalApi const val RUNTIME_INSTALL_OUTPUT_TAIL_MAX_CHARS = 2_048
+
+/**
+ * The body of an upgrade, an install plan or an install: the runtime is the path's. [outputTail] is
+ * sent (`true`) only on `install` to opt into a failed installer's redacted last lines
+ * (botiverse/slock #17305); omitted (`null`) on `upgrade` and `install-plan`.
+ */
 @Serializable
-@RaftCoreInternalApi data class RuntimeMachineOperationBody(val respondAsync: Boolean)
+@RaftCoreInternalApi data class RuntimeMachineOperationBody(
+    val respondAsync: Boolean,
+    val outputTail: Boolean? = null,
+)
 
 /** slock `RUNTIME_UPGRADE_ERROR_CODES` / `RUNTIME_INSTALL_ERROR_CODES`: why the Computer could not try. */
 @RaftCoreInternalApi enum class RuntimeOperationErrorCode(val wire: String) {
@@ -171,15 +185,25 @@ import kotlinx.serialization.json.JsonObject
     data object Error : RuntimeInstallPlan
 }
 
-/** slock `RuntimeInstallResult`: what an install did, without the installer's output. */
+/**
+ * slock `RuntimeInstallResult`: what an install did. A `failed` outcome may carry the installer's
+ * redacted last lines (`outputTail`, botiverse/slock #17305) when requested and answered to the
+ * person who attached the Computer; never logged or traced.
+ */
 @RaftCoreInternalApi sealed interface RuntimeInstallResult {
     data class Installed(val version: String? = null) : RuntimeInstallResult
 
     /** The probe found it before any installer ran. */
     data class AlreadyInstalled(val version: String? = null) : RuntimeInstallResult
 
-    /** The installer ran and the probe still finds nothing; null exit code when the timeout stopped it. */
-    data class Failed(val exitCode: Int? = null) : RuntimeInstallResult
+    /**
+     * The installer ran and the probe still finds nothing; null exit code when the timeout stopped it.
+     * [outputTail] is the redacted last lines of the installer's output when sent by the Computer.
+     */
+    data class Failed(
+        val exitCode: Int? = null,
+        val outputTail: String? = null,
+    ) : RuntimeInstallResult
 
     data class Unsupported(val reason: RuntimeInstallUnsupportedReason) : RuntimeInstallResult
 
@@ -194,6 +218,7 @@ private data class RuntimeOperationOutcomeDto(
     val to: String? = null,
     val version: String? = null,
     val exitCode: Int? = null,
+    val outputTail: JsonElement? = null,
     val reason: String? = null,
     val code: String? = null,
     val detail: String? = null,
@@ -348,13 +373,24 @@ private fun String?.installSource(): String? =
     }
 }
 
+/**
+ * slock `runtimeInstallResultSchema`'s `outputTail`: redacted last lines of a failed installer,
+ * trimmed and non-blank, within [RUNTIME_INSTALL_OUTPUT_TAIL_MAX_CHARS]. Absent, null, blank,
+ * non-string, or oversized values become null; never logged.
+ */
+private fun JsonElement?.runtimeInstallOutputTail(): String? {
+    val primitive = this as? JsonPrimitive ?: return null
+    if (!primitive.isString) return null
+    return primitive.content.trim().takeIf { it.isNotEmpty() && it.length <= RUNTIME_INSTALL_OUTPUT_TAIL_MAX_CHARS }
+}
+
 /** The install's `result`; null when it is not one (the caller says the install failed). */
 @RaftCoreInternalApi fun JsonElement.toRuntimeInstallResult(diagnostics: (String) -> Unit = strictProjectionDiagnosticsLogger): RuntimeInstallResult? {
     val dto = toRuntimeOperationOutcomeDto() ?: return null
     return when (dto.kind) {
         "installed" -> RuntimeInstallResult.Installed(runtimeOperationVersion(dto.version))
         "already_installed" -> RuntimeInstallResult.AlreadyInstalled(runtimeOperationVersion(dto.version))
-        "failed" -> RuntimeInstallResult.Failed(dto.exitCode)
+        "failed" -> RuntimeInstallResult.Failed(dto.exitCode, dto.outputTail.runtimeInstallOutputTail())
         "unsupported" -> RuntimeInstallUnsupportedReason.fromWire(dto.reason)?.let(RuntimeInstallResult::Unsupported)
         "error" -> RuntimeOperationErrorCode.fromWire(dto.code)?.let(RuntimeInstallResult::Error)
         else -> {
