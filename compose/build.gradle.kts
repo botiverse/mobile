@@ -421,8 +421,12 @@ listOf(":shared", ":androidApp").forEach { path ->
 // Ordinary PR tier (artin 2026-11-22: "PRs run only a little, like slock"). On ordinary pull requests
 // test.yml passes -Praft.unitTest.skipRobolectric=true (planner android_unit_scope=jvm): the unit-test
 // tasks of :shared and :androidApp then skip every test class JUnit runs on Robolectric, every :shared
-// screenshot test among them, and run the plain JVM classes. The classes come from the test sources,
-// so a new Robolectric test needs nothing extra: a top-level class whose @RunWith names
+// screenshot test among them, and run the plain JVM classes. When test.yml also passes
+// -Praft.unitTest.allowSelectedRobolectric=true alongside -Praft.unitTest.includeClassesFile=<path>
+// (changed-file selection with <= cap non-screenshot Robolectric UI classes), explicitly selected
+// non-screenshot Robolectric classes in that include file are exempted from skipRobolectric while all
+// unselected Robolectric classes and all screenshot golden classes stay excluded. The classes come from
+// the test sources, so a new Robolectric test needs nothing extra: a top-level class whose @RunWith names
 // RobolectricTestRunner, ParameterizedRobolectricTestRunner or AndroidJUnit4 (Robolectric off a
 // device), or that extends a class or runner of these sources that does (@RunWith is inherited).
 // Comments and string literals do not count. The full tier (main and release-* pushes, nightly,
@@ -432,6 +436,30 @@ val raftSkipRobolectric =
     providers.gradleProperty("raft.unitTest.skipRobolectric")
         .map { it.equals("true", ignoreCase = true) }
         .getOrElse(false)
+
+val raftAllowSelectedRobolectric =
+    providers.gradleProperty("raft.unitTest.allowSelectedRobolectric")
+        .map { it.equals("true", ignoreCase = true) }
+        .getOrElse(false)
+
+val raftSkipScreenshots =
+    providers.gradleProperty("raft.unitTest.skipScreenshots")
+        .map { it.equals("true", ignoreCase = true) }
+        .getOrElse(false)
+
+val raftUnitTestIncludeClassesFile =
+    providers.gradleProperty("raft.unitTest.includeClassesFile")
+        .orNull
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+
+fun raftRequestedRoborazziTask(): String? =
+    gradle.startParameter.taskNames.firstOrNull { name ->
+        val simple = name.substringAfterLast(':')
+        simple.startsWith("verifyRoborazzi") ||
+            simple.startsWith("recordRoborazzi") ||
+            simple.startsWith("compareRoborazzi")
+    }
 
 // [source] without comments (Kotlin block comments nest) and with string, char and backtick literals
 // emptied; line breaks outside literals stay, so line-anchored patterns still see every line start.
@@ -528,44 +556,6 @@ fun raftRobolectricTestClasses(roots: List<File>): Set<String> {
     return skipped
 }
 
-if (raftSkipRobolectric) {
-    mapOf(
-        ":shared" to listOf("src/commonTest", "src/androidUnitTest"),
-        ":androidApp" to listOf("src/test"),
-    ).forEach { (path, roots) ->
-        project(path) {
-            val robolectricClasses by lazy {
-                raftRobolectricTestClasses(roots.map { file(it) }).also { classes ->
-                    logger.lifecycle("raft.unitTest.skipRobolectric: $path unit tests skip ${classes.size} Robolectric test classes")
-                }
-            }
-            tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
-                .matching { it.name.endsWith("UnitTest") }
-                .configureEach {
-                    filter {
-                        robolectricClasses.forEach { excludeTestsMatching(it) }
-                        // A module whose tests are all Robolectric is not misconfigured on this tier.
-                        isFailOnNoMatchingTests = false
-                    }
-                    failOnNoDiscoveredTests.set(false)
-                }
-        }
-    }
-}
-
-// PR CI Roborazzi / screenshot golden split (#proj-mobile:#340, artin 2026-11-24): screenshot
-// golden verification runs post-merge (main, release-*, nightly, merge queue, full-ci, scope=full,
-// record_screenshots), never on ordinary PRs. When test.yml passes -Praft.unitTest.skipScreenshots=true,
-// :designsystem:desktopTest skips every vcase / screenshot golden class (subclasses of VCaseDesktopTest,
-// @RunWith(VCaseRunner), or *ScreenshotTest) while keeping all commonTest unit tests and desktopTest
-// Compose UI logic / semantics / interaction tests, and :shared skips every RaftRobolectricScreenshot /
-// *ScreenshotTest class while keeping non-screenshot Robolectric + Compose UI logic tests (used on
-// build/deps PRs where skipRobolectric is off). Unset on local runs and on the full tier.
-val raftSkipScreenshots =
-    providers.gradleProperty("raft.unitTest.skipScreenshots")
-        .map { it.equals("true", ignoreCase = true) }
-        .getOrElse(false)
-
 // Fully qualified names of screenshot golden test classes under [roots]: subclasses of VCaseDesktopTest,
 // classes with @RunWith(VCaseRunner), classes whose body calls RaftRobolectricScreenshot / captureRoboImage,
 // or classes named *ScreenshotTest (plus subclasses of any of those).
@@ -629,14 +619,105 @@ fun raftScreenshotTestClasses(roots: List<File>): Set<String> {
     return skipped
 }
 
-if (raftSkipScreenshots) {
-    val roborazziTask = gradle.startParameter.taskNames.firstOrNull { name ->
-        val simple = name.substringAfterLast(':')
-        simple.startsWith("verifyRoborazzi") ||
-            simple.startsWith("recordRoborazzi") ||
-            simple.startsWith("compareRoborazzi")
+// Parse raft.unitTest.includeClassesFile once up front so both skipRobolectric (when
+// allowSelectedRobolectric=true) and includeTestsMatching share the exact same validated class list.
+val raftIncludeClassesByProject: Map<String, List<String>> =
+    if (raftUnitTestIncludeClassesFile != null) {
+        raftRequestedRoborazziTask()?.let { roborazziTask ->
+            throw GradleException(
+                "raft.unitTest.includeClassesFile cannot be combined with Roborazzi task $roborazziTask"
+            )
+        }
+        val includeFile = file(raftUnitTestIncludeClassesFile)
+        if (!includeFile.isFile) {
+            throw GradleException("raft.unitTest.includeClassesFile does not exist: ${includeFile.absolutePath}")
+        }
+        val classesByProject = linkedMapOf<String, MutableList<String>>()
+        includeFile.readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") }
+            .forEach { line ->
+                val sep = line.indexOf(':', startIndex = 1)
+                if (!line.startsWith(":") || sep <= 1 || sep == line.lastIndex) {
+                    throw GradleException("Invalid raft.unitTest.includeClassesFile entry (expected :project:fqcn): $line")
+                }
+                val projectPath = line.substring(0, sep)
+                val fqcn = line.substring(sep + 1)
+                classesByProject.getOrPut(projectPath) { mutableListOf() }.add(fqcn)
+            }
+        classesByProject
+    } else {
+        emptyMap()
     }
-    if (roborazziTask != null) {
+
+if (raftAllowSelectedRobolectric) {
+    raftRequestedRoborazziTask()?.let { roborazziTask ->
+        throw GradleException(
+            "raft.unitTest.allowSelectedRobolectric=true cannot be combined with Roborazzi task $roborazziTask"
+        )
+    }
+    if (raftUnitTestIncludeClassesFile == null) {
+        throw GradleException(
+            "raft.unitTest.allowSelectedRobolectric=true requires raft.unitTest.includeClassesFile"
+        )
+    }
+}
+
+val raftAndroidUnitTestRoots = mapOf(
+    ":shared" to listOf("src/commonTest", "src/androidUnitTest"),
+    ":androidApp" to listOf("src/test"),
+)
+
+if (raftSkipRobolectric) {
+    raftAndroidUnitTestRoots.forEach { (path, roots) ->
+        project(path) {
+            val selectedClasses = raftIncludeClassesByProject[path].orEmpty().toSet()
+            val skippedRobolectricClasses by lazy {
+                val sourceRoots = roots.map { file(it) }
+                val allRobolectric = raftRobolectricTestClasses(sourceRoots)
+                val allowedRobolectric =
+                    if (raftAllowSelectedRobolectric && selectedClasses.isNotEmpty()) {
+                        val screenshotClasses = raftScreenshotTestClasses(sourceRoots)
+                        (allRobolectric intersect selectedClasses) - screenshotClasses
+                    } else {
+                        emptySet()
+                    }
+                val skipped = allRobolectric - allowedRobolectric
+                if (raftAllowSelectedRobolectric) {
+                    logger.lifecycle(
+                        "raft.unitTest.skipRobolectric: $path unit tests skip ${skipped.size} Robolectric test classes " +
+                            "(allowing ${allowedRobolectric.size} selected non-screenshot Robolectric classes)"
+                    )
+                } else {
+                    logger.lifecycle("raft.unitTest.skipRobolectric: $path unit tests skip ${skipped.size} Robolectric test classes")
+                }
+                skipped
+            }
+            tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
+                .matching { it.name.endsWith("UnitTest") }
+                .configureEach {
+                    filter {
+                        skippedRobolectricClasses.forEach { excludeTestsMatching(it) }
+                        // A module whose tests are all Robolectric is not misconfigured on this tier.
+                        isFailOnNoMatchingTests = false
+                    }
+                    failOnNoDiscoveredTests.set(false)
+                }
+        }
+    }
+}
+
+// PR CI Roborazzi / screenshot golden split (#proj-mobile:#340, artin 2026-11-24): screenshot
+// golden verification runs post-merge (main, release-*, nightly, merge queue, full-ci, scope=full,
+// record_screenshots), never on ordinary PRs. When test.yml passes -Praft.unitTest.skipScreenshots=true,
+// :designsystem:desktopTest skips every vcase / screenshot golden class (subclasses of VCaseDesktopTest,
+// @RunWith(VCaseRunner), or *ScreenshotTest) while keeping all commonTest unit tests and desktopTest
+// Compose UI logic / semantics / interaction tests, and :shared / :androidApp skip every
+// RaftRobolectricScreenshot / captureRoboImage / *ScreenshotTest class while keeping non-screenshot
+// Robolectric + Compose UI logic tests (used on build/deps PRs and PR-selected UI tests). Unset on
+// local runs and on the full tier.
+if (raftSkipScreenshots) {
+    raftRequestedRoborazziTask()?.let { roborazziTask ->
         throw GradleException(
             "raft.unitTest.skipScreenshots=true cannot be combined with Roborazzi task $roborazziTask"
         )
@@ -662,25 +743,25 @@ if (raftSkipScreenshots) {
                 }
         }
     }
-    project(":shared") {
-        val screenshotClasses by lazy {
-            raftScreenshotTestClasses(
-                listOf("src/commonTest", "src/androidUnitTest").map { file(it) }
-            ).also { classes ->
-                logger.lifecycle("raft.unitTest.skipScreenshots: :shared unit tests skip ${classes.size} screenshot test classes")
-            }
-        }
-        afterEvaluate {
-            tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
-                .matching { it.name.endsWith("UnitTest") }
-                .configureEach {
-                    systemProperty("roborazzi.test.verify", "false")
-                    filter {
-                        screenshotClasses.forEach { excludeTestsMatching(it) }
-                        isFailOnNoMatchingTests = false
-                    }
-                    failOnNoDiscoveredTests.set(false)
+    raftAndroidUnitTestRoots.forEach { (path, roots) ->
+        project(path) {
+            val screenshotClasses by lazy {
+                raftScreenshotTestClasses(roots.map { file(it) }).also { classes ->
+                    logger.lifecycle("raft.unitTest.skipScreenshots: $path unit tests skip ${classes.size} screenshot test classes")
                 }
+            }
+            afterEvaluate {
+                tasks.withType(org.gradle.api.tasks.testing.Test::class.java)
+                    .matching { it.name.endsWith("UnitTest") }
+                    .configureEach {
+                        systemProperty("roborazzi.test.verify", "false")
+                        filter {
+                            screenshotClasses.forEach { excludeTestsMatching(it) }
+                            isFailOnNoMatchingTests = false
+                        }
+                        failOnNoDiscoveredTests.set(false)
+                    }
+            }
         }
     }
 }
@@ -689,45 +770,13 @@ if (raftSkipScreenshots) {
 // (`android_unit_scope=jvm`), test.yml runs `scripts/ci/select_changed_tests.py` and passes
 // `-Praft.unitTest.includeClassesFile=<path>` listing `:<project>:<fqcn>` entries for impacted
 // test classes plus the always-run smoke set (`scripts/ci/always_run_smoke_tests.txt`).
-// Gradle intersects `includeTestsMatching` with `excludeTestsMatching`, so `skipRobolectric`
-// and `skipScreenshots` continue to exclude Robolectric and screenshot classes cleanly.
+// Gradle intersects `includeTestsMatching` with `excludeTestsMatching`, so `skipScreenshots`
+// always excludes screenshot golden classes and `skipRobolectric` excludes all Robolectric
+// classes unless `allowSelectedRobolectric=true` explicitly exempts the selected non-screenshot
+// Robolectric UI classes listed in `includeClassesFile`.
 // Unset on local runs, post-merge main/release pushes, nightly, merge queue, and full-tier PRs.
-val raftUnitTestIncludeClassesFile =
-    providers.gradleProperty("raft.unitTest.includeClassesFile")
-        .orNull
-        ?.trim()
-        ?.takeIf { it.isNotEmpty() }
-
 if (raftUnitTestIncludeClassesFile != null) {
-    val roborazziTask = gradle.startParameter.taskNames.firstOrNull { name ->
-        val simple = name.substringAfterLast(':')
-        simple.startsWith("verifyRoborazzi") ||
-            simple.startsWith("recordRoborazzi") ||
-            simple.startsWith("compareRoborazzi")
-    }
-    if (roborazziTask != null) {
-        throw GradleException(
-            "raft.unitTest.includeClassesFile cannot be combined with Roborazzi task $roborazziTask"
-        )
-    }
-    val includeFile = file(raftUnitTestIncludeClassesFile)
-    if (!includeFile.isFile) {
-        throw GradleException("raft.unitTest.includeClassesFile does not exist: ${includeFile.absolutePath}")
-    }
-    val classesByProject = linkedMapOf<String, MutableList<String>>()
-    includeFile.readLines()
-        .map { it.trim() }
-        .filter { it.isNotEmpty() && !it.startsWith("#") }
-        .forEach { line ->
-            val sep = line.indexOf(':', startIndex = 1)
-            if (!line.startsWith(":") || sep <= 1 || sep == line.lastIndex) {
-                throw GradleException("Invalid raft.unitTest.includeClassesFile entry (expected :project:fqcn): $line")
-            }
-            val projectPath = line.substring(0, sep)
-            val fqcn = line.substring(sep + 1)
-            classesByProject.getOrPut(projectPath) { mutableListOf() }.add(fqcn)
-        }
-    classesByProject.forEach { (projectPath, classes) ->
+    raftIncludeClassesByProject.forEach { (projectPath, classes) ->
         if (classes.isEmpty()) return@forEach
         project(projectPath) {
             afterEvaluate {
