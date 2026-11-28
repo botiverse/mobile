@@ -299,24 +299,21 @@ def evaluate_ab(
         samples = row.get("samples")
         val = row.get(metric)
 
-        if (
-            valid is not True
-            or not isinstance(samples, int)
-            or isinstance(samples, bool)
-            or samples <= 0
-            or not isinstance(iteration, int)
-            or isinstance(iteration, bool)
-            or not isinstance(val, (int, float))
-            or isinstance(val, bool)
-            or not math.isfinite(float(val))
-        ):
-            invalid_excluded += 1
-            continue
-
         throttled, thermal_reason = is_thermal_throttled(
             row.get("thermal_start"), row.get("thermal_end")
         )
-        if throttled:
+        has_valid_sample_and_metric = (
+            isinstance(samples, int)
+            and not isinstance(samples, bool)
+            and samples > 0
+            and isinstance(iteration, int)
+            and not isinstance(iteration, bool)
+            and isinstance(val, (int, float))
+            and not isinstance(val, bool)
+            and math.isfinite(float(val))
+        )
+
+        if throttled and has_valid_sample_and_metric:
             thermal_flags.append(
                 {
                     "run_id": row.get("run_id"),
@@ -327,9 +324,13 @@ def evaluate_ab(
                     "reason": thermal_reason,
                 }
             )
-            if filter_thermal:
+            if filter_thermal or valid is not True:
                 thermal_excluded += 1
                 continue
+
+        if valid is not True or not has_valid_sample_and_metric:
+            invalid_excluded += 1
+            continue
 
         target = base_by_iter if arm == "base" else head_by_iter
         target[iteration] = float(val)

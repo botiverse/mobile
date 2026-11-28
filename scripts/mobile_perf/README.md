@@ -30,24 +30,24 @@ dev:{device_id}|os:{os_version}|build:{build_type}|fx:{fixture_tag}|layout:{layo
 ### Data Hygiene Rules
 
 1. **Absent metrics are `null` (`None`), never `0`.** Positive timing/memory metrics reject `0`; Android keeps `metal_ms: null` and iOS keeps `render_thread_ms: null`.
-2. **Zero-sample rows stay in the table with `valid: false`.** `samples == 0` forces `valid = false`, and frame-derived metrics must be `null`.
+2. **Zero-sample and thermally throttled rows stay in the table with `valid: false`.** `samples == 0` forces `valid = false` with `null` frame metrics; capture-time thermal throttling (`thermal_end` in `{severe, critical, emergency, shutdown, serious}` or thermal tier jump `>= 2`) marks `valid = false` and records `extra.thermal_invalid_reason` so ScopeDB queries filtering `valid = true` automatically exclude overheated runs.
 3. **Explicit units on `segments`.** Every numeric key in `segments` must end with `_ms`, `_mb`, `_count`, `_dp`, or `_ratio`.
 4. **Canonical `top_hotspots` shape.** Each entry in `mobile_diagnose_runs.top_hotspots` has exact keys `{symbol, thread, self_ms, total_ms}` with `total_ms >= self_ms`.
 5. **UTC timestamps.** `taken_at` must be ISO-8601 UTC ending in `Z`.
 
 ## First-Batch Scenarios (`mobile-bench-v1`)
 
-All 7 scenarios target the fixed read-only staging fixture `mobile-bench-v1`:
+All 7 canonical scenarios target the fixed read-only staging fixture `mobile-bench-v1`:
 
-| Scenario | Primary KPI (Android / iOS) | Required `segments` |
-| --- | --- | --- |
-| `cold_start_home` | `ttfd_ms` / `ttfd_ms` | `app_init_ms`, `first_frame_ms` |
-| `thread_open` | `duration_ms` / `duration_ms` | `cache_rows_shown_ms`, `network_applied_ms`, `reading_anchor_attempt_count`, `visible_shift_dp`, `shift_count` |
-| `thread_scroll_media` | `frame_p95_ms` / `hitch_ms_per_s` | `frame_count`, `image_decode_ms` |
-| `activity_switch` | `duration_ms` / `duration_ms` | `tab_switch_ms`, `frame_count` |
-| `composer_typing` | `frame_p95_ms` / `hitch_ms_per_s` | `keystroke_count`, `frame_count` |
-| `composer_send` | `duration_ms` / `duration_ms` | `optimistic_render_ms`, `frame_count` |
-| `webview_artifact_open` | `ttfd_ms` / `ttfd_ms` | `webview_ready_ms`, `artifact_dom_ready_ms` |
+| Scenario | Online Event(s) | Primary KPI (Android / iOS) | Required `segments` |
+| --- | --- | --- | --- |
+| `cold_start` | `mobile.cold_start` / `startup` | `ttfd_ms` / `ttfd_ms` | `process_init_ms`, `compose_first_frame_ms`, `auth_bootstrap_ms`, `first_feed_render_ms` |
+| `channel_switch` | `mobile.frames.nav_transition` | `duration_ms` / `duration_ms` | `input_delay_ms`, `network_ms`, `recompose_layout_ms`, `render_gpu_ms`, `frame_count` |
+| `thread_scroll_ime` | `mobile.frames.scroll` | `frame_p95_ms` / `hitch_ms_per_s` | `ui_thread_ms`, `recompose_ms`, `render_thread_or_metal_ms`, `ime_settle_ms`, `frame_count` |
+| `composer_first_char` | `first_char_latency` | `duration_ms` / `duration_ms` | `first_char_p50_ms`, `first_char_p95_ms`, `key_to_state_ms`, `text_layout_ms`, `recompose_ms`, `draw_ms`, `frame_count` |
+| `webview_open` | `mobile.webview.load` | `duration_ms` / `duration_ms` | `container_init_ms`, `prewarm_hit_count`, `network_ms`, `first_paint_ms` |
+| `thread_open` | `mobile.thread_open` | `duration_ms` / `duration_ms` | `cache_rows_shown_ms`, `network_applied_ms`, `reading_anchor_attempt_count`, `visible_shift_dp`, `shift_count`, `frame_count` |
+| `foreground_resume` | `mobile.frames.resume` + `activity:foreground_sync_updated` | `duration_ms` / `duration_ms` | `resume_first_frame_ms`, `mutex_wait_ms`, `jitter_wait_ms`, `network_fetch_ms`, `rss_mb`, `pss_mb`, `frame_count` |
 
 ## CLI Usage
 

@@ -244,32 +244,69 @@ class TestSchemaContract(unittest.TestCase):
 
 class TestScenariosRegistry(unittest.TestCase):
     def test_seven_registered_scenarios_on_mobile_bench_v1(self) -> None:
-        expected = {
-            "cold_start_home",
-            "thread_open",
-            "thread_scroll_media",
-            "activity_switch",
-            "composer_typing",
-            "composer_send",
-            "webview_artifact_open",
+        expected_segments = {
+            "cold_start": (
+                "process_init_ms",
+                "compose_first_frame_ms",
+                "auth_bootstrap_ms",
+                "first_feed_render_ms",
+            ),
+            "channel_switch": (
+                "input_delay_ms",
+                "network_ms",
+                "recompose_layout_ms",
+                "render_gpu_ms",
+                "frame_count",
+            ),
+            "thread_scroll_ime": (
+                "ui_thread_ms",
+                "recompose_ms",
+                "render_thread_or_metal_ms",
+                "ime_settle_ms",
+                "frame_count",
+            ),
+            "composer_first_char": (
+                "first_char_p50_ms",
+                "first_char_p95_ms",
+                "key_to_state_ms",
+                "text_layout_ms",
+                "recompose_ms",
+                "draw_ms",
+                "frame_count",
+            ),
+            "webview_open": (
+                "container_init_ms",
+                "prewarm_hit_count",
+                "network_ms",
+                "first_paint_ms",
+            ),
+            "thread_open": (
+                "cache_rows_shown_ms",
+                "network_applied_ms",
+                "reading_anchor_attempt_count",
+                "visible_shift_dp",
+                "shift_count",
+                "frame_count",
+            ),
+            "foreground_resume": (
+                "resume_first_frame_ms",
+                "mutex_wait_ms",
+                "jitter_wait_ms",
+                "network_fetch_ms",
+                "rss_mb",
+                "pss_mb",
+                "frame_count",
+            ),
         }
-        self.assertEqual(set(SCENARIOS.keys()), expected)
+        self.assertEqual(set(SCENARIOS.keys()), set(expected_segments.keys()))
         for spec in scenarios.list_scenarios():
             self.assertEqual(spec.fixture_tag, "mobile-bench-v1")
+            self.assertTrue(spec.online_events)
             self.assertIn(spec.primary_kpi, MOBILE_RUNS_COLUMNS)
             self.assertIn(spec.ios_primary_kpi, MOBILE_RUNS_COLUMNS)
+            self.assertEqual(spec.required_segments, expected_segments[spec.name])
             for seg in spec.required_segments + spec.optional_segments:
                 self.assertTrue(seg.endswith(SEGMENT_UNIT_SUFFIXES), f"{spec.name}: {seg}")
-
-        thread_open = scenarios.get_scenario("thread_open")
-        for key in (
-            "reading_anchor_attempt_count",
-            "visible_shift_dp",
-            "shift_count",
-            "cache_rows_shown_ms",
-            "network_applied_ms",
-        ):
-            self.assertIn(key, thread_open.required_segments)
 
 
 class TestAndroidPerfettoAndFallback(unittest.TestCase):
@@ -459,7 +496,7 @@ class TestAndroidPerfettoAndFallback(unittest.TestCase):
         )
         logcat = (
             "11-28 04:23:01.200 I/ActivityTaskManager: Displayed build.raft.app/.MainActivity: +1s245ms\n"
-            "11-28 04:23:01.210 D/SlockPerf: marker route=home phase=app_init app_init_ms=412\n"
+            "11-28 04:23:01.210 D/SlockPerf: marker route=home phase=cold_start process_init_ms=412 auth_bootstrap_ms=180 first_feed_render_ms=1120\n"
         )
         run_row, diag_row = android_perfetto.parse_android_capture(
             run_id="and-cold-01",
@@ -467,7 +504,7 @@ class TestAndroidPerfettoAndFallback(unittest.TestCase):
             app_version="1.31.0",
             app_build="13100019",
             build_type="release-profileable",
-            scenario="cold_start_home",
+            scenario="cold_start",
             device_id="3f9a1c22",
             device_model="Redmi Note 12",
             os_version="android-14",
@@ -479,10 +516,65 @@ class TestAndroidPerfettoAndFallback(unittest.TestCase):
         self.assertEqual(validate_run_row(run_row), [])
         self.assertEqual(validate_diagnose_row(diag_row), [])
         self.assertEqual(run_row["ttfd_ms"], 1245.0)
-        self.assertEqual(run_row["segments"]["app_init_ms"], 412)
-        self.assertEqual(run_row["segments"]["first_frame_ms"], 1245.0)
+        self.assertEqual(run_row["segments"]["process_init_ms"], 412)
+        self.assertEqual(run_row["segments"]["compose_first_frame_ms"], 1245.0)
+        self.assertEqual(run_row["segments"]["auth_bootstrap_ms"], 180)
+        self.assertEqual(run_row["segments"]["first_feed_render_ms"], 1120)
         self.assertEqual(run_row["samples"], 120)
         self.assertAlmostEqual(run_row["slow_frame_ratio"], 0.05, places=4)
+
+    def test_android_capture_thermal_throttling_sets_valid_false(self) -> None:
+        gfx_summary = (
+            "Total frames rendered: 100\n"
+            "Janky frames: 12 (12.00%)\n"
+            "50th percentile: 9ms\n"
+            "95th percentile: 22ms\n"
+            "99th percentile: 40ms\n"
+        )
+        run_row, diag_row = android_perfetto.parse_android_capture(
+            run_id="and-hot-01",
+            commit_sha="0123456789abcdef0123456789abcdef01234567",
+            app_version="1.31.0",
+            app_build="13100019",
+            build_type="release-profileable",
+            scenario="thread_open",
+            device_id="3f9a1c22",
+            device_model="Redmi Note 12",
+            os_version="android-14",
+            gfxinfo_text=gfx_summary,
+            thermal_start_text="Thermal Status:\n  Current status: 1\n",
+            thermal_end_text="Thermal Status:\n  Current status: 3\n",
+            taken_at="2026-11-28T04:24:00Z",
+        )
+        self.assertEqual(validate_run_row(run_row), [])
+        self.assertEqual(validate_diagnose_row(diag_row), [])
+        self.assertEqual(run_row["samples"], 100)
+        self.assertFalse(run_row["valid"])
+        self.assertFalse(diag_row["valid"])
+        self.assertEqual(run_row["thermal_end"], "severe")
+        self.assertIn("thermal_invalid_reason", run_row["extra"])
+        self.assertIn("thermal_invalid_reason", diag_row["extra"])
+        self.assertEqual(run_row["extra"]["thermal_invalid_reason"], "thermal_end=severe")
+
+        # Tier jump >= 2 (none -> moderate) also marks valid=False at capture time.
+        run_jump, diag_jump = android_perfetto.parse_android_capture(
+            run_id="and-jump-01",
+            commit_sha="0123456789abcdef0123456789abcdef01234567",
+            app_version="1.31.0",
+            app_build="13100019",
+            build_type="release-profileable",
+            scenario="thread_open",
+            device_id="3f9a1c22",
+            device_model="Redmi Note 12",
+            os_version="android-14",
+            gfxinfo_text=gfx_summary,
+            thermal_start="none",
+            thermal_end="moderate",
+            taken_at="2026-11-28T04:24:10Z",
+        )
+        self.assertFalse(run_jump["valid"])
+        self.assertFalse(diag_jump["valid"])
+        self.assertIn("thermal_tier_jump=none->moderate", run_jump["extra"]["thermal_invalid_reason"])
 
 
 class TestIosXctrace(unittest.TestCase):
@@ -644,6 +736,43 @@ class TestIosXctrace(unittest.TestCase):
         self.assertEqual(top["thread"], "main")
         self.assertAlmostEqual(top["self_ms"], 212.5, places=1)
         self.assertAlmostEqual(top["total_ms"], 388.0, places=1)
+
+    def test_ios_capture_thermal_throttling_sets_valid_false(self) -> None:
+        hitches_xml = (
+            "<trace-query-result><node>"
+            '<row><frame-duration fmt="12.0 ms">12000000</frame-duration></row>'
+            '<row><frame-duration fmt="45.0 ms">45000000</frame-duration>'
+            '<hitch-duration fmt="28.3 ms">28300000</hitch-duration></row>'
+            "</node></trace-query-result>"
+        )
+        thermal_xml = (
+            "<trace-query-result><node>"
+            '<row><thermal-state fmt="Nominal">0</thermal-state></row>'
+            '<row><thermal-state fmt="Serious">2</thermal-state></row>'
+            "</node></trace-query-result>"
+        )
+        run_row, diag_row = ios_xctrace.parse_xctrace_exports(
+            run_id="ios-hot-01",
+            commit_sha="0123456789abcdef0123456789abcdef01234567",
+            app_version="1.31.0",
+            app_build="13100006",
+            build_type="release-dsym",
+            scenario="thread_scroll_ime",
+            device_id="9b20e4d1",
+            device_model="iPhone 11",
+            os_version="ios-17.6",
+            hitches_xml=hitches_xml,
+            thermal_xml=thermal_xml,
+            taken_at="2026-11-28T04:26:00Z",
+        )
+        self.assertEqual(validate_run_row(run_row), [])
+        self.assertEqual(validate_diagnose_row(diag_row), [])
+        self.assertEqual(run_row["samples"], 2)
+        self.assertFalse(run_row["valid"])
+        self.assertFalse(diag_row["valid"])
+        self.assertIsNotNone(run_row["hitch_ms_per_s"])
+        self.assertEqual(run_row["extra"]["thermal_invalid_reason"], "thermal_end=serious")
+        self.assertEqual(diag_row["extra"]["thermal_invalid_reason"], "thermal_end=serious")
 
 
 class TestAbVerdictAndCalibration(unittest.TestCase):

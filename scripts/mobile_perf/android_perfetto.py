@@ -19,6 +19,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .ab_verdict import is_thermal_throttled
 from .scenarios import ANDROID_PACKAGE, DEFAULT_FIXTURE_TAG
 from .schema import (
     SEGMENT_UNIT_SUFFIXES,
@@ -714,7 +715,7 @@ def parse_android_logcat(text: str) -> dict[str, Any]:
             total_ms = float(secs * 1000 + ms)
             if total_ms > 0:
                 ttfd_ms = total_ms
-                segments["first_frame_ms"] = total_ms
+                segments["compose_first_frame_ms"] = total_ms
 
         kv = _parse_kv_pairs(line)
 
@@ -775,11 +776,15 @@ def parse_android_logcat(text: str) -> dict[str, Any]:
                     duration_ms = float(kv["duration_ms"])
             elif "durationMs" in kv and isinstance(kv["durationMs"], (int, float)) and float(kv["durationMs"]) > 0:
                 phase = str(kv.get("phase") or kv.get("operation") or "")
-                if phase in ("thread_open", "composer_send", "activity_switch", "webview_artifact_open") or "operation_finish" in line or "operation_slow" in line:
+                if (
+                    phase in ("thread_open", "channel_switch", "composer_first_char", "webview_open", "foreground_resume")
+                    or "operation_finish" in line
+                    or "operation_slow" in line
+                ):
                     if duration_ms is None:
                         duration_ms = float(kv["durationMs"])
                 if phase.startswith("bottom_tab_"):
-                    segments["tab_switch_ms"] = float(kv["durationMs"])
+                    segments["recompose_layout_ms"] = float(kv["durationMs"])
 
             if "ttfd_ms" in kv and isinstance(kv["ttfd_ms"], (int, float)) and float(kv["ttfd_ms"]) > 0:
                 ttfd_ms = float(kv["ttfd_ms"])
@@ -912,9 +917,14 @@ def parse_android_capture(
         trace_sha256 = compute_sha256_bytes(Path(trace_path).read_bytes())
 
     samples = int(frame_metrics["samples"])
-    valid = samples > 0
+    throttled, thermal_invalid_reason = is_thermal_throttled(
+        resolved_thermal_start, resolved_thermal_end
+    )
+    valid = (samples > 0) and (not throttled)
     timestamp = taken_at or utc_now_iso()
     extra_dict = dict(extra) if extra else {}
+    if throttled and thermal_invalid_reason:
+        extra_dict["thermal_invalid_reason"] = thermal_invalid_reason
 
     common = {
         "project": project,

@@ -20,6 +20,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from .ab_verdict import is_thermal_throttled
 from .scenarios import DEFAULT_FIXTURE_TAG
 from .schema import (
     SEGMENT_UNIT_SUFFIXES,
@@ -655,22 +656,38 @@ def parse_ios_signpost_or_log_markers(
                     if txt:
                         msg_parts.append(txt)
             if name and dur_ms is not None and dur_ms > 0:
-                if name in ("thread_open", "activity_switch", "composer_send"):
+                if name in ("thread_open", "channel_switch", "composer_first_char", "webview_open", "foreground_resume"):
                     duration_ms = round(dur_ms, 3)
-                elif name in ("cold_start_home", "webview_artifact_open", "ttfd"):
+                elif name in ("cold_start", "ttfd"):
                     ttfd_ms = round(dur_ms, 3)
                 elif name.endswith("_ms"):
                     segments[name] = round(dur_ms, 3)
                 elif name in (
+                    "process_init",
+                    "compose_first_frame",
+                    "auth_bootstrap",
+                    "first_feed_render",
+                    "input_delay",
+                    "network",
+                    "recompose_layout",
+                    "render_gpu",
+                    "ui_thread",
+                    "recompose",
+                    "render_thread_or_metal",
+                    "ime_settle",
+                    "first_char_p50",
+                    "first_char_p95",
+                    "key_to_state",
+                    "text_layout",
+                    "draw",
+                    "container_init",
+                    "first_paint",
                     "cache_rows_shown",
                     "network_applied",
-                    "first_frame",
-                    "app_init",
-                    "tab_switch",
-                    "optimistic_render",
-                    "webview_ready",
-                    "artifact_dom_ready",
-                    "image_decode",
+                    "resume_first_frame",
+                    "mutex_wait",
+                    "jitter_wait",
+                    "network_fetch",
                 ):
                     segments[f"{name}_ms"] = round(dur_ms, 3)
             if msg_parts:
@@ -782,9 +799,15 @@ def parse_xctrace_exports(
     elif trace_path is not None:
         trace_sha256 = compute_trace_bundle_sha256(trace_path)
 
-    valid = samples > 0
+    throttled, thermal_invalid_reason = is_thermal_throttled(
+        resolved_thermal_start, resolved_thermal_end
+    )
+    valid = (samples > 0) and (not throttled)
+    has_samples = samples > 0
     timestamp = taken_at or utc_now_iso()
     extra_dict = dict(extra) if extra else {}
+    if throttled and thermal_invalid_reason:
+        extra_dict["thermal_invalid_reason"] = thermal_invalid_reason
 
     common = {
         "project": project,
@@ -821,11 +844,11 @@ def parse_xctrace_exports(
         run_id=run_id,
         duration_ms=resolved_duration_ms,
         ttfd_ms=resolved_ttfd_ms,
-        frame_p50_ms=hitches["frame_p50_ms"] if valid else None,
-        frame_p95_ms=hitches["frame_p95_ms"] if valid else None,
-        frame_p99_ms=hitches["frame_p99_ms"] if valid else None,
-        slow_frame_ratio=hitches["slow_frame_ratio"] if valid else None,
-        hitch_ms_per_s=hitches["hitch_ms_per_s"] if valid else None,
+        frame_p50_ms=hitches["frame_p50_ms"] if has_samples else None,
+        frame_p95_ms=hitches["frame_p95_ms"] if has_samples else None,
+        frame_p99_ms=hitches["frame_p99_ms"] if has_samples else None,
+        slow_frame_ratio=hitches["slow_frame_ratio"] if has_samples else None,
+        hitch_ms_per_s=hitches["hitch_ms_per_s"] if has_samples else None,
         mem_peak_mb=resolved_mem_peak_mb,
         **common,
     )
@@ -836,8 +859,8 @@ def parse_xctrace_exports(
         ui_thread_ms=time_prof["ui_thread_ms"],
         render_thread_ms=None,
         metal_ms=metal["metal_ms"],
-        worst_frame_ms=hitches["worst_frame_ms"] if valid else None,
-        slow_frame_count=hitches["slow_frame_count"] if valid else None,
+        worst_frame_ms=hitches["worst_frame_ms"] if has_samples else None,
+        slow_frame_count=hitches["slow_frame_count"] if has_samples else None,
         compose_recomp_count=None,
         top_hotspots=time_prof["top_hotspots"],
         trace_sha256=trace_sha256,
