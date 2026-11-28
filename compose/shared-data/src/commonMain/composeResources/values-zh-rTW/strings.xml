@@ -601,6 +601,9 @@
     <string name="thread_action_select_text">選取文字</string>
     <string name="thread_select_text_hint">長按來選擇文字</string>
     <string name="thread_text_selection_copy_selection">複製選取內容</string>
+    <string name="thread_select_text_quote_selection">引用選取內容</string>
+    <string name="thread_select_text_selected_chars">已選取 %1$d 個字元</string>
+    <string name="thread_message_delete_confirm_prompt">刪除此未傳送的訊息？</string>
     <string name="thread_text_selection_select_all">全選</string>
     <string name="thread_new_message_menu_reply">回覆</string>
     <string name="thread_new_message_menu_more">更多</string>

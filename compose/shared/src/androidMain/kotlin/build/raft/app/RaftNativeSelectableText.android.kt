@@ -40,11 +40,16 @@ actual fun RaftNativeSelectableText(
     selection: RaftNativeTextSelection?,
 ) {
     val viewHolder = remember { arrayOfNulls<TextView>(1) }
+    val currentSelection = androidx.compose.runtime.rememberUpdatedState(selection)
     DisposableEffect(selection) {
         selection?.reader = {
             viewHolder[0]?.let { view -> raftNativeSelectedSlice(view.text ?: "", view.selectionStart, view.selectionEnd) }.orEmpty()
         }
-        onDispose { selection?.reader = null }
+        selection?.updateSelectedText(selection.selectedText())
+        onDispose {
+            selection?.reader = null
+            selection?.updateSelectedText("")
+        }
     }
     val density = LocalDensity.current
     val typeface =
@@ -64,7 +69,14 @@ actual fun RaftNativeSelectableText(
     val selectionColors = LocalTextSelectionColors.current
     AndroidView(
         factory = { context ->
-            TextView(context).apply {
+            object : TextView(context) {
+                override fun onSelectionChanged(selStart: Int, selEnd: Int) {
+                    super.onSelectionChanged(selStart, selEnd)
+                    currentSelection.value?.updateSelectedText(
+                        raftNativeSelectedSlice(getText() ?: "", selStart, selEnd)
+                    )
+                }
+            }.apply {
                 // Stable native id for UIAutomator (task #924 physical admission); the Compose
                 // testTag is additionally exposed as resource-id via testTagsAsResourceId below.
                 id = R.id.thread_message_selection_text

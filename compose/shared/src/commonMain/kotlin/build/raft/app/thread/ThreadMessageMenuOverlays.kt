@@ -8,7 +8,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.text.TextStyle
+import build.raft.app.assistant.threadAssistantPanelWide
 import build.raft.app.members.LocalRaftJointActorSurface
+import build.raft.designsystem.theme.RaftPointerInput
+import build.raft.designsystem.theme.RaftTheme
 import build.raft.app.RaftAgentStatusResolver
 import build.raft.app.RaftPopoverAnchor
 import build.raft.app.RaftTaskStatusMenuOverlay
@@ -53,6 +57,7 @@ internal fun ThreadMessageMenuOverlays(
     agentStatusResolver: RaftAgentStatusResolver,
     adaptiveSharedStores: RaftSharedStoreProvider,
     coroutineScope: CoroutineScope,
+    messageBodyTextStyle: TextStyle = TextStyle.Default,
     onThreadEvent: ThreadEventHandler,
     onThreadEventKeepingAnchor: ThreadEventHandler,
     onForwardMessage: (String) -> Unit,
@@ -393,7 +398,122 @@ internal fun ThreadMessageMenuOverlays(
                         hasLocalSendState = message.hasLocalSendState()
                     )
                 }
-            if (variant == ThreadMessageMenuVariant.Compact) {
+            val useBottomSheet =
+                threadMessageUsesBottomSheet(
+                    wide = threadAssistantPanelWide(),
+                    coarsePointer = RaftTheme.pointerInput == RaftPointerInput.Touch,
+                    fromLongPress = menuState.actionMenuFromLongPress,
+                )
+            val showReplyAction =
+                threadMessageMenuShowsReplyInThread(
+                    capabilities = capabilities,
+                    message = message,
+                    replyMetadata = replyMetadata,
+                    slice = renderPayload,
+                    hasReplyDraft = activeReplyDraftParentMessageIds.hasReplyComposerDraft(message.id)
+                )
+            val downloadVideoHandler =
+                threadMessageMenuDownloadVideoAttachmentId(message)?.let { attachmentId ->
+                    {
+                        closeActionMenu()
+                        onThreadEvent("downloadAttachment", null, attachmentId, null)
+                    }
+                }
+            if (useBottomSheet) {
+                ThreadMessageActionSheet(
+                    message = message,
+                    replyMetadata = replyMetadata,
+                    messageBodyTextStyle = messageBodyTextStyle,
+                    showReplyAction = showReplyAction,
+                    showSaveAction = capabilities.save,
+                    showFollowAction = capabilities.follow,
+                    showTaskStatusAction = capabilities.taskStatus,
+                    showConvertToTaskAction = capabilities.convertToTask,
+                    createTaskFromMessage = capabilities.createTaskFromMessage,
+                    showReactionActions = capabilities.quickReactions,
+                    showCopyLinkAction = capabilities.copyLink,
+                    showShareMessagesAction = capabilities.selectMessage,
+                    showCancelAction = capabilities.cancelLocalSend,
+                    showDeleteAction = capabilities.deleteLocalSend,
+                    showTranslateAction = capabilities.translate != ThreadMessageMenuTranslateState.Hidden,
+                    translatePending = capabilities.translate == ThreadMessageMenuTranslateState.Pending,
+                    showForwardAction = capabilities.forward,
+                    showAddReactionAction = capabilities.addReaction,
+                    showMarkThreadUnreadAction = capabilities.markThreadUnreadChannelId != null,
+                    onDismiss = closeActionMenu,
+                    onCopyLink = {
+                        closeActionMenu()
+                        trackLongPressMenuAction(message, RaftMessageAction.CopyLink)
+                        onThreadEvent("copyMessageLink", message.id, null, null)
+                    },
+                    onReply = {
+                        closeActionMenu()
+                        trackLongPressMenuAction(message, RaftMessageAction.ReplyInThread)
+                        onThreadEvent("openMessageThread", message.id, null, null)
+                    },
+                    onCopy = {
+                        closeActionMenu()
+                        trackLongPressMenuAction(message, RaftMessageAction.CopyMarkdown)
+                        onThreadEvent("copyMessage", message.id, null, null)
+                    },
+                    onCopyCustomText = { text ->
+                        inPlaceSelectionMenuHost?.copyTextWithToast?.invoke(text)
+                            ?: onThreadEvent("copyMessage", message.id, null, null)
+                    },
+                    onShareMessages = {
+                        closeActionMenu()
+                        trackLongPressMenuAction(message, RaftMessageAction.Select)
+                        onEnterShareSelection(message.id)
+                    },
+                    onSave = {
+                        closeActionMenu()
+                        trackLongPressMenuAction(
+                            message,
+                            if (message.isSaved) RaftMessageAction.Unsave else RaftMessageAction.Save
+                        )
+                        onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null)
+                    },
+                    onFollowThread = onFollowThread,
+                    onUnfollowThread = onUnfollowThread,
+                    onReact = { emoji ->
+                        closeActionMenu()
+                        trackLongPressMenuAction(message, RaftMessageAction.ReactQuick)
+                        onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
+                    },
+                    onTaskStatusChange = onTaskStatusChange,
+                    onConvertToTask = onConvertToTask,
+                    onCancel = {
+                        closeActionMenu()
+                        onThreadEvent("cancelLocalSend", message.id, null, null)
+                    },
+                    onDelete = {
+                        closeActionMenu()
+                        onThreadEvent("deleteLocalFailedSend", message.id, null, null)
+                    },
+                    onTranslate = onTranslate,
+                    onForward = {
+                        closeActionMenu()
+                        trackLongPressMenuAction(message, RaftMessageAction.Forward)
+                        onForwardMessage(message.id)
+                    },
+                    onMarkThreadUnread = {
+                        closeActionMenu()
+                        capabilities.markThreadUnreadChannelId?.let { threadChannelId ->
+                            onThreadEvent(MARK_THREAD_UNREAD_ACTION, message.id, threadChannelId, null)
+                        }
+                    },
+                    onCopySelection = onCopySelection,
+                    onDownloadVideo = downloadVideoHandler,
+                    onQuoteChosen = { trackLongPressMenuAction(message, RaftMessageAction.Quote) },
+                    onSelectTextOpened = { trackLongPressMenuAction(message, RaftMessageAction.SelectText) },
+                    onEmojiPickerOpened = { trackLongPressMenuAction(message, RaftMessageAction.OpenReactionPicker) },
+                    link = linkSection,
+                    viewContextState = viewContextState,
+                    onViewContext = onViewContext,
+                    onRetryViewContext = onRetryViewContext,
+                    followTarget = capabilities.followTarget,
+                )
+            } else if (variant == ThreadMessageMenuVariant.Compact) {
                 val actions =
                     compactMenuMessageActions(message, replyMetadata, close = closeActionMenu, anchor = resolvedActionAnchor)
                 ThreadNewMessageMenu(

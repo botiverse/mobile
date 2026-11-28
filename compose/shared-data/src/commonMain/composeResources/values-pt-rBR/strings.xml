@@ -601,6 +601,9 @@
     <string name="thread_action_select_text">Selecionar texto</string>
     <string name="thread_select_text_hint">Toque e segure para selecionar o texto.</string>
     <string name="thread_text_selection_copy_selection">Copiar seleção</string>
+    <string name="thread_select_text_quote_selection">Citar seleção</string>
+    <string name="thread_select_text_selected_chars">%1$d caracteres selecionados</string>
+    <string name="thread_message_delete_confirm_prompt">Excluir esta mensagem não enviada?</string>
     <string name="thread_text_selection_select_all">Selecionar tudo</string>
     <string name="thread_new_message_menu_reply">Responder</string>
     <string name="thread_new_message_menu_more">Mais</string>

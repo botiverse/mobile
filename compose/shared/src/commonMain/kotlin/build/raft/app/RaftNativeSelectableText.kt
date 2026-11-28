@@ -1,6 +1,9 @@
 package build.raft.app
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.TextStyle
 
@@ -30,12 +33,24 @@ expect fun RaftNativeSelectableText(
 
 /**
  * The live selection of a [RaftNativeSelectableText]: the platform view registers its reader
- * while it is shown. [selectedText] is "" when nothing is selected or the view is gone.
+ * while it is shown and pushes live updates into [selectedTextState] so footer buttons can
+ * react immediately as the reader drags native selection handles. [selectedText] is "" when
+ * nothing is selected or the view is gone.
  */
 class RaftNativeTextSelection {
     internal var reader: (() -> String)? = null
 
-    fun selectedText(): String = reader?.invoke().orEmpty()
+    /** Observable current selection text, updated reactively by the platform text view. */
+    var selectedTextState: String by mutableStateOf("")
+        internal set
+
+    internal fun updateSelectedText(text: String) {
+        if (selectedTextState != text) {
+            selectedTextState = text
+        }
+    }
+
+    fun selectedText(): String = reader?.invoke() ?: selectedTextState
 }
 
 /** The [start, end) slice of [text] a platform selection covers, or "" for none / a caret. */

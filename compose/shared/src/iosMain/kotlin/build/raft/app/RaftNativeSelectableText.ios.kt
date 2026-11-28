@@ -37,6 +37,8 @@ import platform.UIKit.UIColor
 import platform.UIKit.UIEdgeInsetsMake
 import platform.UIKit.UIFont
 import platform.UIKit.UITextView
+import platform.UIKit.UITextViewDelegateProtocol
+import platform.darwin.NSObject
 
 @Composable
 actual fun RaftNativeSelectableText(
@@ -65,14 +67,32 @@ actual fun RaftNativeSelectableText(
     // UIKit draws the handles and the highlight from one tint: the design system's handle colour
     // (RaftTheme `foreground`), not the app's system tint (Artea: follow the mobile design).
     val handleColor = LocalTextSelectionColors.current.handleColor
-    DisposableEffect(selection, textView) {
+    val currentSelection = androidx.compose.runtime.rememberUpdatedState(selection)
+    val selectionDelegate = remember {
+        object : NSObject(), UITextViewDelegateProtocol {
+            override fun textViewDidChangeSelection(textView: UITextView) {
+                val current = textView.text.orEmpty()
+                val slice = textView.selectedRange.useContents {
+                    raftNativeSelectedSlice(current, location.toInt(), (location + length).toInt())
+                }
+                currentSelection.value?.updateSelectedText(slice)
+            }
+        }
+    }
+    DisposableEffect(selection, textView, selectionDelegate) {
+        textView.delegate = selectionDelegate
         selection?.reader = {
             val current = textView.text.orEmpty()
             textView.selectedRange.useContents {
                 raftNativeSelectedSlice(current, location.toInt(), (location + length).toInt())
             }
         }
-        onDispose { selection?.reader = null }
+        selection?.updateSelectedText(selection.selectedText())
+        onDispose {
+            if (textView.delegate === selectionDelegate) textView.delegate = null
+            selection?.reader = null
+            selection?.updateSelectedText("")
+        }
     }
     val attributed =
         remember(text, fontName, fontSizePt, lineHeightPt, color) {

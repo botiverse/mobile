@@ -601,6 +601,9 @@
     <string name="thread_action_select_text">텍스트 선택</string>
     <string name="thread_select_text_hint">길게 눌러 텍스트를 선택하세요</string>
     <string name="thread_text_selection_copy_selection">선택한 내용 복사</string>
+    <string name="thread_select_text_quote_selection">선택 영역 인용</string>
+    <string name="thread_select_text_selected_chars">%1$d자 선택됨</string>
+    <string name="thread_message_delete_confirm_prompt">전송되지 않은 이 메시지를 삭제할까요?</string>
     <string name="thread_text_selection_select_all">모두 선택</string>
     <string name="thread_new_message_menu_reply">답글</string>
     <string name="thread_new_message_menu_more">더 보기</string>

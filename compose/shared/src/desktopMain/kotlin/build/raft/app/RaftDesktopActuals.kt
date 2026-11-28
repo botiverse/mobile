@@ -45,9 +45,16 @@ actual fun RaftNativeSelectableText(
     selection: RaftNativeTextSelection?,
 ) {
     val selectionState = remember { SelectionState() }
+    val selectedText = selectionState.selectedTexts.joinToString("\n") { it.text }
+    LaunchedEffect(selection, selectedText) {
+        selection?.updateSelectedText(selectedText)
+    }
     DisposableEffect(selection, selectionState) {
         selection?.reader = { selectionState.selectedTexts.joinToString("\n") { it.text } }
-        onDispose { selection?.reader = null }
+        onDispose {
+            selection?.reader = null
+            selection?.updateSelectedText("")
+        }
     }
     SelectionContainer(selectionState, modifier) { BasicText(text, style = style) }
 }
