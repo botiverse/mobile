@@ -88,7 +88,7 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
         inbox: InboxRepository,
         traces: MutableList<Pair<String, ActivityDoneTraceEvent>>,
         holdMillis: Long = ActivityLocalMutationHoldMillis,
-        conversationRepository: ConversationRepository = FakeConversationRepository(),
+        conversationRepository: FakeConversationRepository = FakeConversationRepository(),
     ): SharedActivityStore =
         activityStore(
             scope = backgroundScope,

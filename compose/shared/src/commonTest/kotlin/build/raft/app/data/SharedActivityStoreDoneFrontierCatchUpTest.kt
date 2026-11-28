@@ -370,7 +370,7 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
             ),
         )
         runCurrent()
-        assertEquals(emptyList(), traces)
+        assertEquals(emptyList<Pair<String, ActivityDoneTraceEvent>>(), traces)
 
         val undoEvent =
             ActivityDoneTraceEvent.ItemReappeared(
