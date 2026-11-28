@@ -196,6 +196,7 @@ class ActivityObjectRowsTest {
 
     private class FakeObjectsRepository(
         var failForServerId: String? = null,
+        var failErrorCode: String = "object_done_failed",
     ) : ActivityObjectsRepository {
         val calls = mutableListOf<String>()
         val serverScopedCalls = mutableListOf<String>()
@@ -203,7 +204,7 @@ class ActivityObjectRowsTest {
             calls += "${action.name}:${row.objectId}"
             serverScopedCalls += "$serverId:${action.name}:${row.objectId}"
             return if (failForServerId == serverId) {
-                DataResult.Error(ScreenError("object_done_failed"))
+                DataResult.Error(ScreenError(failErrorCode))
             } else {
                 DataResult.Content(Unit)
             }
@@ -378,5 +379,33 @@ class ActivityObjectRowsTest {
         )
         runCurrent()
         assertEquals(1, inboxRepository.doneChannelIds.size)
+    }
+
+    @Test
+    fun objectDoneHttp404KeepsRowClosedWithoutRollbackOrError() = runTest {
+        val parsedWithObj =
+            parseSharedInboxSnapshot("""{"items":[${objectRow()},$channelRow],"totalCount":1,"totalUnreadCount":3,"objectUnreadCount":1,"objectCount":1}""")!!
+        val parsedWithoutObj =
+            parseSharedInboxSnapshot("""{"items":[$channelRow],"totalCount":1,"totalUnreadCount":3,"objectUnreadCount":0,"objectCount":0}""")!!
+        val snapBefore = snapshot(parsedWithObj.items, totalCount = 1, totalUnreadCount = 3).copy(objectCounts = parsedWithObj.objectCounts)
+        val snapAfter = snapshot(parsedWithoutObj.items, totalCount = 1, totalUnreadCount = 3).copy(objectCounts = parsedWithoutObj.objectCounts)
+        val inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapBefore, snapAfter))
+        val objectsRepository = FakeObjectsRepository(failForServerId = "server-1", failErrorCode = "http_404")
+        val store =
+            activityStore(
+                scope = backgroundScope,
+                inboxRepository = inboxRepository,
+                activityObjectsRepository = objectsRepository,
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val objItem = store.state.value.items.first { it.kind == InboxItemKind.Object }
+
+        store.dispatch(SharedActivityIntent.MarkDone(objItem))
+        runCurrent()
+
+        assertEquals(listOf("Done:$objectId"), objectsRepository.calls)
+        assertTrue(store.state.value.items.none { it.key == objItem.key }, "404 must keep object row closed")
+        assertNull(store.state.value.errorCode, "404 must not set error banner")
     }
 }

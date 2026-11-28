@@ -2,9 +2,11 @@ package build.raft.app.data
 
 import build.raft.app.ActivityPendingSwipeDone
 import build.raft.app.ActivitySwipeDeferredAction
+import build.raft.app.ActivitySwipeDoneDecision
 import build.raft.app.ActivitySwipeDoneTransition
 import build.raft.app.ActivitySwipeDoneUndoState
 import build.raft.app.activitySwipeDeferredCommitIntent
+import build.raft.app.evaluateActivitySwipeDone
 import build.raft.app.model.MessageId
 import build.raft.app.projectActivityStateWithProcessSummary
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -29,29 +31,100 @@ class SharedActivityStorePendingDoneCountTest {
     private val channelB = activityItem("channel-b", unreadCount = 1)
     private val threadC = threadItem("thread-c", unreadCount = 2).copy(isFollowing = true)
 
-    private class Panel(val store: SharedActivityStore) {
+    private class Panel(
+        val store: SharedActivityStore,
+        val nowMillis: () -> Long = { 0L },
+    ) {
         var undo = ActivitySwipeDoneUndoState()
 
-        fun done(item: InboxItem) = apply(undo.swipe(item))
+        fun done(item: InboxItem) =
+            apply(undo.swipe(item, clickedAtMillis = nowMillis()), ActivityDoneCommitTrigger.NextRow)
 
-        fun unfollow(item: InboxItem) = apply(undo.swipe(item, ActivitySwipeDeferredAction.Unfollow, "user-1", "server-1"))
+        fun unfollow(item: InboxItem) =
+            apply(
+                undo.swipe(item, ActivitySwipeDeferredAction.Unfollow, "user-1", "server-1"),
+                ActivityDoneCommitTrigger.NextRow,
+            )
 
         fun undoToast() {
-            undo = undo.undo(undo.pending!!.token)
+            val pending = undo.pending!!
+            if (pending.action == ActivitySwipeDeferredAction.Done) {
+                pending.item.activityDoneTraceRowKind()?.let { kind ->
+                    store.dispatch(
+                        SharedActivityIntent.ReportDoneTrace(
+                            ActivityDoneTraceEvent.ItemReappeared(
+                                cause = ActivityReappearCause.Undo,
+                                rowKind = kind,
+                                wasUnreadAtClick = pending.wasUnreadAtClick,
+                                msSinceClick = (nowMillis() - pending.clickedAtMillis).coerceAtLeast(0L),
+                                seqChanged = ActivitySeqChange.None,
+                            )
+                        )
+                    )
+                }
+            }
+            undo = undo.undo(pending.token)
             syncPending()
         }
 
-        fun toastEnds() = apply(undo.expire(undo.pending!!.token))
+        fun toastEnds() = apply(undo.expire(undo.pending!!.token), ActivityDoneCommitTrigger.ToastClosed)
 
-        private fun apply(transition: ActivitySwipeDoneTransition) {
+        fun flushPageHidden() {
+            if (undo.pending != null) {
+                apply(undo.flush(), ActivityDoneCommitTrigger.PageHidden)
+            }
+        }
+
+        fun checkImmediateCallOff() {
+            val pending = undo.pending ?: return
+            if (pending.action != ActivitySwipeDeferredAction.Done) return
+            val current = store.state.value.items.firstOrNull { it.key == pending.item.key } ?: return
+            val decision = evaluateActivitySwipeDone(pending.item, current) as? ActivitySwipeDoneDecision.CallOff ?: return
+            pending.item.activityDoneTraceRowKind()?.let { kind ->
+                store.dispatch(
+                    SharedActivityIntent.ReportDoneTrace(
+                        ActivityDoneTraceEvent.ItemReappeared(
+                            cause = decision.cause,
+                            rowKind = kind,
+                            wasUnreadAtClick = pending.wasUnreadAtClick,
+                            msSinceClick = (nowMillis() - pending.clickedAtMillis).coerceAtLeast(0L),
+                            seqChanged = decision.seqChanged,
+                        )
+                    )
+                )
+            }
+            undo = undo.undo(pending.token)
+            syncPending()
+        }
+
+        private fun apply(transition: ActivitySwipeDoneTransition, trigger: ActivityDoneCommitTrigger) {
             undo = transition.state
-            transition.commit?.let(::commit)
+            transition.commit?.let { pending -> commit(pending, trigger) }
             syncPending()
         }
 
-        private fun commit(pending: ActivityPendingSwipeDone) {
+        private fun commit(pending: ActivityPendingSwipeDone, trigger: ActivityDoneCommitTrigger) {
             val current = store.state.value.items.firstOrNull { it.key == pending.item.key }
-            val intent = activitySwipeDeferredCommitIntent(pending, current) ?: return
+            if (pending.action == ActivitySwipeDeferredAction.Done) {
+                val decision = evaluateActivitySwipeDone(pending.item, current)
+                if (decision is ActivitySwipeDoneDecision.CallOff) {
+                    pending.item.activityDoneTraceRowKind()?.let { kind ->
+                        store.dispatch(
+                            SharedActivityIntent.ReportDoneTrace(
+                                ActivityDoneTraceEvent.ItemReappeared(
+                                    cause = decision.cause,
+                                    rowKind = kind,
+                                    wasUnreadAtClick = pending.wasUnreadAtClick,
+                                    msSinceClick = (nowMillis() - pending.clickedAtMillis).coerceAtLeast(0L),
+                                    seqChanged = decision.seqChanged,
+                                )
+                            )
+                        )
+                    }
+                    return
+                }
+            }
+            val intent = activitySwipeDeferredCommitIntent(pending, current, trigger = trigger, nowMillis = nowMillis()) ?: return
             store.dispatch(intent)
         }
 
@@ -318,5 +391,83 @@ class SharedActivityStorePendingDoneCountTest {
         runCurrent()
         assertEquals(3 to 2, store.state.value.activityHeaderCounts())
         assertEquals(0, store.state.value.activityConversationUnreadCount())
+    }
+
+    @Test
+    fun deferredDoneEmitsDoneCommittedForAllTriggersAndUndoOrCallOffReappearedTraces() = runTest {
+        val initialA =
+            channelA.copy(
+                latestActivitySeq = "10",
+                doneFrontierSeq = "10",
+                doneFrontierSeqPresent = true,
+            )
+        val initialB =
+            channelB.copy(
+                latestActivitySeq = "20",
+                doneFrontierSeq = "20",
+                doneFrontierSeqPresent = true,
+            )
+        val newerB = initialB.copy(latestActivitySeq = "21", doneFrontierSeq = "21")
+        val repo =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(items = listOf(initialA, initialB), totalCount = 2, totalUnreadCount = 3),
+                        snapshot(items = listOf(newerB), totalCount = 1, totalUnreadCount = 1),
+                    )
+            )
+        var now = 1_000L
+        val traces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val store =
+            activityStore(
+                scope = backgroundScope,
+                inboxRepository = repo,
+                nowMillis = { now },
+                activityDoneTraceSink = { sid, event -> traces += sid to event },
+            )
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        val panel = Panel(store, nowMillis = { now })
+
+        // 1) Undo emits ItemReappeared(Undo).
+        panel.done(initialA)
+        now += 1_500L
+        panel.undoToast()
+        runCurrent()
+        val undoEvent = traces.single().second as ActivityDoneTraceEvent.ItemReappeared
+        assertEquals(ActivityReappearCause.Undo, undoEvent.cause)
+        assertEquals(1_500L, undoEvent.msSinceClick)
+        assertEquals(true, undoEvent.wasUnreadAtClick)
+
+        // 2) Next row commits A with NextRow trigger, then newer activity on B calls B off immediately.
+        traces.clear()
+        panel.done(initialA)
+        now += 2_000L
+        panel.done(initialB)
+        runCurrent()
+        val nextRowCommit = traces.single().second as ActivityDoneTraceEvent.DoneCommitted
+        assertEquals(ActivityDoneCommitTrigger.NextRow, nextRowCommit.trigger)
+        assertEquals(2_000L, nextRowCommit.waitMs)
+
+        traces.clear()
+        now += 500L
+        store.dispatch(SharedActivityIntent.Refresh)
+        runCurrent()
+        panel.checkImmediateCallOff()
+        runCurrent()
+        val calloff = traces.single().second as ActivityDoneTraceEvent.ItemReappeared
+        assertEquals(ActivityReappearCause.CalloffNewerActivity, calloff.cause)
+        assertEquals(ActivitySeqChange.Both, calloff.seqChanged)
+        assertEquals(500L, calloff.msSinceClick)
+
+        // 3) PageHidden flush commits waiting Done with PageHidden trigger.
+        traces.clear()
+        panel.done(newerB)
+        now += 3_000L
+        panel.flushPageHidden()
+        runCurrent()
+        val pageHiddenCommit = traces.single().second as ActivityDoneTraceEvent.DoneCommitted
+        assertEquals(ActivityDoneCommitTrigger.PageHidden, pageHiddenCommit.trigger)
+        assertEquals(3_000L, pageHiddenCommit.waitMs)
     }
 }

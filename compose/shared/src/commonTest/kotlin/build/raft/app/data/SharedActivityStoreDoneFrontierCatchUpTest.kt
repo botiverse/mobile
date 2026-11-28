@@ -74,8 +74,16 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
             ),
             inbox.doneCalls.toList(),
         )
-        assertEquals(1, traces.size)
-        val committed = traces.single().second as ActivityDoneTraceEvent.DoneCommitted
+        assertEquals(2, traces.size)
+        val primaryCommitted = traces[0].second as ActivityDoneTraceEvent.DoneCommitted
+        assertEquals(ActivityDoneCommittedTraceName, primaryCommitted.traceName)
+        assertEquals(ActivityDoneCommitTrigger.NoToast, primaryCommitted.trigger)
+        assertEquals(ActivityDoneTraceRowKind.Channel, primaryCommitted.rowKind)
+        assertEquals(true, primaryCommitted.wasUnreadAtClick)
+        assertEquals(false, primaryCommitted.frontierCaughtUp)
+        assertEquals(0L, primaryCommitted.waitMs)
+
+        val committed = traces[1].second as ActivityDoneTraceEvent.DoneCommitted
         assertEquals(ActivityDoneCommittedTraceName, committed.traceName)
         assertEquals(ActivityDoneCommitTrigger.FrontierCatchUp, committed.trigger)
         assertEquals(ActivityDoneTraceRowKind.Channel, committed.rowKind)
@@ -135,7 +143,9 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
 
         assertEquals(listOf("channel:ch-1"), store.state.value.items.map { it.key })
         assertEquals(1, inbox.doneCalls.size, "newer activity must never trigger a catch-up Done")
-        val reappeared = traces.single().second as ActivityDoneTraceEvent.ItemReappeared
+        assertEquals(2, traces.size)
+        assertEquals(ActivityDoneCommitTrigger.NoToast, (traces[0].second as ActivityDoneTraceEvent.DoneCommitted).trigger)
+        val reappeared = traces[1].second as ActivityDoneTraceEvent.ItemReappeared
         assertEquals(ActivityItemReappearedTraceName, reappeared.traceName)
         assertEquals(ActivityReappearCause.SuppressionMarkerNewer, reappeared.cause)
         assertEquals(ActivityDoneTraceRowKind.Channel, reappeared.rowKind)
@@ -186,7 +196,9 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
 
             assertEquals(listOf("channel:ch-1"), store.state.value.items.map { it.key }, label)
             assertEquals(1, inbox.doneCalls.size, "$label must not write a catch-up Done")
-            val reappeared = traces.single().second as ActivityDoneTraceEvent.ItemReappeared
+            assertEquals(2, traces.size, label)
+            assertEquals(ActivityDoneCommitTrigger.NoToast, (traces[0].second as ActivityDoneTraceEvent.DoneCommitted).trigger, label)
+            val reappeared = traces[1].second as ActivityDoneTraceEvent.ItemReappeared
             assertEquals(ActivityReappearCause.SuppressionMarkerNewer, reappeared.cause, label)
             assertEquals(ActivitySeqChange.Frontier, reappeared.seqChanged, label)
         }
@@ -230,14 +242,16 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
 
         assertEquals(listOf("channel:joint-1"), store.state.value.items.map { it.key })
         assertEquals(1, inbox.doneCalls.size)
-        val reappeared = traces.single().second as ActivityDoneTraceEvent.ItemReappeared
+        assertEquals(2, traces.size)
+        assertEquals(ActivityDoneCommitTrigger.NoToast, (traces[0].second as ActivityDoneTraceEvent.DoneCommitted).trigger)
+        val reappeared = traces[1].second as ActivityDoneTraceEvent.ItemReappeared
         assertEquals(ActivityReappearCause.SuppressionMarkerNewer, reappeared.cause)
         assertEquals(ActivitySeqChange.Frontier, reappeared.seqChanged)
     }
 
     @Test
     fun failedDoneAndMarkerNullEmitItemReappeared() = runTest {
-        // Case 1: failed Done emits done_failed.
+        // Case 1: failed Done emits done_committed then done_failed.
         val failingInbox =
             RecordingDoneInbox(
                 snapshot(
@@ -259,13 +273,15 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
         failStore.dispatch(SharedActivityIntent.MarkDone(failStore.state.value.items.single()))
         runCurrent()
 
-        val failedEvent = failTraces.single().second as ActivityDoneTraceEvent.ItemReappeared
+        assertEquals(2, failTraces.size)
+        assertEquals(ActivityDoneCommitTrigger.NoToast, (failTraces[0].second as ActivityDoneTraceEvent.DoneCommitted).trigger)
+        val failedEvent = failTraces[1].second as ActivityDoneTraceEvent.ItemReappeared
         assertEquals(ActivityReappearCause.DoneFailed, failedEvent.cause)
         assertEquals(ActivityDoneTraceRowKind.Channel, failedEvent.rowKind)
         assertEquals(true, failedEvent.wasUnreadAtClick)
         assertEquals(ActivitySeqChange.None, failedEvent.seqChanged)
 
-        // Case 2: row with no marker and no anchor emits marker_null.
+        // Case 2: row with no marker and no anchor emits done_committed then marker_null.
         val noMarkerRow =
             activityItem("ch-2", unreadCount = 0).copy(
                 readStateLatestActivitySeq = null,
@@ -282,11 +298,90 @@ class SharedActivityStoreDoneFrontierCatchUpTest {
         noMarkerStore.dispatch(SharedActivityIntent.MarkDone(noMarkerStore.state.value.items.single()))
         runCurrent()
 
-        val nullMarkerEvent = noMarkerTraces.single().second as ActivityDoneTraceEvent.ItemReappeared
+        assertEquals(2, noMarkerTraces.size)
+        assertEquals(ActivityDoneCommitTrigger.NoToast, (noMarkerTraces[0].second as ActivityDoneTraceEvent.DoneCommitted).trigger)
+        val nullMarkerEvent = noMarkerTraces[1].second as ActivityDoneTraceEvent.ItemReappeared
         assertEquals(ActivityReappearCause.MarkerNull, nullMarkerEvent.cause)
         assertEquals(ActivityDoneTraceRowKind.Channel, nullMarkerEvent.rowKind)
         assertEquals(false, nullMarkerEvent.wasUnreadAtClick)
         assertEquals(ActivitySeqChange.None, nullMarkerEvent.seqChanged)
+    }
+
+    @Test
+    fun primaryMarkDoneEmitsCommitMetadataAndPreservesWaitMsInStoreClockDomain() = runTest {
+        val row =
+            storageRow(
+                channelId = "ch-1",
+                unread = 0,
+                latestActivitySeq = "10",
+                readStateSeq = "10",
+                doneFrontierSeq = "10",
+            )
+        val inbox = RecordingDoneInbox(snapshot(listOf(row))).apply { failDone = true }
+        val traces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val store = testStore(inbox, traces)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        advanceTimeBy(10_000L)
+        store.dispatch(
+            SharedActivityIntent.MarkDone(
+                item = store.state.value.items.single(),
+                commitTrigger = ActivityDoneCommitTrigger.ToastClosed,
+                waitMs = 8_000L,
+                wasUnreadAtClick = true,
+                frontierCaughtUp = true,
+            ),
+        )
+        runCurrent()
+
+        assertEquals(2, traces.size)
+        val committed = traces[0].second as ActivityDoneTraceEvent.DoneCommitted
+        assertEquals(ActivityDoneCommitTrigger.ToastClosed, committed.trigger)
+        assertEquals(ActivityDoneTraceRowKind.Channel, committed.rowKind)
+        assertEquals(true, committed.wasUnreadAtClick)
+        assertEquals(8_000L, committed.waitMs)
+        assertEquals(true, committed.frontierCaughtUp)
+
+        val failed = traces[1].second as ActivityDoneTraceEvent.ItemReappeared
+        assertEquals(ActivityReappearCause.DoneFailed, failed.cause)
+        assertEquals(true, failed.wasUnreadAtClick)
+        assertEquals(8_000L, failed.msSinceClick)
+    }
+
+    @Test
+    fun nonConversationRowEmitsNoDoneCommittedAndReportDoneTraceForwardsEvent() = runTest {
+        val mentionRow =
+            activityItem("ch-mention", unreadCount = 1).copy(
+                key = "mention:m-1",
+                kind = InboxItemKind.MentionAction,
+            )
+        val inbox = RecordingDoneInbox(snapshot(listOf(mentionRow)))
+        val traces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val store = testStore(inbox, traces)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(
+            SharedActivityIntent.MarkDone(
+                item = store.state.value.items.single(),
+                commitTrigger = ActivityDoneCommitTrigger.ToastClosed,
+                waitMs = 8_000L,
+            ),
+        )
+        runCurrent()
+        assertEquals(emptyList(), traces)
+
+        val undoEvent =
+            ActivityDoneTraceEvent.ItemReappeared(
+                cause = ActivityReappearCause.Undo,
+                rowKind = ActivityDoneTraceRowKind.Dm,
+                wasUnreadAtClick = true,
+                msSinceClick = 1_234L,
+                seqChanged = ActivitySeqChange.None,
+            )
+        store.dispatch(SharedActivityIntent.ReportDoneTrace(undoEvent))
+        assertEquals(listOf("server-1" to undoEvent), traces)
     }
 
     private fun TestScope.testStore(

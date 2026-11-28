@@ -1,5 +1,8 @@
 package build.raft.app
 
+import build.raft.app.data.ActivityDoneCommitTrigger
+import build.raft.app.data.ActivityReappearCause
+import build.raft.app.data.ActivitySeqChange
 import build.raft.app.data.InboxItem
 import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.isUnfollowedActivityThread
@@ -173,6 +176,61 @@ class ActivityConversationSwipeTest {
         assertNull(activitySwipeDoneCommitItem(swiped, swiped.copy(latestActivityAt = "2026-10-20T10:00:05Z")))
         // No longer presented: still sent; the store decides from the rows it holds.
         assertSame(swiped, activitySwipeDoneCommitItem(swiped, null))
+    }
+
+    @Test
+    fun evaluateSwipeDoneHandlesFrontierCatchUpCallOffsAndCommitMetadata() {
+        val swiped =
+            row("a", seq = "10").copy(
+                unreadCount = 2,
+                latestActivitySeq = "12",
+                readStateLatestActivitySeq = "10",
+                doneFrontierSeq = "10",
+            )
+        // Frontier catches up to already-shown seq 12 on a non-joint row -> Commit with frontierCaughtUp=true.
+        val caughtUp = swiped.copy(unreadCount = 0, doneFrontierSeq = "12", readStateLatestActivitySeq = "12")
+        val catchUpDecision = evaluateActivitySwipeDone(swiped, caughtUp) as ActivitySwipeDoneDecision.Commit
+        assertSame(caughtUp, catchUpDecision.item)
+        assertTrue(catchUpDecision.frontierCaughtUp)
+
+        val pending = ActivitySwipeDoneUndoState().swipe(swiped, clickedAtMillis = 1_000L).state.pending!!
+        assertTrue(pending.wasUnreadAtClick)
+        val intent =
+            activitySwipeDeferredCommitIntent(
+                pending = pending,
+                current = caughtUp,
+                trigger = ActivityDoneCommitTrigger.ToastClosed,
+                nowMillis = 9_000L,
+            ) as SharedActivityIntent.MarkDone
+        assertEquals(ActivityDoneCommitTrigger.ToastClosed, intent.commitTrigger)
+        assertEquals(8_000L, intent.waitMs)
+        assertEquals(true, intent.wasUnreadAtClick)
+        assertEquals(true, intent.frontierCaughtUp)
+
+        // Frontier past shown seq 12 -> CallOff(CalloffFrontierMoved, Frontier).
+        val frontierPast = swiped.copy(doneFrontierSeq = "13", readStateLatestActivitySeq = "13")
+        assertEquals(
+            ActivitySwipeDoneDecision.CallOff(ActivityReappearCause.CalloffFrontierMoved, ActivitySeqChange.Frontier),
+            evaluateActivitySwipeDone(swiped, frontierPast),
+        )
+
+        // Joint row never catches up frontier -> CallOff(CalloffFrontierMoved, Frontier).
+        val jointSwiped = swiped.copy(channelKind = ConversationKind.Joint, channelType = "joint")
+        val jointCaughtUp = jointSwiped.copy(doneFrontierSeq = "12", readStateLatestActivitySeq = "12")
+        assertEquals(
+            ActivitySwipeDoneDecision.CallOff(ActivityReappearCause.CalloffFrontierMoved, ActivitySeqChange.Frontier),
+            evaluateActivitySwipeDone(jointSwiped, jointCaughtUp),
+        )
+
+        // Newer activity during wait: latest only vs both.
+        assertEquals(
+            ActivitySwipeDoneDecision.CallOff(ActivityReappearCause.CalloffNewerActivity, ActivitySeqChange.Latest),
+            evaluateActivitySwipeDone(swiped, swiped.copy(latestActivitySeq = "13")),
+        )
+        assertEquals(
+            ActivitySwipeDoneDecision.CallOff(ActivityReappearCause.CalloffNewerActivity, ActivitySeqChange.Both),
+            evaluateActivitySwipeDone(swiped, swiped.copy(latestActivitySeq = "13", doneFrontierSeq = "13")),
+        )
     }
 
     private fun thread(key: String, following: Boolean?) =

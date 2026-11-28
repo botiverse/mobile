@@ -21,6 +21,8 @@ import kotlinx.serialization.json.put
 @RaftCoreInternalApi const val ActivityDoneReappearMaxCommitted = 200
 
 @RaftCoreInternalApi enum class ActivityReappearCause(val wireValue: String) {
+    CalloffFrontierMoved("calloff_frontier_moved"),
+    CalloffNewerActivity("calloff_newer_activity"),
     SuppressionMarkerNewer("suppression_marker_newer"),
     MarkerNull("marker_null"),
     DoneFailed("done_failed"),

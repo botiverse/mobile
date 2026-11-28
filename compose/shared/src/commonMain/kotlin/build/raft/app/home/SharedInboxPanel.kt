@@ -27,10 +27,16 @@ import build.raft.app.thread.toConversationOpenSourceMessageIdentity
 import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.data.ActivityDoneCommitTrigger
+import build.raft.app.data.ActivityDoneTraceEvent
 import build.raft.app.data.ActivityFilterChoice
 import build.raft.app.data.ActivityFilterPreferenceRepository
+import build.raft.app.data.ActivityReappearCause
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
+import build.raft.app.data.ActivitySeqChange
+import build.raft.app.data.activityDoneTraceRowKind
+import build.raft.app.data.activityMonotonicClock
 import build.raft.app.data.RaftStaleReadRecoverySignals
 import build.raft.app.data.ActivityUnreadSummaryProjection
 import build.raft.app.data.ActivityUpdateTrackingState
@@ -2435,9 +2441,44 @@ internal fun SharedActivityList(
         activeMenuItem = currentItem
         menuAnchor = anchor
     }
-    fun commitSwipeDone(pending: ActivityPendingSwipeDone) {
-        val current = presentedItemsState.value.firstOrNull { it.key == pending.item.key }
-        when (val intent = activitySwipeDeferredCommitIntent(pending, current)) {
+    val panelClock = remember { activityMonotonicClock() }
+    val latestCanonicalSnapshot by rememberUpdatedState(presentationServerId to snapshot.items)
+    fun reportSwipeDoneReappeared(
+        pending: ActivityPendingSwipeDone,
+        cause: ActivityReappearCause,
+        seqChanged: ActivitySeqChange,
+    ) {
+        val rowKind = pending.item.activityDoneTraceRowKind() ?: return
+        val (currentServerId, _) = latestCanonicalSnapshot
+        latestOnIntent(
+            SharedActivityIntent.ReportDoneTrace(
+                event =
+                    ActivityDoneTraceEvent.ItemReappeared(
+                        cause = cause,
+                        rowKind = rowKind,
+                        wasUnreadAtClick = pending.wasUnreadAtClick,
+                        msSinceClick = (panelClock() - pending.clickedAtMillis).coerceAtLeast(0L),
+                        seqChanged = seqChanged,
+                    ),
+                serverId = pending.listOwnerServerId ?: currentServerId,
+            )
+        )
+    }
+    fun commitSwipeDone(
+        pending: ActivityPendingSwipeDone,
+        trigger: ActivityDoneCommitTrigger,
+    ) {
+        val (currentServerId, canonicalItems) = latestCanonicalSnapshot
+        val sameServer = pending.listOwnerServerId == null || pending.listOwnerServerId == currentServerId
+        val current = if (sameServer) canonicalItems.firstOrNull { it.key == pending.item.key } else null
+        if (pending.action == ActivitySwipeDeferredAction.Done) {
+            val decision = evaluateActivitySwipeDone(pending.item, current)
+            if (decision is ActivitySwipeDoneDecision.CallOff) {
+                reportSwipeDoneReappeared(pending, decision.cause, decision.seqChanged)
+                return
+            }
+        }
+        when (val intent = activitySwipeDeferredCommitIntent(pending, current, trigger = trigger, nowMillis = panelClock())) {
             null -> Unit
             is SharedActivityIntent.MarkDone -> {
                 RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
@@ -2465,9 +2506,12 @@ internal fun SharedActivityList(
             )
         )
     }
-    fun applySwipeDone(transition: ActivitySwipeDoneTransition) {
+    fun applySwipeDone(
+        transition: ActivitySwipeDoneTransition,
+        trigger: ActivityDoneCommitTrigger,
+    ) {
         swipeDoneUndo = transition.state
-        transition.commit?.let(::commitSwipeDone)
+        transition.commit?.let { pending -> commitSwipeDone(pending, trigger) }
         syncPendingDeferredHide(transition.state.pending)
     }
     // Workspace Artifacts: an object row's Done goes out at once (web `markObjectRowDone`); its
@@ -2479,7 +2523,11 @@ internal fun SharedActivityList(
         showUndoToast: Boolean = true,
     ) {
         swipeEndUndo = swipeEndUndo.dismiss()
-        applySwipeDone(swipeDoneUndo.flush())
+        val flushTrigger =
+            if (showUndoToast) ActivityDoneCommitTrigger.NextRow else ActivityDoneCommitTrigger.PageHidden
+        if (swipeDoneUndo.pending != null) {
+            applySwipeDone(swipeDoneUndo.flush(), flushTrigger)
+        }
         objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
         RaftProductEvents.activityMark(RaftActivityMarkAction.Done)
         latestOnIntent(
@@ -2493,9 +2541,14 @@ internal fun SharedActivityList(
             objectUndo = objectUndo.done(item)
         }
     }
-    fun objectRowUnfollow(item: InboxItem) {
+    fun objectRowUnfollow(item: InboxItem, fromOwnerDisposal: Boolean = false) {
         swipeEndUndo = swipeEndUndo.dismiss()
-        applySwipeDone(swipeDoneUndo.flush())
+        if (swipeDoneUndo.pending != null) {
+            applySwipeDone(
+                swipeDoneUndo.flush(),
+                if (fromOwnerDisposal) ActivityDoneCommitTrigger.PageHidden else ActivityDoneCommitTrigger.NextRow,
+            )
+        }
         objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
         objectUndo = objectUndo.unfollow(item)
     }
@@ -2505,6 +2558,7 @@ internal fun SharedActivityList(
         item: InboxItem,
         listOwnerUserId: String? = presentationAccountId.takeIf { it.isNotEmpty() },
         listOwnerServerId: String? = presentationServerId,
+        fromOwnerDisposal: Boolean = false,
     ) {
         // Web #11687: the thread's unread leaves Home now, while the request waits for the toast.
         latestOnIntent(SharedActivityIntent.ProjectThreadUnfollow(item, HomeThreadUnfollowPhase.Unfollowed))
@@ -2516,7 +2570,8 @@ internal fun SharedActivityList(
                 ActivitySwipeDeferredAction.Unfollow,
                 listOwnerUserId = listOwnerUserId,
                 listOwnerServerId = listOwnerServerId,
-            )
+            ),
+            trigger = if (fromOwnerDisposal) ActivityDoneCommitTrigger.PageHidden else ActivityDoneCommitTrigger.NextRow,
         )
     }
     fun runSwipeEndCommand(command: ActivitySwipeEndCommand) {
@@ -2534,6 +2589,7 @@ internal fun SharedActivityList(
         listOwnerUserId: String? = presentationAccountId.takeIf { it.isNotEmpty() },
         listOwnerServerId: String? = presentationServerId,
         fromOwnerDisposal: Boolean = false,
+        clickedAtMillis: Long? = null,
     ) {
         if (item.kind == InboxItemKind.Object && actionId == "done") {
             return objectRowDone(
@@ -2543,8 +2599,12 @@ internal fun SharedActivityList(
                 showUndoToast = !fromOwnerDisposal,
             )
         }
-        if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") return objectRowUnfollow(item)
-        if (actionId == "unfollow-thread") return deferThreadUnfollow(item, listOwnerUserId, listOwnerServerId)
+        if (item.kind == InboxItemKind.Object && actionId == "unfollow-object") {
+            return objectRowUnfollow(item, fromOwnerDisposal = fromOwnerDisposal)
+        }
+        if (actionId == "unfollow-thread") {
+            return deferThreadUnfollow(item, listOwnerUserId, listOwnerServerId, fromOwnerDisposal = fromOwnerDisposal)
+        }
         if (actionId == "done") {
             // One toast at a time: an end swipe's or object's toast gives way (waiting Unfollow commits first).
             swipeEndUndo = swipeEndUndo.dismiss()
@@ -2554,7 +2614,9 @@ internal fun SharedActivityList(
                     item = item,
                     listOwnerUserId = listOwnerUserId,
                     listOwnerServerId = listOwnerServerId,
-                )
+                    clickedAtMillis = clickedAtMillis ?: panelClock(),
+                ),
+                trigger = if (fromOwnerDisposal) ActivityDoneCommitTrigger.PageHidden else ActivityDoneCommitTrigger.NextRow,
             )
             return
         }
@@ -2569,6 +2631,7 @@ internal fun SharedActivityList(
             listOwnerUserId = pending.listOwnerUserId,
             listOwnerServerId = pending.listOwnerServerId,
             fromOwnerDisposal = fromOwnerDisposal,
+            clickedAtMillis = pending.clickedAtMillis,
         )
     }
     fun completePendingRowExit(key: String) {
@@ -2582,7 +2645,9 @@ internal fun SharedActivityList(
         flushedExits.forEach { pending -> commitPendingRowExit(pending, fromOwnerDisposal = true) }
         // Leaving: a waiting Unfollow is sent now rather than lost; a Done already stands.
         objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
-        applySwipeDone(swipeDoneUndo.flush())
+        if (swipeDoneUndo.pending != null) {
+            applySwipeDone(swipeDoneUndo.flush(), ActivityDoneCommitTrigger.PageHidden)
+        }
         swipeEndUndo = swipeEndUndo.dismiss()
         effectiveSwipeHost.close()
     }
@@ -2597,6 +2662,7 @@ internal fun SharedActivityList(
                 ownerIdentity = renderedPresentationOwnerIdentity,
                 listOwnerUserId = presentationAccountId.takeIf { it.isNotEmpty() },
                 listOwnerServerId = presentationServerId,
+                clickedAtMillis = panelClock(),
             )
         return true
     }
@@ -2632,7 +2698,9 @@ internal fun SharedActivityList(
         if (liveAction != action) return
         // One toast at a time: a waiting Done or Unfollow is committed now rather than lost.
         objectUndo = objectUndo.flushUnfollow { latestOnIntent(SharedActivityIntent.UnfollowObject(it)) }
-        applySwipeDone(swipeDoneUndo.flush())
+        if (swipeDoneUndo.pending != null) {
+            applySwipeDone(swipeDoneUndo.flush(), ActivityDoneCommitTrigger.NextRow)
+        }
         runSwipeEndCommand(activitySwipeEndApplyCommand(currentItem, liveAction))
         swipeEndUndo = swipeEndUndo.swipe(currentItem, liveAction)
     }
@@ -2648,6 +2716,7 @@ internal fun SharedActivityList(
         latestOnIntent(activityReadToggleIntent(currentItem))
     }
     fun runRowAction(item: InboxItem, actionId: String) {
+        val clickedAtMillis = if (actionId == "done") panelClock() else null
         if (activityRowActionRemovesRow(actionId)) {
             val visibleInList = listState.layoutInfo.visibleItemsInfo.any { info -> info.key == item.key }
             if (pendingRowExits.isExiting(item.key)) {
@@ -2663,11 +2732,12 @@ internal fun SharedActivityList(
                         ownerIdentity = renderedPresentationOwnerIdentity,
                         listOwnerUserId = presentationAccountId.takeIf { it.isNotEmpty() },
                         listOwnerServerId = presentationServerId,
+                        clickedAtMillis = clickedAtMillis,
                     )
                 return
             }
         }
-        commitRowAction(item, actionId)
+        commitRowAction(item, actionId, clickedAtMillis = clickedAtMillis)
     }
     // A screen-reader action on a rendered row: resolved against the live row like a tap, and only while
     // the row still offers it (its menu would list it). Screen-reader custom actions are not recorded in
@@ -2703,7 +2773,24 @@ internal fun SharedActivityList(
     LaunchedEffect(swipeDonePendingToken) {
         val token = swipeDonePendingToken ?: return@LaunchedEffect
         delay(ActivitySwipeDoneUndoWindowMillis)
-        applySwipeDone(swipeDoneUndo.expire(token))
+        applySwipeDone(swipeDoneUndo.expire(token), ActivityDoneCommitTrigger.ToastClosed)
+    }
+    // Parity with web activitySwipeActions.ts (#proj-o11y:#53): newer activity or an un-catchable
+    // frontier move during the 8 s Undo wait calls the Done off immediately instead of leaving the
+    // row hidden under a toast that says it is done.
+    LaunchedEffect(snapshot.items, swipeDoneUndo.pending) {
+        val pending = swipeDoneUndo.pending ?: return@LaunchedEffect
+        if (pending.action != ActivitySwipeDeferredAction.Done) return@LaunchedEffect
+        val sameServer = pending.listOwnerServerId == null || pending.listOwnerServerId == presentationServerId
+        if (!sameServer) return@LaunchedEffect
+        val current = snapshot.items.firstOrNull { it.key == pending.item.key } ?: return@LaunchedEffect
+        val decision =
+            evaluateActivitySwipeDone(pending.item, current) as? ActivitySwipeDoneDecision.CallOff
+                ?: return@LaunchedEffect
+        reportSwipeDoneReappeared(pending, decision.cause, decision.seqChanged)
+        val nextUndo = swipeDoneUndo.undo(pending.token)
+        swipeDoneUndo = nextUndo
+        syncPendingDeferredHide(nextUndo.pending)
     }
     val swipeEndPendingToken = swipeEndUndo.pending?.token
     LaunchedEffect(swipeEndPendingToken) {
@@ -2738,10 +2825,15 @@ internal fun SharedActivityList(
             flushAllPendingForOwnerChange()
         }
     }
-    // Switching away from the Activity tab (keep-alive inactive) closes any open swipe row or menu.
-    LaunchedEffect(active) {
-        if (!active) {
-            effectiveSwipeHost.close()
+    // Switching away from the Activity tab (keep-alive inactive) or backgrounding the app commits a
+    // waiting Done/Unfollow (parity with web visibilitychange/pagehide) and closes any open swipe row or menu.
+    LaunchedEffect(active, appForeground) {
+        if (!active || !appForeground) {
+            if (swipeDoneUndo.pending != null || pendingRowExits.exitingByKey.isNotEmpty() || objectUndo.pending != null) {
+                flushAllPendingForOwnerChange()
+            } else {
+                effectiveSwipeHost.close()
+            }
             if (activeMenuItem != null) activeMenuItem = null
         }
     }
@@ -2969,6 +3061,9 @@ internal fun SharedActivityList(
                     },
                 actionLabel = stringResource(Res.string.common_undo),
                 onAction = {
+                    if (pending.action == ActivitySwipeDeferredAction.Done && swipeDoneUndo.pending?.token == pending.token) {
+                        reportSwipeDoneReappeared(pending, ActivityReappearCause.Undo, ActivitySeqChange.None)
+                    }
                     if (pending.action == ActivitySwipeDeferredAction.Unfollow) {
                         latestOnIntent(SharedActivityIntent.ProjectThreadUnfollow(pending.item, HomeThreadUnfollowPhase.Restored))
                     }
