@@ -113,16 +113,54 @@ class RuntimeUsageCardParityTest {
         }
     }
 
+    // --- #17344: Antigravity usage lookup disabled under terms ----------------------------------
+
+    @Test
+    fun antigravityUnsupportedSkipsRefreshAndFollowUpReadsAfterSignIn() = runTest {
+        val api =
+            RuntimeLimitResetTest.FakeLimitResetApi(
+                usage = { ok("""{"state":"unsupported","snapshot":null}""") },
+                auth = { ok(AUTH_VIEW) },
+            )
+        withController(api, provider = RuntimeAccountUsageProvider.Antigravity) { controller ->
+            controller.onOpen()
+            advanceUntilIdle()
+            val state = controller.sheetState(runtimeVersion = "1.2.3", nowMillis = 1_794_045_630_000L)
+            assertEquals(RuntimeAccountUsageProvider.Antigravity, state.provider)
+            assertEquals(false, state.checkDue)
+            assertIs<RuntimeAccountUsageRead.Unsupported>(assertIs<RuntimeAccountUsageLoad.Loaded>(state.load).read)
+            val readsAfterOpen = api.calls.count { it.startsWith("GET") && it.contains("runtime-account-usage") }
+            assertEquals(1, readsAfterOpen)
+            assertEquals(0, api.calls.count { it.startsWith("POST") && it.contains("refresh") })
+
+            controller.onForegroundReturn()
+            advanceUntilIdle()
+            assertEquals(0, api.calls.count { it.startsWith("POST") && it.contains("refresh") })
+
+            controller.readAfterSignIn()
+            advanceUntilIdle()
+            assertEquals(
+                readsAfterOpen,
+                api.calls.count { it.startsWith("GET") && it.contains("runtime-account-usage") },
+                "Antigravity sign-in must not fire follow-up usage GETs",
+            )
+        }
+    }
+
     // --- Fixtures --------------------------------------------------------------------------------
 
-    private suspend fun TestScope.withController(api: RuntimeLimitResetTest.FakeLimitResetApi, block: suspend (ComputerRuntimeUsageController) -> Unit) {
+    private suspend fun TestScope.withController(
+        api: RuntimeLimitResetTest.FakeLimitResetApi,
+        provider: RuntimeAccountUsageProvider = RuntimeAccountUsageProvider.Codex,
+        block: suspend (ComputerRuntimeUsageController) -> Unit,
+    ) {
         val scope = CoroutineScope(coroutineContext + Job())
         val owner = RuntimeLimitResetTest.OWNER
         val store = SharedRuntimeAccountUsageStore(RaftComputersApiClient(api), currentIdentity = { owner }, clock = { 0L })
         // 30s after 2026-11-07T10:00:00Z so opening the card reads once without an immediate stale auto-check.
         val controller =
             ComputerRuntimeUsageController(
-                key = RuntimeAccountUsageKey(owner, "s1", "m1", RuntimeAccountUsageProvider.Codex),
+                key = RuntimeAccountUsageKey(owner, "s1", "m1", provider),
                 store = store,
                 scope = scope,
                 nowMillis = { 1_794_045_630_000L },

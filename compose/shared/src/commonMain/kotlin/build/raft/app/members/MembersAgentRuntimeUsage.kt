@@ -33,6 +33,7 @@ import build.raft.app.data.SharedRuntimeAccountUsageStore
 import build.raft.app.model.RaftTimeContext
 import build.raft.app.rememberRuntimeUsageNowMillis
 import build.raft.app.resolve
+import build.raft.app.unsupportedRead
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -252,12 +253,13 @@ internal fun MembersAgentRuntimeUsageChip(
     BindClaudeLimitResetFlag(controller, access?.serverFeatureFlags)
     LaunchedEffect(controller) { controller?.start() }
     val load = controller?.load
+    val unsupported = load.unsupportedRead
     val offered = controller != null && load.offersRuntimeAccountUsage()
-    val attention = offered && load.runtimeAccountUsageNeedsAttention()
-    val statusVariant = membersRuntimeUsageStatusVariant(offered, attention)
+    val attention = offered && !unsupported && load.runtimeAccountUsageNeedsAttention()
+    val statusVariant = if (unsupported) null else membersRuntimeUsageStatusVariant(offered, attention)
     val statusDescription =
         when {
-            !offered -> null
+            !offered || unsupported -> null
             attention -> stringResource(Res.string.member_runtime_usage_attention)
             else -> stringResource(Res.string.settings_computers_runtime_usage_healthy)
         }

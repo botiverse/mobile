@@ -314,9 +314,11 @@
     <string name="settings_app_logins_title">Apps you signed in to with Raft</string>
     <string name="settings_app_logins_description">These apps know who you are. Revoking signs you out of the app right away.</string>
     <string name="settings_app_logins_signed_in">Signed in %1$s</string>
+    <string name="settings_app_logins_used_card">Used its card %1$s</string>
     <string name="settings_app_logins_revoke">Revoke</string>
     <string name="settings_app_logins_confirm_title">Revoke %1$s?</string>
     <string name="settings_app_logins_confirm_body">%1$s loses access right away. To use it again, sign in with Raft again.</string>
+    <string name="settings_app_logins_confirm_body_card">%1$s stops getting your role and membership changes right away. Using its card again starts them again.</string>
     <string name="settings_app_logins_revoked">%1$s revoked</string>
     <string name="settings_app_logins_revoke_failed">Couldn't revoke %1$s. Try again.</string>
     <string name="settings_compact_month_day">%1$s %2$d</string>
@@ -3450,6 +3452,7 @@
     <string name="settings_computers_runtime_usage_reading">Reading usage…</string>
     <string name="settings_computers_runtime_usage_read_failed">Couldn't read usage.</string>
     <string name="settings_computers_runtime_usage_no_snapshot">No usage yet</string>
+    <string name="settings_computers_runtime_usage_antigravity_unavailable_by_terms">Usage lookup is currently unavailable under Antigravity's terms.</string>
     <string name="settings_computers_runtime_usage_stale">Out of date</string>
     <string name="settings_computers_runtime_usage_account_fallback">Runtime account</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">Usage unavailable</string>

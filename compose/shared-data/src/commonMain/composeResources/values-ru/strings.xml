@@ -314,9 +314,11 @@
     <string name="settings_app_logins_title">Приложения, в которые вы вошли через Raft</string>
     <string name="settings_app_logins_description">Эти приложения знают, кто вы. Если отозвать доступ, вы сразу выйдете из приложения.</string>
     <string name="settings_app_logins_signed_in">Вход: %1$s</string>
+    <string name="settings_app_logins_used_card">Использована карточка: %1$s</string>
     <string name="settings_app_logins_revoke">Отозвать доступ</string>
     <string name="settings_app_logins_confirm_title">Отозвать доступ у приложения %1$s?</string>
     <string name="settings_app_logins_confirm_body">Приложение %1$s сразу потеряет доступ. Чтобы снова им пользоваться, ещё раз войдите через Raft.</string>
+    <string name="settings_app_logins_confirm_body_card">%1$s сразу перестанет получать изменения вашей роли и участия. Если снова воспользоваться его карточкой, это возобновится.</string>
     <string name="settings_app_logins_revoked">Доступ приложения %1$s отозван</string>
     <string name="settings_app_logins_revoke_failed">Не удалось отозвать доступ у приложения %1$s. Попробуйте ещё раз.</string>
     <string name="settings_compact_month_day">%2$d %1$s</string>
@@ -3446,6 +3448,7 @@
     <string name="settings_computers_runtime_usage_reading">Чтение использования…</string>
     <string name="settings_computers_runtime_usage_read_failed">Не удалось прочитать данные об использовании.</string>
     <string name="settings_computers_runtime_usage_no_snapshot">Использования пока нет</string>
+    <string name="settings_computers_runtime_usage_antigravity_unavailable_by_terms">Запрос данных об использовании временно недоступен согласно условиям Antigravity.</string>
     <string name="settings_computers_runtime_usage_stale">Устарело</string>
     <string name="settings_computers_runtime_usage_account_fallback">Аккаунт среды выполнения</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">Данные недоступны</string>

@@ -33,9 +33,16 @@ private const val APP_LOGINS_PATH = "me/app-logins"
     val logoUrl: String? = null,
     val scopes: List<String> = emptyList(),
     val grantedAt: String,
+    val kind: String? = null,
 )
 
-/** One App the person signed in to with their Raft account. */
+/** How the App knows the person (botiverse/slock #17336: OAuth sign-in vs App Bot card execution). */
+enum class AppLoginKind {
+    SignIn,
+    Card,
+}
+
+/** One App the person signed in to with their Raft account (or interacted with via its card). */
 data class AppLogin(
     val id: String,
     /** The App's public client key: what DELETE takes. */
@@ -43,6 +50,7 @@ data class AppLogin(
     val name: String,
     val logoUrl: String?,
     val grantedAt: String,
+    val kind: AppLoginKind = AppLoginKind.SignIn,
 )
 
 /** GET /me/app-logins's array; null when the body is not that shape. */
@@ -50,7 +58,16 @@ fun parseSharedAppLogins(bodyText: String?): List<AppLogin>? {
     val body = bodyText?.takeIf { it.isNotBlank() } ?: return null
     return runCatching { appLoginsJson.decodeFromString(ListSerializer(AppLoginDto.serializer()), body) }
         .getOrNull()
-        ?.map { AppLogin(id = it.id, clientId = it.clientId, name = it.name, logoUrl = it.logoUrl?.takeIf(String::isNotBlank), grantedAt = it.grantedAt) }
+        ?.map {
+            AppLogin(
+                id = it.id,
+                clientId = it.clientId,
+                name = it.name,
+                logoUrl = it.logoUrl?.takeIf(String::isNotBlank),
+                grantedAt = it.grantedAt,
+                kind = if (it.kind == "card") AppLoginKind.Card else AppLoginKind.SignIn,
+            )
+        }
 }
 
 @RaftCoreInternalApi interface AppLoginsDataSource {

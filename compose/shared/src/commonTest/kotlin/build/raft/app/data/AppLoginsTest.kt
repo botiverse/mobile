@@ -24,10 +24,44 @@ class AppLoginsTest {
     fun parsesTheListInItsOrder() {
         val logins = parseSharedAppLogins(body)!!
         assertEquals(listOf("rft_app_b", "rft_app_a"), logins.map { it.clientId })
+        assertEquals(listOf(AppLoginKind.SignIn, AppLoginKind.SignIn), logins.map { it.kind })
         assertNull(logins[0].logoUrl)
         assertEquals("https://cdn.example/a.png", logins[1].logoUrl)
         assertEquals(emptyList(), parseSharedAppLogins("[]"))
         assertNull(parseSharedAppLogins("""{"logins":[]}"""), "a wrapped body is not the list")
+    }
+
+    @Test
+    fun parsesCardKindAndDefaultsMissingOrUnknownToSignInAndRevokesCardEntries() = runTest {
+        val mixedBody =
+            """[
+                {"id":"card-1","clientId":"rft_app_card","name":"Poll Bot","logoUrl":null,"scopes":[],"grantedAt":"2026-11-20T08:00:00.000Z","kind":"card"},
+                {"id":"signin-1","clientId":"rft_app_in","name":"Notes","logoUrl":null,"scopes":["profile"],"grantedAt":"2026-11-19T08:00:00.000Z","kind":"sign_in"},
+                {"id":"legacy-1","clientId":"rft_app_old","name":"Legacy","logoUrl":null,"scopes":[],"grantedAt":"2026-11-18T08:00:00.000Z"},
+                {"id":"unknown-1","clientId":"rft_app_unk","name":"Future","logoUrl":null,"scopes":[],"grantedAt":"2026-11-17T08:00:00.000Z","kind":"other"}
+            ]"""
+        val parsed = parseSharedAppLogins(mixedBody)!!
+        assertEquals(
+            listOf(AppLoginKind.Card, AppLoginKind.SignIn, AppLoginKind.SignIn, AppLoginKind.SignIn),
+            parsed.map { it.kind },
+        )
+
+        val network =
+            ScriptedAgentControlsNetworkClient().apply {
+                respond("GET", "me/app-logins", 200, mixedBody)
+                respond("DELETE", "me/app-logins/rft_app_card", 204, "")
+            }
+        val store = SharedAppLoginsStore(NetworkAppLoginsDataSource(network), this)
+        store.dispatch(SharedAppLoginsIntent.Refresh)
+        runCurrent()
+        val card = store.state.value.logins.first()
+        assertEquals(AppLoginKind.Card, card.kind)
+        store.dispatch(SharedAppLoginsIntent.OpenRevoke(card))
+        store.dispatch(SharedAppLoginsIntent.ConfirmRevoke)
+        runCurrent()
+        assertNull(store.state.value.pending)
+        assertEquals(card, store.state.value.revoked)
+        assertTrue(store.state.value.logins.none { it.clientId == "rft_app_card" })
     }
 
     @Test

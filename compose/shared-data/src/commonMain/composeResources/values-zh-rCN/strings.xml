@@ -314,9 +314,11 @@
     <string name="settings_app_logins_title">用 Raft 登录过的 App</string>
     <string name="settings_app_logins_description">这些 App 知道你是谁。撤销后会立即让你退出该 App。</string>
     <string name="settings_app_logins_signed_in">%1$s 登录</string>
+    <string name="settings_app_logins_used_card">%1$s 用过它的卡片</string>
     <string name="settings_app_logins_revoke">撤销</string>
     <string name="settings_app_logins_confirm_title">撤销 %1$s？</string>
     <string name="settings_app_logins_confirm_body">%1$s 将立即失去访问权限。如需再次使用，请重新用 Raft 登录。</string>
+    <string name="settings_app_logins_confirm_body_card">%1$s 将立即不再获知你的角色和成员变动。再次使用它的卡片会重新开始。</string>
     <string name="settings_app_logins_revoked">已撤销 %1$s</string>
     <string name="settings_app_logins_revoke_failed">未能撤销 %1$s，请重试。</string>
     <string name="settings_compact_month_day">%1$s%2$d日</string>
@@ -3449,6 +3451,7 @@
     <string name="settings_computers_runtime_usage_reading">正在读取用量…</string>
     <string name="settings_computers_runtime_usage_read_failed">读不到用量。</string>
     <string name="settings_computers_runtime_usage_no_snapshot">暂无用量</string>
+    <string name="settings_computers_runtime_usage_antigravity_unavailable_by_terms">根据条款暂不支持查询。</string>
     <string name="settings_computers_runtime_usage_stale">已过时</string>
     <string name="settings_computers_runtime_usage_account_fallback">运行时账户</string>
     <string name="settings_computers_runtime_usage_parse_unavailable">无法显示用量</string>
