@@ -52,7 +52,8 @@ class LoginContractTest {
         assertEquals(null, identityHandleValidationError("𑎀𑎀𑎀𑎀𑎀"))
         assertEquals(null, identityHandleValidationError("ᲉᲉᲉᲉᲉ"))
         assertEquals(null, identityHandleValidationError("𑯀𑯀𑯀𑯀𑯀"))
-        assertEquals(null, identityHandleValidationError("𐵀𐵀𐵀𐵀𐵀"))
+        // U+10D50 is a Garay letter; U+10D40 is a Garay digit (valid after a Garay letter).
+        assertEquals(null, identityHandleValidationError("𐵐𐵀𐵐𐵀𐵐"))
         // Mixing non-CJK scripts with Latin is refused by UTS #39 Highly Restrictive single-script (#17270).
         assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("𐐀user"))
         assertEquals(AuthValidationError.UsernameMixedScript, identityHandleValidationError("𑎀user"))
