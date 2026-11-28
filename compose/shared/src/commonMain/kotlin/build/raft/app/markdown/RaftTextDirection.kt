@@ -35,10 +35,10 @@ internal const val RAFT_BIDI_PDI = '\u2069'
 // Matches web `SKIPPED_TOKENS = /(?:^|\s)[@#][^\s]+|https?:\/\/\S+|`[^`]*`/gu`.
 private val SkippedDirectionTokens = Regex("""(?:^|\s)[@#]\S+|https?://\S+|`[^`]*`""")
 
-/** Matches web `RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/u`. */
+/** Matches web `RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC]/u` (excludes U+FEFD..U+FEFF, notably U+FEFF BOM). */
 internal fun isRaftRtlScriptChar(char: Char): Boolean {
     val code = char.code
-    return (code in 0x0590..0x08FF) || (code in 0xFB1D..0xFDFF) || (code in 0xFE70..0xFEFF)
+    return (code in 0x0590..0x08FF) || (code in 0xFB1D..0xFDFF) || (code in 0xFE70..0xFEFC)
 }
 
 /**
@@ -47,7 +47,8 @@ internal fun isRaftRtlScriptChar(char: Char): Boolean {
  */
 fun raftTextDirection(text: String): RaftTextDirection? {
     if (text.isEmpty()) return null
-    val cleaned = SkippedDirectionTokens.replace(text, " ")
+    val withoutBom = if ('\uFEFF' in text) text.replace("\uFEFF", "") else text
+    val cleaned = SkippedDirectionTokens.replace(withoutBom, " ")
     for (char in cleaned) {
         if (isRaftRtlScriptChar(char)) return RaftTextDirection.Rtl
         if (char.isLetter()) return RaftTextDirection.Ltr
