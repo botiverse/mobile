@@ -194,10 +194,14 @@ internal data class RaftForegroundMessageBanner(
         val cleanDeliveryId = deliveryId ?: return
         val candidateIds =
             listOfNotNull(
-                conversation.sourceThreadId,
-                conversation.streamChannelId,
-                openRequest.conversationIdentity.sourceThreadId,
-                openRequest.conversationIdentity.streamChannelId,
+                conversation.threadId.value,
+                conversation.channelId?.value,
+                conversation.thread?.streamChannelId?.value,
+                conversation.threadStreamChannelIdHint?.value,
+                openRequest.conversationIdentity.threadId.value,
+                openRequest.conversationIdentity.channelId?.value,
+                openRequest.conversationIdentity.thread?.streamChannelId?.value,
+                openRequest.conversationIdentity.threadStreamChannelIdHint?.value,
             ).mapNotNull { it.trim().takeIf { id -> id.isNotEmpty() } }.toSet()
         build.raft.app.data.RaftPushDeliveryTrace.beginDeferredOpen(
             deliveryId = cleanDeliveryId,
@@ -209,7 +213,9 @@ internal data class RaftForegroundMessageBanner(
                 build.raft.app.data.RaftPushOpenLandingTarget(
                     serverId = serverId,
                     conversationIds = candidateIds,
-                    parentMessageId = conversation.parentMessageId ?: openRequest.conversationIdentity.parentMessageId,
+                    parentMessageId =
+                        conversation.thread?.parentMessageId?.value
+                            ?: openRequest.conversationIdentity.thread?.parentMessageId?.value,
                     isActivityTarget = false,
                 ),
             pushOccurredAtMs = receivedAtMs,
