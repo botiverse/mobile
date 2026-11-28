@@ -9,14 +9,17 @@ import build.raft.app.thread.label
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -32,6 +35,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -151,6 +156,8 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -1589,7 +1596,7 @@ private fun computerRuntimeUsageCheckOutcomeText(checkState: ComputerRuntimeUsag
 
 /**
  * Web `RuntimeUsageContents`: the usage block (also the agent move dialog's). Nothing read yet says so;
- * otherwise an out-of-date notice over the sunken accounts, each account, and "Updated …" ([metadata]
+ * otherwise an out-of-date notice over the dimmed accounts, each account, and "Updated …" ([metadata]
  * in its place) with [footerAction] (Check again / Retry) beside it. [accountMenu] and [accountActions]
  * go with the Computer's own account. [inset] is the side padding (16 in a card, 0 in a sheet or a dialog).
  */
@@ -1666,27 +1673,59 @@ internal fun ComputerRuntimeUsageContents(
             val stale = available.stale
             // The Computer's own account (not an agent's own folder's): where its menu and limit actions go.
             val own = available.snapshot.accounts.firstOrNull { it.isDefaultAccount }?.accountKey
-            // An out-of-date snapshot sits on the sunken surface under an orange-soft notice: recoverable, so warning, never red.
-            Column(Modifier.fillMaxWidth().then(if (stale) Modifier.background(colors.fillMuted) else Modifier)) {
-                if (stale) {
-                    RaftText(
-                        stringResource(Res.string.settings_computers_runtime_usage_stale),
-                        modifier = Modifier.fillMaxWidth().background(colors.warningSoft).padding(horizontal = maxOf(inset, 12.dp), vertical = 8.dp),
-                        style = typography.caption.copy(fontWeight = FontWeight.Bold),
-                        color = colors.foreground,
+            // Inside an unpadded sheet/dialog (inset == 0.dp), frame a stale snapshot in a rounded hairline
+            // container with a 12.dp side inset so the warning strip, accounts, and footer align cleanly;
+            // inside a card (inset > 0.dp), the card already supplies the rounded frame and side inset.
+            val framedStale = stale && inset == 0.dp
+            val contentInset = if (framedStale) 12.dp else inset
+            val frameShape = RoundedCornerShape(RaftRadius.Container)
+            // Keep the surface clean (never fillMuted behind RaftMeter tracks) and dim the stale accounts
+            // to 0.6 opacity, matching the rack usage rows, while keeping the warning strip and footer crisp.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .testTag(COMPUTER_RUNTIME_USAGE_CONTENTS_TAG)
+                    .then(
+                        if (framedStale) {
+                            Modifier.clip(frameShape).border(RaftStroke.Hairline, colors.lineHairline, frameShape)
+                        } else {
+                            Modifier
+                        }
                     )
+            ) {
+                if (stale) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(colors.warningSoft)
+                            .testTag(COMPUTER_RUNTIME_USAGE_STALE_BANNER_TAG)
+                            .padding(horizontal = maxOf(contentInset, 12.dp), vertical = 8.dp),
+                    ) {
+                        RaftText(
+                            stringResource(Res.string.settings_computers_runtime_usage_stale),
+                            style = typography.caption.copy(fontWeight = FontWeight.Bold),
+                            color = colors.foreground,
+                        )
+                    }
                     RaftSeparator()
                 }
-                available.snapshot.accounts.forEachIndexed { index, account ->
-                    if (index > 0) RaftSeparator()
-                    val isOwn = account.accountKey == own
-                    Column(Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 12.dp)) {
-                        ComputerRuntimeUsageAccountBlock(
-                            account = account,
-                            timeContext = timeContext,
-                            menu = if (isOwn) accountMenu else null,
-                            actions = if (isOwn) accountActions else null,
-                        )
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .testTag(COMPUTER_RUNTIME_USAGE_ACCOUNTS_TAG)
+                        .then(if (stale) Modifier.alpha(COMPUTER_RUNTIME_USAGE_STALE_ALPHA) else Modifier),
+                ) {
+                    available.snapshot.accounts.forEachIndexed { index, account ->
+                        if (index > 0) RaftSeparator()
+                        val isOwn = account.accountKey == own
+                        Column(Modifier.fillMaxWidth().padding(horizontal = contentInset, vertical = 12.dp)) {
+                            ComputerRuntimeUsageAccountBlock(
+                                account = account,
+                                timeContext = timeContext,
+                                menu = if (isOwn) accountMenu else null,
+                                actions = if (isOwn) accountActions else null,
+                            )
+                        }
                     }
                 }
                 RaftSeparator()
@@ -1701,7 +1740,7 @@ internal fun ComputerRuntimeUsageContents(
                     if (flashAlpha.value > 0f) colors.brandSoft.copy(alpha = colors.brandSoft.alpha * flashAlpha.value)
                     else androidx.compose.ui.graphics.Color.Transparent
                 Row(
-                    Modifier.fillMaxWidth().background(flashBackground).padding(horizontal = inset, vertical = 6.dp),
+                    Modifier.fillMaxWidth().background(flashBackground).padding(horizontal = contentInset, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -1982,6 +2021,10 @@ internal fun computerRuntimeUsageCreditsBalanceDisplay(balance: String, language
     return if (negative && grouped != "0") "-$grouped" else grouped
 }
 
+internal const val COMPUTER_RUNTIME_USAGE_CONTENTS_TAG = "runtime-usage-contents"
+internal const val COMPUTER_RUNTIME_USAGE_STALE_BANNER_TAG = "runtime-usage-stale-banner"
+internal const val COMPUTER_RUNTIME_USAGE_ACCOUNTS_TAG = "runtime-usage-accounts"
+internal const val COMPUTER_RUNTIME_USAGE_STALE_ALPHA = 0.6f
 internal const val COMPUTER_RUNTIME_USAGE_CREDITS_TAG = "runtime-usage-credits"
 internal const val COMPUTER_RUNTIME_ACCOUNT_PLAN_TAG = "runtime-account-plan"
 internal const val COMPUTER_RUNTIME_ACCOUNT_HEALTH_TAG = "runtime-account-health"
@@ -2591,8 +2634,12 @@ private fun ComputerRuntimeUsageSurfaceContent(
             onClaudeLimitReset = onClaudeLimitReset,
         )
     }
+    val framedStale = inset == 0.dp && state.available?.stale == true
     val readFailed = state.load is RuntimeAccountUsageLoad.Failed
     val showsCheck = computerRuntimeUsageShowsCheckButton(state)
+    if (framedStale && runtimeReadiness.holds() && runtimeId != null) {
+        Spacer(Modifier.height(8.dp))
+    }
     ComputerRuntimeUsageContents(
         state = state,
         timeContext = timeContext,
@@ -2608,8 +2655,9 @@ private fun ComputerRuntimeUsageSurfaceContent(
     )
     // No own account drawn (nothing read yet): the limit and sign-in actions under the usage.
     val loose = !usageShowsAccount && hasAccountActions
-    if (loose || (authAction != null && auth != null)) {
-        RaftSeparator()
+    val hasLowerActions = loose || (authAction != null && auth != null)
+    if (hasLowerActions) {
+        if (!framedStale) RaftSeparator()
         Column(
             Modifier.fillMaxWidth().padding(horizontal = inset, vertical = 10.dp).testTag(COMPUTER_RUNTIME_USAGE_ACTIONS_TAG),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2618,15 +2666,17 @@ private fun ComputerRuntimeUsageSurfaceContent(
             if (authAction != null && auth != null) ComputerRuntimeAuthActionView(auth, onSignIn, onSignOut)
         }
     }
-    computerRuntimeUsageStatusText(state)?.let { text ->
+    val statusText = computerRuntimeUsageStatusText(state)
+    val belowFrameTop = if (framedStale && !hasLowerActions) 8.dp else 0.dp
+    statusText?.let { text ->
         RaftText(
             text,
-            modifier = Modifier.fillMaxWidth().padding(start = inset, end = inset, bottom = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = inset, end = inset, top = belowFrameTop, bottom = 4.dp),
             style = RaftTheme.typography.caption,
             color = RaftTheme.colors.foregroundHint,
         )
     }
-    ComputerRuntimeUsagePrivateLine(inset)
+    ComputerRuntimeUsagePrivateLine(inset, top = if (statusText == null) belowFrameTop else 0.dp)
 }
 
 /**
