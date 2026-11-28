@@ -222,6 +222,197 @@ if (raftComposeUiPatchOn) {
     }
 }
 
+// iOS SIGABRT in SkTypeface_Mac::onCharsToGlyphs while laying out a formula (Hands 4048b989,
+// f67238e4, 09e9da2a): latex-renderer's Apple glyph measuring called Skiko's
+// Font.measureTextWidth(String), which on Kotlin/Native reads a UTF-8 buffer as UTF-16. Every
+// configuration of every project that resolves the latex-renderer iOS platform klibs at the patch
+// base version gets the patched build instead (third_party/latex-renderer-1.7.2/README.md). Kotlin
+// Multiplatform reaches them through the root latex-renderer module's `available-at` redirect,
+// which this rule rewrites like a direct dependency. The root module, latex-parser and every other
+// target stay on the official release. Versions and klib SHA-256s: raft.latexRendererPatch.* in
+// gradle.properties. The build fails once hrmLatex moves off the base (drop or rebuild the patch).
+val raftLatexPatchReadme = "third_party/latex-renderer-1.7.2/README.md"
+val raftLatexPatchBase = providers.gradleProperty("raft.latexRendererPatch.base").orNull
+val raftLatexPatchVersion = providers.gradleProperty("raft.latexRendererPatch.version").orNull
+val raftLatexPatchOn = raftLatexPatchBase != null && raftLatexPatchVersion != null
+val raftLatexPatchGroup = "io.github.huarangmeng"
+// Kotlin/Native target name -> the latex-renderer platform module (patched klib) it links.
+val raftLatexPatchModules = mapOf(
+    "ios_arm64" to "latex-renderer-iosarm64",
+    "ios_simulator_arm64" to "latex-renderer-iossimulatorarm64",
+)
+if (raftLatexPatchOn) {
+    val catalogVersion = libs.versions.hrmLatex.get()
+    if (catalogVersion != raftLatexPatchBase) {
+        throw GradleException(
+            "gradle/libs.versions.toml hrmLatex is $catalogVersion but raft.latexRendererPatch.base is " +
+                "$raftLatexPatchBase: the patched iOS klibs would no longer apply. Rebuild the patch for " +
+                "$catalogVersion or delete the raft.latexRendererPatch.* lines ($raftLatexPatchReadme)."
+        )
+    }
+    require(Regex("""\Q$raftLatexPatchBase\E-raft\.[1-9][0-9]*""").matches(raftLatexPatchVersion!!)) {
+        "raft.latexRendererPatch.version must be $raftLatexPatchBase-raft.<N> ($raftLatexPatchReadme)"
+    }
+    val patchedModules = raftLatexPatchModules.values.toSet()
+    allprojects {
+        configurations.configureEach {
+            resolutionStrategy.eachDependency {
+                if (requested.group == raftLatexPatchGroup &&
+                    requested.name in patchedModules &&
+                    requested.version == raftLatexPatchBase
+                ) {
+                    useVersion(raftLatexPatchVersion!!)
+                    because("iOS glyph-width SIGABRT fix, see $raftLatexPatchReadme")
+                }
+            }
+        }
+    }
+}
+
+// Fails the build unless the iOS klib configurations and link tasks that carry latex-renderer get
+// the patched klibs, byte for byte: per Kotlin Multiplatform project with iOS targets, every
+// compilation's klib configuration may resolve latex-renderer-ios* only at
+// raft.latexRendererPatch.version (and in :shared must resolve the target's module), each such klib
+// must match raft.latexRendererPatch.sha256.<module>, and every link task's libraries must be the
+// patched files. Every iOS link task depends on it, and `:verifyComposeUiPatch` (which test.yml,
+// ios-release.yml and ios-simulator-app.yml run before compiling iOS) depends on the root task.
+val raftLatexPatchVerify = tasks.register("verifyLatexRendererPatch") {
+    group = "verification"
+    description = "Checks that iOS builds resolve the patched latex-renderer klibs ($raftLatexPatchReadme)."
+    val pinOn = raftLatexPatchOn
+    doLast {
+        if (!pinOn) logger.lifecycle("verifyLatexRendererPatch: pin off (no raft.latexRendererPatch.* in gradle.properties)")
+    }
+}
+tasks.named("verifyComposeUiPatch") { dependsOn(raftLatexPatchVerify) }
+if (raftLatexPatchOn) {
+    val patchedVersion = raftLatexPatchVersion!!
+    val readme = raftLatexPatchReadme
+    val latexGroup = raftLatexPatchGroup
+    val targetModules = raftLatexPatchModules
+    val expectedSha256 = targetModules.values.associateWith { module ->
+        val key = "raft.latexRendererPatch.sha256.$module"
+        val value = providers.gradleProperty(key).orNull?.trim()?.lowercase()
+        require(value != null && Regex("[0-9a-f]{64}").matches(value)) {
+            "gradle.properties: $key must be the 64-hex SHA-256 of $module-$patchedVersion.klib ($readme)"
+        }
+        value
+    }
+    fun sha256(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 16)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+    allprojects {
+        val projectPath = path
+        // :shared is the only project that depends on latex-renderer; it must always carry it.
+        val anchor = projectPath == ":shared"
+        plugins.withId("org.jetbrains.kotlin.multiplatform") {
+            val task = tasks.register("verifyLatexRendererPatch") {
+                group = "verification"
+                description = "Checks this project's iOS klibs carry the patched latex-renderer ($readme)."
+                val configs = mutableListOf<Triple<String, String, Configuration>>()
+                val links = mutableListOf<Triple<String, String, FileCollection>>()
+                val kotlin = project.extensions.getByType(
+                    org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java
+                )
+                kotlin.targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java)
+                    .forEach { target ->
+                        val module = targetModules[target.konanTarget.name] ?: return@forEach
+                        target.compilations.forEach { compilation ->
+                            val name = compilation.compileDependencyConfigurationName
+                            configs += Triple("$projectPath:$name", module, project.configurations.getByName(name))
+                        }
+                        target.binaries.forEach { binary ->
+                            val link = binary.linkTaskProvider.get()
+                            val linked = project.files(link.libraries, link.exportLibraries)
+                            dependsOn(linked)
+                            links += Triple("$projectPath:${link.name}", module, linked)
+                        }
+                    }
+                doLast {
+                    val errors = mutableListOf<String>()
+                    var checked = 0
+                    fun checkKlib(label: String, module: String, file: File) {
+                        val actual = sha256(file)
+                        if (actual != expectedSha256.getValue(module)) {
+                            errors += "$label: $module klib ${file.name} has SHA-256 $actual, expected " +
+                                "${expectedSha256.getValue(module)} (raft.latexRendererPatch.sha256.$module)."
+                        }
+                    }
+                    configs.forEach { (label, module, configuration) ->
+                        checked++
+                        val platform = configuration.incoming.resolutionResult.allComponents
+                            .mapNotNull { it.id as? org.gradle.api.artifacts.component.ModuleComponentIdentifier }
+                            .filter { it.group == latexGroup && it.module in targetModules.values }
+                        platform.filter { it.version != patchedVersion }.forEach {
+                            errors += "$label resolved ${it.displayName}, not $patchedVersion: the latex-renderer pin did not apply."
+                        }
+                        if (anchor && platform.none { it.module == module }) {
+                            errors += "$label has no $latexGroup:$module at all."
+                        }
+                        configuration.incoming.artifactView {
+                            componentFilter {
+                                it is org.gradle.api.artifacts.component.ModuleComponentIdentifier &&
+                                    it.group == latexGroup && it.module in targetModules.values
+                            }
+                        }.artifacts.artifacts.forEach { artifact ->
+                            val id = artifact.id.componentIdentifier as org.gradle.api.artifacts.component.ModuleComponentIdentifier
+                            if (id.version == patchedVersion && artifact.file.name.endsWith(".klib")) {
+                                checkKlib(label, id.module, artifact.file)
+                            }
+                        }
+                    }
+                    // Link tasks see files: Gradle's module cache keeps a klib at
+                    // .../<group>/<module>/<version>/<hash>/<file>.
+                    links.forEach { (label, module, files) ->
+                        checked++
+                        var found = false
+                        files.files.forEach { file ->
+                            val versionDir: File? = file.parentFile?.parentFile
+                            val moduleDir: File? = versionDir?.parentFile
+                            val cachedModule: String? = moduleDir?.name
+                                ?.takeIf { moduleDir?.parentFile?.name == latexGroup }
+                                ?.takeIf { it in targetModules.values }
+                            if (cachedModule != null && file.name.endsWith(".klib")) {
+                                if (versionDir?.name != patchedVersion) {
+                                    errors += "$label links $latexGroup:$cachedModule:${versionDir?.name} (${file.name}), " +
+                                        "not $patchedVersion: the latex-renderer pin did not apply."
+                                } else {
+                                    checkKlib(label, cachedModule, file)
+                                    if (cachedModule == module) found = true
+                                }
+                            }
+                        }
+                        if (anchor && !found) errors += "$label does not link $latexGroup:$module:$patchedVersion."
+                    }
+                    if (errors.isNotEmpty()) {
+                        throw GradleException(
+                            "latex-renderer patch check failed ($readme):\n" + errors.joinToString("\n") { "  - $it" }
+                        )
+                    }
+                    logger.lifecycle("verifyLatexRendererPatch $projectPath: $checked iOS configurations/link tasks use $patchedVersion")
+                }
+            }
+            rootProject.tasks.named("verifyLatexRendererPatch") { dependsOn(task) }
+            project.extensions.getByType(org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension::class.java)
+                .targets.withType(org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget::class.java)
+                .configureEach {
+                    if (konanTarget.name in targetModules) {
+                        binaries.configureEach { linkTaskProvider.configure { dependsOn(task) } }
+                    }
+                }
+        }
+    }
+}
+
 // Detached-node crash on Android ("Cannot read CompositionLocal because the Modifier node is not
 // currently attached"): every configuration of every project that resolves
 // androidx.compose.foundation:foundation-android at the patch base version gets the patched AAR
