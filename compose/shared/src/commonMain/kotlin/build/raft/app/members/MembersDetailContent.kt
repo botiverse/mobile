@@ -743,10 +743,11 @@ internal fun MembersDetailContent(
         currentServerId?.takeIf { it.isNotBlank() }?.let { serverId ->
             serverMembersState.entryFor(ServerId(serverId))?.membersById?.get(member.id.value)
         }
+    val detailSummary = detail?.summary
     val serverAssistantPausedAt =
         (when {
             rosteredMember != null -> rosteredMember.assistantPausedAt
-            detail?.summary != null -> detail.summary.assistantPausedAt
+            detailSummary != null -> detailSummary.assistantPausedAt
             else -> member.assistantPausedAt
         })?.takeIf { it.isNotBlank() }
     LaunchedEffect(serverAssistantPausedAt) {

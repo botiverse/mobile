@@ -548,23 +548,24 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
 }
 
 internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfile): AgentDetailSnapshot {
+    val currentSummary = summary
     val fallbackName = member.handle.ifBlank { member.displayName.ifBlank { member.id.value } }
     val nextSummary =
-        (summary ?: AgentDetailSummary(id = member.id.value, name = fallbackName)).copy(
+        (currentSummary ?: AgentDetailSummary(id = member.id.value, name = fallbackName)).copy(
             name = fallbackName,
             displayName = member.displayName.ifBlank { fallbackName },
             description = member.description?.takeIf { it.isNotBlank() },
-            runtime = member.roleDescription ?: summary?.runtime,
-            avatarUrl = member.avatar?.wireValue ?: summary?.avatarUrl,
-            managedByAppInstallId = member.managedByAppInstallId ?: summary?.managedByAppInstallId,
-            managedByAppClientId = member.managedByAppClientId ?: summary?.managedByAppClientId,
-            managedByAppName = member.managedByAppName ?: summary?.managedByAppName,
-            managedByAppLogoUrl = member.managedByAppLogoUrl ?: summary?.managedByAppLogoUrl,
-            managedByAppBotStatusText = member.managedByAppBotStatusText ?: summary?.managedByAppBotStatusText,
-            assistantOwnerUserId = member.assistantOwnerUserId ?: summary?.assistantOwnerUserId,
-            assistantPausedAt = if (summary != null) summary.assistantPausedAt else member.assistantPausedAt,
-            assistantPausedByName = if (summary != null) summary.assistantPausedByName else member.assistantPausedByName,
-            profileProjection = member.profileProjection ?: summary?.profileProjection,
+            runtime = member.roleDescription ?: currentSummary?.runtime,
+            avatarUrl = member.avatar?.wireValue ?: currentSummary?.avatarUrl,
+            managedByAppInstallId = member.managedByAppInstallId ?: currentSummary?.managedByAppInstallId,
+            managedByAppClientId = member.managedByAppClientId ?: currentSummary?.managedByAppClientId,
+            managedByAppName = member.managedByAppName ?: currentSummary?.managedByAppName,
+            managedByAppLogoUrl = member.managedByAppLogoUrl ?: currentSummary?.managedByAppLogoUrl,
+            managedByAppBotStatusText = member.managedByAppBotStatusText ?: currentSummary?.managedByAppBotStatusText,
+            assistantOwnerUserId = member.assistantOwnerUserId ?: currentSummary?.assistantOwnerUserId,
+            assistantPausedAt = if (currentSummary != null) currentSummary.assistantPausedAt else member.assistantPausedAt,
+            assistantPausedByName = if (currentSummary != null) currentSummary.assistantPausedByName else member.assistantPausedByName,
+            profileProjection = member.profileProjection ?: currentSummary?.profileProjection,
         )
     return copy(summary = nextSummary)
 }
