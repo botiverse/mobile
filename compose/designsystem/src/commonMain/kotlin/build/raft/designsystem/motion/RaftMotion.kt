@@ -26,8 +26,8 @@ object RaftMotion {
 
     /**
      * A surface's height following its content: a phone dialog sheet growing or shrinking when its
-     * step or its body changes (Kirby and sindresorhus, 2026-11-27 in #proj-mobile:c2a6f94a; ahead
-     * of raft-ui), on [EaseSlide].
+     * step or its body changes (Kirby and sindresorhus, 2026-11-27 in #proj-mobile:c2a6f94a; raft-ui
+     * 0.107.0), on [EaseSlide].
      */
     const val ResizeMillis: Int = 200
 
