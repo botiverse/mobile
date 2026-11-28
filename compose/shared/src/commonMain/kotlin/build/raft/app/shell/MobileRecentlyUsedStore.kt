@@ -3,6 +3,7 @@ package build.raft.app.shell
 import build.raft.app.data.RaftLastCountsPersistStorage
 import build.raft.app.data.RaftRailAppPlacePrefix
 import build.raft.app.data.SharedPreferenceStore
+import build.raft.app.data.artifactCanonicalId
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.get
 import kotlinx.atomicfu.locks.SynchronizedObject
@@ -28,6 +29,42 @@ internal const val MOBILE_RECENTLY_USED_INDEX_KEY: String = "mobileRecentlyUsed:
 
 private const val MOBILE_RECENTLY_USED_VERSION: Int = 1
 private const val MOBILE_RECENTLY_USED_MAX_SERVERS: Int = 64
+private const val MOBILE_RECENTLY_USED_ARTIFACT_PLACE_PREFIX: String = "artifact:"
+private val MOBILE_RECENTLY_USED_PT_UUID_REGEX =
+    Regex("^[pP][tT]_[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+/**
+ * Canonicalizes an Artifact ID for [MobileRecentlyUsedStore]: strips whitespace and any
+ * `artifact:` prefix, decodes 22-char Base58 short IDs into canonical `pt_<lowercase-uuid>`
+ * via [artifactCanonicalId], and lowercases `pt_<uuid>` variants while keeping fixture IDs intact.
+ */
+internal fun normalizeMobileRecentlyUsedArtifactId(raw: String): String? {
+    val trimmed = raw.trim()
+    val stripped =
+        if (trimmed.startsWith(MOBILE_RECENTLY_USED_ARTIFACT_PLACE_PREFIX, ignoreCase = true)) {
+            trimmed.substring(MOBILE_RECENTLY_USED_ARTIFACT_PLACE_PREFIX.length).trim()
+        } else {
+            trimmed
+        }
+    if (stripped.isEmpty()) return null
+    val canonical = artifactCanonicalId(stripped)
+    return if (MOBILE_RECENTLY_USED_PT_UUID_REGEX.matches(canonical)) canonical.lowercase() else canonical
+}
+
+/**
+ * Canonicalizes a Raft App client ID for [MobileRecentlyUsedStore]: strips whitespace and any
+ * `app:` prefix and lowercases the ID.
+ */
+internal fun normalizeMobileRecentlyUsedAppClientId(raw: String): String? {
+    val trimmed = raw.trim()
+    val stripped =
+        if (trimmed.startsWith(RaftRailAppPlacePrefix, ignoreCase = true)) {
+            trimmed.substring(RaftRailAppPlacePrefix.length).trim()
+        } else {
+            trimmed
+        }
+    return stripped.lowercase().takeIf { it.isNotEmpty() }
+}
 
 /** Per-account × per-server preference key matching [RaftLastCountsPersistStorage]'s `:user:<id>:server:<id>` scope. */
 internal fun mobileRecentlyUsedStorageKey(accountId: String, serverId: String): String =
@@ -44,7 +81,7 @@ data class MobileRecentlyUsedScope(
  * mobile Server Tab Popover (`#proj-mobile:#329`).
  */
 sealed interface MobileRecentlyUsedEntry {
-    /** Canonical dedupe & tab-bar exclusion key (`artifact:<id>` or `app:<lowercase-clientId>`). */
+    /** Canonical dedupe & tab-bar exclusion key (`artifact:<canonicalId>` or `app:<lowercase-clientId>`). */
     val placeKey: String
 
     /** Human-readable title displayed in the Recently used section. */
@@ -54,7 +91,8 @@ sealed interface MobileRecentlyUsedEntry {
         val id: String,
         override val title: String,
     ) : MobileRecentlyUsedEntry {
-        override val placeKey: String get() = "artifact:$id"
+        override val placeKey: String
+            get() = "$MOBILE_RECENTLY_USED_ARTIFACT_PLACE_PREFIX${normalizeMobileRecentlyUsedArtifactId(id) ?: id.trim()}"
     }
 
     data class App(
@@ -63,7 +101,8 @@ sealed interface MobileRecentlyUsedEntry {
         val iconUrl: String? = null,
         val homepageUrl: String,
     ) : MobileRecentlyUsedEntry {
-        override val placeKey: String get() = "$RaftRailAppPlacePrefix${clientId.lowercase()}"
+        override val placeKey: String
+            get() = "$RaftRailAppPlacePrefix${normalizeMobileRecentlyUsedAppClientId(clientId) ?: clientId.trim().lowercase()}"
         override val title: String get() = name
     }
 }
@@ -113,12 +152,12 @@ internal fun decodeMobileRecentlyUsedEntries(
         val entry =
             when (obj.jsonString("kind")) {
                 "artifact" -> {
-                    val id = obj.jsonString("id")?.trim()?.takeIf { it.isNotEmpty() } ?: continue
+                    val id = obj.jsonString("id")?.let(::normalizeMobileRecentlyUsedArtifactId) ?: continue
                     val title = obj.jsonString("title")?.trim()?.takeIf { it.isNotEmpty() } ?: continue
                     MobileRecentlyUsedEntry.Artifact(id = id, title = title)
                 }
                 "app" -> {
-                    val clientId = obj.jsonString("clientId")?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: continue
+                    val clientId = obj.jsonString("clientId")?.let(::normalizeMobileRecentlyUsedAppClientId) ?: continue
                     val name = obj.jsonString("name")?.trim()?.takeIf { it.isNotEmpty() } ?: continue
                     val homepageUrl = obj.jsonString("homepageUrl")?.trim()?.takeIf { it.isNotEmpty() } ?: continue
                     val iconUrl = obj.jsonString("iconUrl")?.trim()?.takeIf { it.isNotEmpty() }
@@ -174,7 +213,7 @@ class MobileRecentlyUsedStore(
         title: String,
     ) {
         val scope = scopeOrNull(accountId, serverId) ?: return
-        val normalizedId = artifactId.trim().takeIf { it.isNotEmpty() } ?: return
+        val normalizedId = normalizeMobileRecentlyUsedArtifactId(artifactId) ?: return
         val normalizedTitle = title.trim().takeIf { it.isNotEmpty() } ?: return
         record(scope, MobileRecentlyUsedEntry.Artifact(id = normalizedId, title = normalizedTitle))
     }
@@ -188,7 +227,7 @@ class MobileRecentlyUsedStore(
         homepageUrl: String,
     ) {
         val scope = scopeOrNull(accountId, serverId) ?: return
-        val normalizedClientId = clientId.trim().lowercase().takeIf { it.isNotEmpty() } ?: return
+        val normalizedClientId = normalizeMobileRecentlyUsedAppClientId(clientId) ?: return
         val normalizedName = name.trim().takeIf { it.isNotEmpty() } ?: return
         val normalizedHomepageUrl = homepageUrl.trim().takeIf { it.isNotEmpty() } ?: return
         val normalizedIconUrl = iconUrl?.trim()?.takeIf { it.isNotEmpty() }
@@ -320,9 +359,8 @@ class MobileRecentlyUsedStore(
 
     private fun sameEntry(a: MobileRecentlyUsedEntry, b: MobileRecentlyUsedEntry): Boolean =
         when {
-            a is MobileRecentlyUsedEntry.Artifact && b is MobileRecentlyUsedEntry.Artifact -> a.id == b.id
-            a is MobileRecentlyUsedEntry.App && b is MobileRecentlyUsedEntry.App ->
-                a.clientId.equals(b.clientId, ignoreCase = true)
+            a is MobileRecentlyUsedEntry.Artifact && b is MobileRecentlyUsedEntry.Artifact -> a.placeKey == b.placeKey
+            a is MobileRecentlyUsedEntry.App && b is MobileRecentlyUsedEntry.App -> a.placeKey == b.placeKey
             else -> false
         }
 
@@ -334,10 +372,12 @@ class MobileRecentlyUsedStore(
 
     private fun normalizeExcludedPlaceKey(raw: String): String {
         val trimmed = raw.trim()
-        return if (trimmed.startsWith(RaftRailAppPlacePrefix, ignoreCase = true)) {
-            "$RaftRailAppPlacePrefix${trimmed.substring(RaftRailAppPlacePrefix.length).lowercase()}"
-        } else {
-            trimmed
+        return when {
+            trimmed.startsWith(RaftRailAppPlacePrefix, ignoreCase = true) ->
+                normalizeMobileRecentlyUsedAppClientId(trimmed)?.let { "$RaftRailAppPlacePrefix$it" } ?: trimmed.lowercase()
+            trimmed.startsWith(MOBILE_RECENTLY_USED_ARTIFACT_PLACE_PREFIX, ignoreCase = true) ->
+                normalizeMobileRecentlyUsedArtifactId(trimmed)?.let { "$MOBILE_RECENTLY_USED_ARTIFACT_PLACE_PREFIX$it" } ?: trimmed
+            else -> trimmed
         }
     }
 }
