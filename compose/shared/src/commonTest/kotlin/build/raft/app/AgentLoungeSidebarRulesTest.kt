@@ -15,6 +15,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -347,6 +348,8 @@ class AgentLoungeSidebarRulesTest {
         assertEquals(listOf("lounge-solo"), merged.agentLounges.map { it.id })
         val mergedBugen = merged.directMessages.first { it.id == "dm-bugen" }
         assertEquals(5, mergedBugen.unreadCount, "DM 2 + Lounge 3")
+        assertEquals(2, mergedBugen.dmSideUnread, "DM side unread preserved separately")
+        assertEquals(3, mergedBugen.loungeSideUnread, "Lounge side unread preserved separately")
         assertTrue(mergedBugen.mentioned, "inherits Lounge mention")
         assertTrue(mergedBugen.markedUnread, "inherits Lounge marked-unread")
         assertEquals("2026-11-10T11:30:00.000Z", mergedBugen.lastMessageAt, "newer Lounge timestamp wins")
@@ -358,11 +361,16 @@ class AgentLoungeSidebarRulesTest {
             RaftHomeConversationSection.DirectMessage,
             homeConversationSectionForSelection("lounge-bugen", emptyList(), merged.directMessages),
         )
-        // Non-eligible DMs remain unmerged.
+        // Non-eligible DMs remain unmerged and carry no per-side split.
         assertFalse(merged.directMessages.first { it.id == "dm-alice" }.opensAgentLoungeOnClick)
+        assertNull(merged.directMessages.first { it.id == "dm-alice" }.dmSideUnread)
+        assertNull(merged.directMessages.first { it.id == "dm-alice" }.loungeSideUnread)
         assertFalse(merged.directMessages.first { it.id == "dm-assist" }.opensAgentLoungeOnClick)
+        assertNull(merged.directMessages.first { it.id == "dm-assist" }.dmSideUnread)
         assertFalse(merged.directMessages.first { it.id == "dm-bot" }.opensAgentLoungeOnClick)
+        assertNull(merged.directMessages.first { it.id == "dm-bot" }.dmSideUnread)
         assertFalse(merged.directMessages.first { it.id == "dm-gone" }.opensAgentLoungeOnClick)
+        assertNull(merged.directMessages.first { it.id == "dm-gone" }.dmSideUnread)
 
         // Flag off leaves everything unmerged.
         val disabled =
@@ -412,6 +420,8 @@ class AgentLoungeSidebarRulesTest {
                 markedUnreadIds = emptySet(),
             )
         assertEquals(1, mutedMerged.directMessages.single().unreadCount)
+        assertEquals(1, mutedMerged.directMessages.single().dmSideUnread)
+        assertEquals(0, mutedMerged.directMessages.single().loungeSideUnread)
         assertFalse(mutedMerged.directMessages.single().mentioned)
         assertTrue(mutedMerged.agentLounges.isEmpty())
 
@@ -429,6 +439,8 @@ class AgentLoungeSidebarRulesTest {
             )
         assertTrue(bothPinned.agentLounges.isEmpty(), "no duplicate Lounge when DM is also pinned")
         assertEquals(5, bothPinned.directMessages.single().unreadCount)
+        assertEquals(1, bothPinned.directMessages.single().dmSideUnread)
+        assertEquals(4, bothPinned.directMessages.single().loungeSideUnread)
         assertEquals(
             RaftHomeConversationSection.Pinned,
             homeConversationSectionForSelection("lounge-bugen", emptyList(), bothPinned.directMessages, setOf("agent-bugen")),
@@ -448,6 +460,8 @@ class AgentLoungeSidebarRulesTest {
             )
         assertEquals(listOf("lounge-bugen"), onlyLoungePinned.agentLounges.map { it.id })
         assertEquals(1, onlyLoungePinned.directMessages.single().unreadCount, "DM does not double-count pinned Lounge unread")
+        assertEquals(1, onlyLoungePinned.directMessages.single().dmSideUnread)
+        assertEquals(0, onlyLoungePinned.directMessages.single().loungeSideUnread)
         assertEquals(
             listOf(RaftHomeDmTrailingSlot.Mention, RaftHomeDmTrailingSlot.UnreadBadge),
             raftHomeDmTrailingSlots(badge = "5", hasDraft = true, isAgent = true, mentioned = true),
@@ -455,6 +469,52 @@ class AgentLoungeSidebarRulesTest {
         assertEquals(
             listOf(RaftHomeDmTrailingSlot.Mention),
             raftHomeDmTrailingSlots(badge = null, hasDraft = true, isAgent = true, mentioned = true),
+        )
+    }
+
+    @Test
+    fun agentRowPerSideUnreadDisplaySplitsSidesRespectsMuteAndFallsBackWhenNeitherSideHoldsUnread() {
+        // Plain non-merged row or zero unread -> null (keeps standard single-count path).
+        assertNull(homeSidebarAgentUnreadDisplay(unreadCount = 4, dmSideUnread = null, loungeSideUnread = null, muted = false))
+        assertNull(homeSidebarAgentUnreadDisplay(unreadCount = 4, dmSideUnread = 4, loungeSideUnread = null, muted = false))
+        assertNull(homeSidebarAgentUnreadDisplay(unreadCount = 0, dmSideUnread = 0, loungeSideUnread = 0, muted = false))
+
+        // DM-only unread.
+        assertEquals(
+            HomeSidebarAgentUnreadDisplay.Sides(dmCount = 3, dmQuiet = false, loungeCount = 0),
+            homeSidebarAgentUnreadDisplay(unreadCount = 3, dmSideUnread = 3, loungeSideUnread = 0, muted = false),
+        )
+
+        // Lounge-only unread.
+        assertEquals(
+            HomeSidebarAgentUnreadDisplay.Sides(dmCount = 0, dmQuiet = false, loungeCount = 2),
+            homeSidebarAgentUnreadDisplay(unreadCount = 2, dmSideUnread = 0, loungeSideUnread = 2, muted = false),
+        )
+
+        // Unread on both sides (unmuted).
+        assertEquals(
+            HomeSidebarAgentUnreadDisplay.Sides(dmCount = 1, dmQuiet = false, loungeCount = 4),
+            homeSidebarAgentUnreadDisplay(unreadCount = 5, dmSideUnread = 1, loungeSideUnread = 4, muted = false),
+        )
+
+        // Muted DM with unread on both sides: DM count goes quiet, Lounge count remains loud.
+        assertEquals(
+            HomeSidebarAgentUnreadDisplay.Sides(dmCount = 3, dmQuiet = true, loungeCount = 2),
+            homeSidebarAgentUnreadDisplay(unreadCount = 5, dmSideUnread = 3, loungeSideUnread = 2, muted = true),
+        )
+
+        // slock#17277: unread > 0 while both side counts are 0 -> plain total fallback, muted when muted.
+        assertEquals(
+            HomeSidebarAgentUnreadDisplay.TotalFallback(count = 3, quiet = false),
+            homeSidebarAgentUnreadDisplay(unreadCount = 3, dmSideUnread = 0, loungeSideUnread = 0, muted = false),
+        )
+        assertEquals(
+            HomeSidebarAgentUnreadDisplay.TotalFallback(count = 120, quiet = true),
+            homeSidebarAgentUnreadDisplay(unreadCount = 120, dmSideUnread = 0, loungeSideUnread = 0, muted = true),
+        )
+        assertEquals(
+            HomeSidebarAgentUnreadDisplay.TotalFallback(count = 2, quiet = false),
+            homeSidebarAgentUnreadDisplay(unreadCount = 2, dmSideUnread = -1, loungeSideUnread = 0, muted = false),
         )
     }
 }

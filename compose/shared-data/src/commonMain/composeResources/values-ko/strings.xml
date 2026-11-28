@@ -5385,7 +5385,8 @@
     <string name="agent_lounge_view_profile">프로필 보기</string>
     <string name="agent_lounge_switch_trigger_lounge">%1$s의 라운지. 라운지와 비공개 채팅 전환</string>
     <string name="agent_lounge_switch_trigger_private">%1$s 에이전트와의 비공개 채팅. 라운지와 비공개 채팅 전환</string>
-    <string name="agent_lounge_switch_trigger_other_unread">다른 쪽에 읽지 않음 %1$d개</string>
+    <string name="agent_lounge_switch_trigger_lounge_unread">라운지에 읽지 않음 %1$d개</string>
+    <string name="agent_lounge_switch_trigger_private_unread">비공개 채팅에 읽지 않음 %1$d개</string>
     <string name="agent_lounge_switch_unread">읽지 않음 %1$d개</string>
     <string name="agent_lounge_private_audience_notice">나와 %1$s만 볼 수 있어요.</string>
     <string name="agent_lounge_open_failed">라운지를 열지 못했어요. 다시 시도해 주세요.</string>

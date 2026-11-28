@@ -5569,7 +5569,8 @@
     <string name="agent_lounge_view_profile">查看资料</string>
     <string name="agent_lounge_switch_trigger_lounge">%1$s 的会客厅，切换会客厅或私聊</string>
     <string name="agent_lounge_switch_trigger_private">和 %1$s 的私聊，切换会客厅或私聊</string>
-    <string name="agent_lounge_switch_trigger_other_unread">另一边 %1$d 条未读</string>
+    <string name="agent_lounge_switch_trigger_lounge_unread">会客厅有 %1$d 条未读</string>
+    <string name="agent_lounge_switch_trigger_private_unread">私聊有 %1$d 条未读</string>
     <string name="agent_lounge_switch_unread">%1$d 条未读</string>
     <string name="agent_lounge_private_audience_notice">只有你和 %1$s 能看到。</string>
     <string name="agent_lounge_open_failed">没能打开会客厅，请重试。</string>

@@ -5385,7 +5385,8 @@
     <string name="agent_lounge_view_profile">Ver perfil</string>
     <string name="agent_lounge_switch_trigger_lounge">Salón de %1$s. Cambiar entre el salón y el chat privado</string>
     <string name="agent_lounge_switch_trigger_private">Chat privado con %1$s. Cambiar entre el salón y el chat privado</string>
-    <string name="agent_lounge_switch_trigger_other_unread">%1$d sin leer en el otro lado</string>
+    <string name="agent_lounge_switch_trigger_lounge_unread">%1$d sin leer en el Salón</string>
+    <string name="agent_lounge_switch_trigger_private_unread">%1$d sin leer en el chat privado</string>
     <string name="agent_lounge_switch_unread">%1$d sin leer</string>
     <string name="agent_lounge_private_audience_notice">Solo tú y %1$s pueden ver esto.</string>
     <string name="agent_lounge_open_failed">No se pudo abrir el salón. Inténtalo de nuevo.</string>

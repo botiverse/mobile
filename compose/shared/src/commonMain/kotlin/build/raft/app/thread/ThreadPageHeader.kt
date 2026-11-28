@@ -74,7 +74,9 @@ import build.raft.app.TaskConversationBarTitle
 import build.raft.app.TaskConversationHeaderChrome
 import build.raft.app.ThreadPageLounge
 import build.raft.app.agentConversationNativeTitleMenu
+import build.raft.app.agentConversationOtherSideUnreadText
 import build.raft.app.agentLoungeTitle
+import build.raft.app.formatAgentConversationTriggerAccessibilityLabel
 import build.raft.app.data.RAFT_SHELL_OVERLAY_REQUEST_EVENT
 import build.raft.app.data.RAFT_SHELL_OVERLAY_RESULT_EVENT
 import build.raft.app.data.RaftConversationHeaderAction
@@ -703,12 +705,12 @@ internal fun ThreadPageHeader(
                 } else {
                     stringResource(Res.string.agent_lounge_switch_trigger_private, conversationMenuAgentName)
                 }
-            val unreadCount = switch.otherSideUnread.count
-            if (unreadCount > 0) {
-                "$base, ${stringResource(Res.string.agent_lounge_switch_trigger_other_unread, unreadCount)}"
-            } else {
-                base
-            }
+            val otherUnreadLabel =
+                agentConversationOtherSideUnreadText(
+                    activeSide = switch.activeSide,
+                    otherSideUnreadCount = switch.otherSideUnread.count,
+                )
+            formatAgentConversationTriggerAccessibilityLabel(base, otherUnreadLabel)
         }
     val headerDensity = LocalDensity.current
     var headerWidthDp by remember { mutableStateOf(0f) }
@@ -746,6 +748,7 @@ internal fun ThreadPageHeader(
                                 avatarWireValue = conversationMenuAvatarWireValue,
                                 isLounge = activeConversationSwitch.activeSide == AgentLoungeConversationSide.Lounge,
                                 attention = activeConversationSwitch.hasOtherSideAttention,
+                                otherSideUnreadCount = activeConversationSwitch.otherSideUnread.count,
                                 agentId = conversationMenuAgentId,
                                 cacheServerId = conversationMenuCacheServerId,
                                 accessibilityLabel = nativeAgentConversationTriggerLabel,

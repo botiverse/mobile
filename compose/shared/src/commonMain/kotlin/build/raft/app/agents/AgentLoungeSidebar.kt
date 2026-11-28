@@ -240,7 +240,8 @@ internal fun homeSidebarMergeAgentLounges(
                 suppressedLoungeIds += loungeItem.id
             }
             val loungeMuted = known?.activityMuted == true || loungeItem?.activityMuted == true
-            val loungeUnread = if (absorbLounge && !loungeMuted) (loungeItem?.unreadCount ?: 0) else 0
+            val dmUnread = dm.unreadCount.coerceAtLeast(0)
+            val loungeUnread = if (absorbLounge && !loungeMuted) (loungeItem?.unreadCount ?: 0).coerceAtLeast(0) else 0
             val loungeMentioned = absorbLounge && !loungeMuted && (loungeItem?.mentioned == true)
             val loungeMarkedUnread = absorbLounge && loungeChannelId != null && loungeChannelId in markedUnreadIds
             val loungeLastMessageAt = if (absorbLounge) (loungeItem?.lastMessageAt ?: known?.lastMessageAt) else null
@@ -258,7 +259,9 @@ internal fun homeSidebarMergeAgentLounges(
                     null
                 }
             dm.copy(
-                unreadCount = dm.unreadCount + loungeUnread,
+                unreadCount = dmUnread + loungeUnread,
+                dmSideUnread = dmUnread,
+                loungeSideUnread = loungeUnread,
                 mentioned = dm.mentioned || loungeMentioned,
                 markedUnread = dm.markedUnread || loungeMarkedUnread,
                 lastMessageAt = newerSidebarTimestamp(dm.lastMessageAt, loungeLastMessageAt),
@@ -271,6 +274,54 @@ internal fun homeSidebarMergeAgentLounges(
         directMessages = mergedDirectMessages,
         agentLounges = remainingLounges,
     )
+}
+
+/**
+ * Per-side unread display for an agent's merged sidebar row (`botiverse/slock#17269` + `#17277`,
+ * web `SidebarPeerRowBody.tsx` `dmSideUnread` / `loungeSideUnread` / `NoSideCount`):
+ *
+ * - `null`: plain row (not standing for both DM and Lounge, or total unread <= 0).
+ * - [Sides]: one count per side with unread > 0, Private (lock) first then Lounge (sofa). Private
+ *   follows the DM's muted state (quiet grey when muted, loud pink otherwise); Lounge is always
+ *   loud (a muted Lounge contributes 0 unread).
+ * - [TotalFallback]: `#17277` — row has `unreadCount > 0` while both side counts are 0 (unread
+ *   belongs to neither side): draws the plain total with no side icon (`"N unread"`), quiet grey
+ *   when muted like the other counts, never nothing.
+ */
+internal sealed interface HomeSidebarAgentUnreadDisplay {
+    data class Sides(
+        val dmCount: Int = 0,
+        val dmQuiet: Boolean = false,
+        val loungeCount: Int = 0,
+    ) : HomeSidebarAgentUnreadDisplay
+
+    data class TotalFallback(
+        val count: Int,
+        val quiet: Boolean = false,
+    ) : HomeSidebarAgentUnreadDisplay
+}
+
+internal fun homeSidebarAgentUnreadDisplay(
+    unreadCount: Int,
+    dmSideUnread: Int?,
+    loungeSideUnread: Int?,
+    muted: Boolean,
+): HomeSidebarAgentUnreadDisplay? {
+    if (unreadCount <= 0 || dmSideUnread == null || loungeSideUnread == null) return null
+    val dm = dmSideUnread.coerceAtLeast(0)
+    val lounge = loungeSideUnread.coerceAtLeast(0)
+    return if (dm > 0 || lounge > 0) {
+        HomeSidebarAgentUnreadDisplay.Sides(
+            dmCount = dm,
+            dmQuiet = muted,
+            loungeCount = lounge,
+        )
+    } else {
+        HomeSidebarAgentUnreadDisplay.TotalFallback(
+            count = unreadCount,
+            quiet = muted,
+        )
+    }
 }
 
 private fun newerSidebarTimestamp(first: String?, second: String?): String? {

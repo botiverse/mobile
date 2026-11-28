@@ -681,8 +681,9 @@ class RaftNativeNavBarBridgeTest {
                                 avatarWireValue = null,
                                 isLounge = true,
                                 attention = true,
+                                otherSideUnreadCount = 4,
                                 agentId = "agent-tenny",
-                                accessibilityLabel = "Tenny's Lounge. Switch between Lounge and private chat",
+                                accessibilityLabel = "Tenny's Lounge. Switch between Lounge and private chat, 4 unread in Private chat",
                             ),
                     ),
                 titleMenu = menu,
@@ -692,6 +693,11 @@ class RaftNativeNavBarBridgeTest {
         assertEquals(JsonPrimitive("agent_conversation"), extrasObj["kind"])
         assertEquals(JsonPrimitive("lounge"), extrasObj["side"])
         assertEquals(JsonPrimitive(true), extrasObj["attention"])
+        assertEquals(JsonPrimitive(4), extrasObj["otherSideUnreadCount"])
+        assertEquals(
+            JsonPrimitive("Tenny's Lounge. Switch between Lounge and private chat, 4 unread in Private chat"),
+            extrasObj["accessibilityLabel"],
+        )
 
         val rows = Json.parseToJsonElement(lastTitleMenuJson).jsonArray.map { it.jsonObject }
         assertEquals(3, rows.size)

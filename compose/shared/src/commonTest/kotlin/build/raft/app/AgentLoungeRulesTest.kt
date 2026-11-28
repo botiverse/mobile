@@ -374,4 +374,57 @@ class AgentLoungeRulesTest {
         assertEquals(AgentLoungeSwitchUnread(count = 3), liveFollowed.first)
         assertEquals("99+", formatAgentLoungeSwitchBadge(AgentLoungeSwitchUnread(count = 120)))
     }
+
+    @Test
+    fun headerSwitcherOtherSideAndTriggerAccessibilityLabelFollowActiveSide() {
+        assertEquals(AgentLoungeConversationSide.Private, agentConversationOtherSide(AgentLoungeConversationSide.Lounge))
+        assertEquals(AgentLoungeConversationSide.Lounge, agentConversationOtherSide(AgentLoungeConversationSide.Private))
+        assertEquals(
+            "Tenny's Lounge. Switch between Lounge and private chat",
+            formatAgentConversationTriggerAccessibilityLabel("Tenny's Lounge. Switch between Lounge and private chat", null),
+        )
+        assertEquals(
+            "Tenny's Lounge. Switch between Lounge and private chat",
+            formatAgentConversationTriggerAccessibilityLabel("Tenny's Lounge. Switch between Lounge and private chat", "   "),
+        )
+        assertEquals(
+            "Tenny's Lounge. Switch between Lounge and private chat, 3 unread in Private chat",
+            formatAgentConversationTriggerAccessibilityLabel(
+                "Tenny's Lounge. Switch between Lounge and private chat",
+                "3 unread in Private chat",
+            ),
+        )
+        val loungeSwitch =
+            AgentLoungeConversationSwitch(
+                activeSide = AgentLoungeConversationSide.Lounge,
+                loungeUnread = AgentLoungeSwitchUnread(count = 7),
+                privateUnread = AgentLoungeSwitchUnread(count = 3),
+                onSelectLounge = {},
+                onSelectPrivate = {},
+            )
+        assertEquals(AgentLoungeSwitchUnread(count = 3), loungeSwitch.otherSideUnread)
+        assertTrue(loungeSwitch.hasOtherSideAttention)
+
+        val privateSwitch =
+            AgentLoungeConversationSwitch(
+                activeSide = AgentLoungeConversationSide.Private,
+                loungeUnread = AgentLoungeSwitchUnread(count = 2),
+                privateUnread = AgentLoungeSwitchUnread(count = 5),
+                onSelectLounge = {},
+                onSelectPrivate = {},
+            )
+        assertEquals(AgentLoungeSwitchUnread(count = 2), privateSwitch.otherSideUnread)
+        assertTrue(privateSwitch.hasOtherSideAttention)
+
+        val clearedSwitch =
+            AgentLoungeConversationSwitch(
+                activeSide = AgentLoungeConversationSide.Private,
+                loungeUnread = AgentLoungeSwitchUnread(),
+                privateUnread = AgentLoungeSwitchUnread(count = 5),
+                onSelectLounge = {},
+                onSelectPrivate = {},
+            )
+        assertEquals(AgentLoungeSwitchUnread(), clearedSwitch.otherSideUnread)
+        assertFalse(clearedSwitch.hasOtherSideAttention)
+    }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import build.raft.app.data.AGENT_LOUNGE_FEATURE_FLAG_KEY
 import build.raft.app.data.AgentLoungeApi
@@ -95,8 +97,11 @@ import build.raft.designsystem.components.RaftReadOnlyComposer
 import build.raft.designsystem.components.RaftStatusDot
 import build.raft.designsystem.components.RaftStatusSize
 import build.raft.designsystem.components.RaftStatusVariant
+import build.raft.designsystem.components.RaftTooltip
+import build.raft.designsystem.components.RaftTooltipPlacement
 import build.raft.designsystem.components.RaftUnreadCount
 import build.raft.designsystem.components.raftClickable
+import build.raft.designsystem.components.raftUnreadCountText
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftMenuMetrics
@@ -126,6 +131,9 @@ internal object AgentLoungeTestTags {
     const val SidebarRow = "home-sidebar-lounge-row"
     const val SidebarUnread = "sidebar-lounge-unread"
     const val SidebarMention = "sidebar-lounge-mention-marker"
+    const val SidebarAgentUnreadPrivate = "sidebar-agent-unread-private"
+    const val SidebarAgentUnreadLounge = "sidebar-agent-unread-lounge"
+    const val SidebarAgentUnreadTotal = "sidebar-agent-unread-total"
     const val AvatarBadge = "lounge-avatar-badge"
     const val Header = "lounge-header"
     const val AudienceNotice = "lounge-audience-notice"
@@ -134,14 +142,48 @@ internal object AgentLoungeTestTags {
     const val UnarchiveAction = "lounge-unarchive-action"
     const val ProfileAction = "agent-profile-inline-lounge"
     const val ConversationMenuTrigger = "agent-conversation-menu-trigger"
+    const val ConversationMenuTriggerCount = "agent-conversation-menu-trigger-count"
+    const val ConversationMenuTriggerDot = "agent-conversation-menu-trigger-dot"
     const val ConversationMenu = "agent-conversation-menu"
     const val ConversationMenuLounge = "agent-conversation-menu-lounge"
     const val ConversationMenuPrivate = "agent-conversation-menu-private"
     const val ConversationMenuProfile = "agent-conversation-menu-profile"
     const val ConversationMenuUnread = "agent-conversation-menu-unread"
     const val ConversationAvatarMark = "agent-conversation-avatar-mark"
-    const val ConversationAvatarDot = "agent-conversation-avatar-dot"
 }
+
+/** The opposite side of [activeSide] (`Lounge <-> Private`). */
+internal fun agentConversationOtherSide(activeSide: AgentLoungeConversationSide): AgentLoungeConversationSide =
+    when (activeSide) {
+        AgentLoungeConversationSide.Lounge -> AgentLoungeConversationSide.Private
+        AgentLoungeConversationSide.Private -> AgentLoungeConversationSide.Lounge
+    }
+
+/**
+ * Accessible / tooltip copy naming the other side's unread count (`botiverse/slock#17269`):
+ * `"{count} unread in Private chat"` while in the Lounge, `"{count} unread in the Lounge"` while
+ * in Private chat, or null at 0.
+ */
+@Composable
+internal fun agentConversationOtherSideUnreadText(
+    activeSide: AgentLoungeConversationSide,
+    otherSideUnreadCount: Int,
+): String? {
+    if (otherSideUnreadCount <= 0) return null
+    return when (agentConversationOtherSide(activeSide)) {
+        AgentLoungeConversationSide.Private ->
+            stringResource(Res.string.agent_lounge_switch_trigger_private_unread, otherSideUnreadCount)
+        AgentLoungeConversationSide.Lounge ->
+            stringResource(Res.string.agent_lounge_switch_trigger_lounge_unread, otherSideUnreadCount)
+    }
+}
+
+/** Combines the switcher trigger's base label with its optional other-side unread announcement. */
+internal fun formatAgentConversationTriggerAccessibilityLabel(
+    baseLabel: String,
+    otherSideUnreadLabel: String?,
+): String =
+    if (!otherSideUnreadLabel.isNullOrBlank()) "$baseLabel, $otherSideUnreadLabel" else baseLabel
 
 /** Which side of an agent's paired conversation (Lounge vs Private DM) is currently shown. */
 internal enum class AgentLoungeConversationSide {
@@ -300,11 +342,11 @@ internal fun formatAgentLoungeSwitchBadge(unread: AgentLoungeSwitchUnread): Stri
 internal const val AgentConversationAvatarMenuExtraWidthDp = 26f
 
 /**
- * An agent's face in the header of its Lounge and private DM (`botiverse/slock#16450`,
+ * An agent's face in the header of its Lounge and private DM (`botiverse/slock#16450`, `#17269`,
  * `AgentConversationAvatar` in `LoungeAvatar.tsx`): the agent avatar with a corner mark saying
  * which side is open (Sofa on `info-soft` for Lounge, Lock on `fill-muted` for Private chat),
- * ringed with `layer-canvas`, and an attention dot on the mark's outer top-right corner when the
- * other side has unread.
+ * ringed with `layer-canvas`. The other side's unread is drawn as a count sticker on the button's
+ * top-end corner (`AgentConversationAvatarMenuButton`).
  */
 @Composable
 internal fun RaftAgentConversationAvatar(
@@ -313,7 +355,6 @@ internal fun RaftAgentConversationAvatar(
     label: String,
     cacheServerId: String?,
     side: AgentLoungeConversationSide,
-    attention: Boolean,
     avatarSize: Dp,
     modifier: Modifier = Modifier,
 ) {
@@ -372,26 +413,15 @@ internal fun RaftAgentConversationAvatar(
                     )
                 }
             }
-            if (attention) {
-                RaftStatusDot(
-                    variant = RaftStatusVariant.Accent,
-                    size = RaftStatusSize.Sm,
-                    modifier =
-                        Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 4.dp, y = (-4).dp)
-                            .zIndex(2f)
-                            .testTag(AgentLoungeTestTags.ConversationAvatarDot),
-                )
-            }
         }
     }
 }
 
 /**
  * Offscreen 28dp capture of [RaftAgentConversationAvatar] for the iOS native navigation bar
- * ([RaftNativeNavBarTitleImageCapture]): insets the avatar slightly so the corner mark and
- * attention dot stay completely inside the captured square without clipping.
+ * ([RaftNativeNavBarTitleImageCapture]): insets the avatar slightly so the bottom-end side mark
+ * and top-end opposite-side unread count sticker (or dot fallback) stay inside the captured square
+ * without clipping.
  */
 @Composable
 internal fun RaftNativeNavBarAgentConversationAvatar(
@@ -400,7 +430,8 @@ internal fun RaftNativeNavBarAgentConversationAvatar(
     label: String,
     cacheServerId: String?,
     side: AgentLoungeConversationSide,
-    attention: Boolean,
+    otherSideUnreadCount: Int = 0,
+    attention: Boolean = false,
     captureSize: Dp = RaftNativeNavBarTitleImageSize,
 ) {
     val colors = RaftTheme.colors
@@ -449,23 +480,51 @@ internal fun RaftNativeNavBarAgentConversationAvatar(
                     )
                 }
             }
-            if (attention) {
-                RaftStatusDot(
-                    variant = RaftStatusVariant.Accent,
-                    size = RaftStatusSize.Xs,
-                    modifier = Modifier.align(Alignment.TopEnd).offset(x = 1.dp, y = (-2).dp).zIndex(2f),
+        }
+        if (otherSideUnreadCount > 0) {
+            val countShape = RoundedCornerShape(3.dp)
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .zIndex(2f)
+                        .height(13.dp)
+                        .widthIn(min = 13.dp)
+                        .background(RaftUiPalette.attention, countShape)
+                        .border(1.dp, RaftUiPalette.stickerInk, countShape)
+                        .padding(horizontal = 3.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                RaftText(
+                    text = raftUnreadCountText(otherSideUnreadCount),
+                    style =
+                        RaftTheme.typography.monoMeta.copy(
+                            fontSize = 9.sp,
+                            lineHeight = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFeatureSettings = "tnum",
+                        ),
+                    color = RaftUiPalette.stickerInk,
+                    maxLines = 1,
                 )
             }
+        } else if (attention) {
+            RaftStatusDot(
+                variant = RaftStatusVariant.Accent,
+                size = RaftStatusSize.Xs,
+                modifier = Modifier.align(Alignment.TopEnd).zIndex(2f),
+            )
         }
     }
 }
 
 /**
- * B1 conversation avatar switcher button + dropdown menu (`botiverse/slock#16450`, `#proj-chat:#39`):
- * the agent's avatar with its active-side corner mark (Sofa or Lock), opposite-side attention dot,
- * and up/down chevron form one button in the header. Tapping it opens a [RaftDropdownMenu] with
- * radio items for Lounge and Private chat (each with its audience line, checkmark on current, and
- * unread indicator on the other side), a separator, and View profile.
+ * B1 conversation avatar switcher button + dropdown menu (`botiverse/slock#16450`, `#17269`,
+ * `#proj-chat:#39`): the agent's avatar with its active-side corner mark (Sofa or Lock),
+ * opposite-side unread count sticker on the avatar's top-end corner (in place of the old attention
+ * pixel on the corner mark), and up/down chevron form one stable button in the header. Tapping it
+ * opens a [RaftDropdownMenu] with radio items for Lounge and Private chat (each with its audience
+ * line, checkmark on current, and unread indicator on the other side), a separator, and View profile.
  */
 @Composable
 internal fun AgentConversationAvatarMenuButton(
@@ -490,11 +549,6 @@ internal fun AgentConversationAvatarMenuButton(
             320.dp
         }
     val cleanName = loungeAgentDisplayName(agentName) ?: agentName.trim()
-    val loungeLabel = stringResource(Res.string.agent_lounge_label)
-    val privateChatLabel = stringResource(Res.string.agent_lounge_private_chat_label)
-    val loungeAudience = stringResource(Res.string.agent_lounge_audience_notice)
-    val privateAudience = stringResource(Res.string.agent_lounge_private_audience_notice, cleanName)
-    val viewProfileLabel = stringResource(Res.string.agent_lounge_view_profile)
     val triggerLabelBase =
         if (switch.activeSide == AgentLoungeConversationSide.Lounge) {
             stringResource(Res.string.agent_lounge_switch_trigger_lounge, cleanName)
@@ -503,52 +557,83 @@ internal fun AgentConversationAvatarMenuButton(
         }
     val otherUnread = switch.otherSideUnread
     val otherUnreadDescription =
-        if (otherUnread.count > 0) {
-            stringResource(Res.string.agent_lounge_switch_trigger_other_unread, otherUnread.count)
-        } else {
-            null
-        }
+        agentConversationOtherSideUnreadText(
+            activeSide = switch.activeSide,
+            otherSideUnreadCount = otherUnread.count,
+        )
     val triggerContentDescription =
-        if (otherUnreadDescription != null) "$triggerLabelBase, $otherUnreadDescription" else triggerLabelBase
+        formatAgentConversationTriggerAccessibilityLabel(triggerLabelBase, otherUnreadDescription)
     val triggerShape = RoundedCornerShape(RaftRadius.Chip)
-    val loungeSelected = switch.activeSide == AgentLoungeConversationSide.Lounge
-    val privateSelected = switch.activeSide == AgentLoungeConversationSide.Private
 
     Box(modifier = modifier) {
-        Row(
-            modifier =
-                Modifier
-                    .heightIn(min = if (wideWindow) 34.dp else 44.dp)
-                    .background(if (menuExpanded) colors.fillMedium else Color.Transparent, triggerShape)
-                    .raftClickable(
-                        onClick = { menuExpanded = !menuExpanded },
-                        role = Role.Button,
-                        tier = RaftHoverTier.Medium,
-                        shape = triggerShape,
-                    )
-                    .semantics(mergeDescendants = true) {
-                        contentDescription = triggerContentDescription
-                    }
-                    .testTag(AgentLoungeTestTags.ConversationMenuTrigger)
-                    .padding(start = 2.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            // Leave clear breathing room past the 3dp corner mark overhang (and 4dp attention dot).
-            horizontalArrangement = Arrangement.spacedBy(if (switch.hasOtherSideAttention) 8.dp else 6.dp),
+        // Always wrapped so the trigger stays the exact same node (preserving focus) as the count comes or goes.
+        RaftTooltip(
+            text = otherUnreadDescription ?: triggerLabelBase,
+            openOnLongPress = otherUnreadDescription != null,
+            placement = RaftTooltipPlacement.Below,
         ) {
-            RaftAgentConversationAvatar(
-                agentId = agentId,
-                avatarWireValue = avatarWireValue,
-                label = cleanName,
-                cacheServerId = cacheServerId,
-                side = switch.activeSide,
-                attention = switch.hasOtherSideAttention,
-                avatarSize = avatarSize,
-            )
-            RaftLucideIcon(
-                name = RaftLucideIconName.ChevronsUpDown,
-                modifier = Modifier.size(14.dp),
-                color = raftArgbHex(colors.foregroundMuted),
-            )
+            Row(
+                modifier =
+                    Modifier
+                        .heightIn(min = if (wideWindow) 34.dp else 44.dp)
+                        .background(if (menuExpanded) colors.fillMedium else Color.Transparent, triggerShape)
+                        .raftClickable(
+                            onClick = { menuExpanded = !menuExpanded },
+                            role = Role.Button,
+                            tier = RaftHoverTier.Medium,
+                            shape = triggerShape,
+                        )
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = triggerContentDescription
+                        }
+                        .testTag(AgentLoungeTestTags.ConversationMenuTrigger)
+                        .padding(start = 2.dp, top = 4.dp, bottom = 4.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                // Clear the top-end count sticker's 8dp overhang when present, else the 3dp corner mark.
+                horizontalArrangement = Arrangement.spacedBy(if (otherUnread.count > 0) 10.dp else 6.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    RaftAgentConversationAvatar(
+                        agentId = agentId,
+                        avatarWireValue = avatarWireValue,
+                        label = cleanName,
+                        cacheServerId = cacheServerId,
+                        side = switch.activeSide,
+                        avatarSize = avatarSize,
+                    )
+                    if (otherUnread.count > 0) {
+                        // On the face's top-end corner, as a count on an app icon; the corner mark keeps the bottom one.
+                        RaftUnreadCount(
+                            count = otherUnread.count,
+                            contentDescription = null,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 8.dp, y = (-6).dp)
+                                    .zIndex(2f)
+                                    .testTag(AgentLoungeTestTags.ConversationMenuTriggerCount)
+                                    .clearAndSetSemantics {},
+                        )
+                    } else if (otherUnread.dot) {
+                        RaftStatusDot(
+                            variant = RaftStatusVariant.Accent,
+                            size = RaftStatusSize.Sm,
+                            modifier =
+                                Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 3.dp, y = (-3).dp)
+                                    .zIndex(2f)
+                                    .testTag(AgentLoungeTestTags.ConversationMenuTriggerDot)
+                                    .clearAndSetSemantics {},
+                        )
+                    }
+                }
+                RaftLucideIcon(
+                    name = RaftLucideIconName.ChevronsUpDown,
+                    modifier = Modifier.size(14.dp),
+                    color = raftArgbHex(colors.foregroundMuted),
+                )
+            }
         }
         RaftDropdownMenu(
             expanded = menuExpanded,

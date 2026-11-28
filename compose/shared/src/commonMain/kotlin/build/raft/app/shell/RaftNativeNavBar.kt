@@ -231,15 +231,17 @@ sealed interface RaftNativeNavBarTitleLeading {
     data class Server(val label: String, val imageUrl: String?) : RaftNativeNavBarTitleLeading
 
     /**
-     * B1 agent conversation switcher avatar (`botiverse/slock#16450`): the agent's avatar carrying
-     * the Lounge Sofa or Private Lock corner mark and an optional opposite-side attention dot,
-     * paired with a native `UIMenu` (`titleMenu`) attached to the avatar+chevron pill on iOS.
+     * B1 agent conversation switcher avatar (`botiverse/slock#16450`, `#17269`): the agent's avatar
+     * carrying the Lounge Sofa or Private Lock corner mark and an optional opposite-side unread
+     * count sticker (or dot fallback), paired with a native `UIMenu` (`titleMenu`) attached to the
+     * avatar+chevron pill on iOS.
      */
     data class AgentConversation(
         val label: String,
         val avatarWireValue: String?,
         val isLounge: Boolean,
         val attention: Boolean = false,
+        val otherSideUnreadCount: Int = 0,
         val agentId: String? = null,
         val cacheServerId: String? = null,
         val accessibilityLabel: String? = null,
@@ -570,6 +572,7 @@ private fun RaftNativeNavBarTitleExtras.toJson(): JsonObject =
                         put("label", "")
                         put("side", if (lead.isLounge) "lounge" else "private")
                         if (lead.attention) put("attention", true)
+                        if (lead.otherSideUnreadCount > 0) put("otherSideUnreadCount", lead.otherSideUnreadCount)
                         lead.accessibilityLabel?.takeIf { it.isNotBlank() }?.let { put("accessibilityLabel", it) }
                         put("fillArgb", raftArgbHex(RaftAvatarKind.Agent.fill))
                         put("inkArgb", raftArgbHex(RaftColor.StickerInk))
