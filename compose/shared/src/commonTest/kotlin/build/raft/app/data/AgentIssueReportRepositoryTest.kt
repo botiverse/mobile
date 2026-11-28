@@ -279,6 +279,76 @@ class AgentIssueReportRepositoryTest {
         )
     }
 
+    @Test
+    fun feedbackBaseUrlTracksEnvironmentDynamicallyAcrossProdStagingAndCustom() = runTest {
+        var currentApiBaseUrl = "https://api.raft.build/api/"
+        val network = RecordingAgentIssueNetworkClient()
+        val repository =
+            AgentIssueReportRepository(
+                sessionStore = InMemoryRaftAuthSessionStore(session),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("agent-issue-env-test", serverId.value)),
+                networkClient = network,
+                sha256Hex = { "a".repeat(64) },
+                nowMillis = { 1234L },
+                newSubmissionId = { "submission-1" },
+                privacyMode = { RaftPrivacyMode.Off },
+                apiBaseUrlProvider = { currentApiBaseUrl },
+            )
+
+        // 1. Production (api.raft.build) -> production feedback/trace receiver.
+        assertIs<DataResult.Content<AgentIssueReportResult>>(repository.submit(submission()))
+        assertTrue("POST https://slock-trace-upload.botiverse.dev/api/reports" in network.calls)
+        assertTrue("POST https://slock-trace-upload.botiverse.dev/api/reports/report-1/complete" in network.calls)
+
+        // 2. Runtime switch to staging -> staging `/__trace` receiver.
+        network.calls.clear()
+        currentApiBaseUrl = "https://api-aws-staging.botiverse.dev/api/"
+        assertIs<DataResult.Content<AgentIssueReportResult>>(repository.submit(submission()))
+        assertTrue("POST https://api-aws-staging.botiverse.dev/__trace/api/reports" in network.calls)
+        assertTrue("POST https://api-aws-staging.botiverse.dev/__trace/api/reports/report-1/complete" in network.calls)
+
+        // 3. Runtime switch to custom / localhost -> returns unconfigured cleanly with zero network traffic.
+        network.calls.clear()
+        currentApiBaseUrl = "http://localhost:13055/api/"
+        val customError = assertIs<DataResult.Error>(repository.submit(submission()))
+        assertEquals(AGENT_ISSUE_REPORT_UNCONFIGURED, customError.error.code)
+        assertFalse(customError.error.retryable)
+        assertEquals(emptyList(), network.calls, "no requests when server has no trace/feedback receiver")
+
+        // 4. Runtime switch to legacy production host (`api.slock.ai`) -> production receiver.
+        currentApiBaseUrl = "https://api.slock.ai/api/"
+        assertIs<DataResult.Content<AgentIssueReportResult>>(repository.submit(submission()))
+        assertTrue("POST https://slock-trace-upload.botiverse.dev/api/reports" in network.calls)
+        assertTrue("POST https://slock-trace-upload.botiverse.dev/api/reports/report-1/complete" in network.calls)
+    }
+
+    @Test
+    fun environmentSwitchMidSubmitStopsBeforePostingMismatchedAttestationToWorker() = runTest {
+        var reads = 0
+        val network = RecordingAgentIssueNetworkClient()
+        val repository =
+            AgentIssueReportRepository(
+                sessionStore = InMemoryRaftAuthSessionStore(session),
+                selectedServerStore = SelectedServerStore(RaftShellStoreScope.create("agent-issue-switch-test", serverId.value)),
+                networkClient = network,
+                sha256Hex = { "a".repeat(64) },
+                nowMillis = { 1234L },
+                newSubmissionId = { "submission-1" },
+                privacyMode = { RaftPrivacyMode.Off },
+                apiBaseUrlProvider = {
+                    if (reads++ == 0) "https://api.raft.build/api/" else "https://api-aws-staging.botiverse.dev/api/"
+                },
+            )
+
+        val result = assertIs<DataResult.Error>(repository.submit(submission()))
+        assertEquals("agent_issue_report_failed", result.error.code)
+        assertEquals(
+            listOf("GET messages/channel/dm-1?limit=100", "POST servers/server-1/scope-attestation"),
+            network.calls,
+            "must not post production attestation to staging worker",
+        )
+    }
+
     private fun repository(
         network: RecordingAgentIssueNetworkClient,
         sha256Hex: (String) -> String = { "a".repeat(64) },

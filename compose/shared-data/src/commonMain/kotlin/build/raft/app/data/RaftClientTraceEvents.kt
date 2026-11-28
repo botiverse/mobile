@@ -259,6 +259,14 @@ private val clientTraceJson =
      */
     suspend fun currentAccount(): String?
 
+    /**
+     * The trace-upload receiver base URL for the active environment, or `null` when this
+     * environment has no receiver and uploads must be skipped cleanly (no attestation request and
+     * no POST). Defaults to [RAFT_DEFAULT_TRACE_UPLOAD_URL] so test transports that do not override
+     * it keep sending.
+     */
+    fun currentTraceUploadBaseUrl(): String? = RAFT_DEFAULT_TRACE_UPLOAD_URL
+
     /** Asks for a `web-trace-batch:create` attestation for [serverId]. */
     suspend fun attest(serverId: ServerId): RaftScopeAttestationAnswer
 
@@ -270,9 +278,19 @@ private val clientTraceJson =
     private val networkClient: RaftNetworkClient,
     /** The user id of the session [networkClient] authenticates with. */
     private val sessionAccount: suspend () -> String?,
-    private val traceBaseUrl: String = RAFT_AGENT_FEEDBACK_BASE_URL,
+    /** Explicit receiver override for tests; when null, derived dynamically from [apiBaseUrlProvider]. */
+    private val traceBaseUrl: String? = null,
+    /** Dynamic API base URL reader so runtime environment switches update the receiver immediately. */
+    private val apiBaseUrlProvider: () -> String = { networkClient.currentApiBaseUrl() ?: RAFT_API_BASE_URL },
 ) : RaftClientTraceTransport {
     override suspend fun currentAccount(): String? = sessionAccount()
+
+    override fun currentTraceUploadBaseUrl(): String? =
+        if (traceBaseUrl != null) {
+            traceBaseUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }
+        } else {
+            defaultTraceUploadUrlForServer(apiBaseUrlProvider())
+        }
 
     override suspend fun attest(serverId: ServerId): RaftScopeAttestationAnswer {
         val response =
@@ -291,14 +309,16 @@ private val clientTraceJson =
         )
     }
 
-    override suspend fun send(batch: RaftWebTraceBatchRequest): Int =
-        networkClient.requestRawAbsoluteUrl(
+    override suspend fun send(batch: RaftWebTraceBatchRequest): Int {
+        val baseUrl = currentTraceUploadBaseUrl() ?: return 0
+        return networkClient.requestRawAbsoluteUrl(
             priority = DataRequestPriority.Background,
-            url = "${traceBaseUrl.trimEnd('/')}/api/web-traces",
+            url = "$baseUrl/api/web-traces",
             method = "POST",
             headers = mapOf("Content-Type" to "application/json"),
             bodyText = clientTraceJson.encodeToString(batch),
         ).code
+    }
 }
 
 @RaftCoreInternalApi class RaftClientTraceEventSender(
@@ -331,8 +351,14 @@ private val clientTraceJson =
         var firstFailedAtMillis: Long? = null
     }
 
-    /** Obtained by [account]'s session for [serverId]; used for that account's records only. */
-    private class Attestation(val serverId: ServerId, val account: String, val value: String, val expiresAtMillis: Long)
+    /** Obtained by [account]'s session for [serverId] against [traceBaseUrl]; used for that tuple only. */
+    private class Attestation(
+        val serverId: ServerId,
+        val account: String,
+        val traceBaseUrl: String,
+        val value: String,
+        val expiresAtMillis: Long,
+    )
 
     /** Records given up for one reason and not yet carried by an event. */
     private class DropTally {
@@ -349,7 +375,7 @@ private val clientTraceJson =
         val heldEpoch: Int,
     )
 
-    private enum class SendOutcome { Sent, Refused, AccountChanged, Resend }
+    private enum class SendOutcome { Sent, Refused, AccountChanged, NoReceiver, Resend }
 
     private class SendResult(val outcome: SendOutcome, val stage: String, val status: Int)
 
@@ -830,6 +856,9 @@ private val clientTraceJson =
             // Recorded under another account than the session's: not sent, and its counts are not
             // the session account's to report.
             SendOutcome.AccountChanged -> lines += "client_trace_dropped reason=account_changed stage=${result.stage} count=$count"
+            // Active environment has no trace receiver (e.g. custom / dev / localhost) or switched
+            // mid-attestation: skip cleanly without retrying or counting as a transport failure.
+            SendOutcome.NoReceiver -> lines += "client_trace_skipped reason=no_receiver stage=${result.stage} count=$count"
             SendOutcome.Resend -> {
                 if (stillHeld) queue.addAll(0, batch)
                 round.putBack += PutBack(work.serverId, result.stage, result.status, kept = if (stillHeld) batch.size else 0)
@@ -895,16 +924,31 @@ private val clientTraceJson =
     private suspend fun sessionAccount(transport: RaftClientTraceTransport): String? =
         transport.currentAccount()?.trim()?.takeIf { it.isNotEmpty() }
 
+    /** Normalized receiver base URL for [transport], or null when uploads are skipped. */
+    private fun traceUploadBaseUrl(transport: RaftClientTraceTransport): String? =
+        transport.currentTraceUploadBaseUrl()?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+
     private suspend fun send(work: FlushWork): SendResult {
         val transport = work.transport
         val serverId = work.serverId
         // Another account's session (a login replaced it, the shell has not said so yet) or none.
         if (sessionAccount(transport) != work.account) return SendResult(SendOutcome.AccountChanged, "session", 0)
+        // Custom / dev / self-hosted servers have no default trace receiver: skip cleanly before
+        // minting a scope attestation or posting to another environment's worker.
+        val receiverBaseUrl =
+            traceUploadBaseUrl(transport)
+                ?: run {
+                    synchronized(lock) { attestation = null }
+                    return SendResult(SendOutcome.NoReceiver, "config", 0)
+                }
         val now = nowEpochMillis()
         val cached =
             synchronized(lock) {
                 attestation?.takeIf {
-                    it.serverId == serverId && it.account == work.account && it.expiresAtMillis - AttestationReuseMarginMillis > now
+                    it.serverId == serverId &&
+                        it.account == work.account &&
+                        it.traceBaseUrl == receiverBaseUrl &&
+                        it.expiresAtMillis - AttestationReuseMarginMillis > now
                 }
             }
         val value =
@@ -912,6 +956,16 @@ private val clientTraceJson =
                 ?: run {
                     synchronized(lock) { attestation = null }
                     val answer = transport.attest(serverId)
+                    // Environment may have switched while the attestation request was in flight.
+                    val postAttestReceiverUrl = traceUploadBaseUrl(transport)
+                    if (postAttestReceiverUrl == null) {
+                        synchronized(lock) { attestation = null }
+                        return SendResult(SendOutcome.NoReceiver, "attestation", answer.status)
+                    }
+                    if (postAttestReceiverUrl != receiverBaseUrl) {
+                        synchronized(lock) { attestation = null }
+                        return SendResult(SendOutcome.NoReceiver, "environment_changed", answer.status)
+                    }
                     if (raftClientTraceShouldResend(answer.status)) return SendResult(SendOutcome.Resend, "attestation", answer.status)
                     val token =
                         answer.response?.attestation?.takeIf { answer.status in 200..299 && it.isNotBlank() }
@@ -922,10 +976,20 @@ private val clientTraceJson =
                     synchronized(lock) {
                         // Signed out or another account meanwhile: this attestation is not theirs to use.
                         if (work.accountEpoch != accountEpoch) return SendResult(SendOutcome.AccountChanged, "attestation", answer.status)
-                        if (expiresAt != null) attestation = Attestation(serverId, work.account, token, expiresAt)
+                        if (expiresAt != null) attestation = Attestation(serverId, work.account, receiverBaseUrl, token, expiresAt)
                     }
                     token
                 }
+        // Re-verify right before POST so an environment switch never sends a mismatched attestation.
+        val preSendReceiverUrl = traceUploadBaseUrl(transport)
+        if (preSendReceiverUrl == null || preSendReceiverUrl != receiverBaseUrl) {
+            synchronized(lock) { attestation = null }
+            return SendResult(
+                SendOutcome.NoReceiver,
+                if (preSendReceiverUrl == null) "send" else "environment_changed",
+                0,
+            )
+        }
         val status =
             transport.send(
                 RaftWebTraceBatchRequest(
@@ -934,6 +998,11 @@ private val clientTraceJson =
                     events = work.batch.mapNotNull { it.record },
                 ),
             )
+        // If environment switched to one without a receiver right as send ran, skip without retry.
+        if (status == 0 && traceUploadBaseUrl(transport) == null) {
+            synchronized(lock) { attestation = null }
+            return SendResult(SendOutcome.NoReceiver, "send", 0)
+        }
         // A rejected attestation (e.g. secret rotation) must not be reused.
         if (status == 401 || status == 403) synchronized(lock) { attestation = null }
         return when {
@@ -972,7 +1041,29 @@ object RaftClientTraceEvents {
 
     /** [sessionAccount]: the user id of the session [networkClient] authenticates with (null signed out). */
     fun bindTransport(networkClient: RaftNetworkClient, sessionAccount: suspend () -> String?) {
-        sender.bindTransport(RaftNetworkClientTraceTransport(networkClient, sessionAccount))
+        bindTransport(
+            networkClient = networkClient,
+            apiBaseUrlProvider = { networkClient.currentApiBaseUrl() ?: RAFT_API_BASE_URL },
+            sessionAccount = sessionAccount,
+        )
+    }
+
+    /**
+     * Binds [networkClient] with a dynamic [apiBaseUrlProvider] so runtime environment switches
+     * resolve the matching trace-upload receiver on every flush.
+     */
+    fun bindTransport(
+        networkClient: RaftNetworkClient,
+        apiBaseUrlProvider: () -> String,
+        sessionAccount: suspend () -> String?,
+    ) {
+        sender.bindTransport(
+            RaftNetworkClientTraceTransport(
+                networkClient = networkClient,
+                sessionAccount = sessionAccount,
+                apiBaseUrlProvider = apiBaseUrlProvider,
+            )
+        )
         RaftPushDeliveryTrace.onTransportBound()
     }
 

@@ -272,7 +272,7 @@ private fun rememberMemberDetailRouteProvider(
     val serverMembersStore = remember(sharedStores, storeScope) { sharedStores.serverMembersStore(storeScope) }
     val scope = rememberCoroutineScope()
     val codecModule = remember(pager.pagerId) { pager.acquireModule<CodecModule>(CodecModule.MODULE_NAME) }
-    val agentIssueReportRepository = remember(networkClient, authStore, selectedServerStore, codecModule) {
+    val agentIssueReportRepository = remember(networkClient, authStore, selectedServerStore, codecModule, sharedStores.apiEnvironmentStore) {
         AgentIssueReportRepository(
             sessionStore = authStore,
             selectedServerStore = selectedServerStore,
@@ -280,7 +280,8 @@ private fun rememberMemberDetailRouteProvider(
             sha256Hex = codecModule::sha256,
             logger = { message -> bridge.log("member_detail_agent_issue $message") },
             feedbackClientKind = raftFeedbackWebViewClientKind(),
-            feedbackClientVersion = build.raft.app.network.RaftAppIdentityRegistry.current()?.version.orEmpty()
+            feedbackClientVersion = build.raft.app.network.RaftAppIdentityRegistry.current()?.version.orEmpty(),
+            apiBaseUrlProvider = { sharedStores.apiEnvironmentStore.current().apiBaseUrl },
         )
     }
     val computersApiClient = remember(networkClient) {

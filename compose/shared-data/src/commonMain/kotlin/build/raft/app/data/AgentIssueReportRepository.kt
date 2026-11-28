@@ -21,7 +21,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
-const val RAFT_AGENT_FEEDBACK_BASE_URL = "https://slock-trace-upload.botiverse.dev"
+const val RAFT_AGENT_FEEDBACK_BASE_URL = RAFT_DEFAULT_TRACE_UPLOAD_URL
 
 private const val AGENT_FEEDBACK_SCOPE = "feedback-report:create"
 private const val AGENT_FEEDBACK_CONTENT_TYPE = "application/json"
@@ -64,6 +64,7 @@ private val agentIssueRequestJson = Json {
 
 @RaftCoreInternalApi const val AGENT_ISSUE_REPORT_PRIVACY_MODE_ON = "agent_issue_report_privacy_mode_on"
 @RaftCoreInternalApi const val AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN = "agent_issue_report_privacy_mode_unknown"
+@RaftCoreInternalApi const val AGENT_ISSUE_REPORT_UNCONFIGURED = "agent_issue_report_unconfigured"
 
 /**
  * Closed range presets for Report issue's Computer diagnostics bundle (slock #16580,
@@ -148,7 +149,8 @@ private val agentIssueRequestJson = Json {
     private val selectedServerStore: SelectedServerStore,
     private val networkClient: RaftNetworkClient,
     private val sha256Hex: (String) -> String,
-    private val feedbackBaseUrl: String = RAFT_AGENT_FEEDBACK_BASE_URL,
+    /** Explicit receiver override for tests; when null, derived dynamically from [apiBaseUrlProvider]. */
+    private val feedbackBaseUrl: String? = null,
     private val nowMillis: () -> Long = ::defaultNowMillis,
     private val logger: (String) -> Unit = {},
     private val newSubmissionId: () -> String = ::newAgentIssueSubmissionId,
@@ -160,10 +162,14 @@ private val agentIssueRequestJson = Json {
     private val feedbackClientKind: String = "",
     private val feedbackClientVersion: String = "",
     /** This environment's privacy mode, read again before each request to the trace-upload worker. */
-    private val privacyMode: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value }
+    private val privacyMode: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
+    /** Dynamic API base URL reader so runtime environment switches update the receiver immediately. */
+    private val apiBaseUrlProvider: () -> String = { networkClient.currentApiBaseUrl() ?: RAFT_API_BASE_URL },
 ) {
     suspend fun submit(submission: AgentIssueReportSubmission): DataResult<AgentIssueReportResult> {
         privacyBlock("start")?.let { return it }
+        val resolvedFeedbackBaseUrl = resolveFeedbackBaseUrl()
+            ?: return feedbackReceiverUnavailable("start")
         val session = sessionStore.readSession()
             ?: return DataResult.Error(ScreenError("agent_issue_report_unauthenticated", retryable = false))
         val serverId = submission.server.id
@@ -210,14 +216,23 @@ private val agentIssueRequestJson = Json {
             // The answer can change while messages load (an environment change starts over at
             // unknown): check again right before the worker sees anything.
             privacyBlock("create")?.let { return it }
+            val activeFeedbackBaseUrl =
+                when (val live = resolveFeedbackBaseUrl()) {
+                    null -> return feedbackReceiverUnavailable("create")
+                    resolvedFeedbackBaseUrl -> live
+                    else -> {
+                        logger("agent_issue_report_blocked reason=environment_changed step=create")
+                        return DataResult.Error(ScreenError("agent_issue_report_failed", retryable = true))
+                    }
+                }
             val created =
-                when (val result = createReport(createRequest)) {
+                when (val result = createReport(activeFeedbackBaseUrl, createRequest)) {
                     is DataResult.Content -> result.data
                     else -> return result.toFailure()
                 }
             privacyBlock("upload")?.let { return it }
             uploadBundle(created, bundleJson).failureOrNull()?.let { return it }
-            completeReport(created).failureOrNull()?.let { return it }
+            completeReport(activeFeedbackBaseUrl, created).failureOrNull()?.let { return it }
 
             val machineId = submission.detail?.summary?.machineId?.trim().orEmpty()
             val transcriptRequested = submission.includeRuntimeTranscript && machineId.isNotBlank()
@@ -288,6 +303,18 @@ private val agentIssueRequestJson = Json {
         }
     }
 
+    private fun resolveFeedbackBaseUrl(): String? =
+        if (feedbackBaseUrl != null) {
+            feedbackBaseUrl.trim().trimEnd('/').takeIf { it.isNotEmpty() }
+        } else {
+            defaultTraceUploadUrlForServer(apiBaseUrlProvider())
+        }
+
+    private fun feedbackReceiverUnavailable(step: String): DataResult.Error {
+        logger("agent_issue_report_blocked reason=no_receiver step=$step")
+        return DataResult.Error(ScreenError(AGENT_ISSUE_REPORT_UNCONFIGURED, retryable = false))
+    }
+
     private fun privacyBlock(step: String): DataResult.Error? {
         val mode = privacyMode()
         val error = agentIssueReportPrivacyError(mode) ?: return null
@@ -347,10 +374,13 @@ private val agentIssueRequestJson = Json {
         }
     }
 
-    private suspend fun createReport(request: AgentIssueReportCreateRequest): DataResult<AgentIssueReportCreateResponse> =
+    private suspend fun createReport(
+        baseUrl: String,
+        request: AgentIssueReportCreateRequest,
+    ): DataResult<AgentIssueReportCreateResponse> =
         networkClient.requestRawAbsoluteUrl(
             priority = DataRequestPriority.Foreground,
-            url = "${feedbackBaseUrl.trimEnd('/')}/api/reports",
+            url = "$baseUrl/api/reports",
             method = "POST",
             headers = mapOf("Content-Type" to AGENT_FEEDBACK_CONTENT_TYPE),
             bodyText = agentIssueRequestJson.encodeToString(request)
@@ -371,11 +401,14 @@ private val agentIssueRequestJson = Json {
         return response.toUnitResult("agent_issue_report_upload_failed")
     }
 
-    private suspend fun completeReport(created: AgentIssueReportCreateResponse): DataResult<Unit> {
+    private suspend fun completeReport(
+        baseUrl: String,
+        created: AgentIssueReportCreateResponse,
+    ): DataResult<Unit> {
         val response =
             networkClient.requestRawAbsoluteUrl(
                 priority = DataRequestPriority.Foreground,
-                url = "${feedbackBaseUrl.trimEnd('/')}/api/reports/${created.id}/complete",
+                url = "$baseUrl/api/reports/${created.id}/complete",
                 method = "POST",
                 headers = mapOf("Content-Type" to AGENT_FEEDBACK_CONTENT_TYPE),
                 bodyText = agentIssueReportJson.encodeToString(AgentIssueReportCompleteRequest(created.completeToken))

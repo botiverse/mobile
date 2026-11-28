@@ -40,6 +40,7 @@ import build.raft.app.data.AgentIssueDiagnosticsBundleRange
 import build.raft.app.data.AgentIssueReportResult
 import build.raft.app.data.AGENT_ISSUE_REPORT_PRIVACY_MODE_ON
 import build.raft.app.data.AGENT_ISSUE_REPORT_PRIVACY_MODE_UNKNOWN
+import build.raft.app.data.AGENT_ISSUE_REPORT_UNCONFIGURED
 import build.raft.app.data.AgentIssueTranscriptRequestState
 import build.raft.app.data.RaftPrivacyMode
 import build.raft.app.data.ScreenError
@@ -390,7 +391,8 @@ internal fun membersAgentIssueReportErrorMessage(error: ScreenError, detail: Str
     return when {
         step != null -> "${stringResource(step)}: $detail"
         code == "agent_issue_report_server_mismatch" -> stringResource(Res.string.member_report_issue_server_unavailable)
-        code == "agent_issue_report_failed" -> stringResource(Res.string.member_report_issue_submit_failed)
+        code == "agent_issue_report_failed" || code == AGENT_ISSUE_REPORT_UNCONFIGURED ->
+            stringResource(Res.string.member_report_issue_submit_failed)
         else -> detail
     }
 }

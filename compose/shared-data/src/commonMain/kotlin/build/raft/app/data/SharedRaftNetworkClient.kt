@@ -75,6 +75,8 @@ import kotlin.time.TimeSource
     // Plain `GET channels/<uuid>` single-flight + short TTL coalescer (Hands 5abe9394); shared process-wide.
     private val channelDetailCoalescer: RaftChannelDetailGetCoalescer = RaftChannelDetailGetCoalescer(),
 ) : RaftNetworkClient, AuthorityBoundRaftNetworkClient, ProgressiveAttachmentNetworkClient {
+    override fun currentApiBaseUrl(): String = currentBaseUrl()
+
     private fun authMiddleware(authBaseUrl: String = currentBaseUrl()): RaftNetworkAuthMiddleware =
         RaftNetworkAuthMiddleware(
             sessionStore = sessionStore,
