@@ -212,6 +212,7 @@ import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideMode
 import build.raft.app.network.sync.ReadStateV1DiagnosticOverrideSnapshot
 import build.hands.update.HandsDeviceId
 import build.hands.update.HandsFeedback
+import build.hands.update.HandsUpdateCheck
 import build.hands.update.HandsUpdateEventListener
 import build.hands.update.HandsUpdateStatus
 import build.hands.update.UpdateChecker
@@ -6662,41 +6663,31 @@ internal class RaftBridgeModule(
                         deviceId = deviceId,
                         languageTag = languageTag
                 )
-        val status =
-                if (install) {
-                    installHandsDeltaUpdate(checker, languageTag)
-                } else {
-                    checker.statusUpdates().first()
-                }
+        val status: HandsUpdateStatus
+        val checkResult: Result<HandsUpdateCheck>
+        if (install) {
+            status = installHandsDeltaUpdate(checker, languageTag)
+            checkResult =
+                    runCatching { checker.check(languageTag) }
+                            .onFailure { if (it is CancellationException) throw it }
+        } else {
+            checkResult =
+                    runCatching { checker.check(languageTag) }
+                            .onFailure { if (it is CancellationException) throw it }
+            status = checkResult.getOrNull()?.status ?: checker.statusUpdates().first()
+        }
         val currentVersionCode = status.installedVersionCode ?: BuildConfig.VERSION_CODE.toLong()
-        val offerResult =
-                runCatching {
-                    HandsClient(BuildConfig.HANDS_BASE_URL)
-                            .checkForUpdate(
-                                    slug = updateRoute.appSlug,
-                                    channel = updateRoute.channel,
-                                    currentVersionCode = currentVersionCode,
-                                    productType = "android-apk",
-                                    platform = "android",
-                                    arch = arch,
-                                    filetype = "apk",
-                                    deviceId = deviceId,
-                                    languageTag = languageTag
-                            )
-                }
-        val response = offerResult.getOrNull()
-        offerResult.exceptionOrNull()?.let { error ->
+        val check = checkResult.getOrNull()
+        val offer = check?.offer
+        checkResult.exceptionOrNull()?.let { error ->
             RaftAppLog.infoAlways(
                     "SlockHandsUpdate",
                     "offer_check_failed action=${if (install) "install" else "status"} " +
                             "state=${status.state.wireValue} error=${error.javaClass.simpleName}"
             )
         }
-        val offerAvailable = response?.requireUpdate() != null
-        val offerTargetVersionCode =
-                response?.requireUpdate()?.first?.version_code
-                        ?: response?.latest?.version_code
-                        ?: response?.latest_version_code
+        val offerAvailable = check?.updateAvailable == true && offer != null
+        val offerTargetVersionCode = offer?.versionCode
         val decision =
                 handsUpdateBridgeDecision(
                         sdkStateWire = status.state.wireValue,
@@ -6708,13 +6699,13 @@ internal class RaftBridgeModule(
                                 ),
                         sdkInstalledVersionCode = status.installedVersionCode,
                         sdkRetryable = status.retryable,
-                        offerChecked = offerResult.isSuccess,
+                        offerChecked = checkResult.isSuccess,
                         offerAvailable = offerAvailable,
                         offerTarget =
                                 HandsUpdateTargetIdentity(
                                         versionCode = offerTargetVersionCode,
-                                        buildId = response?.latest?.build_id,
-                                        assetSha256 = response?.asset?.sha256 ?: response?.patch?.target_sha256
+                                        buildId = offer?.buildId,
+                                        assetSha256 = null
                                 )
                 )
         val sdkErrorCode =
@@ -6735,24 +6726,22 @@ internal class RaftBridgeModule(
         val errorCode = permission.errorCode
         val installResult = decision.toHandsInstallResult(errorCode, permission.presentation)
         val latestVersionCode =
-                response?.latest?.version_code
-                        ?: response?.latest_version_code
+                offer?.versionCode
                         ?: decision.targetVersionCode
                         ?: 0L
         val displaySizes =
-                response?.handsUpdateDisplaySizes(deltaEnabled = updateRoute.deltaEnabled)
+                offer?.handsUpdateDisplaySizes()
                         ?: HandsUpdateDisplaySizes()
         val updateDetail =
                 installResult.detail.ifBlank {
-                    response?.handsDetail(displaySizes)
-                            ?: RaftHostStrings.appUpdateDetail(
-                                    updateAvailable = decision.updateAvailable,
-                                    sizeLabel = null
-                            )
+                    RaftHostStrings.appUpdateDetail(
+                            updateAvailable = decision.updateAvailable,
+                            sizeLabel = displaySizes.downloadSizeBytes?.hostSizeLabel()
+                    )
                 }
         val feedback =
                 if (decision.updateAvailable) {
-                    "Update available: ${response?.latest?.version?.ifBlank { null } ?: "version code $latestVersionCode"}."
+                    "Update available: ${offer?.versionName?.ifBlank { null } ?: "version code $latestVersionCode"}."
                 } else {
                     "No Hands update available on ${updateRoute.channel}."
                 }
@@ -6784,7 +6773,7 @@ internal class RaftBridgeModule(
                         "updateCheckDetail" to updateDetail,
                         "updateCheckActionLabel" to installResult.actionLabel,
                         "updateAvailable" to decision.updateAvailable,
-                        "updateForceUpdate" to (response?.latest?.force_update == true),
+                        "updateForceUpdate" to (offer?.forceUpdate == true),
                         "currentVersionLabel" to
                                 if (currentVersionCode == BuildConfig.VERSION_CODE.toLong()) {
                                     BuildConfig.VERSION_NAME.ifBlank { currentVersionCode.toString() }
@@ -6792,17 +6781,17 @@ internal class RaftBridgeModule(
                                     currentVersionCode.toString()
                                 },
                         "currentVersionCode" to currentVersionCode,
-                        "latestVersionLabel" to response?.latest?.version.orEmpty(),
+                        "latestVersionLabel" to offer?.versionName.orEmpty(),
                         "latestVersionCode" to latestVersionCode,
-                        "latestChangelog" to response?.latest?.changelog.orEmpty(),
-                        "updateDownloadUrl" to response?.asset?.download_url.orEmpty(),
+                        "latestChangelog" to offer?.releaseNotes.orEmpty(),
+                        "updateDownloadUrl" to "",
                         "updateDownloadProgressToken" to
                                 handsDeltaDownloadProgressToken(
                                         updateRoute = updateRoute,
                                         state = decision.state,
                                         targetVersionCode = decision.targetVersionCode
                                 ),
-                        "updateDownloadSizesResolved" to offerResult.isSuccess,
+                        "updateDownloadSizesResolved" to checkResult.isSuccess,
                         "updateFullDownloadSizeBytes" to (displaySizes.fullSizeBytes ?: 0L),
                         "updatePatchDownloadSizeBytes" to (displaySizes.patchSizeBytes ?: 0L),
                         "updateCheckedAtLabel" to System.currentTimeMillis().toString(),
@@ -7424,8 +7413,7 @@ internal class RaftBridgeModule(
     private fun UpdateCheckResponse.handsDetail(displaySizes: HandsUpdateDisplaySizes): String =
             RaftHostStrings.appUpdateDetail(
                     updateAvailable = requireUpdate() != null,
-                    sizeLabel = displaySizes.fullSizeBytes?.hostSizeLabel(),
-                    patchSizeLabel = displaySizes.patchSizeBytes?.hostSizeLabel()
+                    sizeLabel = displaySizes.downloadSizeBytes?.hostSizeLabel()
             )
 
     private suspend fun setApiEnvironment(request: JSONObject): Map<String, Any> {

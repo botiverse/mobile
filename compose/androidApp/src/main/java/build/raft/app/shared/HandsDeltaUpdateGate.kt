@@ -1,6 +1,7 @@
 package build.raft.app.shared
 
 import android.content.Context
+import build.hands.update.HandsUpdateOffer
 import build.hands.update.HandsUpdateStatus
 import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.UpdateCheckResponse
@@ -74,8 +75,20 @@ internal data class HandsUpdateRoute(
 
 internal data class HandsUpdateDisplaySizes(
     val patchSizeBytes: Long? = null,
-    val fullSizeBytes: Long? = null
+    val fullSizeBytes: Long? = null,
+    val downloadSizeBytes: Long? = patchSizeBytes ?: fullSizeBytes,
 )
+
+internal fun HandsUpdateOffer.handsUpdateDisplaySizes(): HandsUpdateDisplaySizes {
+    val patch = patchSizeBytes?.takeIf { it > 0L }
+    val full = fullSizeBytes.takeIf { it > 0L }
+    val download = downloadSizeBytes.takeIf { it > 0L } ?: patch ?: full
+    return HandsUpdateDisplaySizes(
+        patchSizeBytes = patch,
+        fullSizeBytes = full,
+        downloadSizeBytes = download,
+    )
+}
 
 internal fun UpdateCheckResponse.handsUpdateDisplaySizes(deltaEnabled: Boolean): HandsUpdateDisplaySizes {
     if (requireUpdate() == null) return HandsUpdateDisplaySizes()
@@ -85,13 +98,16 @@ internal fun UpdateCheckResponse.handsUpdateDisplaySizes(deltaEnabled: Boolean):
             deltaEnabled &&
                 current_version_code > 0L &&
                 offeredPatch.from_version_code == current_version_code &&
-                offeredPatch.algorithm.startsWith("archive-patcher-v1") &&
+                (offeredPatch.algorithm.startsWith("archive-patcher-v1") ||
+                    offeredPatch.algorithm == "archive-patcher-zucchini-v1+xz") &&
                 !offeredPatch.target_sha256.isNullOrBlank() &&
                 size > 0L
         }
+    val fullSize = asset?.size_bytes?.takeIf { it > 0L }
     return HandsUpdateDisplaySizes(
         patchSizeBytes = applicablePatchSize,
-        fullSizeBytes = asset?.size_bytes?.takeIf { it > 0L }
+        fullSizeBytes = fullSize,
+        downloadSizeBytes = applicablePatchSize ?: fullSize,
     )
 }
 
