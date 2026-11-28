@@ -141,11 +141,14 @@ sealed interface VoiceDictationV2StreamEvent {
 
 /**
  * Encodes the strict v2 client `start` frame:
- * `{ "deck": "start", "v": 2, "sample_rate": <sampleRateHz> }`.
+ * `{ "deck": "start", "v": 2, "sample_rate": <sampleRateHz>, "mode": "tap" | "hold" }`.
  * Carries zero forbidden fields (`permit`, `context`, `hotwords`, `language`, `refine`).
  */
 @RaftCoreInternalApi
-fun buildVoiceDictationV2StartFrame(sampleRateHz: Int): String {
+fun buildVoiceDictationV2StartFrame(
+    sampleRateHz: Int,
+    mode: VoiceDictationSessionMode = VoiceDictationSessionMode.Tap,
+): String {
     require(sampleRateHz in VOICE_DICTATION_MIN_SAMPLE_RATE_HZ..VOICE_DICTATION_MAX_SAMPLE_RATE_HZ) {
         "Voice dictation sampleRateHz must be in $VOICE_DICTATION_MIN_SAMPLE_RATE_HZ..$VOICE_DICTATION_MAX_SAMPLE_RATE_HZ, got $sampleRateHz"
     }
@@ -153,6 +156,7 @@ fun buildVoiceDictationV2StartFrame(sampleRateHz: Int): String {
         put("deck", "start")
         put("v", VOICE_DICTATION_PROTOCOL_VERSION)
         put("sample_rate", sampleRateHz)
+        put("mode", mode.wire)
     }.toString()
 }
 
@@ -212,8 +216,11 @@ interface VoiceDictationV2StreamConnection {
     /** Cold flow reading decoded v2 server frames until closure. */
     val events: Flow<VoiceDictationV2StreamEvent>
 
-    /** Sends `{ "deck": "start", "v": 2, "sample_rate": sampleRateHz }` once. */
-    suspend fun sendStart(sampleRateHz: Int): Boolean
+    /** Sends `{ "deck": "start", "v": 2, "sample_rate": sampleRateHz, "mode": mode.wire }` once. */
+    suspend fun sendStart(
+        sampleRateHz: Int,
+        mode: VoiceDictationSessionMode = VoiceDictationSessionMode.Tap,
+    ): Boolean
 
     /** Sends raw PCM16 LE mono audio strictly after [sendStart] and before [sendStop]. */
     suspend fun sendAudio(pcm16LeMonoBytes: ByteArray): Boolean
@@ -343,8 +350,11 @@ private class RaftVoiceDictationV2StreamConnection(
             )
         }
 
-    override suspend fun sendStart(sampleRateHz: Int): Boolean {
-        val frame = buildVoiceDictationV2StartFrame(sampleRateHz)
+    override suspend fun sendStart(
+        sampleRateHz: Int,
+        mode: VoiceDictationSessionMode,
+    ): Boolean {
+        val frame = buildVoiceDictationV2StartFrame(sampleRateHz = sampleRateHz, mode = mode)
         return sendMutex.withLock {
             if (started || stopped || isClosed()) return@withLock false
             try {

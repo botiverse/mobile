@@ -715,7 +715,7 @@ internal fun ThreadVoiceDictationNotice(
 internal fun ThreadVoiceDictationToolbarButton(
     host: ThreadVoiceDictationHost?,
     composerEditable: Boolean,
-    onStart: () -> Unit,
+    onStart: (deferStartMode: Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (host == null) return
@@ -747,7 +747,7 @@ internal fun ThreadVoiceDictationToolbarButton(
         onStop = { host.controller.stop(VoiceDictationStopReason.Button) },
         isActiveNow = { host.controller.state.value.isActive },
         nowEpochMs = host.controller.currentEpochMillis(),
-        onHoldEngaged = { host.controller.setSessionMode(VoiceDictationSessionMode.Hold) },
+        onSessionModeSettled = host.controller::setSessionMode,
         modifier = modifier,
     )
 }
@@ -767,7 +767,7 @@ internal fun ThreadVoiceDictationToolbarButton(
 internal fun ThreadVoiceDictationButton(
     state: VoiceDictationV2State,
     enabled: Boolean,
-    onStart: () -> Unit,
+    onStart: (deferStartMode: Boolean) -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
     isActiveNow: (() -> Boolean)? = null,
@@ -776,6 +776,7 @@ internal fun ThreadVoiceDictationButton(
     gestureModeOverride: VoiceDictationGestureMode? = null,
     elapsedMsOverride: Long? = null,
     onHoldEngaged: (() -> Unit)? = null,
+    onSessionModeSettled: ((VoiceDictationSessionMode) -> Unit)? = null,
 ) {
     val phase = state.phase
     val isConnecting = phase == VoiceDictationV2Phase.Connecting
@@ -809,21 +810,33 @@ internal fun ThreadVoiceDictationButton(
     val currentOnStart by rememberUpdatedState(onStart)
     val currentOnStop by rememberUpdatedState(onStop)
     val currentOnHoldEngaged by rememberUpdatedState(onHoldEngaged)
+    val currentOnSessionModeSettled by rememberUpdatedState(onSessionModeSettled)
     var liveGestureMode by remember { mutableStateOf(VoiceDictationGestureMode.Idle) }
     val gesture =
         remember(gestureScope) {
+            var gestureRef: VoiceDictationButtonGesture? = null
             VoiceDictationButtonGesture(
                 scope = gestureScope,
                 isActive = { currentIsActiveNow?.invoke() ?: currentIsActive },
-                onStart = { currentOnStart() },
+                onStart = {
+                    val deferStartMode = gestureRef?.mode == VoiceDictationGestureMode.PendingHold
+                    currentOnStart(deferStartMode)
+                },
                 onStop = { currentOnStop() },
                 onModeChange = { nextMode ->
                     liveGestureMode = nextMode
-                    if (nextMode == VoiceDictationGestureMode.Holding) {
-                        currentOnHoldEngaged?.invoke()
+                    when (nextMode) {
+                        VoiceDictationGestureMode.Holding -> {
+                            currentOnSessionModeSettled?.invoke(VoiceDictationSessionMode.Hold)
+                            currentOnHoldEngaged?.invoke()
+                        }
+                        VoiceDictationGestureMode.Locked -> {
+                            currentOnSessionModeSettled?.invoke(VoiceDictationSessionMode.Tap)
+                        }
+                        else -> Unit
                     }
                 },
-            )
+            ).also { gestureRef = it }
         }
 
     LaunchedEffect(gesture, isActive) {

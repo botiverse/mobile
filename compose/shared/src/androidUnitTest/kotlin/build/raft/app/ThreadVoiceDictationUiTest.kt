@@ -53,6 +53,8 @@ import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.VoiceDictationAudioStartResult
 import build.raft.app.data.VoiceDictationGestureMode
 import build.raft.app.data.VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS
+import build.raft.app.data.VOICE_DICTATION_HOLD_THRESHOLD_MS
+import build.raft.app.data.VoiceDictationSessionMode
 import build.raft.app.data.VoiceDictationTextRange
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Error
@@ -97,6 +99,7 @@ import build.raft.designsystem.components.RaftBannerStatus
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -432,7 +435,7 @@ class ThreadVoiceDictationUiTest {
         }
 
     @Test
-    fun stopThenSendWaitsBrieflyForPostStopFinalBeforeSending() =
+    fun stopThenSendDispatchesVisibleTextImmediatelyAndCancelsBackgroundRefine() =
         runRobolectricComposeUiTest {
             val recorder = FakeRecorder()
             val connection = FakeStreamConnection()
@@ -441,6 +444,8 @@ class ThreadVoiceDictationUiTest {
 
             setContent {
                 val scope = rememberCoroutineScope()
+                var commandNonce by remember { mutableStateOf(0) }
+                var clearCommand by remember { mutableStateOf<ThreadComposerEditorCommand?>(null) }
                 val controller = remember {
                     VoiceDictationV2Controller(
                         permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
@@ -465,10 +470,22 @@ class ThreadVoiceDictationUiTest {
                     CompositionLocalProvider(LocalThreadVoiceDictationHost provides host) {
                         ThreadComposerContent(
                             surface = ThreadComposerSurface(channelId = "chan-send-wait"),
-                            state = ThreadComposerUiState(instanceId = "voice-send-wait", enabled = true),
+                            state =
+                                ThreadComposerUiState(
+                                    instanceId = "voice-send-wait",
+                                    enabled = true,
+                                    editorCommand = clearCommand,
+                                ),
                             onEvent = { action, value, _, _ ->
                                 if (action == "send" && value != null) {
                                     sentMessages += value
+                                    commandNonce += 1
+                                    clearCommand =
+                                        ThreadComposerEditorCommand(
+                                            id = commandNonce,
+                                            kind = ThreadComposerEditorCommandKind.Clear,
+                                            expectedText = value,
+                                        )
                                 }
                             },
                             contentPaddingTop = 0.dp,
@@ -479,31 +496,44 @@ class ThreadVoiceDictationUiTest {
                 }
             }
 
+            val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
             onNodeWithContentDescription("Voice dictation").performClick()
+            waitForIdle()
+            assertEquals(VoiceDictationSessionMode.Tap, connection.lastStartMode)
             connection.emitFrame(VoiceDictationV2ServerFrame.Ready)
             connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Please ship", stableLen = 0, refined = false))
             waitForIdle()
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 11)))
 
-            // Stop -> non-blocking idle with background drain waiting for final snapshot
+            // Stop -> non-blocking idle with background drain active and composing underline retained
             onNodeWithContentDescription("Stop dictation").performClick()
             waitForIdle()
             val controller = assertNotNull(controllerRef)
+            assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
             assertTrue(controller.state.value.hasBackgroundDrain)
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 11)))
 
-            // Tap Send immediately: Send waits briefly, keeps "Send" label (never "Loading"), and marks busy/disabled
+            // Tap Send while refining in background: WYSIWYG immediate send (0 ms wait), clears underline,
+            // stops post-roll mic immediately, closes socket, and ignores late refined frame.
             onNodeWithContentDescription("Send").assertIsEnabled().performClick()
             waitForIdle()
-            assertTrue(sentMessages.isEmpty(), "send should wait briefly for pending post-stop final")
-            assertTrue(controller.state.value.awaitingSubmitFinal)
-            onNodeWithContentDescription("Send").assertIsNotEnabled()
-            onNodeWithContentDescription("Loading").assertDoesNotExist()
-
-            // Confirmed post-stop snapshot arrives -> composer updates and Send dispatches latest text immediately
-            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Please ship it.", stableLen = 15, refined = false))
-            waitForIdle()
-            assertEquals(listOf("Please ship it."), sentMessages)
+            assertEquals(listOf("Please ship"), sentMessages)
             assertFalse(controller.state.value.awaitingSubmitFinal)
             assertFalse(controller.state.value.hasBackgroundDrain)
+            assertNull(controller.state.value.provisionalRange)
+            assertTrue(recorder.stopCount >= 1)
+            assertTrue(connection.closed)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithContentDescription("Loading").assertDoesNotExist()
+
+            // Late refined snapshot after WYSIWYG submit must never repopulate the cleared composer.
+            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Please ship it.", stableLen = 15, refined = true))
+            waitForIdle()
+            onNodeWithText("Please ship it.").assertDoesNotExist()
         }
 
     @Test
@@ -588,6 +618,12 @@ class ThreadVoiceDictationUiTest {
             assertTrue(sentMessages.isEmpty(), "send should wait briefly for post-stop tail word")
             onNodeWithContentDescription("Send").assertIsNotEnabled()
             onNodeWithContentDescription("Loading").assertDoesNotExist()
+
+            // Raw post-stop partial updates composer live while still waiting for settled snapshot or 1s timeout.
+            connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Testing one two thre", stableLen = 0, refined = false))
+            waitForIdle()
+            assertTrue(controller.state.value.awaitingSubmitFinal)
+            assertTrue(sentMessages.isEmpty())
 
             // Confirmed post-stop snapshot arrives -> composer updates, sends complete text, and clears composer.
             connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Testing one two three.", stableLen = 22, refined = false))
@@ -1305,7 +1341,7 @@ class ThreadVoiceDictationUiTest {
         }
 
     @Test
-    fun composingUnderlineClearsOnNonBlockingStopAndWorksInCjkAndSegmentedQuoteComposer() =
+    fun composingUnderlineRetainsPostStopUntilRefinedOrEditedAndWorksInCjkAndSegmentedQuoteComposer() =
         runRobolectricComposeUiTest {
             ThreadComposerQuoteMetaCache.clear()
             try {
@@ -1410,7 +1446,9 @@ class ThreadVoiceDictationUiTest {
                 val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
                 onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
 
-                // 1) CJK partial -> composing underline covers strictly "正在说话" (4..8), clears immediately on Stop.
+                // 1) CJK partial -> composing underline covers strictly "正在说话" (4..8), REMAINS visible
+                //    after Stop while phase is Idle and background refinement runs, updates on intermediate
+                //    post-stop partial, and clears once refined settles.
                 onAllNodesWithContentDescription("Voice dictation")[0].performClick()
                 waitForIdle()
                 cjkConn.emitFrame(VoiceDictationV2ServerFrame.Ready)
@@ -1423,13 +1461,25 @@ class ThreadVoiceDictationUiTest {
 
                 onNodeWithContentDescription("Stop dictation").performClick()
                 waitForIdle()
-                assertNull(assertNotNull(cjkControllerRef).state.value.provisionalRange)
-                onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+                assertEquals(VoiceDictationV2Phase.Idle, assertNotNull(cjkControllerRef).state.value.phase)
+                assertTrue(assertNotNull(cjkControllerRef).state.value.hasBackgroundDrain)
+                assertEquals(VoiceDictationTextRange(4, 8), assertNotNull(cjkControllerRef).state.value.provisionalRange)
+                onNode(hasComposingRange, useUnmergedTree = true)
+                    .assertExists()
+                    .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(4, 8)))
 
-                // Post-stop background partial updates draft without re-showing composing underline.
+                // Post-stop intermediate partial updates both draft text and retained composing underline.
                 cjkConn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "正在说话呢", stableLen = 0, refined = false))
+                waitForIdle()
+                onNode(hasComposingRange, useUnmergedTree = true)
+                    .assertExists()
+                    .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(4, 9)))
+
+                // Final refined snapshot settles (stableLen == text.length) and clears composing underline.
+                cjkConn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "正在说话呢。", stableLen = 6, refined = true))
                 cjkConn.emitFrame(VoiceDictationV2ServerFrame.Done)
                 waitForIdle()
+                assertNull(assertNotNull(cjkControllerRef).state.value.provisionalRange)
                 onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
 
                 // 2) Segmented quote composer: insert quote chip, dictate into active block, verify composing state.
@@ -1536,11 +1586,17 @@ class ThreadVoiceDictationUiTest {
             assertFalse(composeRoot.onCheckIsTextEditor())
             assertEquals(0, keyboard.shown)
 
-            // Press and hold the Mic button past the 350 ms hold threshold without releasing.
+            // Press and hold the Mic button: Option A holds ONLY v2 start until the 350 ms threshold elapses.
             onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { down(center) }
-            mainClock.advanceTimeBy(400L)
+            mainClock.advanceTimeBy(120L)
+            waitForIdle()
+            assertFalse(conn.startSent, "v2 start must wait while hold gesture is unsettled")
+
+            mainClock.advanceTimeBy(VOICE_DICTATION_HOLD_THRESHOLD_MS)
             repeat(4) { mainClock.advanceTimeByFrame() }
             waitForIdle()
+            assertTrue(conn.startSent)
+            assertEquals(VoiceDictationSessionMode.Hold, conn.lastStartMode)
 
             // Composer automatically gains focus (blinking caret active) while keeping the soft
             // keyboard closed so the held mic button never shifts upward under the user's thumb.
@@ -1560,13 +1616,143 @@ class ThreadVoiceDictationUiTest {
                 .assertExists()
                 .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 3)))
 
-            // Releasing the hold stops cleanly, clears composing state, keeps composer focused, and never pops IME.
+            // Releasing the hold returns mic to Idle immediately while RETAINING composing underline
+            // during background refine, keeping composer focused and never popping IME.
             onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { up() }
             waitForIdle()
             assertEquals(VoiceDictationV2Phase.Idle, assertNotNull(controllerRef).state.value.phase)
-            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+            assertTrue(assertNotNull(controllerRef).state.value.hasBackgroundDrain)
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 3)))
             onNode(hasSetTextAction()).assertIsFocused()
             assertEquals(0, keyboard.shown)
+
+            // Settled refined snapshot clears the composing underline cleanly.
+            conn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "正在听。", stableLen = 4, refined = true))
+            conn.emitFrame(VoiceDictationV2ServerFrame.Done)
+            waitForIdle()
+            assertNull(assertNotNull(controllerRef).state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+        }
+
+    @Test
+    fun optionAShortTouchTapAndPressHoldSendExactStartModeFlushPreStartPcmAndClearPostStopUnderlineOnEdit() =
+        runRobolectricComposeUiTest {
+            val connections = listOf(FakeStreamConnection(), FakeStreamConnection())
+            var connectIndex = 0
+            val recorder = FakeRecorder()
+            val changedTexts = mutableListOf<String>()
+            var controllerRef: VoiceDictationV2Controller? = null
+
+            setContent {
+                val scope = rememberCoroutineScope()
+                val controller = remember {
+                    VoiceDictationV2Controller(
+                        permitApi = FakePermitApi { VoiceDictationV2PermitOutcome.Issued(samplePermit()) },
+                        streamConnector =
+                            object : VoiceDictationV2StreamConnector {
+                                override suspend fun connect(url: String, permit: String): VoiceDictationV2StreamConnection =
+                                    connections[connectIndex++]
+                            },
+                        scope = scope,
+                        audioRecorderProvider = { recorder },
+                        stopPostRollMs = 0L,
+                    ).also { controllerRef = it }
+                }
+                val host = remember(controller) {
+                    ThreadVoiceDictationHost(
+                        flagEnabled = true,
+                        viewerIsGuest = false,
+                        recorderAvailable = true,
+                        serverId = "srv-1",
+                        channelId = "550e8400-e29b-41d4-a716-446655440000",
+                        threadId = null,
+                        languageHint = "zh",
+                        controller = controller,
+                    )
+                }
+                RaftDesignSystemTheme {
+                    CompositionLocalProvider(LocalThreadVoiceDictationHost provides host) {
+                        ThreadComposerContent(
+                            surface = ThreadComposerSurface(channelId = "chan-option-a"),
+                            state = ThreadComposerUiState(instanceId = "voice-option-a-ui", enabled = true),
+                            onEvent = { action, value, _, _ ->
+                                if (action == "change" && value != null) {
+                                    changedTexts += value
+                                }
+                            },
+                            contentPaddingTop = 0.dp,
+                            contentPaddingBottom = 0.dp,
+                            attachmentPreviewEnabled = false,
+                        )
+                    }
+                }
+            }
+
+            val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
+
+            // 1) Short touch press (< 350 ms): start frame holds until release, then settles to "tap"
+            //    and stays locked in Listening.
+            onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { down(center) }
+            mainClock.advanceTimeBy(100L)
+            waitForIdle()
+            val tapConn = connections[0]
+            assertFalse(tapConn.startSent, "start must wait until short tap releases")
+            val tapOpeningPcm = byteArrayOf(11, 12, 13)
+            recorder.emitChunk(tapOpeningPcm)
+
+            onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { up() }
+            waitForIdle()
+            assertTrue(tapConn.startSent)
+            assertEquals(VoiceDictationSessionMode.Tap, tapConn.lastStartMode)
+            assertEquals(VoiceDictationV2Phase.Listening, assertNotNull(controllerRef).state.value.phase)
+
+            tapConn.emitFrame(VoiceDictationV2ServerFrame.Ready)
+            waitForIdle()
+            assertEquals(1, tapConn.sentAudio.size)
+            assertContentEquals(tapOpeningPcm, tapConn.sentAudio.single())
+            tapConn.emitFrame(VoiceDictationV2ServerFrame.Done)
+            waitForIdle()
+
+            // 2) Press-and-hold (>= 350 ms): captures opening PCM before start, sends "hold" at 350 ms,
+            //    flushes buffered PCM on ready, keeps underline after release, and clears immediately on user edit.
+            onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { down(center) }
+            mainClock.advanceTimeBy(150L)
+            waitForIdle()
+            val holdConn = connections[1]
+            assertFalse(holdConn.startSent)
+            val holdOpeningPcm = byteArrayOf(21, 22, 23)
+            recorder.emitChunk(holdOpeningPcm)
+
+            mainClock.advanceTimeBy(VOICE_DICTATION_HOLD_THRESHOLD_MS)
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+            assertTrue(holdConn.startSent)
+            assertEquals(VoiceDictationSessionMode.Hold, holdConn.lastStartMode)
+
+            holdConn.emitFrame(VoiceDictationV2ServerFrame.Ready)
+            holdConn.emitFrame(VoiceDictationV2ServerFrame.Text(text = "明天开会", stableLen = 0, refined = false))
+            waitForIdle()
+            assertEquals(1, holdConn.sentAudio.size)
+            assertContentEquals(holdOpeningPcm, holdConn.sentAudio.single())
+            assertEquals("明天开会", changedTexts.lastOrNull())
+
+            onNodeWithTag(ThreadVoiceDictationButtonTestTag).performTouchInput { up() }
+            waitForIdle()
+            assertEquals(VoiceDictationV2Phase.Idle, assertNotNull(controllerRef).state.value.phase)
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 4)))
+
+            // User edits text while background refine is pending -> underline clears immediately.
+            onNode(hasSetTextAction()).performTextInput("！")
+            waitForIdle()
+            assertEquals("明天开会！", changedTexts.lastOrNull())
+            assertNull(assertNotNull(controllerRef).state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+            holdConn.emitFrame(VoiceDictationV2ServerFrame.Done)
+            waitForIdle()
         }
 
     @Test
@@ -1757,17 +1943,26 @@ class ThreadVoiceDictationUiTest {
     private class FakeStreamConnection : VoiceDictationV2StreamConnection {
         private val channel = Channel<VoiceDictationV2StreamEvent>(Channel.UNLIMITED)
         var startSent = false
+        var lastStartMode: VoiceDictationSessionMode? = null
+        val sentAudio = mutableListOf<ByteArray>()
         var stopSent = false
         var closed = false
 
         override val events: Flow<VoiceDictationV2StreamEvent> = channel.receiveAsFlow()
 
-        override suspend fun sendStart(sampleRateHz: Int): Boolean {
+        override suspend fun sendStart(
+            sampleRateHz: Int,
+            mode: VoiceDictationSessionMode,
+        ): Boolean {
             startSent = true
+            lastStartMode = mode
             return true
         }
 
-        override suspend fun sendAudio(pcm16LeMonoBytes: ByteArray): Boolean = true
+        override suspend fun sendAudio(pcm16LeMonoBytes: ByteArray): Boolean {
+            sentAudio += pcm16LeMonoBytes.copyOf()
+            return true
+        }
 
         override suspend fun sendStop(): Boolean {
             stopSent = true
@@ -1788,6 +1983,7 @@ class ThreadVoiceDictationUiTest {
         private val startResult: VoiceDictationAudioStartResult = VoiceDictationAudioStartResult.Started,
         private val startGate: CompletableDeferred<VoiceDictationAudioStartResult>? = null,
     ) : RaftVoiceDictationAudioRecorder {
+        private var chunkCallback: ((ByteArray) -> Unit)? = null
         private var audioLevelCallback: ((Float) -> Unit)? = null
         var stopCount = 0
 
@@ -1797,6 +1993,7 @@ class ThreadVoiceDictationUiTest {
         ): VoiceDictationAudioStartResult {
             val resolved = startGate?.await() ?: startResult
             if (resolved is VoiceDictationAudioStartResult.Started) {
+                chunkCallback = onPcmChunk
                 audioLevelCallback = onAudioLevel
             }
             return resolved
@@ -1804,7 +2001,12 @@ class ThreadVoiceDictationUiTest {
 
         override suspend fun stop() {
             stopCount += 1
+            chunkCallback = null
             audioLevelCallback = null
+        }
+
+        fun emitChunk(bytes: ByteArray) {
+            chunkCallback?.invoke(bytes)
         }
 
         fun emitAudioLevel(level: Float) {

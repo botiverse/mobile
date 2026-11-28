@@ -2920,6 +2920,8 @@ private fun ThreadComposerContentLeafBody(
                 editorOwner.markObserved(snapshot, publishedText = snapshot.text)
                 currentVoiceDictationHost?.controller?.onUserEditedComposer(snapshot.text)
                 currentOnEvent("change", snapshot.text, currentAsTask, null)
+            } else if (snapshot.composition != null) {
+                currentVoiceDictationHost?.controller?.onUserEditedComposer(null)
             }
         }
     }
@@ -4371,7 +4373,7 @@ private fun ThreadComposerContentLeafBody(
                             }
                         },
                         voiceDictationHost = voiceDictationHost,
-                        onStartVoiceDictation = {
+                        onStartVoiceDictation = { deferStartMode ->
                             startThreadComposerVoiceDictation(
                                 host = currentVoiceDictationHost,
                                 composerEnabled = composerEnabled,
@@ -4380,6 +4382,7 @@ private fun ThreadComposerContentLeafBody(
                                 suggestionSelectionDispatcher = suggestionSelectionDispatcher,
                                 onQuoteBlockIdChanged = { voiceDictationQuoteBlockId = it },
                                 onEmitChange = { nextText -> currentOnEvent("change", nextText, currentAsTask, null) },
+                                deferStartMode = deferStartMode,
                                 isComposerFocused = focused,
                                 onRequestFocusWithoutKeyboard = { segmentedBlockId, selStart, selEnd ->
                                     focusThreadComposerForVoiceDictation(
@@ -4549,7 +4552,7 @@ private fun ThreadComposerToolbarRow(
     asTask: Boolean,
     onToggleAsTask: (Boolean) -> Unit,
     voiceDictationHost: ThreadVoiceDictationHost?,
-    onStartVoiceDictation: () -> Unit,
+    onStartVoiceDictation: (deferStartMode: Boolean) -> Unit,
     canExpandComposer: Boolean,
     onExpandToggle: () -> Unit,
     canSend: Boolean,

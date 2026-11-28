@@ -8,7 +8,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -46,6 +49,7 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.VOICE_DICTATION_V1_FEATURE_FLAG_KEY
 import build.raft.app.data.VoiceDictationAudioStartResult
+import build.raft.app.data.VoiceDictationSessionMode
 import build.raft.app.data.VoiceDictationV2Controller
 import build.raft.app.data.VoiceDictationV2Permit
 import build.raft.app.data.VoiceDictationV2PermitApi
@@ -70,6 +74,7 @@ import build.raft.app.settings.settingsHandsFeedbackCopy
 import build.raft.app.thread.LocalThreadVoiceDictationHost
 import build.raft.app.thread.ThreadVoiceDictationButtonTestTag
 import build.raft.app.thread.ThreadVoiceDictationErrorTestTag
+import build.raft.app.thread.VoiceDictationProvisionalRangeSemanticsKey
 import build.raft.app.thread.rememberComposerVoiceDictationHost
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -77,6 +82,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -226,6 +232,7 @@ class SettingsFeedbackVoiceDictationUiTest {
 
             // Feedback forms have no chat channel ID; permit request must pass serverId and omit channelId.
             assertEquals(listOf<Pair<String, String?>>(serverId to null), permitRequests)
+            assertEquals(VoiceDictationSessionMode.Tap, connection.lastStartMode)
             connection.emitFrame(VoiceDictationV2ServerFrame.Ready)
             connection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "New feedback mic works", stableLen = 22, refined = false))
             waitForIdle()
@@ -416,28 +423,40 @@ class SettingsFeedbackVoiceDictationUiTest {
             waitForIdle()
             assertEquals("", assertNotNull(editorOwnerRef).text)
 
-            // Case 2: Stop followed immediately by Send waits briefly for the post-stop final frame.
+            // Case 2: Stop followed by Send while background refine is in flight sends visible text
+            // immediately (WYSIWYG), clears the retained post-stop composing underline, and ignores late refine.
+            val hasComposingRange = SemanticsMatcher.keyIsDefined(VoiceDictationProvisionalRangeSemanticsKey)
             onNodeWithContentDescription("Voice dictation").performClick()
             waitForIdle()
+            assertEquals(VoiceDictationSessionMode.Tap, secondConnection.lastStartMode)
             secondConnection.emitFrame(VoiceDictationV2ServerFrame.Ready)
             secondConnection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Add voice button", stableLen = 0, refined = false))
             waitForIdle()
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 16)))
 
             onNodeWithContentDescription("Stop dictation").performClick()
             waitForIdle()
+            assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
             assertTrue(controller.state.value.hasBackgroundDrain)
+            onNode(hasComposingRange, useUnmergedTree = true)
+                .assertExists()
+                .assert(SemanticsMatcher.expectValue(VoiceDictationProvisionalRangeSemanticsKey, TextRange(0, 16)))
 
             onNodeWithContentDescription("Send").assertIsEnabled().performClick()
             waitForIdle()
-            assertEquals(1, sentMessages.size, "Send should wait briefly for post-stop final snapshot")
-            assertTrue(controller.state.value.awaitingSubmitFinal)
-            onNodeWithContentDescription("Send").assertIsNotEnabled()
-
-            secondConnection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Add voice button.", stableLen = 17, refined = true))
-            waitForIdle()
-            assertEquals(listOf("Missing mic in feedback.", "Add voice button."), sentMessages)
+            assertEquals(listOf("Missing mic in feedback.", "Add voice button"), sentMessages)
             assertFalse(controller.state.value.awaitingSubmitFinal)
             assertFalse(controller.state.value.hasBackgroundDrain)
+            assertNull(controller.state.value.provisionalRange)
+            onNode(hasComposingRange, useUnmergedTree = true).assertDoesNotExist()
+            assertTrue(secondConnection.closed)
+
+            // Late refined frame after WYSIWYG submit must never repopulate the cleared feedback composer.
+            secondConnection.emitFrame(VoiceDictationV2ServerFrame.Text(text = "Add voice button.", stableLen = 17, refined = true))
+            waitForIdle()
+            assertEquals("", assertNotNull(editorOwnerRef).text)
         }
 
     @Test
@@ -782,13 +801,18 @@ class SettingsFeedbackVoiceDictationUiTest {
     private class FakeStreamConnection : VoiceDictationV2StreamConnection {
         private val channel = Channel<VoiceDictationV2StreamEvent>(Channel.UNLIMITED)
         var startSent = false
+        var lastStartMode: VoiceDictationSessionMode? = null
         var stopSent = false
         var closed = false
 
         override val events: Flow<VoiceDictationV2StreamEvent> = channel.receiveAsFlow()
 
-        override suspend fun sendStart(sampleRateHz: Int): Boolean {
+        override suspend fun sendStart(
+            sampleRateHz: Int,
+            mode: VoiceDictationSessionMode,
+        ): Boolean {
             startSent = true
+            lastStartMode = mode
             return true
         }
 

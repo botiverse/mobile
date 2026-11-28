@@ -200,8 +200,9 @@ data class VoiceDictationComposerUpdate(
     /** Selection end offset (equals [caretOffset] unless restoring a non-collapsed initial selection). */
     val selectionEndOffset: Int = caretOffset,
     /**
-     * Uncommitted live partial range `[stableEnd, textEnd)` inside [composerText] while listening,
-     * or `null` when confirmed (`stableLen >= text.length`) or applied after `stop()`.
+     * Uncommitted provisional range `[stableEnd, textEnd)` inside [composerText] while listening
+     * or while a stopped session is refining in the background, or `null` once confirmed
+     * (`stableLen >= text.length`).
      */
     val provisionalRange: VoiceDictationTextRange? = null,
 )
@@ -256,10 +257,16 @@ class VoiceDictationComposerSpan(
     var lastProvisionalRange: VoiceDictationTextRange? = null
         private set
 
-    /** Transitions the span into post-stop drain mode (still applies frames until user edits). */
+    /**
+     * Transitions the span into post-stop drain mode (still applies frames and retains any
+     * unfinalized [lastProvisionalRange] until a settled snapshot arrives, drain ends, or the
+     * user edits the composer).
+     */
     fun markStopping() {
         stopping = true
-        lastProvisionalRange = null
+        if (ignoreSubsequentText) {
+            lastProvisionalRange = null
+        }
     }
 
     /**
@@ -305,7 +312,7 @@ class VoiceDictationComposerSpan(
         val textEnd = textStart + text.length
         val spanEnd = spanStart + inserted.length
         val provisionalRange =
-            if (!stopping && stableEnd < textEnd) {
+            if (stableEnd < textEnd) {
                 VoiceDictationTextRange(start = stableEnd, endExclusive = textEnd)
             } else {
                 null
@@ -439,9 +446,10 @@ data class VoiceDictationV2State(
     /** Epoch millis parsed from [quotaExhaustedResetsAtIso] when available. */
     val quotaExhaustedResetsAtEpochMs: Long? = null,
     /**
-     * Uncommitted live partial UTF-16 range `[start, endExclusive)` in the active composer draft
-     * while listening, or `null` when confirmed, idle, stopped, cancelled, errored, or detached by
-     * a manual user edit. Mirrors web `VoiceDictationState.provisionalRange`.
+     * Uncommitted provisional UTF-16 range `[start, endExclusive)` in the active composer draft
+     * while listening or while a stopped session is refining in the background, or `null` once
+     * confirmed (`stableLen >= text.length`), background drain ends, cancelled, errored, submitted,
+     * or detached by a manual user edit. Mirrors web `VoiceDictationState.provisionalRange`.
      */
     val provisionalRange: VoiceDictationTextRange? = null,
     /**
@@ -508,11 +516,18 @@ class VoiceDictationV2Controller(
         val span: VoiceDictationComposerSpan,
         val startedAtMs: Long,
         mode: VoiceDictationSessionMode,
+        deferStartMode: Boolean,
         val onComposerUpdate: (VoiceDictationComposerUpdate) -> Unit,
     ) {
         val liveAudioChannel: Channel<QueuedAudioChunk> = Channel(Channel.UNLIMITED)
         val readyReceived: CompletableDeferred<Unit> = CompletableDeferred()
         val recorderReleased: CompletableDeferred<Unit> = CompletableDeferred()
+        val startModeDeferred: CompletableDeferred<VoiceDictationSessionMode> =
+            CompletableDeferred<VoiceDictationSessionMode>().apply {
+                if (!deferStartMode) {
+                    complete(mode)
+                }
+            }
 
         // Protected by [stateLock].
         val preReadyQueue: ArrayDeque<ByteArray> = ArrayDeque()
@@ -526,6 +541,7 @@ class VoiceDictationV2Controller(
         var transportReady: Boolean = false
         var startFrameSent: Boolean = false
         var stopDispatchStarted: Boolean = false
+        var stopFrameSent: Boolean = false
         var postStopFinalReceived: Boolean = false
         var recorderNeedsStop: Boolean = false
         var recorderStopStarted: Boolean = false
@@ -676,32 +692,40 @@ class VoiceDictationV2Controller(
 
     /**
      * True when composer Send should call [awaitPendingFinalBeforeSend] before reading text and
-     * dispatching the message (either already waiting, an active listening session whose mic is
-     * live, or a background session that has not yet delivered a confirmed post-stop snapshot and
-     * whose composer has not been manually edited).
+     * dispatching the message:
+     * - Already waiting on a live-mic submit flush (`pendingSubmitWait != null`), OR
+     * - An active listening session whose mic is still live (`recorderNeedsStop`) and whose
+     *   composer has not been manually edited.
+     *
+     * When dictation is already stopped (idle or refining in the background), returns `false` so
+     * Send dispatches visible composer text immediately (WYSIWYG — "所见即所发").
      */
     fun needsSubmitFinalWait(): Boolean =
         synchronized(stateLock) {
             if (pendingSubmitWait != null) return@synchronized true
-            val active = activeSession
-            if (active != null && !active.aborted && active.recorderNeedsStop && !active.span.ignoreSubsequentText) {
-                return@synchronized true
-            }
-            val bg = backgroundSession ?: return@synchronized false
-            !bg.aborted && !bg.postStopFinalReceived && !bg.span.ignoreSubsequentText
+            val active = activeSession ?: return@synchronized false
+            !active.aborted && active.recorderNeedsStop && !active.span.ignoreSubsequentText
         }
 
-    /** Updates the active foreground session's gesture mode (`Tap` -> `Hold`) once press-and-hold engages. */
+    /** Updates and settles the active foreground session's gesture mode (`Tap` or `Hold`). */
     fun setSessionMode(mode: VoiceDictationSessionMode) {
-        synchronized(stateLock) {
-            activeSession?.takeIf { !it.aborted }?.metrics?.mode = mode
-        }
+        val deferredToComplete =
+            synchronized(stateLock) {
+                val active = activeSession?.takeIf { !it.aborted } ?: return
+                active.metrics.mode = mode
+                active.startModeDeferred
+            }
+        deferredToComplete.complete(mode)
     }
 
     /**
      * Starts a new v2 dictation session for [serverId] / [channelId] / [threadId], anchored at
      * `(baseText, insertStart, insertEnd)`. Any previously active or background session and any
      * pending submit wait are aborted cleanly first.
+     *
+     * When [deferStartMode] is `true` (Option A gesture-settled startup), microphone capture + PCM
+     * buffering, permit fetch, and WebSocket connect all start immediately in parallel, while only
+     * the v2 `start` frame waits until [setSessionMode] (or [stop]) settles `"tap"` vs `"hold"`.
      */
     fun start(
         serverId: String,
@@ -714,6 +738,7 @@ class VoiceDictationV2Controller(
         draftBefore: String? = null,
         contactHints: List<String>? = null,
         mode: VoiceDictationSessionMode = VoiceDictationSessionMode.Tap,
+        deferStartMode: Boolean = false,
         onComposerUpdate: (VoiceDictationComposerUpdate) -> Unit,
     ) {
         val cleanServerId = serverId.trim()
@@ -801,6 +826,7 @@ class VoiceDictationV2Controller(
                         span = VoiceDictationComposerSpan(baseText = baseText, insertStart = insertStart, insertEnd = insertEnd),
                         startedAtMs = now,
                         mode = mode,
+                        deferStartMode = deferStartMode,
                         onComposerUpdate = onComposerUpdate,
                     )
                 val prev = stateFlow.value
@@ -972,9 +998,15 @@ class VoiceDictationV2Controller(
                         return@launch
                     }
 
+                    // Option A gesture-settled startup: mic capture (PCM buffered in preReadyQueue),
+                    // permit fetch, and WS connect run immediately in parallel; only the v2 `start`
+                    // frame waits until press-vs-hold settles (<= 350 ms; 0 ms when already settled).
+                    val resolvedMode = session.startModeDeferred.await()
+                    if (!isLive(session)) return@launch
+
                     val startSent =
                         try {
-                            connection.sendStart(sampleRateHz)
+                            connection.sendStart(sampleRateHz = sampleRateHz, mode = resolvedMode)
                         } catch (cancellation: CancellationException) {
                             throw cancellation
                         } catch (error: Throwable) {
@@ -1050,14 +1082,17 @@ class VoiceDictationV2Controller(
 
     /**
      * Non-blocking stop: immediately returns foreground [state] to [VoiceDictationV2Phase.Idle]
-     * (`audioLevel = 0f`) while detaching the session into background drain — stopping the recorder,
-     * flushing pre-stop audio, sending `{"deck":"stop"}`, and awaiting final/refined `text` + `done`
-     * up to [stopDrainTimeoutMs] (10.5 s).
+     * (`audioLevel = 0f`) while retaining any uncommitted [VoiceDictationV2State.provisionalRange]
+     * underline during background drain — capturing the optional 300 ms button post-roll, stopping
+     * the recorder, flushing pre-stop audio, sending `{"deck":"stop"}`, and awaiting final/refined
+     * `text` + `done` up to [stopDrainTimeoutMs] (10.5 s).
      *
      * If stopped before microphone acquisition even resolved, aborts cleanly with no background work.
      */
     fun stop(stoppedBy: VoiceDictationStopReason = VoiceDictationStopReason.Button) {
-        stopInternal(stoppedBy = stoppedBy, postRollMs = stopPostRollMs)
+        val effectivePostRollMs =
+            if (stoppedBy == VoiceDictationStopReason.Button) stopPostRollMs else 0L
+        stopInternal(stoppedBy = stoppedBy, postRollMs = effectivePostRollMs)
     }
 
     private fun stopInternal(
@@ -1066,6 +1101,7 @@ class VoiceDictationV2Controller(
     ) {
         var sessionToDrain: Session? = null
         var abortImmediately = false
+        var modeToSettle: Pair<CompletableDeferred<VoiceDictationSessionMode>, VoiceDictationSessionMode>? = null
         var previousBg: Session? = null
         var previousBgSummary: VoiceDictationSessionSummary? = null
         var previousBgHelperJobs: List<Job> = emptyList()
@@ -1102,6 +1138,8 @@ class VoiceDictationV2Controller(
                 session.stopping = true
                 session.metrics.freezeStop(stoppedBy = stoppedBy, stopAtMs = stopAt)
                 session.span.markStopping()
+                // Never hang waiting for press-vs-hold settlement if stopped while pending.
+                modeToSettle = session.startModeDeferred to session.metrics.mode
                 activeSession = null
                 backgroundSession = session
                 sessionToDrain = session
@@ -1111,10 +1149,12 @@ class VoiceDictationV2Controller(
                         audioLevel = 0f,
                         error = null,
                         hasBackgroundDrain = true,
-                        provisionalRange = null,
+                        provisionalRange = if (session.span.ignoreSubsequentText) null else session.span.lastProvisionalRange,
                     )
             }
         }
+
+        modeToSettle?.let { (deferred, mode) -> deferred.complete(mode) }
 
         previousBg?.let { stale ->
             emitSessionTelemetrySafely(stale.owner.serverId, previousBgSummary)
@@ -1187,35 +1227,37 @@ class VoiceDictationV2Controller(
     }
 
     /**
-     * Waits briefly (up to [timeoutMs], default 1 s) before sending when either an active listening
-     * session is still capturing audio or a just-stopped background session has not yet delivered
-     * its confirmed post-stop snapshot.
-     *
-     * - If an active listening session has a live mic (`recorderNeedsStop`) and untouched composer,
+     * Split submit pre-check matching `#wg-call:a1bba3db` (`slock#17357`):
+     * - **Already stopped (idle or post-stop background refinement):** returns `true` immediately
+     *   with zero wait (WYSIWYG — "所见即所发") so the caller dispatches visible composer text right
+     *   away and aborts in-flight refinement via [finishForSubmit].
+     * - **Mic still live (`activeSession` with `recorderNeedsStop` and untouched composer):**
      *   immediately stops it with 0 ms post-roll (`VoiceDictationStopReason.Submit`) so native tail
-     *   audio flushes and `{"deck":"stop"}` sends right away within the bounded [timeoutMs] budget.
-     * - Returns `true` immediately when no live/background drain needs to wait or the user already edited.
+     *   audio flushes and `{"deck":"stop"}` sends right away, then waits up to [timeoutMs] (1 s)
+     *   for trailing words (applying raw post-stop snapshots live into the composer while waiting).
      * - Returns `false` when a submit wait is already in progress (prevents duplicate sends) or if
      *   aborted by [start], [cancel], or [onOwnerChanged].
-     * - Resolves `true` as soon as a confirmed post-stop `text` applies, `done`/close completes
-     *   background drain, the user edits the composer, or [timeoutMs] elapses.
+     * - Resolves `true` as soon as a confirmed post-stop `text` (`stable_len >= text.length` after
+     *   `stop` was dispatched) applies, `done`/close completes drain, the user edits the composer, or
+     *   [timeoutMs] elapses.
      */
     suspend fun awaitPendingFinalBeforeSend(timeoutMs: Long = submitFinalWaitMs): Boolean {
-        val shouldStopActiveFirst =
+        val activeToStop: Session =
             synchronized(stateLock) {
                 if (pendingSubmitWait != null) return false
                 val active = activeSession
-                active != null && !active.aborted && active.recorderNeedsStop && !active.span.ignoreSubsequentText
+                if (active == null || active.aborted || !active.recorderNeedsStop || active.span.ignoreSubsequentText) {
+                    return true
+                }
+                active
             }
-        if (shouldStopActiveFirst) {
-            stopInternal(stoppedBy = VoiceDictationStopReason.Submit, postRollMs = 0L)
-        }
+        stopInternal(stoppedBy = VoiceDictationStopReason.Submit, postRollMs = 0L)
 
         val waitDeferred: CompletableDeferred<Boolean> =
             synchronized(stateLock) {
                 if (pendingSubmitWait != null) return false
-                val bg = backgroundSession ?: return true
-                if (bg.aborted || bg.postStopFinalReceived || bg.span.ignoreSubsequentText) {
+                val bg = backgroundSession
+                if (bg !== activeToStop || bg.aborted || bg.postStopFinalReceived || bg.span.ignoreSubsequentText) {
                     return true
                 }
                 val deferred = CompletableDeferred<Boolean>()
@@ -1551,22 +1593,24 @@ class VoiceDictationV2Controller(
                             session.transcriptCapture = session.transcriptCapture.recordSnapshot(frame.text, frame.refined)
                             val applied = session.span.applyFrame(frame)
                             if (applied != null) {
-                                if (activeSession === session) {
+                                if (activeSession === session || (activeSession == null && backgroundSession === session)) {
                                     stateFlow.value =
                                         stateFlow.value.copy(
                                             lastUpdate = applied,
                                             provisionalRange = applied.provisionalRange,
                                         )
-                                } else if (activeSession == null && backgroundSession === session) {
-                                    stateFlow.value =
-                                        stateFlow.value.copy(
-                                            lastUpdate = applied,
-                                            provisionalRange = null,
-                                        )
                                 }
+                            } else if (
+                                activeSession == null &&
+                                backgroundSession === session &&
+                                session.span.lastProvisionalRange == null &&
+                                stateFlow.value.provisionalRange != null
+                            ) {
+                                stateFlow.value = stateFlow.value.copy(provisionalRange = null)
                             }
                             if (
                                 backgroundSession === session &&
+                                session.stopFrameSent &&
                                 !session.span.ignoreSubsequentText &&
                                 frame.text.isNotBlank() &&
                                 frame.stableLen >= frame.text.length
@@ -1623,9 +1667,14 @@ class VoiceDictationV2Controller(
     private suspend fun sendStopAfterSenderDrains(session: Session) {
         val sender = synchronized(stateLock) { session.senderJob }
         runCatching { sender?.join() }
-        if (!isLive(session)) return
-        val conn = synchronized(stateLock) { session.connection }
-        conn?.sendStop()
+        val conn =
+            synchronized(stateLock) {
+                if (!isLiveLocked(session)) return
+                val connection = session.connection ?: return
+                session.stopFrameSent = true
+                connection
+            }
+        conn.sendStop()
     }
 
     private fun updateAudioLevel(session: Session, level: Float) {
