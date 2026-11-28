@@ -169,11 +169,13 @@ def compute_trace_bundle_sha256(trace_path: str | Path) -> str:
 
 
 # ---------------------------------------------------------------------------
-# XML ref-id resolution & duration parsing helpers
+# XML ref-id resolution, process filtering & duration/timestamp helpers
 # ---------------------------------------------------------------------------
 
 _FMT_DURATION_RE = re.compile(r"([0-9]+(?:\.[0-9]+)?)\s*(ns|us|µs|ms|s)\b", re.IGNORECASE)
 _KV_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([^\s,;]+)")
+_TRAILING_PID_RE = re.compile(r"\s*\(\d+\)\s*$")
+_TRAILING_PAREN_RE = re.compile(r"\(([^()]+)\)\s*$")
 
 _IOS_THERMAL_INT_MAP: dict[int, str] = {
     0: "nominal",
@@ -182,6 +184,39 @@ _IOS_THERMAL_INT_MAP: dict[int, str] = {
     3: "critical",
 }
 _IOS_THERMAL_NAMES: frozenset[str] = frozenset(_IOS_THERMAL_INT_MAP.values())
+
+_START_TIME_TAGS: frozenset[str] = frozenset(
+    {"start-time", "start_time", "sample-time", "sample_time", "timestamp", "time", "start"}
+)
+_END_TIME_TAGS: frozenset[str] = frozenset({"end-time", "end_time", "end"})
+_DURATION_TAGS: frozenset[str] = frozenset(
+    {
+        "duration",
+        "frame-duration",
+        "frame_duration",
+        "actual-duration",
+        "hitch-duration",
+        "hitch_duration",
+        "gpu-duration",
+        "metal-duration",
+        "weight",
+        "sample-weight",
+    }
+)
+
+
+def _require_refresh_hz(refresh_hz: float | None) -> float:
+    if (
+        refresh_hz is None
+        or isinstance(refresh_hz, bool)
+        or not isinstance(refresh_hz, (int, float))
+        or not math.isfinite(float(refresh_hz))
+        or float(refresh_hz) <= 0
+    ):
+        raise ValueError(
+            "refresh_hz is required and must be a finite positive number (no silent 60Hz fallback)"
+        )
+    return float(refresh_hz)
 
 
 def _build_id_map(root: ET.Element) -> dict[str, ET.Element]:
@@ -200,8 +235,38 @@ def _resolve(elem: ET.Element, id_map: Mapping[str, ET.Element]) -> ET.Element:
     return elem
 
 
+def _row_matches_process(
+    row: ET.Element,
+    id_map: Mapping[str, ET.Element],
+    process_name: str | None,
+) -> bool:
+    """Return False when ``process_name`` is set and the row belongs to a different process."""
+    if not process_name or not process_name.strip():
+        return True
+    target = process_name.strip().lower()
+
+    thread_proc: str | None = None
+    for child in row:
+        tag = child.tag.lower()
+        resolved = _resolve(child, id_map)
+        if tag == "process":
+            raw_proc = (resolved.attrib.get("fmt") or resolved.text or "").strip()
+            if raw_proc:
+                cleaned = _TRAILING_PID_RE.sub("", raw_proc).strip().lower()
+                return cleaned == target or raw_proc.lower() == target
+        elif tag == "thread":
+            raw_thread = (resolved.attrib.get("fmt") or resolved.text or "").strip()
+            match = _TRAILING_PAREN_RE.search(raw_thread)
+            if match:
+                thread_proc = match.group(1).strip().lower()
+
+    if thread_proc is not None:
+        return thread_proc == target
+    return True
+
+
 def _parse_duration_ms(elem: ET.Element, id_map: Mapping[str, ET.Element]) -> float | None:
-    """Parse an xctrace duration/weight element (raw text in ns, or fmt string) to milliseconds."""
+    """Parse an xctrace duration/timestamp element (raw text in ns, or fmt string) to milliseconds."""
     resolved = _resolve(elem, id_map)
     text = (resolved.text or "").strip()
     if text:
@@ -232,6 +297,55 @@ def _parse_duration_ms(elem: ET.Element, id_map: Mapping[str, ET.Element]) -> fl
             return val
         if unit == "s":
             return val * 1000.0
+    return None
+
+
+def _infer_window_ms_from_xml(
+    xml_entries: Sequence[tuple[str | None, str | None]],
+) -> float | None:
+    """Infer capture window duration (ms) from XML ``<start-time>`` + ``<duration>`` spans."""
+    min_start: float | None = None
+    max_end: float | None = None
+
+    for xml_text, proc_filter in xml_entries:
+        if not xml_text or not xml_text.strip():
+            continue
+        root = ET.fromstring(xml_text)
+        id_map = _build_id_map(root)
+        for row in root.iter("row"):
+            if not _row_matches_process(row, id_map, proc_filter):
+                continue
+            start_ms: float | None = None
+            end_ms: float | None = None
+            dur_ms: float | None = None
+            for child in row:
+                tag = child.tag.lower()
+                if tag in _START_TIME_TAGS:
+                    val = _parse_duration_ms(child, id_map)
+                    if val is not None:
+                        start_ms = val
+                elif tag in _END_TIME_TAGS:
+                    val = _parse_duration_ms(child, id_map)
+                    if val is not None:
+                        end_ms = val
+                elif tag in _DURATION_TAGS:
+                    val = _parse_duration_ms(child, id_map)
+                    if val is not None and val > 0:
+                        dur_ms = max(dur_ms or 0.0, val)
+            if start_ms is None:
+                continue
+            if min_start is None or start_ms < min_start:
+                min_start = start_ms
+            candidate_end = (
+                end_ms
+                if (end_ms is not None and end_ms >= start_ms)
+                else (start_ms + dur_ms if dur_ms is not None else start_ms)
+            )
+            if max_end is None or candidate_end > max_end:
+                max_end = candidate_end
+
+    if min_start is not None and max_end is not None and max_end > min_start:
+        return round(max_end - min_start, 3)
     return None
 
 
@@ -267,9 +381,11 @@ def parse_xctrace_hitches_xml(
     xml_text: str,
     *,
     window_ms: float | None = None,
-    refresh_hz: float = 60.0,
+    refresh_hz: float | None = None,
+    process_name: str | None = None,
 ) -> dict[str, Any]:
     """Parse exported ``Animation Hitches`` XML into hitch and frame metrics."""
+    hz = _require_refresh_hz(refresh_hz)
     if not xml_text or not xml_text.strip():
         return {
             "hitch_count": 0,
@@ -289,9 +405,11 @@ def parse_xctrace_hitches_xml(
 
     hitch_durations_ms: list[float] = []
     frame_durations_ms: list[float] = []
-    budget_ms = 1000.0 / float(refresh_hz)
+    budget_ms = 1000.0 / hz
 
     for row in root.iter("row"):
+        if not _row_matches_process(row, id_map, process_name):
+            continue
         hitch_ms: float | None = None
         frame_ms: float | None = None
         for child in row:
@@ -318,9 +436,13 @@ def parse_xctrace_hitches_xml(
     total_hitch_ms = sum(hitch_durations_ms)
     hitch_count = len(hitch_durations_ms)
 
+    eff_window_ms = window_ms
+    if eff_window_ms is None:
+        eff_window_ms = _infer_window_ms_from_xml([(xml_text, process_name)])
+
     hitch_ms_per_s: float | None = None
-    if window_ms is not None and float(window_ms) > 0 and (hitch_count > 0 or frame_durations_ms):
-        hitch_ms_per_s = round(total_hitch_ms / (float(window_ms) / 1000.0), 3)
+    if eff_window_ms is not None and float(eff_window_ms) > 0 and (hitch_count > 0 or frame_durations_ms):
+        hitch_ms_per_s = round(total_hitch_ms / (float(eff_window_ms) / 1000.0), 3)
 
     if frame_durations_ms:
         sorted_frames = sorted(frame_durations_ms)
@@ -345,7 +467,7 @@ def parse_xctrace_hitches_xml(
         "total_hitch_ms": round(total_hitch_ms, 3),
         "hitch_ms_per_s": hitch_ms_per_s,
         "worst_frame_ms": worst_frame,
-        "slow_frame_count": hitch_count if (hitch_count > 0 or (window_ms and window_ms > 0)) else None,
+        "slow_frame_count": hitch_count if hitch_count > 0 else None,
         "slow_frame_ratio": None,
         "frame_p50_ms": None,
         "frame_p95_ms": None,
@@ -354,7 +476,12 @@ def parse_xctrace_hitches_xml(
     }
 
 
-def parse_xctrace_time_profile_xml(xml_text: str, *, top_n: int = 10) -> dict[str, Any]:
+def parse_xctrace_time_profile_xml(
+    xml_text: str,
+    *,
+    top_n: int = 10,
+    process_name: str | None = None,
+) -> dict[str, Any]:
     """Parse exported ``Time Profiler`` XML into ``top_hotspots`` and ``ui_thread_ms``."""
     if not xml_text or not xml_text.strip():
         return {"top_hotspots": [], "ui_thread_ms": None, "profile_sample_count": 0}
@@ -368,6 +495,8 @@ def parse_xctrace_time_profile_xml(xml_text: str, *, top_n: int = 10) -> dict[st
     sample_count = 0
 
     for row in root.iter("row"):
+        if not _row_matches_process(row, id_map, process_name):
+            continue
         weight_ms: float | None = None
         thread_name = "unknown"
         frames: list[str] = []
@@ -451,7 +580,11 @@ def parse_xctrace_time_profile_xml(xml_text: str, *, top_n: int = 10) -> dict[st
     }
 
 
-def parse_xctrace_metal_xml(xml_text: str) -> dict[str, Any]:
+def parse_xctrace_metal_xml(
+    xml_text: str,
+    *,
+    process_name: str | None = None,
+) -> dict[str, Any]:
     """Parse exported ``Metal System Trace`` GPU intervals XML into total ``metal_ms``."""
     if not xml_text or not xml_text.strip():
         return {"metal_ms": None, "gpu_interval_count": 0}
@@ -462,6 +595,8 @@ def parse_xctrace_metal_xml(xml_text: str) -> dict[str, Any]:
     count = 0
 
     for row in root.iter("row"):
+        if not _row_matches_process(row, id_map, process_name):
+            continue
         for child in row:
             tag = child.tag.lower()
             if tag in ("duration", "gpu-duration", "metal-duration"):
@@ -569,6 +704,7 @@ def _extract_markers_from_text_lines(lines: Sequence[str]) -> dict[str, Any]:
                 "stable_ms",
                 "time_to_stable_ms",
                 "shift_count",
+                "frame_count",
             ):
                 val = kv.get(seg_key)
                 if isinstance(val, (int, float)) and not isinstance(val, bool) and float(val) >= 0:
@@ -599,11 +735,11 @@ def _extract_markers_from_text_lines(lines: Sequence[str]) -> dict[str, Any]:
                 elif kv.get("cause") == "reading_anchor" or "reading_anchor_attempt" in line:
                     reading_anchor_attempts += 1
 
-            if isinstance(kv.get("duration_ms"), (int, float)) and float(kv["duration_ms"]) > 0 and duration_ms is None:
+            if isinstance(kv.get("duration_ms"), (int, float)) and not isinstance(kv.get("duration_ms"), bool) and float(kv["duration_ms"]) > 0 and duration_ms is None:
                 duration_ms = float(kv["duration_ms"])
-            if isinstance(kv.get("ttfd_ms"), (int, float)) and float(kv["ttfd_ms"]) > 0:
+            if isinstance(kv.get("ttfd_ms"), (int, float)) and not isinstance(kv.get("ttfd_ms"), bool) and float(kv["ttfd_ms"]) > 0:
                 ttfd_ms = float(kv["ttfd_ms"])
-            if isinstance(kv.get("mem_peak_mb"), (int, float)) and float(kv["mem_peak_mb"]) > 0:
+            if isinstance(kv.get("mem_peak_mb"), (int, float)) and not isinstance(kv.get("mem_peak_mb"), bool) and float(kv["mem_peak_mb"]) > 0:
                 mem_peak_mb = max(mem_peak_mb or 0.0, float(kv["mem_peak_mb"]))
 
             for key, val in kv.items():
@@ -630,6 +766,7 @@ def parse_ios_signpost_or_log_markers(
     *,
     signpost_xml: str | None = None,
     app_log_text: str | None = None,
+    process_name: str | None = None,
 ) -> dict[str, Any]:
     """Extract iOS scenario latency and segment markers from signpost XML and/or app logs."""
     lines: list[str] = []
@@ -641,6 +778,8 @@ def parse_ios_signpost_or_log_markers(
         root = ET.fromstring(signpost_xml)
         id_map = _build_id_map(root)
         for row in root.iter("row"):
+            if not _row_matches_process(row, id_map, process_name):
+                continue
             name: str | None = None
             dur_ms: float | None = None
             msg_parts: list[str] = []
@@ -724,8 +863,8 @@ def parse_xctrace_exports(
     device_id: str,
     device_model: str,
     os_version: str,
+    refresh_hz: float | None = None,
     layout_mode: str = "phone",
-    refresh_hz: float = 60.0,
     warm_state: str = "profile_warm",
     fixture_tag: str = DEFAULT_FIXTURE_TAG,
     env: str = "staging",
@@ -735,7 +874,9 @@ def parse_xctrace_exports(
     ab_arm: str | None = None,
     iteration: int | None = None,
     calibration_injected_ms: float | None = None,
-    window_ms: float | None = 5000.0,
+    window_ms: float | None = None,
+    frame_count: int | None = None,
+    process_name: str | None = None,
     thermal_start: str | None = None,
     thermal_end: str | None = None,
     duration_ms: float | None = None,
@@ -757,18 +898,51 @@ def parse_xctrace_exports(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Parse iOS ``xctrace`` XML exports and logs into validated ScopeDB rows.
 
-    Returns ``(run_row, diagnose_row)``. Keeps ``render_thread_ms=None`` on iOS,
-    ensures absent metrics are ``None`` (never ``0``), and forces ``valid=False``
-    when ``samples == 0``.
+    Returns ``(run_row, diagnose_row)``. Requires explicit positive
+    ``refresh_hz`` (no silent 60Hz fallback). Infers ``window_ms`` from trace
+    XML timestamps when omitted; leaves both ``window_ms`` and
+    ``hitch_ms_per_s`` as ``None`` if unavailable. Derives ``samples`` strictly
+    from frame-duration rows, explicit ``frame_count``, or app-log
+    ``frame_count`` (never mixing Time Profiler CPU samples or hitch counts).
     """
+    resolved_hz = _require_refresh_hz(refresh_hz)
+    if frame_count is not None and (
+        not isinstance(frame_count, int) or isinstance(frame_count, bool) or frame_count < 0
+    ):
+        raise ValueError(f"frame_count must be a non-negative integer, got {frame_count!r}")
+    if window_ms is not None and (
+        isinstance(window_ms, bool)
+        or not isinstance(window_ms, (int, float))
+        or not math.isfinite(float(window_ms))
+        or float(window_ms) <= 0
+    ):
+        raise ValueError(f"window_ms must be a finite positive number, got {window_ms!r}")
+
+    resolved_window_ms: float | None = float(window_ms) if window_ms is not None else None
+    if resolved_window_ms is None:
+        resolved_window_ms = _infer_window_ms_from_xml(
+            [
+                (hitches_xml, process_name),
+                (time_profile_xml, process_name),
+                (metal_xml, process_name),
+                (signpost_xml, process_name),
+                (thermal_xml, None),
+            ]
+        )
+
     hitches = parse_xctrace_hitches_xml(
-        hitches_xml or "", window_ms=window_ms, refresh_hz=refresh_hz
+        hitches_xml or "",
+        window_ms=resolved_window_ms,
+        refresh_hz=resolved_hz,
+        process_name=process_name,
     )
-    time_prof = parse_xctrace_time_profile_xml(time_profile_xml or "")
-    metal = parse_xctrace_metal_xml(metal_xml or "")
+    time_prof = parse_xctrace_time_profile_xml(
+        time_profile_xml or "", process_name=process_name
+    )
+    metal = parse_xctrace_metal_xml(metal_xml or "", process_name=process_name)
     xml_thermal_start, xml_thermal_end = parse_xctrace_thermal_xml(thermal_xml or "")
     markers = parse_ios_signpost_or_log_markers(
-        signpost_xml=signpost_xml, app_log_text=app_log_text
+        signpost_xml=signpost_xml, app_log_text=app_log_text, process_name=process_name
     )
 
     resolved_thermal_start = thermal_start or xml_thermal_start
@@ -777,17 +951,24 @@ def parse_xctrace_exports(
     resolved_ttfd_ms = ttfd_ms if ttfd_ms is not None else markers["ttfd_ms"]
     resolved_mem_peak_mb = mem_peak_mb if mem_peak_mb is not None else markers["mem_peak_mb"]
 
-    # Determine sample count: prefer explicit frame samples, else time-profiler samples,
-    # else hitch count if hitches were recorded.
-    samples = hitches["frame_samples"]
-    if samples == 0:
-        samples = time_prof["profile_sample_count"]
-    if samples == 0 and hitches["hitch_count"] > 0:
-        samples = hitches["hitch_count"]
+    # Derive samples strictly from frame-duration rows, explicit frame_count, or app-log frame_count.
+    # Never mix Time Profiler CPU samples or hitch counts into samples.
+    log_frame_count = markers["segments"].get("frame_count")
+    extra_frame_count = extra_segments.get("frame_count") if extra_segments else None
+    if hitches["frame_samples"] > 0:
+        samples = hitches["frame_samples"]
+    elif frame_count is not None:
+        samples = int(frame_count)
+    elif isinstance(log_frame_count, int) and not isinstance(log_frame_count, bool) and log_frame_count >= 0:
+        samples = int(log_frame_count)
+    elif isinstance(extra_frame_count, int) and not isinstance(extra_frame_count, bool) and extra_frame_count >= 0:
+        samples = int(extra_frame_count)
+    else:
+        samples = 0
 
     segments: dict[str, Any] = dict(markers["segments"])
-    if hitches["frame_samples"] > 0:
-        segments.setdefault("frame_count", hitches["frame_samples"])
+    if samples > 0:
+        segments.setdefault("frame_count", samples)
     if hitches["hitch_count"] > 0:
         segments.setdefault("hitch_count", hitches["hitch_count"])
     if extra_segments:
@@ -804,10 +985,33 @@ def parse_xctrace_exports(
     )
     valid = (samples > 0) and (not throttled)
     has_samples = samples > 0
+    has_hitches_export = hitches_xml is not None
     timestamp = taken_at or utc_now_iso()
+
     extra_dict = dict(extra) if extra else {}
+    extra_dict.setdefault("capture_mode", "xctrace")
+    if time_profile_xml is not None or time_prof["profile_sample_count"] > 0:
+        extra_dict["time_profile_sample_count"] = time_prof["profile_sample_count"]
     if throttled and thermal_invalid_reason:
         extra_dict["thermal_invalid_reason"] = thermal_invalid_reason
+
+    if has_samples and has_hitches_export:
+        if resolved_window_ms is not None and resolved_window_ms > 0:
+            resolved_hitch_ms_per_s: float | None = (
+                hitches["hitch_ms_per_s"]
+                if hitches["hitch_ms_per_s"] is not None
+                else round(hitches["total_hitch_ms"] / (resolved_window_ms / 1000.0), 3)
+            )
+        else:
+            resolved_hitch_ms_per_s = None
+        resolved_slow_frame_count: int | None = (
+            hitches["slow_frame_count"]
+            if hitches["slow_frame_count"] is not None
+            else hitches["hitch_count"]
+        )
+    else:
+        resolved_hitch_ms_per_s = None
+        resolved_slow_frame_count = None
 
     common = {
         "project": project,
@@ -828,7 +1032,7 @@ def parse_xctrace_exports(
         "device_model": device_model,
         "os_version": os_version,
         "layout_mode": layout_mode,
-        "refresh_hz": refresh_hz,
+        "refresh_hz": resolved_hz,
         "warm_state": warm_state,
         "fixture_tag": fixture_tag,
         "thermal_start": resolved_thermal_start,
@@ -848,19 +1052,19 @@ def parse_xctrace_exports(
         frame_p95_ms=hitches["frame_p95_ms"] if has_samples else None,
         frame_p99_ms=hitches["frame_p99_ms"] if has_samples else None,
         slow_frame_ratio=hitches["slow_frame_ratio"] if has_samples else None,
-        hitch_ms_per_s=hitches["hitch_ms_per_s"] if has_samples else None,
+        hitch_ms_per_s=resolved_hitch_ms_per_s,
         mem_peak_mb=resolved_mem_peak_mb,
         **common,
     )
 
     diagnose_row = make_diagnose_row(
         run_id=diagnose_run_id or f"{run_id}-diag",
-        window_ms=window_ms if (window_ms is not None and window_ms > 0) else None,
+        window_ms=resolved_window_ms if (resolved_window_ms is not None and resolved_window_ms > 0) else None,
         ui_thread_ms=time_prof["ui_thread_ms"],
         render_thread_ms=None,
         metal_ms=metal["metal_ms"],
         worst_frame_ms=hitches["worst_frame_ms"] if has_samples else None,
-        slow_frame_count=hitches["slow_frame_count"] if has_samples else None,
+        slow_frame_count=resolved_slow_frame_count,
         compose_recomp_count=None,
         top_hotspots=time_prof["top_hotspots"],
         trace_sha256=trace_sha256,

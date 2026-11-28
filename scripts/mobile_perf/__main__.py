@@ -21,7 +21,9 @@ def _read_optional_text(path: str | None) -> str | None:
     return Path(path).read_text(encoding="utf-8")
 
 
-def _add_common_capture_args(parser: argparse.ArgumentParser, *, default_project: str, default_build_type: str) -> None:
+def _add_common_capture_args(
+    parser: argparse.ArgumentParser, *, default_project: str, default_build_type: str
+) -> None:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--diagnose-run-id")
     parser.add_argument("--commit-sha", required=True)
@@ -53,6 +55,11 @@ def _add_common_capture_args(parser: argparse.ArgumentParser, *, default_project
     parser.add_argument("--taken-at")
     parser.add_argument("--out-run", help="Write validated mobile_runs JSONL row to this path")
     parser.add_argument("--out-diagnose", help="Write validated mobile_diagnose_runs JSONL row to this path")
+    parser.add_argument(
+        "--append",
+        action="store_true",
+        help="Append rows to --out-run / --out-diagnose instead of overwriting",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -111,6 +118,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_and.add_argument("--ttfd-ms", type=float)
     p_and.add_argument("--window-ms", type=float)
     p_and.add_argument("--gfxinfo")
+    p_and.add_argument(
+        "--exclude-window-layout-frames",
+        action="store_true",
+        help="Opt-in to drop PROFILEDATA frames with FLAG_WINDOW_LAYOUT_CHANGED (Flags & 1)",
+    )
     p_and.add_argument("--meminfo")
     p_and.add_argument("--thermal-start-file")
     p_and.add_argument("--thermal-end-file")
@@ -119,6 +131,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_and.add_argument("--perfetto-frames")
     p_and.add_argument("--perfetto-main")
     p_and.add_argument("--perfetto-render")
+    p_and.add_argument("--perfetto-thread-cpu")
+    p_and.add_argument("--perfetto-trace-bounds")
     p_and.add_argument("--perfetto-compose")
     p_and.add_argument("--perfetto-memory")
     p_and.add_argument("--trace-path")
@@ -126,6 +140,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_and.add_argument("--taken-at")
     p_and.add_argument("--out-run")
     p_and.add_argument("--out-diagnose")
+    p_and.add_argument(
+        "--append",
+        action="store_true",
+        help="Append rows to --out-run / --out-diagnose instead of overwriting",
+    )
 
     # parse-ios
     p_ios = sub.add_parser(
@@ -140,12 +159,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_ios.add_argument("--signpost-xml")
     p_ios.add_argument("--app-log")
     p_ios.add_argument("--mem-peak-mb", type=float)
+    p_ios.add_argument("--frame-count", type=int, help="Explicit frame sample count for 0-hitch/hitch-only traces")
+    p_ios.add_argument("--process-name", help="Filter xctrace XML rows to this process name (case-insensitive)")
 
     # ab-verdict
     p_ab = sub.add_parser("ab-verdict", help="Evaluate paired interleaved A/B runs")
     p_ab.add_argument("input_jsonl", help="JSONL file containing paired base/head mobile_runs rows")
     p_ab.add_argument("--metric", help="Primary metric column (defaults to scenario primary KPI)")
-    p_ab.add_argument("--min-pairs", type=int, default=5)
+    p_ab.add_argument("--min-pairs", type=int, default=6)
     p_ab.add_argument("--alpha", type=float, default=0.05)
     p_ab.add_argument("--rel-floor", type=float, default=0.05)
     p_ab.add_argument("--noise-multiplier", type=float, default=2.0)
@@ -155,18 +176,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_ab.add_argument("--out", help="Optional output JSON path")
 
     # calibrate
-    p_cal = sub.add_parser("calibrate", help="Check 200ms synthetic stall detection sensitivity")
-    p_cal.add_argument("--base", help="JSONL file with un-injected baseline rows")
-    p_cal.add_argument("--injected", help="JSONL file with synthetic stall-injected rows")
+    p_cal = sub.add_parser("calibrate", help="Check synthetic stall / slow-frame calibration sensitivity")
+    p_cal.add_argument("--base", help="JSONL file with un-injected calibration baseline rows")
+    p_cal.add_argument("--injected", help="JSONL file with synthetic stall-injected calibration rows")
     p_cal.add_argument(
         "--input",
         dest="combined_input",
         help="Single combined JSONL split by calibration_injected_ms (null/0 vs >0)",
     )
-    p_cal.add_argument("--metric", help="Primary latency metric (defaults to scenario primary KPI)")
+    p_cal.add_argument("--metric", help="Calibration metric (defaults to scenario calibration metric)")
+    p_cal.add_argument(
+        "--mode",
+        choices=("latency_ms", "slow_frames"),
+        help="Calibration mode (defaults to scenario calibration mode)",
+    )
     p_cal.add_argument("--injected-ms", type=float, default=200.0)
+    p_cal.add_argument("--expected-delta", type=float, help="Explicit expected delta for calibration check")
+    p_cal.add_argument("--injected-slow-frames", type=int, help="Number of injected slow frames (slow_frames mode)")
+    p_cal.add_argument("--window-ms", type=float, help="Capture window duration in ms (hitch_ms_per_s calibration)")
     p_cal.add_argument("--tolerance-ratio", type=float, default=0.25)
-    p_cal.add_argument("--min-pairs", type=int, default=5)
+    p_cal.add_argument("--min-pairs", type=int, default=6)
     p_cal.add_argument("--alpha", type=float, default=0.05)
     p_cal.add_argument("--no-filter-thermal", action="store_true")
     p_cal.add_argument("--out", help="Optional output JSON path")
@@ -183,6 +212,7 @@ def _cmd_scenarios(args: argparse.Namespace) -> int:
         segs = ", ".join(spec.required_segments)
         print(
             f"{spec.name:22s} kpi={spec.primary_kpi:14s} ios_kpi={spec.ios_primary_kpi:14s} "
+            f"cal={spec.calibration_mode}:{spec.calibration_metric} "
             f"warm={spec.default_warm_state:12s} fixture={spec.fixture_tag} segments=[{segs}]"
         )
     return 0
@@ -207,11 +237,13 @@ def _emit_capture_rows(
     diag_row: dict[str, Any],
     out_run: str | None,
     out_diagnose: str | None,
+    *,
+    append: bool = False,
 ) -> int:
     if out_run:
-        write_jsonl(out_run, [run_row], kind="run")
+        write_jsonl(out_run, [run_row], kind="run", append=append)
     if out_diagnose:
-        write_jsonl(out_diagnose, [diag_row], kind="diagnose")
+        write_jsonl(out_diagnose, [diag_row], kind="diagnose", append=append)
     if not out_run and not out_diagnose:
         print(json.dumps({"run": run_row, "diagnose": diag_row}, indent=2))
     return 0
@@ -237,91 +269,109 @@ def _cmd_parse_android(args: argparse.Namespace) -> int:
         print(f"Missing required arguments: {', '.join(missing)}", file=sys.stderr)
         return 2
 
-    run_row, diag_row = parse_android_capture(
-        run_id=args.run_id,
-        diagnose_run_id=args.diagnose_run_id,
-        commit_sha=args.commit_sha,
-        app_version=args.app_version,
-        app_build=args.app_build,
-        build_type=args.build_type,
-        scenario=args.scenario,
-        device_id=args.device_id,
-        device_model=args.device_model,
-        os_version=args.os_version,
-        layout_mode=args.layout_mode,
-        refresh_hz=args.refresh_hz,
-        warm_state=args.warm_state,
-        fixture_tag=args.fixture_tag,
-        env=args.env,
-        project=args.project,
-        run_kind=args.run_kind,
-        ab_session_id=args.ab_session_id,
-        ab_arm=args.ab_arm,
-        iteration=args.iteration,
-        calibration_injected_ms=args.calibration_injected_ms,
-        thermal_start=args.thermal_start,
-        thermal_end=args.thermal_end,
-        duration_ms=args.duration_ms,
-        ttfd_ms=args.ttfd_ms,
-        window_ms=args.window_ms,
-        gfxinfo_text=_read_optional_text(args.gfxinfo),
-        meminfo_text=_read_optional_text(args.meminfo),
-        thermal_start_text=_read_optional_text(args.thermal_start_file),
-        thermal_end_text=_read_optional_text(args.thermal_end_file),
-        display_text=_read_optional_text(args.display),
-        logcat_text=_read_optional_text(args.logcat),
-        perfetto_frame_timeline=_read_optional_text(args.perfetto_frames),
-        perfetto_main_thread=_read_optional_text(args.perfetto_main),
-        perfetto_render_thread=_read_optional_text(args.perfetto_render),
-        perfetto_compose_recomp=_read_optional_text(args.perfetto_compose),
-        perfetto_memory=_read_optional_text(args.perfetto_memory),
-        trace_path=args.trace_path,
-        trace_link=args.trace_link,
-        taken_at=args.taken_at,
-    )
-    return _emit_capture_rows(run_row, diag_row, args.out_run, args.out_diagnose)
+    try:
+        run_row, diag_row = parse_android_capture(
+            run_id=args.run_id,
+            diagnose_run_id=args.diagnose_run_id,
+            commit_sha=args.commit_sha,
+            app_version=args.app_version,
+            app_build=args.app_build,
+            build_type=args.build_type,
+            scenario=args.scenario,
+            device_id=args.device_id,
+            device_model=args.device_model,
+            os_version=args.os_version,
+            package=args.package,
+            layout_mode=args.layout_mode,
+            refresh_hz=args.refresh_hz,
+            warm_state=args.warm_state,
+            fixture_tag=args.fixture_tag,
+            env=args.env,
+            project=args.project,
+            run_kind=args.run_kind,
+            ab_session_id=args.ab_session_id,
+            ab_arm=args.ab_arm,
+            iteration=args.iteration,
+            calibration_injected_ms=args.calibration_injected_ms,
+            thermal_start=args.thermal_start,
+            thermal_end=args.thermal_end,
+            duration_ms=args.duration_ms,
+            ttfd_ms=args.ttfd_ms,
+            window_ms=args.window_ms,
+            gfxinfo_text=_read_optional_text(args.gfxinfo),
+            exclude_window_layout_frames=args.exclude_window_layout_frames,
+            meminfo_text=_read_optional_text(args.meminfo),
+            thermal_start_text=_read_optional_text(args.thermal_start_file),
+            thermal_end_text=_read_optional_text(args.thermal_end_file),
+            display_text=_read_optional_text(args.display),
+            logcat_text=_read_optional_text(args.logcat),
+            perfetto_frame_timeline=_read_optional_text(args.perfetto_frames),
+            perfetto_main_thread=_read_optional_text(args.perfetto_main),
+            perfetto_render_thread=_read_optional_text(args.perfetto_render),
+            perfetto_thread_cpu=_read_optional_text(args.perfetto_thread_cpu),
+            perfetto_trace_bounds=_read_optional_text(args.perfetto_trace_bounds),
+            perfetto_compose_recomp=_read_optional_text(args.perfetto_compose),
+            perfetto_memory=_read_optional_text(args.perfetto_memory),
+            trace_path=args.trace_path,
+            trace_link=args.trace_link,
+            taken_at=args.taken_at,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    return _emit_capture_rows(run_row, diag_row, args.out_run, args.out_diagnose, append=args.append)
 
 
 def _cmd_parse_ios(args: argparse.Namespace) -> int:
-    run_row, diag_row = parse_xctrace_exports(
-        run_id=args.run_id,
-        diagnose_run_id=args.diagnose_run_id,
-        commit_sha=args.commit_sha,
-        app_version=args.app_version,
-        app_build=args.app_build,
-        build_type=args.build_type,
-        scenario=args.scenario,
-        device_id=args.device_id,
-        device_model=args.device_model,
-        os_version=args.os_version,
-        layout_mode=args.layout_mode,
-        refresh_hz=args.refresh_hz if args.refresh_hz is not None else 60.0,
-        warm_state=args.warm_state,
-        fixture_tag=args.fixture_tag,
-        env=args.env,
-        project=args.project,
-        run_kind=args.run_kind,
-        ab_session_id=args.ab_session_id,
-        ab_arm=args.ab_arm,
-        iteration=args.iteration,
-        calibration_injected_ms=args.calibration_injected_ms,
-        window_ms=args.window_ms if args.window_ms is not None else 5000.0,
-        thermal_start=args.thermal_start,
-        thermal_end=args.thermal_end,
-        duration_ms=args.duration_ms,
-        ttfd_ms=args.ttfd_ms,
-        mem_peak_mb=args.mem_peak_mb,
-        hitches_xml=_read_optional_text(args.hitches_xml),
-        time_profile_xml=_read_optional_text(args.time_profile_xml),
-        thermal_xml=_read_optional_text(args.thermal_xml),
-        metal_xml=_read_optional_text(args.metal_xml),
-        signpost_xml=_read_optional_text(args.signpost_xml),
-        app_log_text=_read_optional_text(args.app_log),
-        trace_path=args.trace_path,
-        trace_link=args.trace_link,
-        taken_at=args.taken_at,
-    )
-    return _emit_capture_rows(run_row, diag_row, args.out_run, args.out_diagnose)
+    if args.refresh_hz is None:
+        print("Missing required argument: --refresh-hz (no silent 60Hz default)", file=sys.stderr)
+        return 2
+
+    try:
+        run_row, diag_row = parse_xctrace_exports(
+            run_id=args.run_id,
+            diagnose_run_id=args.diagnose_run_id,
+            commit_sha=args.commit_sha,
+            app_version=args.app_version,
+            app_build=args.app_build,
+            build_type=args.build_type,
+            scenario=args.scenario,
+            device_id=args.device_id,
+            device_model=args.device_model,
+            os_version=args.os_version,
+            layout_mode=args.layout_mode,
+            refresh_hz=args.refresh_hz,
+            warm_state=args.warm_state,
+            fixture_tag=args.fixture_tag,
+            env=args.env,
+            project=args.project,
+            run_kind=args.run_kind,
+            ab_session_id=args.ab_session_id,
+            ab_arm=args.ab_arm,
+            iteration=args.iteration,
+            calibration_injected_ms=args.calibration_injected_ms,
+            window_ms=args.window_ms,
+            frame_count=args.frame_count,
+            process_name=args.process_name,
+            thermal_start=args.thermal_start,
+            thermal_end=args.thermal_end,
+            duration_ms=args.duration_ms,
+            ttfd_ms=args.ttfd_ms,
+            mem_peak_mb=args.mem_peak_mb,
+            hitches_xml=_read_optional_text(args.hitches_xml),
+            time_profile_xml=_read_optional_text(args.time_profile_xml),
+            thermal_xml=_read_optional_text(args.thermal_xml),
+            metal_xml=_read_optional_text(args.metal_xml),
+            signpost_xml=_read_optional_text(args.signpost_xml),
+            app_log_text=_read_optional_text(args.app_log),
+            trace_path=args.trace_path,
+            trace_link=args.trace_link,
+            taken_at=args.taken_at,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
+    return _emit_capture_rows(run_row, diag_row, args.out_run, args.out_diagnose, append=args.append)
 
 
 def _cmd_ab_verdict(args: argparse.Namespace) -> int:
@@ -342,14 +392,23 @@ def _cmd_ab_verdict(args: argparse.Namespace) -> int:
         Path(args.out).write_text(rendered + "\n", encoding="utf-8")
     else:
         print(rendered)
-    return 0 if result["verdict"] not in ("invalid_cohort", "regressed") else 1
+    verdict = result["verdict"]
+    if verdict in ("improved", "neutral"):
+        return 0
+    if verdict == "regressed":
+        return 1
+    return 2
+
+
+def _is_zero_or_none_cal(val: Any) -> bool:
+    return val is None or (isinstance(val, (int, float)) and not isinstance(val, bool) and float(val) == 0.0)
 
 
 def _cmd_calibrate(args: argparse.Namespace) -> int:
     if args.combined_input:
         rows = read_jsonl(args.combined_input)
-        base_rows = [r for r in rows if not r.get("calibration_injected_ms")]
-        injected_rows = [r for r in rows if (r.get("calibration_injected_ms") or 0) > 0]
+        base_rows = [r for r in rows if _is_zero_or_none_cal(r.get("calibration_injected_ms"))]
+        injected_rows = [r for r in rows if not _is_zero_or_none_cal(r.get("calibration_injected_ms"))]
     elif args.base and args.injected:
         base_rows = read_jsonl(args.base)
         injected_rows = read_jsonl(args.injected)
@@ -357,16 +416,24 @@ def _cmd_calibrate(args: argparse.Namespace) -> int:
         print("Provide either --input <combined.jsonl> or both --base and --injected", file=sys.stderr)
         return 2
 
-    result = evaluate_calibration(
-        base_rows,
-        injected_rows,
-        primary_metric=args.metric,
-        injected_ms=args.injected_ms,
-        tolerance_ratio=args.tolerance_ratio,
-        min_pairs=args.min_pairs,
-        alpha=args.alpha,
-        filter_thermal=not args.no_filter_thermal,
-    )
+    try:
+        result = evaluate_calibration(
+            base_rows,
+            injected_rows,
+            primary_metric=args.metric,
+            mode=args.mode,
+            injected_ms=args.injected_ms,
+            expected_delta=args.expected_delta,
+            injected_slow_frames=args.injected_slow_frames,
+            window_ms=args.window_ms,
+            tolerance_ratio=args.tolerance_ratio,
+            min_pairs=args.min_pairs,
+            alpha=args.alpha,
+            filter_thermal=not args.no_filter_thermal,
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     rendered = json.dumps(result, indent=2)
     if args.out:
         Path(args.out).write_text(rendered + "\n", encoding="utf-8")
