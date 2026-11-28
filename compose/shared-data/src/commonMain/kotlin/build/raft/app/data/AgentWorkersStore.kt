@@ -67,22 +67,40 @@ import kotlinx.coroutines.launch
  * (`packages/web/src/components/agent/agentWorkers.ts`).
  */
 @RaftCoreInternalApi sealed interface AgentWorkerStopFeedback {
-    data class Stopped(val worker: String, val objectRef: String) : AgentWorkerStopFeedback
+    data class Stopped(
+        val worker: String,
+        val objectRefs: List<String> = emptyList(),
+    ) : AgentWorkerStopFeedback {
+        constructor(worker: String, objectRef: String) : this(worker = worker, objectRefs = listOf(objectRef))
+
+        val objectRef: String?
+            get() = objectRefs.firstOrNull()
+    }
     data class NotRunning(val worker: String) : AgentWorkerStopFeedback
     data class ComputerOffline(val error: ScreenError) : AgentWorkerStopFeedback
     data class SnapshotStale(val error: ScreenError) : AgentWorkerStopFeedback
     data class UpgradeRequired(val error: ScreenError) : AgentWorkerStopFeedback
-    data class Failed(val worker: String, val objectRef: String, val error: ScreenError?) : AgentWorkerStopFeedback
+    data class Failed(
+        val worker: String,
+        val objectRefs: List<String> = emptyList(),
+        val error: ScreenError? = null,
+    ) : AgentWorkerStopFeedback {
+        constructor(worker: String, objectRef: String, error: ScreenError?) :
+            this(worker = worker, objectRefs = listOf(objectRef), error = error)
+
+        val objectRef: String?
+            get() = objectRefs.firstOrNull()
+    }
 }
 
 @RaftCoreInternalApi fun DataResult<AgentWorkerStopOutcome>.toAgentWorkerStopFeedback(
     worker: String,
-    objectRef: String,
+    objectRefs: List<String>,
 ): AgentWorkerStopFeedback =
     when (this) {
         is DataResult.Content ->
             when (data) {
-                AgentWorkerStopOutcome.Stopped -> AgentWorkerStopFeedback.Stopped(worker = worker, objectRef = objectRef)
+                AgentWorkerStopOutcome.Stopped -> AgentWorkerStopFeedback.Stopped(worker = worker, objectRefs = objectRefs)
                 AgentWorkerStopOutcome.NotFound -> AgentWorkerStopFeedback.NotRunning(worker = worker)
             }
         is DataResult.Error ->
@@ -90,13 +108,13 @@ import kotlinx.coroutines.launch
                 AgentControlErrorCodes.ComputerOffline -> AgentWorkerStopFeedback.ComputerOffline(error)
                 AgentControlErrorCodes.WorkersSnapshotStale -> AgentWorkerStopFeedback.SnapshotStale(error)
                 AgentControlErrorCodes.ComputerUpgradeRequired -> AgentWorkerStopFeedback.UpgradeRequired(error)
-                else -> AgentWorkerStopFeedback.Failed(worker = worker, objectRef = objectRef, error = error)
+                else -> AgentWorkerStopFeedback.Failed(worker = worker, objectRefs = objectRefs, error = error)
             }
-        is DataResult.Empty -> AgentWorkerStopFeedback.Failed(worker = worker, objectRef = objectRef, error = null)
+        is DataResult.Empty -> AgentWorkerStopFeedback.Failed(worker = worker, objectRefs = objectRefs, error = null)
         is DataResult.NoPermission ->
             AgentWorkerStopFeedback.Failed(
                 worker = worker,
-                objectRef = objectRef,
+                objectRefs = objectRefs,
                 error =
                     ScreenError(
                         code = blocker.code,
@@ -107,6 +125,12 @@ import kotlinx.coroutines.launch
                     ),
             )
     }
+
+@RaftCoreInternalApi fun DataResult<AgentWorkerStopOutcome>.toAgentWorkerStopFeedback(
+    worker: String,
+    objectRef: String?,
+): AgentWorkerStopFeedback =
+    toAgentWorkerStopFeedback(worker = worker, objectRefs = listOfNotNull(objectRef?.trim()?.takeIf { it.isNotEmpty() }))
 
 @RaftCoreInternalApi data class AgentWorkersState(
     val agentId: MemberId? = null,
@@ -167,7 +191,14 @@ import kotlinx.coroutines.launch
     data object Refresh : AgentWorkersIntent
 
     /** Confirmed Stop of one Worker (`POST /api/agents/:id/workers/:worker/stop`). */
-    data class Stop(val agentId: MemberId, val worker: String, val objectRef: String) : AgentWorkersIntent
+    data class Stop(
+        val agentId: MemberId,
+        val worker: String,
+        val objectRefs: List<String> = emptyList(),
+    ) : AgentWorkersIntent {
+        constructor(agentId: MemberId, worker: String, objectRef: String) :
+            this(agentId = agentId, worker = worker, objectRefs = listOf(objectRef))
+    }
 
     /** Clears one-shot stop feedback after the UI presents its toast. */
     data object ConsumeFeedback : AgentWorkersIntent
@@ -260,7 +291,7 @@ import kotlinx.coroutines.launch
                     triggerRecentRead(DataRequestPriority.Visible)
                 }
             }
-            is AgentWorkersIntent.Stop -> stop(intent.agentId, intent.worker, intent.objectRef)
+            is AgentWorkersIntent.Stop -> stop(intent.agentId, intent.worker, intent.objectRefs)
             AgentWorkersIntent.ConsumeFeedback -> {
                 val current = _state.value
                 if (current.feedback != null) {
@@ -543,7 +574,7 @@ import kotlinx.coroutines.launch
             }
     }
 
-    private fun stop(agentId: MemberId, worker: String, objectRef: String) {
+    private fun stop(agentId: MemberId, worker: String, objectRefs: List<String>) {
         if (!boundEnabled || boundAgentId != agentId) return
         if (_state.value.stoppingWorker != null) return
         val cleanWorker = worker.trim()
@@ -559,7 +590,7 @@ import kotlinx.coroutines.launch
                 } catch (_: Throwable) {
                     DataResult.Error(ScreenError(AgentControlErrorCodes.NetworkError, traceId = null))
                 }
-            val feedback = result.toAgentWorkerStopFeedback(worker = cleanWorker, objectRef = objectRef)
+            val feedback = result.toAgentWorkerStopFeedback(worker = cleanWorker, objectRefs = objectRefs)
             val stopped = feedback is AgentWorkerStopFeedback.Stopped || feedback is AgentWorkerStopFeedback.NotRunning
             if (stopped && boundEnabled && boundAgentId == agentId) {
                 stoppedLocally = stoppedLocally + cleanWorker

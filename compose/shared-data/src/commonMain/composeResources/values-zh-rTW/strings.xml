@@ -5817,6 +5817,8 @@
     <string name="member_activity_workers_starting">啟動中</string>
     <string name="member_activity_workers_progress">%1$s的進度：%2$s</string>
     <string name="member_activity_workers_progress_just_now">剛剛的進度：%1$s</string>
+    <string name="member_activity_workers_posts_in">還可在 %1$s 發言</string>
+    <string name="member_activity_workers_no_conversation">未持有對話</string>
     <string name="member_activity_workers_unknown">現在看不到這個 Agent 的 Worker。</string>
     <string name="member_activity_workers_last_seen">最後更新於%1$s</string>
     <string name="member_activity_workers_empty_title">現在沒有 Worker</string>
@@ -5824,7 +5826,11 @@
     <string name="member_activity_workers_stop_aria">停止 %1$s</string>
     <string name="member_activity_workers_stop_title">要停止 %1$s 嗎？</string>
     <string name="member_activity_workers_stop_body">%1$s 會回到 @%2$s。</string>
+    <string name="member_activity_workers_stop_body_many">%1$s 會回到 @%2$s。</string>
+    <string name="member_activity_workers_stop_body_none">它沒有持有任何對話，所以沒有對話回到 @%1$s。</string>
     <string name="member_activity_workers_stop_stopped">已停止 %1$s。%2$s 已回到 @%3$s。</string>
+    <string name="member_activity_workers_stop_stopped_many">已停止 %1$s。%2$s 已回到 @%3$s。</string>
+    <string name="member_activity_workers_stop_stopped_none">已停止 %1$s。</string>
     <string name="member_activity_workers_stop_not_running">%1$s 已經結束了。</string>
     <string name="member_activity_workers_stop_stale">沒有停止任何東西：這個 Agent 的電腦已有一段時間沒有回報它的 Worker。請確認電腦在線上，然後再試一次。</string>
     <string name="member_activity_workers_stop_stale_reason">這個 Agent 的電腦已有一段時間沒有回報它的 Worker。請確認電腦在線上，然後再試一次。</string>
@@ -5872,6 +5878,9 @@
     <string name="member_activity_workers_timeline_footer">保留 7 天。不記錄訊息內容與工具的輸入、輸出；會記錄 Worker 的進度與結束說明。</string>
     <string name="member_activity_workers_timeline_view_message">檢視訊息</string>
     <string name="member_activity_workers_event_handed_out">由 @%1$s 交出</string>
+    <string name="member_activity_workers_event_delegated">由 @%1$s 移交</string>
+    <string name="member_activity_workers_event_delegated_post_only">@%1$s 允許其在此發言</string>
+    <string name="member_activity_workers_event_undelegated">已交還給 @%1$s</string>
     <string name="member_activity_workers_event_delivered_human">收到一則人傳的訊息</string>
     <string name="member_activity_workers_event_delivered_agent">收到一則 agent 傳的訊息</string>
     <string name="member_activity_workers_event_delivered_system">收到一則系統通知</string>

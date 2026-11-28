@@ -74,6 +74,26 @@ import kotlinx.serialization.json.JsonObject
     }
 }
 
+@RaftCoreInternalApi enum class WorkerConversationHoldingMode(val wireValue: String) {
+    Full("full"),
+    Post("post");
+
+    companion object {
+        fun fromWire(raw: String?): WorkerConversationHoldingMode? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+/**
+ * One conversation a Worker holds (`workerHoldingSchema` in `packages/shared/src/workerEvents.ts`):
+ * `full` (delegated, with `objectKind`) or `post` (post-only: may post there, stays parent's).
+ */
+@RaftCoreInternalApi data class WorkerConversationHolding(
+    val mode: WorkerConversationHoldingMode,
+    val objectRef: String,
+    val objectKind: AgentWorkerObjectKind? = null,
+)
+
 @RaftCoreInternalApi data class AgentWorkerProgress(
     val text: String,
     val at: String,
@@ -85,9 +105,9 @@ import kotlinx.serialization.json.JsonObject
     val agentId: MemberId,
     /** Worker name: `w1`, `w2`, ... */
     val worker: String,
-    /** Conversation ref held by this Worker: `#eng:#7` or `#eng:abcd1234`. */
-    val objectRef: String,
-    val objectKind: AgentWorkerObjectKind,
+    /** First full conversation ref held by this Worker (`#eng:#7` or `#eng:abcd1234`), or null when it holds none. */
+    val objectRef: String? = null,
+    val objectKind: AgentWorkerObjectKind? = null,
     val taskTitle: String? = null,
     val runtime: String? = null,
     /** Runtime-native model id launched with, e.g. `claude-opus-5-5`; null when omitted. */
@@ -114,7 +134,24 @@ import kotlinx.serialization.json.JsonObject
     val inToolForMs: Long? = null,
     /** Server-computed: sender handle (without `@`) of the oldest unanswered person's message. */
     val waitingFrom: String? = null,
+    /** Every conversation this Worker holds (`full` and `post`), in order; null on pre-holdings servers. */
+    val conversations: List<WorkerConversationHolding>? = null,
 )
+
+/**
+ * Web `workerRowFullObjects` (`agentWorkers.ts`): every conversation this live Worker holds in full
+ * (from `conversations` when present, else legacy single `objectRef`; empty when it holds none).
+ */
+@RaftCoreInternalApi fun AgentWorkerRow.fullObjectRefs(): List<String> =
+    conversations?.mapNotNull { holding ->
+        if (holding.mode == WorkerConversationHoldingMode.Full) holding.objectRef else null
+    } ?: listOfNotNull(objectRef?.trim()?.takeIf { it.isNotEmpty() })
+
+/** Every post-only conversation this live Worker may also post in (`mode == "post"`). */
+@RaftCoreInternalApi fun AgentWorkerRow.postObjectRefs(): List<String> =
+    conversations?.mapNotNull { holding ->
+        if (holding.mode == WorkerConversationHoldingMode.Post) holding.objectRef else null
+    } ?: emptyList()
 
 /** Parsed answer from `GET /api/agents/:id/workers` (`WorkersReadResponse`). */
 @RaftCoreInternalApi sealed interface AgentWorkersReadSnapshot {
@@ -144,12 +181,37 @@ private data class AgentWorkerProgressDto(
 )
 
 @Serializable
+private data class WorkerConversationHoldingDto(
+    val mode: String? = null,
+    @SerialName("object")
+    val objectRef: String? = null,
+    val objectKind: String? = null,
+) {
+    fun toDomain(): WorkerConversationHolding? {
+        val parsedMode = WorkerConversationHoldingMode.fromWire(mode?.trim()) ?: return null
+        val cleanObject = objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val parsedKind =
+            if (parsedMode == WorkerConversationHoldingMode.Post) {
+                null
+            } else {
+                AgentWorkerObjectKind.fromWire(objectKind?.trim())
+            }
+        return WorkerConversationHolding(
+            mode = parsedMode,
+            objectRef = cleanObject,
+            objectKind = parsedKind,
+        )
+    }
+}
+
+@Serializable
 private data class AgentWorkerRowDto(
     val agentId: String? = null,
     val worker: String? = null,
     @SerialName("object")
     val objectRef: String? = null,
     val objectKind: String? = null,
+    val conversations: List<WorkerConversationHoldingDto>? = null,
     val taskTitle: String? = null,
     val runtime: String? = null,
     val model: String? = null,
@@ -171,8 +233,10 @@ private data class AgentWorkerRowDto(
     fun toDomain(): AgentWorkerRow? {
         val cleanAgentId = agentId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val cleanWorker = worker?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val cleanObject = objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val kind = AgentWorkerObjectKind.fromWire(objectKind?.trim()) ?: return null
+        val parsedConversations = conversations?.mapNotNull { it.toDomain() }
+        val firstFull = parsedConversations?.firstOrNull { it.mode == WorkerConversationHoldingMode.Full }
+        val cleanObject = objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: firstFull?.objectRef
+        val kind = AgentWorkerObjectKind.fromWire(objectKind?.trim()) ?: firstFull?.objectKind
         val cleanSince = since?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val parsedState = AgentWorkerState.fromWire(state?.trim()) ?: return null
         val parsedProgress =
@@ -205,6 +269,7 @@ private data class AgentWorkerRowDto(
             stalled = stalled == true,
             inToolForMs = inToolForMs?.takeIf { it >= 0L },
             waitingFrom = waitingFrom?.trim()?.removePrefix("@")?.takeIf { it.isNotEmpty() },
+            conversations = parsedConversations,
         )
     }
 }
@@ -291,6 +356,8 @@ private data class AgentWorkerStopResponseDto(
 /** One event kind on a Worker's timeline (`WORKER_EVENT_KINDS` in `workerEvents.ts`). */
 @RaftCoreInternalApi enum class AgentWorkerEventKind(val wireValue: String) {
     HandedOut("handed_out"),
+    Delegated("delegated"),
+    Undelegated("undelegated"),
     Delivered("delivered"),
     TurnStarted("turn_started"),
     TurnEnded("turn_ended"),
@@ -410,8 +477,8 @@ private data class AgentWorkerStopResponseDto(
 @RaftCoreInternalApi data class AgentRecentWorkerRow(
     val launchId: String,
     val worker: String,
-    val objectRef: String,
-    val objectKind: AgentWorkerObjectKind,
+    val objectRef: String? = null,
+    val objectKind: AgentWorkerObjectKind? = null,
     val startedAt: String,
     val startedAtEpochMillis: Long? = parseRaftTimestampEpochMillisOrNull(startedAt),
     /** Null while the Worker is still running (no `ended` received yet). */
@@ -428,7 +495,8 @@ private data class AgentWorkerStopResponseDto(
 @RaftCoreInternalApi data class AgentWorkerOpenTimeline(
     val launchId: String,
     val worker: String,
-    val objectRef: String,
+    /** First full conversation ref, or null for a Worker that holds no conversation. */
+    val objectRef: String? = null,
 )
 
 /** Resolved conversation target for a timeline `"View message"` link (`GET /messages/context/:id`). */
@@ -440,11 +508,29 @@ private data class AgentWorkerStopResponseDto(
 /** Typed payload of each `WorkerEventKind` on `GET /api/agents/:id/workers/:launchId/timeline`. */
 @RaftCoreInternalApi sealed interface AgentWorkerTimelineEventData {
     data class HandedOut(
-        val objectRef: String,
-        val objectKind: AgentWorkerObjectKind,
+        val objectRef: String? = null,
+        val objectKind: AgentWorkerObjectKind? = null,
         val runtime: String? = null,
         val model: String? = null,
         val rule: String? = null,
+        val conversations: List<WorkerConversationHolding>? = null,
+    ) : AgentWorkerTimelineEventData {
+        fun fullObjectRefs(): List<String> =
+            conversations?.mapNotNull { holding ->
+                if (holding.mode == WorkerConversationHoldingMode.Full) holding.objectRef else null
+            } ?: listOfNotNull(objectRef?.trim()?.takeIf { it.isNotEmpty() })
+    }
+
+    data class Delegated(
+        val mode: WorkerConversationHoldingMode,
+        val objectRef: String,
+        val objectKind: AgentWorkerObjectKind? = null,
+    ) : AgentWorkerTimelineEventData
+
+    data class Undelegated(
+        val objectRef: String,
+        val mode: WorkerConversationHoldingMode? = null,
+        val objectKind: AgentWorkerObjectKind? = null,
     ) : AgentWorkerTimelineEventData
 
     data class Delivered(
@@ -607,6 +693,7 @@ private data class AgentWorkerStopResponseDto(
             live.queued?.toString().orEmpty(),
             live.progress?.at.orEmpty(),
             live.oldestWaitingAt.orEmpty(),
+            live.conversations?.joinToString(",") { "${it.mode.wireValue}:${it.objectRef}" }.orEmpty(),
         ).joinToString("|")
     } else {
         "ended:${ended?.endedAt ?: "pending"}"
@@ -643,6 +730,26 @@ private data class AgentWorkerStopResponseDto(
     for (event in events) {
         when (val data = event.data) {
             is AgentWorkerTimelineEventData.HandedOut ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = AgentWorkerTimelineVariant.Default,
+                    warning = false,
+                    data = data,
+                )
+            is AgentWorkerTimelineEventData.Delegated ->
+                items += AgentWorkerTimelineDisplayItem(
+                    seq = event.seq,
+                    kind = event.kind,
+                    occurredAt = event.occurredAt,
+                    occurredAtEpochMillis = event.occurredAtEpochMillis,
+                    variant = AgentWorkerTimelineVariant.Default,
+                    warning = false,
+                    data = data,
+                )
+            is AgentWorkerTimelineEventData.Undelegated ->
                 items += AgentWorkerTimelineDisplayItem(
                     seq = event.seq,
                     kind = event.kind,
@@ -801,8 +908,8 @@ private data class AgentRecentWorkerRowDto(
     fun toDomain(): AgentRecentWorkerRow? {
         val cleanLaunchId = launchId?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val cleanWorker = worker?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val cleanObject = objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-        val kind = AgentWorkerObjectKind.fromWire(objectKind?.trim()) ?: return null
+        val cleanObject = objectRef?.trim()?.takeIf { it.isNotEmpty() }
+        val kind = AgentWorkerObjectKind.fromWire(objectKind?.trim())
         val cleanStartedAt = startedAt?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         val cleanEndedAt = endedAt?.trim()?.takeIf { it.isNotEmpty() }
         return AgentRecentWorkerRow(
@@ -853,6 +960,7 @@ private data class HandedOutEventDataDto(
     val runtime: String? = null,
     val model: String? = null,
     val rule: String? = null,
+    val conversations: List<WorkerConversationHoldingDto>? = null,
 )
 
 @Serializable
@@ -940,14 +1048,42 @@ private data class AgentWorkerTimelineEventDto(
                 when (parsedKind) {
                     AgentWorkerEventKind.HandedOut -> {
                         val dto = agentWorkersJson.decodeFromJsonElement(HandedOutEventDataDto.serializer(), rawData)
-                        val obj = dto.objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-                        val objKind = AgentWorkerObjectKind.fromWire(dto.objectKind?.trim()) ?: return null
+                        val parsedConversations = dto.conversations?.mapNotNull { it.toDomain() }
+                        val firstFull = parsedConversations?.firstOrNull { it.mode == WorkerConversationHoldingMode.Full }
+                        val obj = dto.objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: firstFull?.objectRef
+                        val objKind = AgentWorkerObjectKind.fromWire(dto.objectKind?.trim()) ?: firstFull?.objectKind
                         AgentWorkerTimelineEventData.HandedOut(
                             objectRef = obj,
                             objectKind = objKind,
                             runtime = dto.runtime?.trim()?.takeIf { it.isNotEmpty() },
                             model = dto.model?.trim()?.takeIf { it.isNotEmpty() },
                             rule = dto.rule?.trim()?.takeIf { it.isNotEmpty() },
+                            conversations = parsedConversations,
+                        )
+                    }
+                    AgentWorkerEventKind.Delegated -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(WorkerConversationHoldingDto.serializer(), rawData)
+                        val holding = dto.toDomain() ?: return null
+                        AgentWorkerTimelineEventData.Delegated(
+                            mode = holding.mode,
+                            objectRef = holding.objectRef,
+                            objectKind = holding.objectKind,
+                        )
+                    }
+                    AgentWorkerEventKind.Undelegated -> {
+                        val dto = agentWorkersJson.decodeFromJsonElement(WorkerConversationHoldingDto.serializer(), rawData)
+                        val cleanObject = dto.objectRef?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                        val parsedMode = WorkerConversationHoldingMode.fromWire(dto.mode?.trim())
+                        val parsedKind =
+                            if (parsedMode == WorkerConversationHoldingMode.Post) {
+                                null
+                            } else {
+                                AgentWorkerObjectKind.fromWire(dto.objectKind?.trim())
+                            }
+                        AgentWorkerTimelineEventData.Undelegated(
+                            objectRef = cleanObject,
+                            mode = parsedMode,
+                            objectKind = parsedKind,
                         )
                     }
                     AgentWorkerEventKind.Delivered -> {
