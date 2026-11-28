@@ -406,6 +406,38 @@ class AndroidVoiceDictationAudioRecorderTest {
     }
 
     @Test
+    fun hasRecordAudioPermissionDefaultsFalseDelegatesToProviderAndFailsClosedOnThrow() {
+        val defaultRecorder =
+            AndroidVoiceDictationAudioRecorder(
+                permissionRequester = { AndroidRecordAudioPermissionOutcome.Granted },
+                sourceFactory = { _, _ -> null },
+                logWarning = {},
+            )
+        assertFalse(defaultRecorder.hasRecordAudioPermission())
+
+        var granted = false
+        val dynamicRecorder =
+            AndroidVoiceDictationAudioRecorder(
+                permissionRequester = { AndroidRecordAudioPermissionOutcome.Granted },
+                sourceFactory = { _, _ -> null },
+                logWarning = {},
+                hasRecordAudioPermissionProvider = { granted },
+            )
+        assertFalse(dynamicRecorder.hasRecordAudioPermission())
+        granted = true
+        assertTrue(dynamicRecorder.hasRecordAudioPermission())
+
+        val throwingRecorder =
+            AndroidVoiceDictationAudioRecorder(
+                permissionRequester = { AndroidRecordAudioPermissionOutcome.Granted },
+                sourceFactory = { _, _ -> null },
+                logWarning = {},
+                hasRecordAudioPermissionProvider = { throw SecurityException("denied") },
+            )
+        assertFalse(throwingRecorder.hasRecordAudioPermission())
+    }
+
+    @Test
     fun registryReportsSupportedWhenAndroidRecorderRegistered() {
         val previous = RaftVoiceDictationAudioRecorderRegistry.currentOrNull()
         try {

@@ -3,7 +3,10 @@ package build.raft.app.data
 import build.raft.app.RaftCoreInternalApi
 import build.raft.app.model.ServerId
 import build.raft.app.network.raftValidTraceIdOrNull
+import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -193,12 +196,17 @@ sealed interface VoiceDictationV2PermitFailure {
     ) : VoiceDictationV2PermitFailure
 }
 
+/** Default negative-cache TTL for servers that reject caller-context permit fields with HTTP 400 (5 minutes). */
+@RaftCoreInternalApi
+const val VOICE_DICTATION_CALLER_CONTEXT_FALLBACK_TTL_MS: Long = 300_000L
+
 /** Result of requesting a v2 dictation permit. */
 @RaftCoreInternalApi
 sealed interface VoiceDictationV2PermitOutcome {
     data class Issued(
         val permit: VoiceDictationV2Permit,
         val traceId: String? = null,
+        val usedCallerContextFallback: Boolean = false,
     ) : VoiceDictationV2PermitOutcome
 
     data class Refused(
@@ -438,6 +446,94 @@ interface VoiceDictationV2PermitApi {
 }
 
 /**
+ * Bounded, thread-safe short-TTL negative cache remembering server scopes whose strict permit
+ * schema recently returned HTTP `400` (`invalid_request`) when caller-context fields
+ * (`draftBefore`/`draftAfter`/`contactHints`) were sent, then succeeded on the stripped retry.
+ *
+ * Process-scoped by default ([Process]) because [RaftVoiceDictationV2PermitApi] is recreated per
+ * composer screen; entries expire after [VOICE_DICTATION_CALLER_CONTEXT_FALLBACK_TTL_MS] (5 min)
+ * so backend upgrades auto-heal without app restart.
+ */
+@RaftCoreInternalApi
+class VoiceDictationCallerContextFallbackCache(
+    private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
+) {
+    private data class ScopeKey(
+        val environmentKey: String,
+        val serverId: String,
+    )
+
+    private val lock = SynchronizedObject()
+    private val entries = LinkedHashMap<ScopeKey, Long>()
+
+    fun isActive(
+        environmentKey: String,
+        serverId: String,
+        nowMs: Long,
+    ): Boolean =
+        synchronized(lock) {
+            val key = ScopeKey(environmentKey = environmentKey, serverId = serverId)
+            val expiresAt = entries[key] ?: return false
+            if (nowMs >= expiresAt) {
+                entries.remove(key)
+                false
+            } else {
+                true
+            }
+        }
+
+    fun recordFallback(
+        environmentKey: String,
+        serverId: String,
+        nowMs: Long,
+        ttlMs: Long,
+    ) {
+        synchronized(lock) {
+            val key = ScopeKey(environmentKey = environmentKey, serverId = serverId)
+            if (ttlMs <= 0L) {
+                entries.remove(key)
+                return
+            }
+            val expiredKeys = entries.entries.filter { it.value <= nowMs }.map { it.key }
+            for (expiredKey in expiredKeys) {
+                entries.remove(expiredKey)
+            }
+            entries.remove(key)
+            val limit = maxEntries.coerceAtLeast(1)
+            while (entries.size >= limit) {
+                val oldest = entries.keys.firstOrNull() ?: break
+                entries.remove(oldest)
+            }
+            val expiresAt =
+                if (nowMs > 0L && Long.MAX_VALUE - nowMs < ttlMs) {
+                    Long.MAX_VALUE
+                } else {
+                    nowMs + ttlMs
+                }
+            entries[key] = expiresAt
+        }
+    }
+
+    fun clear() {
+        synchronized(lock) {
+            entries.clear()
+        }
+    }
+
+    fun size(): Int = synchronized(lock) { entries.size }
+
+    companion object {
+        const val DEFAULT_MAX_ENTRIES: Int = 32
+
+        val Process: VoiceDictationCallerContextFallbackCache = VoiceDictationCallerContextFallbackCache()
+
+        fun clear() {
+            Process.clear()
+        }
+    }
+}
+
+/**
  * Shared `RaftNetworkClient` implementation for `POST /api/voice/dictation/permits` (`v: 2`).
  * Always passes `serverIdOverride = ServerId(serverId)` so `X-Server-Id` stays bound to the
  * dictation session's server even across concurrent server switches.
@@ -445,11 +541,15 @@ interface VoiceDictationV2PermitApi {
  * Rollback compatibility (`#wg-call:#10`, `#wg-live:#21`): if an initial request carrying
  * `draftBefore`, `draftAfter`, and/or `contactHints` receives HTTP `400` (`invalid_request`) from
  * an older/rolled-back server whose strict permit schema does not yet accept those keys, silently
- * retries ONCE without them.
+ * retries ONCE without them and records the `(environment, serverId)` scope in [fallbackCache] for
+ * [fallbackTtlMs] (default 5 minutes) so subsequent dictation taps skip the wasted 400 RTT.
  */
 @RaftCoreInternalApi
 class RaftVoiceDictationV2PermitApi(
     private val networkClient: RaftNetworkClient,
+    private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val fallbackCache: VoiceDictationCallerContextFallbackCache = VoiceDictationCallerContextFallbackCache.Process,
+    private val fallbackTtlMs: Long = VOICE_DICTATION_CALLER_CONTEXT_FALLBACK_TTL_MS,
 ) : VoiceDictationV2PermitApi {
     override suspend fun requestPermit(
         serverId: String,
@@ -502,6 +602,25 @@ class RaftVoiceDictationV2PermitApi(
             normalizedDraftBefore != null ||
                 normalizedDraftAfter != null ||
                 normalizedContactHints != null
+        val environmentKey =
+            networkClient.currentApiBaseUrl()?.normalizedEnvironmentId()?.lowercase().orEmpty()
+
+        if (hasCallerContext && fallbackCache.isActive(environmentKey, cleanServerId, nowMillis())) {
+            val compatOutcome =
+                executePermitRequest(
+                    serverId = cleanServerId,
+                    bodyText =
+                        buildVoiceDictationV2PermitRequestBody(
+                            language = language,
+                            channelId = channelId,
+                        ),
+                )
+            return when (compatOutcome) {
+                is VoiceDictationV2PermitOutcome.Issued ->
+                    compatOutcome.copy(usedCallerContextFallback = true)
+                is VoiceDictationV2PermitOutcome.Refused -> compatOutcome
+            }
+        }
 
         val initialOutcome =
             executePermitRequest(
@@ -520,14 +639,25 @@ class RaftVoiceDictationV2PermitApi(
             initialOutcome is VoiceDictationV2PermitOutcome.Refused &&
             initialOutcome.failure is VoiceDictationV2PermitFailure.InvalidRequest
         ) {
-            return executePermitRequest(
-                serverId = cleanServerId,
-                bodyText =
-                    buildVoiceDictationV2PermitRequestBody(
-                        language = language,
-                        channelId = channelId,
-                    ),
-            )
+            val fallbackOutcome =
+                executePermitRequest(
+                    serverId = cleanServerId,
+                    bodyText =
+                        buildVoiceDictationV2PermitRequestBody(
+                            language = language,
+                            channelId = channelId,
+                        ),
+                )
+            if (fallbackOutcome is VoiceDictationV2PermitOutcome.Issued) {
+                fallbackCache.recordFallback(
+                    environmentKey = environmentKey,
+                    serverId = cleanServerId,
+                    nowMs = nowMillis(),
+                    ttlMs = fallbackTtlMs,
+                )
+                return fallbackOutcome.copy(usedCallerContextFallback = true)
+            }
+            return fallbackOutcome
         }
         return initialOutcome
     }

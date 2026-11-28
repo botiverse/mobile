@@ -26,6 +26,7 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -68,6 +69,11 @@ class VoiceDictationContextHintsTest {
           }
         }
         """.trimIndent()
+
+    @AfterTest
+    fun tearDownFallbackCache() {
+        VoiceDictationCallerContextFallbackCache.clear()
+    }
 
     // -------------------------------------------------------------------------
     // 1. draftBefore normalization & caret extraction
