@@ -2909,6 +2909,19 @@ suspend fun revokeAuthSessionAtBaseUrlBestEffort(
         )
     }
 
+suspend fun clearRaftWebViewAuthStorageBestEffort(
+    diagnosticsLogger: (String) -> Unit = {},
+    source: String = "best_effort",
+) {
+    withContext(NonCancellable) {
+        runCatchingPreservingCancellation {
+            RaftWebViewAuthStorageHooks.clearAuthStorage?.invoke()
+        }.onFailure {
+            diagnosticsLogger("webview_storage_clear result=failure source=$source")
+        }
+    }
+}
+
 private fun StoredAuthSession.sharesTokenWith(other: StoredAuthSession): Boolean =
     (refreshToken.isNotBlank() && refreshToken == other.refreshToken) ||
         (accessToken.isNotBlank() && accessToken == other.accessToken)

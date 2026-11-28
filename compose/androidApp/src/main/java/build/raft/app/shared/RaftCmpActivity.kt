@@ -174,11 +174,11 @@ import build.raft.app.data.RAFT_APP_UPDATE_EVENT
 import build.raft.app.data.RaftAppUpdatePermissionResume
 import build.raft.app.data.RaftMinBuildGate
 import build.raft.app.data.RaftShareSuggestionsHostProvider
-import build.raft.app.data.RaftWebViewAuthStorageHooks
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SECOND_FACTOR_STEP_UP_REQUIRED_CODE
 import build.raft.app.data.SharedSettingsUpdateTransactionState
+import build.raft.app.data.clearRaftWebViewAuthStorageBestEffort
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.raftSharedPreferenceStore
@@ -7478,15 +7478,10 @@ internal class RaftBridgeModule(
         val after = switch.after
         val changed = switch.changed
         if (changed) {
-            withContext(NonCancellable) {
-                try {
-                    RaftWebViewAuthStorageHooks.clearAuthStorage?.invoke()
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    RaftAppLog.record("SlockDeveloper", "webview_storage_clear result=failure source=android_api_environment_changed")
-                }
-            }
+            clearRaftWebViewAuthStorageBestEffort(
+                    diagnosticsLogger = { message -> RaftAppLog.record("SlockDeveloper", message) },
+                    source = "android_api_environment_changed",
+            )
         }
         return loadSettingsDeveloper(
                 feedback =

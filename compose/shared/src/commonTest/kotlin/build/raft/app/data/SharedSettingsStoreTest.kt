@@ -2212,7 +2212,7 @@ class SharedSettingsStoreTest {
         assertNull(backingSessionStore.readSession())
         assertEquals(listOf(SharedApiEnvironmentStore.Production.apiBaseUrl), logoutUrls)
         assertEquals(listOf("""{"refreshToken":"prod-refresh-token"}"""), logoutBodies)
-        assertEquals(listOf("Bearer prod-access-token"), logoutAuthorizations)
+        assertEquals(listOf<String?>("Bearer prod-access-token"), logoutAuthorizations)
         assertEquals(
             listOf(
                 "logout:env=production:hadSession=true",
