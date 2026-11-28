@@ -1,18 +1,20 @@
 package build.raft.app
 
+import build.raft.app.model.HandlePrincipal
+import build.raft.app.model.isReservedHandle
+import build.raft.app.model.isSingleScriptHandle
 import build.raft.app.reduce
 import build.raft.app.thread.reduce
 
 internal const val AUTH_IDENTITY_NAME_MIN_LENGTH = 5
 internal const val AUTH_IDENTITY_NAME_MAX_LENGTH = 32
 internal const val AUTH_IDENTITY_DISPLAY_NAME_MAX_LENGTH = 80
-private val AUTH_IDENTITY_RESERVED_NAMES =
-    setOf("all", "human", "humans", "agent", "agents", "here", "idle", "busy", "system")
 
 enum class AuthValidationError {
     UsernameTooShort,
     UsernameTooLong,
     UsernameInvalidFormat,
+    UsernameMixedScript,
     UsernameReserved,
     DisplayNameRequired,
     DisplayNameTooLong
@@ -27,7 +29,9 @@ internal fun identityHandleValidationError(value: String): AuthValidationError? 
             AuthValidationError.UsernameTooLong
         !handle.isCanonicalIdentityHandle() ->
             AuthValidationError.UsernameInvalidFormat
-        handle.lowercase().startsWith("pending_") || handle.lowercase() in AUTH_IDENTITY_RESERVED_NAMES ->
+        !isSingleScriptHandle(handle) ->
+            AuthValidationError.UsernameMixedScript
+        handle.lowercase().startsWith("pending_") || isReservedHandle(handle, HandlePrincipal.Person) ->
             AuthValidationError.UsernameReserved
         else -> null
     }

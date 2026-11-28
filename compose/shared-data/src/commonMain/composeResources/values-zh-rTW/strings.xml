@@ -2463,6 +2463,8 @@
     <string name="auth_validation_username_max_length">使用者名稱最多 %1$s 個字元。</string>
     <string name="auth_validation_username_format">使用者名稱必須以字母開頭，且只能包含字母、數字、連字號和底線。</string>
     <string name="auth_validation_username_reserved">此使用者名稱已保留，請選擇其他名稱。</string>
+    <string name="auth_validation_username_mixed_script">只能使用一種文字的字母；拉丁字母可以和中文、日文或韓文搭配</string>
+    <string name="auth_validation_username_confusable">使用者名稱與現有名稱太相似，請改用其他名稱。</string>
     <string name="auth_validation_display_name_required">請輸入顯示名稱。</string>
     <string name="auth_validation_display_name_max_length">顯示名稱最多 %1$s 個字元。</string>
     <string name="auth_action_sign_in">登入</string>
@@ -2642,6 +2644,8 @@
     <string name="agent_create_error_name_min">Agent 名稱至少需要 1 個字元</string>
     <string name="agent_create_error_name_max">Agent 名稱最多 32 個字元</string>
     <string name="agent_create_error_name_characters">必須以字母開頭，只能使用字母、數字、- 或 _</string>
+    <string name="agent_create_error_name_mixed_script">只能使用一種文字的字母；拉丁字母可以和中文、日文或韓文搭配</string>
+    <string name="agent_create_error_name_confusable">Agent 名稱與現有名稱太相似，請改用其他名稱。</string>
     <string name="agent_create_label_advanced">進階</string>
     <string name="agent_create_action_add_env_var">+ 新增環境變數</string>
     <string name="agent_runtime_config_copy_from_agent">從 Agent 複製</string>

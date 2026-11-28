@@ -173,6 +173,7 @@ internal fun AuthValidationError?.localizedMessage(): String? {
                     listOf(AUTH_IDENTITY_NAME_MAX_LENGTH.toString())
                 )
             AuthValidationError.UsernameInvalidFormat -> Res.string.auth_validation_username_format.desc()
+            AuthValidationError.UsernameMixedScript -> Res.string.auth_validation_username_mixed_script.desc()
             AuthValidationError.UsernameReserved -> Res.string.auth_validation_username_reserved.desc()
             AuthValidationError.DisplayNameRequired -> Res.string.auth_validation_display_name_required.desc()
             AuthValidationError.DisplayNameTooLong ->

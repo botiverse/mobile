@@ -75,9 +75,17 @@ class AgentsApiTest {
                     createAgentErrorBody = """{"error":"Cindy agent already exists in this server"}"""
                 )
             ).createAgent("{}")
+        val confusable =
+            RaftAgentsApiClient(
+                RecordingAgentsApi(
+                    createAgentCode = 409,
+                    createAgentErrorBody = """{"code":"handle_confusable","error":"Agent name is too similar to an existing name. Choose another name."}"""
+                )
+            ).createAgent("{}")
 
         assertEquals(AGENT_CREATE_NAME_TAKEN, assertIs<DataResult.Error>(taken).error.code)
         assertEquals(AGENT_CREATE_NAME_TAKEN, assertIs<DataResult.Error>(exists).error.code)
+        assertEquals(AGENT_CREATE_NAME_CONFUSABLE, assertIs<DataResult.Error>(confusable).error.code)
     }
 
     @Test

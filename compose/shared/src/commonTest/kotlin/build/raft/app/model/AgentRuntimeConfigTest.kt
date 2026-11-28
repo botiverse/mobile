@@ -20,6 +20,29 @@ class AgentRuntimeConfigTest {
             "Agent name @humans is reserved. Choose another name.",
             validateAgentName("Humans")
         )
+        assertEquals(
+            "Agent name @raft is reserved. Choose another name.",
+            validateAgentName("RAFT")
+        )
+        assertEquals(
+            "Agent name @s1ack is reserved. Choose another name.",
+            validateAgentName("s1ack")
+        )
+        assertEquals(
+            "Agent name @officiai is reserved. Choose another name.",
+            validateAgentName("officiaI")
+        )
+        // People-only reserved handles remain allowed for agents (#17291).
+        assertEquals(null, validateAgentName("security"))
+        assertEquals(null, validateAgentName("Adrnin"))
+        assertEquals(null, validateAgentName("admin"))
+        // Mixed-script agent names are rejected with UTS #39 copy (#17270).
+        assertEquals(
+            "Agent name must use letters from one script only (Latin may be combined with Chinese, Japanese or Korean)",
+            validateAgentName("оwner")
+        )
+        assertEquals(null, validateAgentName("bot中文"))
+        assertEquals(null, validateAgentName("ラフトー"))
     }
 
     // ── Runtimes / models ──

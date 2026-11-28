@@ -2502,6 +2502,12 @@ data class AuthLogoutRequestBody(
     val incorrectCredentials =
         refusalCode == "AUTH_INVALID_CREDENTIALS" ||
             message == "Invalid email or password"
+    val profileHandleDisplay =
+        when (refusalCode) {
+            "PROFILE_SETUP_NAME_CONFUSABLE" -> Res.string.auth_validation_username_confusable.desc()
+            "PROFILE_SETUP_NAME_RESERVED" -> Res.string.auth_validation_username_reserved.desc()
+            else -> null
+        }
     return when {
         (code == 422 || code == 409) &&
             refusalCode in setOf("LEGAL_ACCEPTANCE_REQUIRED", "TERMS_CHANGED", "legal_acceptance_required") ->
@@ -2529,7 +2535,7 @@ data class AuthLogoutRequestBody(
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Validation,
                 message ?: "Check the fields and try again.",
-                display = if (message == null) Res.string.auth_error_check_fields.desc() else null,
+                display = profileHandleDisplay ?: if (message == null) Res.string.auth_error_check_fields.desc() else null,
                 traceId = responseTraceId,
             )
         code == 401 ->
@@ -2553,6 +2559,7 @@ data class AuthLogoutRequestBody(
                 message ?: "Sign in failed. Try again.",
                 display =
                     when {
+                        profileHandleDisplay != null -> profileHandleDisplay
                         incorrectCredentials -> Res.string.auth_error_incorrect_credentials.desc()
                         message == null -> Res.string.auth_error_sign_in_failed.desc()
                         else -> null

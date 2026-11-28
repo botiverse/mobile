@@ -26,6 +26,7 @@ import build.raft.app.data.RaftAgentCreateEntry
 import build.raft.app.data.RaftProductEvents
 import build.raft.app.data.DataResult
 import build.raft.app.data.RaftAgentsApiClient
+import build.raft.app.data.AGENT_CREATE_NAME_CONFUSABLE
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.createAgentErrorText
 import build.raft.app.data.isCreateAgentLimitError
@@ -317,6 +318,7 @@ internal fun MembersListContent(
     val createAgentLimitReachedNeutral = stringResource(Res.string.agent_create_error_limit_reached_neutral)
     val createAgentForbidden = stringResource(Res.string.member_error_create_agent_forbidden)
     val createAgentNameTaken = stringResource(Res.string.agent_create_error_name_taken)
+    val createAgentNameConfusable = stringResource(Res.string.agent_create_error_name_confusable)
     val canInviteHumans = payload.canInviteHumans && inviteHumanDialog != null
     LaunchedEffect(canInviteHumans) {
         if (!canInviteHumans) {
@@ -602,6 +604,8 @@ internal fun MembersListContent(
                                 when (result.error.code) {
                                     AGENT_CREATE_NAME_TAKEN ->
                                         createAgentNameTaken
+                                    AGENT_CREATE_NAME_CONFUSABLE ->
+                                        createAgentNameConfusable
                                     else ->
                                         createAgentErrorText(
                                             result.error,

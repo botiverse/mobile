@@ -7,6 +7,7 @@ import build.raft.designsystem.components.RaftButton
 import build.raft.app.components.RaftSlotIcon
 import build.raft.app.data.map
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.AGENT_CREATE_NAME_CONFUSABLE
 import build.raft.app.data.AGENT_CREATE_NAME_TAKEN
 import build.raft.app.data.runsInApp
 import build.raft.app.raftArgbHex
@@ -822,6 +823,8 @@ internal fun threadCreateAgentDialogErrorCopy(code: String, serverMessage: Strin
         "agent_create_empty" -> stringResource(Res.string.thread_action_card_error_agent_not_created)
         AGENT_CREATE_NAME_TAKEN ->
             stringResource(Res.string.agent_create_error_name_taken)
+        AGENT_CREATE_NAME_CONFUSABLE ->
+            stringResource(Res.string.agent_create_error_name_confusable)
         "agent_create_form_refresh_required" ->
             stringResource(Res.string.thread_action_card_error_agent_form_refresh_required)
         "agent_create_form_refresh_failed" ->

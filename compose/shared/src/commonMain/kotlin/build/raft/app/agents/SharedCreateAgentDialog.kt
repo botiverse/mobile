@@ -1267,6 +1267,7 @@ private fun localizedCreateAgentNameError(name: String, fallback: String): Strin
         "at least" in fallback -> stringResource(Res.string.agent_create_error_name_min)
         "at most" in fallback -> stringResource(Res.string.agent_create_error_name_max)
         "must start with a letter" in fallback -> stringResource(Res.string.agent_create_error_name_characters)
+        "one script only" in fallback -> stringResource(Res.string.agent_create_error_name_mixed_script)
         else -> fallback
     }
 
