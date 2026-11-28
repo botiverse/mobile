@@ -17,18 +17,25 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.MonotonicFrameClock
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.InterceptPlatformTextInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.platform.PlatformTextInputInterceptor
+import androidx.compose.ui.platform.PlatformTextInputMethodRequest
+import androidx.compose.ui.platform.PlatformTextInputSession
 import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
@@ -36,6 +43,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
@@ -58,6 +66,10 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Rule
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -87,7 +99,7 @@ import org.robolectric.shadows.ShadowViewRootImpl
  *    and disarm back to `false` without disposing the running input session, while `FocusOnly`
  *    leaves `showKeyboardOnFocus = false` with zero input session started.
  */
-@OptIn(ExperimentalTestApi::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ComposerImeStateModelUiTest {
@@ -546,11 +558,14 @@ class ComposerImeStateModelUiTest {
             var showDialog by mutableStateOf(false)
             var hostComposeView: View? = null
             var dialogComposeView: View? = null
+            var hostGate: RaftWindowPlatformInputGate? = null
 
             setContent {
                 val view = LocalView.current
                 SideEffect { hostComposeView = view }
                 RaftWindowFocusScope {
+                    val gate = LocalRaftWindowPlatformInputGate.current
+                    SideEffect { hostGate = gate }
                     Box(Modifier.fillMaxSize())
                     if (showDialog) {
                         Modal(onWillDismiss = { showDialog = false }, keepsHostKeyboard = false) {
@@ -569,6 +584,7 @@ class ComposerImeStateModelUiTest {
 
             waitForIdle()
             val hostRoot = checkNotNull(hostComposeView)
+            val gate = checkNotNull(hostGate)
             runOnIdle {
                 dispatchWindowFocus(hostRoot, true)
                 showDialog = true
@@ -584,6 +600,10 @@ class ComposerImeStateModelUiTest {
 
             onNodeWithTag(DIALOG_FIELD).assertIsFocused()
             assertTrue(dialogRoot.onCheckIsTextEditor(), "Dialog TextField autoFocus must start session")
+            assertFalse(
+                gate.hasActiveHostSession,
+                "child Dialog platform input session must not count as a host window session",
+            )
 
             // Host Activity loses window focus to the Dialog (or external window).
             runOnIdle { dispatchWindowFocus(hostRoot, false) }
@@ -991,6 +1011,424 @@ class ComposerImeStateModelUiTest {
                 "hardware keyboard FocusOnly must establish InputConnection for CJK IME",
             )
             assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
+        }
+
+    @Test
+    fun focusWithKeyboardPreservesSuppressionWhenSessionAlreadyActiveAndClearsWhenIdle() =
+        runTest {
+            val keyboard = RecordingKeyboard()
+            val intent = RaftEditorKeyboardIntent()
+            var frameWaits = 0
+            val frameClock =
+                object : MonotonicFrameClock {
+                    override suspend fun <R> withFrameNanos(onFrame: (Long) -> R): R {
+                        frameWaits += 1
+                        return onFrame(0L)
+                    }
+                }
+
+            withContext(frameClock) {
+                val suppressedGen = intent.suppressForFocusOnly()
+                assertTrue(intent.suppressKeyboardOnFocus)
+
+                // Active platform input session: preserve suppression (no KeyboardOptions flip,
+                // no frame wait) while advancing generation and still calling show().
+                intent.focusWithKeyboard(
+                    focusRequester = FocusRequester(),
+                    softwareKeyboardController = keyboard,
+                    hasActiveSession = { true },
+                )
+                assertTrue(intent.suppressKeyboardOnFocus)
+                assertTrue(intent.requestGeneration > suppressedGen)
+                assertEquals(0, frameWaits)
+                assertEquals(1, keyboard.shown)
+
+                // No active platform input session (e.g. FocusOnly -> RaiseKeyboard with no prior
+                // tap): clear suppression, wait one frame to commit showKeyboardOnFocus = true,
+                // and call show().
+                val beforeClearGen = intent.requestGeneration
+                intent.focusWithKeyboard(
+                    focusRequester = FocusRequester(),
+                    softwareKeyboardController = keyboard,
+                    hasActiveSession = { false },
+                )
+                assertFalse(intent.suppressKeyboardOnFocus)
+                assertTrue(intent.requestGeneration > beforeClearGen)
+                assertEquals(1, frameWaits)
+                assertEquals(2, keyboard.shown)
+            }
+        }
+
+    // Hands aabc7fcf: after voice dictation focuses the composer via focusWithoutKeyboard
+    // (suppressKeyboardOnFocus = true), the first direct tap starts a live PlatformTextInputSession
+    // without invoking SoftwareKeyboardController.show(). A second direct tap to move the cursor
+    // mid-edit AND a composer-card focusWithKeyboard tap must keep that exact live session running
+    // (zero teardown/restart, zero blur) instead of flipping showKeyboardOnFocus false -> true
+    // mid-session. Also exercises the full hasActiveHostSession lifecycle (idle -> active ->
+    // parked -> woken -> blurred/exited).
+    @Test
+    fun postVoiceDictationDirectTapAndCardTapKeepLiveInputSessionWithoutRestart() =
+        runRobolectricComposeUiTest {
+            val keyboard = RecordingKeyboard()
+            val composerFocus = FocusRequester()
+            val keyboardIntent = RaftEditorKeyboardIntent()
+            val fieldState = TextFieldState(initialText = "dictated draft text", initialSelection = TextRange(19))
+            var blurCount = 0
+            var sessionStarts = 0
+            var sessionDisposals = 0
+            var hostComposeView: View? = null
+            var hostGate: RaftWindowPlatformInputGate? = null
+            var scopedKeyboardController: SoftwareKeyboardController? = null
+            var uiScope: CoroutineScope? = null
+
+            val countingInterceptor =
+                object : PlatformTextInputInterceptor {
+                    override suspend fun interceptStartInputMethod(
+                        request: PlatformTextInputMethodRequest,
+                        nextHandler: PlatformTextInputSession,
+                    ): Nothing {
+                        sessionStarts += 1
+                        try {
+                            nextHandler.startInputMethod(request)
+                        } finally {
+                            sessionDisposals += 1
+                        }
+                    }
+                }
+
+            setContent {
+                val view = LocalView.current
+                val scope = rememberCoroutineScope()
+                SideEffect {
+                    hostComposeView = view
+                    uiScope = scope
+                }
+                CompositionLocalProvider(LocalSoftwareKeyboardController provides keyboard) {
+                    RaftWindowFocusScope {
+                        val gate = LocalRaftWindowPlatformInputGate.current
+                        val wrappedKeyboard = LocalSoftwareKeyboardController.current
+                        SideEffect {
+                            hostGate = gate
+                            scopedKeyboardController = wrappedKeyboard
+                        }
+                        RaftInputFocusDismissHost { focusDismissModifier ->
+                            Column(focusDismissModifier.fillMaxSize()) {
+                                Box(Modifier.size(1.dp).focusable())
+                                Box(
+                                    Modifier
+                                        .testTag(MESSAGE_LIST)
+                                        .fillMaxWidth()
+                                        .height(120.dp),
+                                )
+                                InterceptPlatformTextInput(interceptor = countingInterceptor) {
+                                    CompositionLocalProvider(LocalRaftEditorIsConversationComposer provides true) {
+                                        TextField(
+                                            state = fieldState,
+                                            modifier = Modifier.testTag(COMPOSER).fillMaxWidth().height(48.dp),
+                                            autoFocus = false,
+                                            onBlur = { blurCount++ },
+                                            focusRequester = composerFocus,
+                                            keyboardIntent = keyboardIntent,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            val gate = checkNotNull(hostGate)
+            val scope = checkNotNull(uiScope)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            // Idle: no host platform session yet.
+            assertFalse(gate.hasActiveHostSession)
+            assertFalse(gate.isParked)
+
+            // 1. Voice dictation starts on unfocused composer -> focusWithoutKeyboard: focused with
+            //    caret, suppressKeyboardOnFocus = true, zero platform input session.
+            runOnIdle {
+                scope.launch {
+                    keyboardIntent.focusWithoutKeyboard(composerFocus)
+                }
+            }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertTrue(keyboardIntent.suppressKeyboardOnFocus)
+            assertFalse(composeRoot.onCheckIsTextEditor())
+            assertNull(composeRoot.onCreateInputConnection(EditorInfo()))
+            assertFalse(gate.hasActiveHostSession)
+            assertEquals(0, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertEquals(0, keyboard.shown)
+
+            // 2. Dictation finishes; user's first direct tap on BasicTextField starts the platform
+            //    input session (fromTap = true) and live editing works.
+            onNodeWithTag(COMPOSER).performTouchInput { click() }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertTrue(gate.hasActiveHostSession)
+            assertFalse(gate.isParked)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            assertTrue(keyboardIntent.suppressKeyboardOnFocus)
+            val conn1 = assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
+            runOnIdle {
+                conn1.setSelection(8, 8)
+                conn1.commitText("!", 1)
+            }
+            waitForIdle()
+            assertEquals("dictated! draft text", fieldState.text.toString())
+
+            // 3. Second direct tap inside BasicTextField (moving cursor mid-edit, past double-tap
+            //    timeout) invokes wrappedKeyboardController.show() -> gate.notifyKeyboardShow().
+            //    Must keep suppressKeyboardOnFocus untouched and NEVER dispose/restart the session.
+            val shownBeforeSecondTap = keyboard.shown
+            mainClock.advanceTimeBy(600L)
+            onNodeWithTag(COMPOSER).performTouchInput { click() }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            assertEquals(shownBeforeSecondTap + 1, keyboard.shown)
+            assertEquals(1, sessionStarts, "second direct tap must not restart platform input session")
+            assertEquals(0, sessionDisposals, "second direct tap must not dispose platform input session")
+            assertEquals(0, blurCount)
+            assertTrue(gate.hasActiveHostSession)
+            assertTrue(keyboardIntent.suppressKeyboardOnFocus)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+
+            // 4. Subsequent composer-card blank-area focusWithKeyboard tap keeps the exact same
+            //    live session running without teardown/restart, and typing still works on conn1.
+            val shownBeforeCardTap = keyboard.shown
+            runOnIdle {
+                scope.launch {
+                    keyboardIntent.focusWithKeyboard(
+                        focusRequester = composerFocus,
+                        softwareKeyboardController = scopedKeyboardController,
+                        hasActiveSession = { gate.hasActiveHostSession },
+                    )
+                }
+            }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            assertEquals(shownBeforeCardTap + 1, keyboard.shown)
+            assertEquals(1, sessionStarts, "composer-card focusWithKeyboard must not restart live session")
+            assertEquals(0, sessionDisposals, "composer-card focusWithKeyboard must not dispose live session")
+            assertEquals(0, blurCount)
+            assertTrue(gate.hasActiveHostSession)
+            assertTrue(keyboardIntent.suppressKeyboardOnFocus)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            runOnIdle {
+                conn1.setSelection(9, 9)
+                conn1.commitText("?", 1)
+            }
+            waitForIdle()
+            assertEquals("dictated!? draft text", fieldState.text.toString())
+
+            // 5. External window focus loss -> regain -> tap while still suppressed parks and wakes
+            //    the exact same outer session cleanly without a second teardown/restart on wake.
+            runOnIdle { dispatchWindowFocus(composeRoot, false) }
+            waitForIdle()
+            assertTrue(gate.isParked)
+            assertTrue(gate.hasActiveHostSession)
+            assertFalse(composeRoot.onCheckIsTextEditor())
+
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+            assertTrue(gate.isParked)
+            assertTrue(gate.hasActiveHostSession)
+            assertFalse(composeRoot.onCheckIsTextEditor())
+
+            mainClock.advanceTimeBy(600L)
+            onNodeWithTag(COMPOSER).performTouchInput { click() }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+            assertFalse(gate.isParked)
+            assertTrue(gate.hasActiveHostSession)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            assertEquals(1, sessionStarts, "waking parked session while suppressed must not restart outer session")
+            assertEquals(0, sessionDisposals)
+            assertEquals(0, blurCount)
+
+            // 6. Blurring the composer clears suppressKeyboardOnFocus and exits the host session;
+            //    subsequent semantic RequestFocus establishes a fresh session cleanly.
+            onNodeWithTag(MESSAGE_LIST).performTouchInput { click() }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            onNodeWithTag(COMPOSER).assertIsNotFocused()
+            assertEquals(1, blurCount)
+            assertFalse(keyboardIntent.suppressKeyboardOnFocus)
+            assertFalse(gate.hasActiveHostSession)
+            assertFalse(gate.isParked)
+            assertEquals(1, sessionDisposals)
+            assertFalse(composeRoot.onCheckIsTextEditor())
+
+            onNodeWithTag(COMPOSER).performSemanticsAction(SemanticsActions.RequestFocus)
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+
+            onNodeWithTag(COMPOSER).assertIsFocused()
+            assertEquals(2, sessionStarts)
+            assertEquals(1, sessionDisposals)
+            assertTrue(gate.hasActiveHostSession)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+            val conn2 = assertNotNull(composeRoot.onCreateInputConnection(EditorInfo()))
+            runOnIdle {
+                conn2.setSelection(fieldState.text.length, fieldState.text.length)
+                conn2.commitText(".", 1)
+            }
+            waitForIdle()
+            assertEquals("dictated!? draft text.", fieldState.text.toString())
+        }
+
+    // End-to-end ThreadComposerContent regression test for Hands aabc7fcf covering the real
+    // ThreadComposerPage blank-area card tap (.clickable -> composerKeyboardIntent.focusWithKeyboard)
+    // and mid-edit direct BasicTextField taps after a FocusOnly (voice dictation) focus.
+    @Test
+    fun threadComposerPostFocusOnlyTapAndBlankCardTapDoNotRestartInputSession() =
+        runRobolectricComposeUiTest {
+            val keyboard = RecordingKeyboard()
+            val coordinator = RaftFocusCoordinator()
+            var composerState by mutableStateOf(
+                ThreadComposerUiState(
+                    instanceId = "conv-voice-edit-aabc7fcf",
+                    seedText = "dictated reply text",
+                ),
+            )
+            var hostComposeView: View? = null
+            var hostGate: RaftWindowPlatformInputGate? = null
+            var sessionStarts = 0
+            var sessionDisposals = 0
+            var blurCount = 0
+
+            val countingInterceptor =
+                object : PlatformTextInputInterceptor {
+                    override suspend fun interceptStartInputMethod(
+                        request: PlatformTextInputMethodRequest,
+                        nextHandler: PlatformTextInputSession,
+                    ): Nothing {
+                        sessionStarts += 1
+                        try {
+                            nextHandler.startInputMethod(request)
+                        } finally {
+                            sessionDisposals += 1
+                        }
+                    }
+                }
+
+            setContent {
+                val view = LocalView.current
+                SideEffect { hostComposeView = view }
+                RaftTheme(appearance = RaftAppearance.Light) {
+                    val portal = remember { ThreadComposerSuggestionPortalState() }
+                    CompositionLocalProvider(
+                        LocalSoftwareKeyboardController provides keyboard,
+                        LocalThreadComposerSuggestionPortal provides portal,
+                    ) {
+                        RaftWindowFocusScope(coordinator = coordinator) {
+                            val gate = LocalRaftWindowPlatformInputGate.current
+                            SideEffect { hostGate = gate }
+                            Column(Modifier.fillMaxSize()) {
+                                Box(Modifier.size(1.dp).focusable())
+                                RaftFocusRegionHost(RaftFocusRegion.Conversation) {
+                                    val focusOnOpen =
+                                        rememberComposerFocusOnOpen(
+                                            policy = false,
+                                            shown = true,
+                                            yieldsToSideThread = false,
+                                            opensOnMessage = true,
+                                        )
+                                    InterceptPlatformTextInput(interceptor = countingInterceptor) {
+                                        ThreadComposerContent(
+                                            surface = ThreadComposerSurface(channelId = "c-voice-edit"),
+                                            state = composerState,
+                                            onEvent = { action, _, _, _ ->
+                                                if (action == "blur") blurCount += 1
+                                            },
+                                            onKeyboardHeightChange = {},
+                                            contentPaddingTop = 0.dp,
+                                            contentPaddingBottom = 0.dp,
+                                            attachmentPreviewEnabled = false,
+                                            autofocusOnOpen = focusOnOpen,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            waitForIdle()
+            val composeRoot = checkNotNull(hostComposeView)
+            val gate = checkNotNull(hostGate)
+            runOnIdle { dispatchWindowFocus(composeRoot, true) }
+            waitForIdle()
+
+            // 1. FocusOnly (same focusWithoutKeyboard path as voice dictation on unfocused composer).
+            runOnIdle {
+                composerState =
+                    composerState.copy(
+                        focusRequestNonce = composerState.focusRequestNonce + 1,
+                        focusRequestMeta =
+                            ThreadComposerFocusRequestMeta(
+                                source = RaftFocusRequestSource.User("voice_dictation"),
+                                keyboardMode = ThreadComposerFocusRequestKeyboardMode.FocusOnly,
+                            ),
+                    )
+            }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+            assertTrue(coordinator.anyComposerFocused)
+            assertFalse(composeRoot.onCheckIsTextEditor())
+            assertFalse(gate.hasActiveHostSession)
+            assertEquals(0, sessionStarts)
+
+            // 2. First direct tap on composer BasicTextField starts the live input session.
+            onNode(hasSetTextAction()).performTouchInput { click() }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertTrue(gate.hasActiveHostSession)
+            assertTrue(composeRoot.onCheckIsTextEditor())
+
+            // 3. Second direct tap on BasicTextField (cursor reposition mid-edit) keeps the same session.
+            val shownBeforeSecondTap = keyboard.shown
+            mainClock.advanceTimeBy(600L)
+            onNode(hasSetTextAction()).performTouchInput { click() }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+            assertEquals(shownBeforeSecondTap + 1, keyboard.shown)
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertEquals(0, blurCount)
+
+            // 4. Tapping the composer card blank padding area hits ThreadComposerPage's .clickable
+            //    -> composerKeyboardIntent.focusWithKeyboard(hasActiveSession = hasActiveInputSession)
+            //    and must keep the exact same live session running.
+            val shownBeforeCardTap = keyboard.shown
+            mainClock.advanceTimeBy(600L)
+            onNodeWithTag(ThreadComposerCardTestTag).performTouchInput { click(Offset(2f, 2f)) }
+            repeat(4) { mainClock.advanceTimeByFrame() }
+            waitForIdle()
+            assertEquals(shownBeforeCardTap + 1, keyboard.shown)
+            assertEquals(1, sessionStarts)
+            assertEquals(0, sessionDisposals)
+            assertEquals(0, blurCount)
+            assertTrue(gate.hasActiveHostSession)
+            assertTrue(composeRoot.onCheckIsTextEditor())
         }
 
     private fun dispatchWindowFocus(composeRoot: View, hasFocus: Boolean) {

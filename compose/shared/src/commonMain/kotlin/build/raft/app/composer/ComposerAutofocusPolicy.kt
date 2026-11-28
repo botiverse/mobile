@@ -334,6 +334,14 @@ internal class RaftWindowPlatformInputGate(
     val isParked: Boolean
         get() = parkedAfterExternalWindowLoss || parkedWake != null
 
+    /**
+     * Whether a host-window editor currently holds an intercepted [PlatformTextInputSession]
+     * (running or parked across external window-focus loss). Child `Dialog`/`Popup` sessions pass
+     * straight through without incrementing this counter. Main thread only.
+     */
+    val hasActiveHostSession: Boolean
+        get() = activeHostInterceptions > 0
+
     fun addKeyboardShowListener(listener: () -> Unit) {
         keyboardShowListeners += listener
     }

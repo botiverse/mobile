@@ -2864,6 +2864,8 @@ private fun ThreadComposerContentLeafBody(
     val focusOwnerRegistry = LocalRaftInputFocusOwnerRegistry.current
     val focusManager = LocalFocusManager.current
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val windowInputGate = LocalRaftWindowPlatformInputGate.current
+    val hasActiveInputSession: () -> Boolean = { windowInputGate?.hasActiveHostSession == true }
     val expandState = LocalThreadComposerExpandState.current
     val expandConversationKey = surface.expandConversationKey
     val canExpandComposer =
@@ -3049,6 +3051,7 @@ private fun ThreadComposerContentLeafBody(
                     composerKeyboardIntent.focusWithKeyboard(
                         focusRequester = composerFocusRequester,
                         softwareKeyboardController = softwareKeyboardController,
+                        hasActiveSession = hasActiveInputSession,
                     )
                 } else {
                     composerKeyboardIntent.focusWithoutKeyboard(
@@ -3095,6 +3098,7 @@ private fun ThreadComposerContentLeafBody(
                     composerKeyboardIntent.focusWithKeyboard(
                         focusRequester = composerFocusRequester,
                         softwareKeyboardController = softwareKeyboardController,
+                        hasActiveSession = hasActiveInputSession,
                     )
                 } else if (!focusedByExplicit) {
                     composerKeyboardIntent.focusWithoutKeyboard(
@@ -3515,6 +3519,7 @@ private fun ThreadComposerContentLeafBody(
                     composerKeyboardIntent.focusWithKeyboard(
                         focusRequester = composerFocusRequester,
                         softwareKeyboardController = softwareKeyboardController,
+                        hasActiveSession = hasActiveInputSession,
                     )
                 }
             }
@@ -4005,6 +4010,7 @@ private fun ThreadComposerContentLeafBody(
                                     composerKeyboardIntent.focusWithKeyboard(
                                         focusRequester = composerFocusRequester,
                                         softwareKeyboardController = softwareKeyboardController,
+                                        hasActiveSession = hasActiveInputSession,
                                     )
                                 }
                             }
@@ -4178,6 +4184,7 @@ private fun ThreadComposerContentLeafBody(
                                                 composerKeyboardIntent.focusWithKeyboard(
                                                     focusRequester = composerFocusRequester,
                                                     softwareKeyboardController = softwareKeyboardController,
+                                                    hasActiveSession = hasActiveInputSession,
                                                 )
                                             }
                                         } else {

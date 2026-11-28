@@ -1825,9 +1825,13 @@ internal fun raftResolveShowKeyboardOnFocus(
  * - [focusWithoutKeyboard] sets [suppressKeyboardOnFocus] `true` (`showKeyboardOnFocus = false` on
  *   touch-only hosts) before calling `requestFocus()`, keeping the soft keyboard down until the
  *   editor blurs, receives an explicit [focusWithKeyboard], or is tapped directly.
- * - [focusWithKeyboard] clears any prior suppression, requests focus, and invokes
- *   `softwareKeyboardController?.show()` (waking any [RaftWindowPlatformInputGate] parked after
- *   external window-focus loss).
+ * - [focusWithKeyboard] clears any prior suppression when no platform input session is active yet,
+ *   requests focus, and invokes `softwareKeyboardController?.show()` (waking any
+ *   [RaftWindowPlatformInputGate] parked after external window-focus loss). When a platform input
+ *   session is already active (running or parked, e.g. after a direct tap following
+ *   [focusWithoutKeyboard]), suppression stays untouched until blur/dispose so
+ *   `KeyboardOptions.showKeyboardOnFocus` does not flip `false -> true` mid-session and trigger a
+ *   `BasicTextField` input-session teardown/restart.
  */
 @Stable
 internal class RaftEditorKeyboardIntent {
@@ -1864,9 +1868,16 @@ internal class RaftEditorKeyboardIntent {
         focusRequester: FocusRequester,
         softwareKeyboardController: SoftwareKeyboardController?,
         beforeFocusDelayMs: Long = 0L,
+        hasActiveSession: () -> Boolean = { false },
     ) {
         if (beforeFocusDelayMs > 0L) {
             delay(beforeFocusDelayMs)
+        }
+        if (suppressKeyboardOnFocus && hasActiveSession()) {
+            requestGeneration += 1L
+            runCatching { focusRequester.requestFocus() }
+            softwareKeyboardController?.show()
+            return
         }
         val wasSuppressed = suppressKeyboardOnFocus
         val generation = clearSuppression()
@@ -1920,7 +1931,16 @@ internal fun Modifier.raftAppEditorBehavior(
     }
     DisposableEffect(windowInputGate, keyboardIntent) {
         if (windowInputGate != null && keyboardIntent != null) {
-            val listener: () -> Unit = { keyboardIntent.clearSuppression() }
+            val listener: () -> Unit = {
+                // Only clear focus-only suppression while no host platform input session exists:
+                // flipping KeyboardOptions.showKeyboardOnFocus false -> true while a session is
+                // already running or parked causes BasicTextField to dispose and immediately
+                // restart its PlatformTextInputSession (closing and reopening the soft keyboard).
+                // Suppression is cleared cleanly on editor blur or dispose instead.
+                if (!windowInputGate.hasActiveHostSession) {
+                    keyboardIntent.clearSuppression()
+                }
+            }
             windowInputGate.addKeyboardShowListener(listener)
             onDispose { windowInputGate.removeKeyboardShowListener(listener) }
         } else {
@@ -2135,6 +2155,7 @@ internal fun TextField(
     val nativeEditingStateBindingOwner = remember { Any() }
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
     val softwareKeyboardController = LocalSoftwareKeyboardController.current
+    val windowInputGate = LocalRaftWindowPlatformInputGate.current
     DisposableEffect(nativeEditingStateReader, nativeEditingStateBindingOwner) {
         onDispose { nativeEditingStateReader?.unbind(nativeEditingStateBindingOwner) }
     }
@@ -2221,6 +2242,7 @@ internal fun TextField(
                 focusRequester = focusRequester,
                 softwareKeyboardController = softwareKeyboardController,
                 beforeFocusDelayMs = 100L,
+                hasActiveSession = { windowInputGate?.hasActiveHostSession == true },
             )
         }
     }
