@@ -276,7 +276,7 @@ import kotlinx.coroutines.withContext
     ): RuntimeAuthCall<RuntimeAuthProvidersResult> =
         asOwner(owner) { client.runtimeAuthProviders(ServerId(serverId), machineId, runtime) }
 
-    /** Saves a Pi provider's key; a save, or one that may have happened, drops the cached view. */
+    /** Saves a provider's API key; a save, or one that may have happened, drops the cached view. */
     suspend fun connectRuntimeProvider(
         owner: SharedComputersOwner,
         serverId: String,
@@ -284,8 +284,21 @@ import kotlinx.coroutines.withContext
         runtime: RuntimeAuthRuntime,
         providerId: String,
         apiKey: String,
+        baseUrl: String? = null,
+        modelIds: List<String>? = null,
     ): RuntimeAuthCall<RuntimeAuthProviderConnectResult> {
-        val result = asOwner(owner) { client.connectRuntimeProvider(ServerId(serverId), machineId, runtime, providerId, apiKey) }
+        val result =
+            asOwner(owner) {
+                client.connectRuntimeProvider(
+                    serverId = ServerId(serverId),
+                    machineId = machineId,
+                    runtime = runtime,
+                    providerId = providerId,
+                    apiKey = apiKey,
+                    baseUrl = baseUrl,
+                    modelIds = modelIds,
+                )
+            }
         val value = (result as? RuntimeAuthCall.Done)?.value
         if (value == RuntimeAuthProviderConnectResult.Connected || (value as? RuntimeAuthProviderConnectResult.Failed)?.reason == "timed_out") {
             invalidateRuntimeAuthView(machineId)

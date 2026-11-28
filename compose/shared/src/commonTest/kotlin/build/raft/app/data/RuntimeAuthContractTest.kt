@@ -151,6 +151,7 @@ class RuntimeAuthContractTest {
                 oauthFlow = RuntimeAuthProviderOAuthFlow.PasteCode,
                 apiKeyEntry = RuntimeAuthProviderKeyEntry.Key,
                 stored = "oauth",
+                configured = true,
             ),
             listed.providers.first(),
         )
@@ -191,6 +192,112 @@ class RuntimeAuthContractTest {
         assertFalse(isPiLiteralApiKey("!op read x"))
         assertFalse(isPiLiteralApiKey("\$KEY"))
         assertTrue(isPiLiteralApiKey("sk-1234"))
+    }
+
+    @Test
+    fun qwenProvidersParseGroupsEndpointsAndModelRequirements() {
+        val result =
+            Json.parseToJsonElement(
+                """
+                {"kind":"listed","providers":[
+                  {"id":"bailian","label":"Alibaba Cloud Model Studio","description":"DashScope API key",
+                   "group":{"id":"alibaba","label":"Alibaba Cloud"},"configured":true,
+                   "endpoint":{"kind":"choice","options":[
+                     {"id":"cn","label":"China (Beijing)","url":"https://dashscope.aliyuncs.com/compatible-mode/v1"},
+                     {"id":"intl","label":"International (Singapore)","url":"https://dashscope-intl.aliyuncs.com/compatible-mode/v1"}
+                   ]},"needsModelIds":false},
+                  {"id":"openrouter","label":"OpenRouter","configured":false,
+                   "endpoint":{"kind":"fixed"},"needsModelIds":false},
+                  {"id":"custom-openai","label":"OpenAI-compatible","group":{"id":"custom"},"configured":false,
+                   "endpoint":{"kind":"custom","placeholder":"https://api.example.com/v1"},"needsModelIds":true}
+                ]}
+                """.trimIndent()
+            ).toRuntimeAuthProvidersResult()
+        val listed = assertIs<RuntimeAuthProvidersResult.Listed>(result)
+        assertEquals(3, listed.providers.size)
+        assertEquals(
+            RuntimeAuthProvider(
+                id = "bailian",
+                label = "Alibaba Cloud Model Studio",
+                description = "DashScope API key",
+                group = RuntimeAuthProviderGroup("alibaba", "Alibaba Cloud"),
+                configured = true,
+                endpoint =
+                    RuntimeAuthProviderEndpoint.Choice(
+                        listOf(
+                            RuntimeAuthProviderEndpointOption("cn", "China (Beijing)", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                            RuntimeAuthProviderEndpointOption("intl", "International (Singapore)", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+                        )
+                    ),
+                needsModelIds = false,
+            ),
+            listed.providers[0],
+        )
+        assertEquals(RuntimeAuthProviderEndpoint.Fixed, listed.providers[1].endpoint)
+        assertNull(listed.providers[1].group)
+        assertEquals(RuntimeAuthProviderGroup("custom", null), listed.providers[2].group)
+        assertEquals(RuntimeAuthProviderEndpoint.Custom("https://api.example.com/v1"), listed.providers[2].endpoint)
+        assertTrue(listed.providers[2].needsModelIds)
+
+        // Invalid choice endpoints are rejected.
+        assertNull(
+            Json.parseToJsonElement(
+                """{"kind":"listed","providers":[{"id":"x","label":"X","endpoint":{"kind":"choice","options":[]}}]}"""
+            ).toRuntimeAuthProvidersResult(),
+            "empty choice options",
+        )
+        assertNull(
+            Json.parseToJsonElement(
+                """{"kind":"listed","providers":[{"id":"x","label":"X","endpoint":{"kind":"choice","options":[{"id":"a","label":"A","url":"http://insecure.example.com"}]}}]}"""
+            ).toRuntimeAuthProvidersResult(),
+            "non-https choice option URL",
+        )
+        val eleven = (1..11).joinToString(",") { """{"id":"o$it","label":"Opt $it","url":"https://e$it.example.com"}""" }
+        assertNull(
+            Json.parseToJsonElement(
+                """{"kind":"listed","providers":[{"id":"x","label":"X","endpoint":{"kind":"choice","options":[$eleven]}}]}"""
+            ).toRuntimeAuthProvidersResult(),
+            "over 10 choice options",
+        )
+    }
+
+    @Test
+    fun connectRuntimeProviderSerializesOnlyPresentFields() = runPortableCoroutineTest<Unit> {
+        val api = RecordingRuntimeAuthApi(answer = HomeNetworkResponse(200, """{"result":{"kind":"connected"}}"""))
+        val client = RaftComputersApiClient(api)
+        assertEquals(
+            RuntimeAuthCall.Done(RuntimeAuthProviderConnectResult.Connected),
+            client.connectRuntimeProvider(ServerId("s1"), "m1", RuntimeAuthRuntime.Pi, "openai", "sk-pi"),
+        )
+        assertEquals(
+            RuntimeAuthCall.Done(RuntimeAuthProviderConnectResult.Connected),
+            client.connectRuntimeProvider(
+                ServerId("s1"),
+                "m1",
+                RuntimeAuthRuntime.Qwen,
+                "bailian",
+                "sk-qwen",
+                baseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ),
+        )
+        assertEquals(
+            RuntimeAuthCall.Done(RuntimeAuthProviderConnectResult.Connected),
+            client.connectRuntimeProvider(
+                ServerId("s1"),
+                "m1",
+                RuntimeAuthRuntime.Qwen,
+                "custom-openai",
+                "sk-custom",
+                baseUrl = "https://api.example.com/v1",
+                modelIds = listOf("qwen3-coder"),
+            ),
+        )
+        assertEquals(3, api.calls.size)
+        assertEquals(setOf("providerId", "apiKey"), api.calls[0].third.keys)
+        assertEquals(setOf("providerId", "apiKey", "baseUrl"), api.calls[1].third.keys)
+        assertEquals("https://dashscope.aliyuncs.com/compatible-mode/v1", api.calls[1].third["baseUrl"]?.jsonPrimitive?.content)
+        assertEquals(setOf("providerId", "apiKey", "baseUrl", "modelIds"), api.calls[2].third.keys)
+        assertEquals("""["qwen3-coder"]""", api.calls[2].third["modelIds"].toString())
     }
 
     @Test
@@ -299,6 +406,11 @@ class RuntimeAuthContractTest {
 
         override suspend fun logoutRuntime(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse {
             calls += Triple("logout", runtime, Json.parseToJsonElement(body).jsonObject)
+            return answer
+        }
+
+        override suspend fun connectRuntimeProvider(serverId: ServerId, machineId: String, runtime: String, body: String): HomeNetworkResponse {
+            calls += Triple("connect-provider", runtime, Json.parseToJsonElement(body).jsonObject)
             return answer
         }
 

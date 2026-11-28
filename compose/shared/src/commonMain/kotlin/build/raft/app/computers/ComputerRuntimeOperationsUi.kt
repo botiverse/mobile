@@ -14,8 +14,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
@@ -38,10 +41,12 @@ import build.raft.designsystem.components.RaftCodeBlock
 import build.raft.designsystem.components.RaftDialog
 import build.raft.designsystem.components.RaftDialogSize
 import build.raft.designsystem.components.RaftPreviewCard
+import build.raft.designsystem.components.RaftSheet
 import build.raft.designsystem.components.RaftTextLink
 import build.raft.designsystem.components.RaftTextLinkVariant
 import build.raft.designsystem.components.rememberRaftPreviewCardState
 import build.raft.designsystem.text.RaftText
+import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.RaftTheme
 import build.raft.designsystem.tokens.RaftRadius
 import build.raft.designsystem.tokens.RaftStroke
@@ -130,9 +135,10 @@ internal fun rememberComputerRuntimeInstallController(
  * A not-installed runtime the Computer can install from here (web `InstallCard` in a muted chip's
  * popover): the chip is a button (web `PopoverTrigger openOnHover`) that opens a small card that
  * says so and offers Install, which first shows what would run. A mouse resting on it opens the card
- * too; its click, or a finger's tap, pins it. No long-press copy: the chip's one gesture is to open
- * the card (web: the chip copies nothing). The action is an ink-border button, busy while the plan
- * is read or the installer runs; another runtime's chip is disabled meanwhile.
+ * too and clicking pins it; a finger's tap opens a bottom sheet (`RaftSheet`). No long-press copy:
+ * the chip's one gesture is to open the card or sheet (web: the chip copies nothing). The action is
+ * an ink-border button, busy while the plan is read or the installer runs; another runtime's chip
+ * is disabled meanwhile.
  */
 @Composable
 internal fun ComputerRuntimeInstallChip(
@@ -148,6 +154,13 @@ internal fun ComputerRuntimeInstallChip(
     val running = mine && state is ComputerRuntimeInstallState.Running
     val buttonLabel = stringResource(if (running) Res.string.settings_computers_runtime_install_running else Res.string.settings_computers_runtime_install_action)
     val cardState = rememberRaftPreviewCardState()
+    var sheetOpen by remember(controller, installAs) { mutableStateOf(false) }
+    LaunchedEffect(mine, state) {
+        if (mine && (state is ComputerRuntimeInstallState.Confirm || state is ComputerRuntimeInstallState.Manual)) {
+            sheetOpen = false
+        }
+    }
+    val mouseFirst = RaftTheme.pointerInput == RaftPointerInput.Fine
     RaftPreviewCard(
         card = {
             Column(Modifier.padding(16.dp).width(268.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -179,10 +192,54 @@ internal fun ComputerRuntimeInstallChip(
                 modifier = Modifier.testTag("$COMPUTER_RUNTIME_INSTALL_CHIP_TAG-$raftRuntimeId"),
                 appearance = RaftBadgeAppearance.Soft,
                 variant = RaftBadgeVariant.Muted,
-                onClick = cardState::pin,
+                onClick = {
+                    if (cardState.isMouseClick(noPointer = mouseFirst)) {
+                        cardState.pin()
+                    } else {
+                        cardState.dismiss()
+                        sheetOpen = true
+                    }
+                },
             )
         },
     )
+    if (sheetOpen) {
+        val closeSheet = { sheetOpen = false }
+        RaftSheet(
+            onDismissRequest = closeSheet,
+            title = runtimeName,
+            modifier = Modifier.testTag("$COMPUTER_RUNTIME_INSTALL_SHEET_TAG-$raftRuntimeId"),
+            actions = {
+                RaftButton(
+                    text = buttonLabel,
+                    onClick = {
+                        closeSheet()
+                        controller.start(installAs, raftRuntimeId, runtimeName)
+                    },
+                    modifier = Modifier.fillMaxWidth().testTag("$COMPUTER_RUNTIME_INSTALL_TAG-$raftRuntimeId"),
+                    variant = RaftButtonVariant.Default,
+                    size = RaftButtonSize.Lg,
+                    enabled = !busy || mine,
+                    loading = busy && mine,
+                    loadingLabel = buttonLabel,
+                )
+                RaftButton(
+                    text = stringResource(Res.string.common_close),
+                    onClick = closeSheet,
+                    modifier = Modifier.fillMaxWidth(),
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                )
+            },
+            content = {
+                RaftText(
+                    stringResource(Res.string.settings_computers_runtime_install_not_installed, runtimeName),
+                    style = RaftTheme.typography.callout,
+                    color = RaftTheme.colors.foregroundMuted,
+                )
+            },
+        )
+    }
 }
 
 /**
@@ -444,6 +501,7 @@ internal const val COMPUTER_RUNTIME_UPDATE_CHECK_TAG = "runtime-update-check"
 internal const val COMPUTER_RUNTIME_OPERATION_OUTCOME_TAG = "runtime-operation-outcome"
 internal const val COMPUTER_RUNTIME_INSTALL_TAG = "machine-runtime-install"
 internal const val COMPUTER_RUNTIME_INSTALL_CHIP_TAG = "machine-runtime-install-chip"
+internal const val COMPUTER_RUNTIME_INSTALL_SHEET_TAG = "machine-runtime-install-sheet"
 internal const val COMPUTER_RUNTIME_INSTALL_DIALOG_TAG = "runtime-install-dialog"
 internal const val COMPUTER_RUNTIME_INSTALL_CONFIRM_TAG = "runtime-install-confirm"
 internal const val COMPUTER_RUNTIME_INSTALL_STEPS_TAG = "runtime-install-steps"

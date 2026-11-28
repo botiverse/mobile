@@ -4,7 +4,11 @@ import build.raft.app.data.RuntimeAuthAvailability
 import build.raft.app.data.RuntimeAuthCall
 import build.raft.app.data.RuntimeAuthLoginRegion
 import build.raft.app.data.RuntimeAuthLogoutResult
+import build.raft.app.data.RuntimeAuthProvider
 import build.raft.app.data.RuntimeAuthProviderConnectResult
+import build.raft.app.data.RuntimeAuthProviderEndpoint
+import build.raft.app.data.RuntimeAuthProviderEndpointOption
+import build.raft.app.data.RuntimeAuthProviderGroup
 import build.raft.app.data.RuntimeAuthProvidersResult
 import build.raft.app.data.RuntimeAuthRequestError
 import build.raft.app.data.RuntimeAuthRuntime
@@ -219,6 +223,20 @@ class ComputerRuntimeAuthSessionTest {
         )
         assertEquals(ComputerRuntimeAuthAction.AddProvider(primary = true), action(RuntimeAuthRuntime.Pi, RuntimeAuthStatus.LoggedOut()))
         assertEquals(ComputerRuntimeAuthAction.AddProvider(primary = false), action(RuntimeAuthRuntime.Pi, RuntimeAuthStatus.LoggedIn()))
+        // Qwen Code: ConnectProvider (pink when unconfigured, quiet when configured), never orange chip, no sign-out.
+        assertEquals(RuntimeAuthRuntime.Qwen, computerRuntimeCardAuthRuntime("qwen"))
+        assertEquals(ComputerRuntimeAuthAction.ConnectProvider(primary = true), action(RuntimeAuthRuntime.Qwen, RuntimeAuthStatus.LoggedOut()))
+        assertEquals(ComputerRuntimeAuthAction.ConnectProvider(primary = true), action(RuntimeAuthRuntime.Qwen, RuntimeAuthStatus.Unknown))
+        assertEquals(ComputerRuntimeAuthAction.ConnectProvider(primary = true), action(RuntimeAuthRuntime.Qwen, null))
+        assertEquals(ComputerRuntimeAuthAction.ConnectProvider(primary = false), action(RuntimeAuthRuntime.Qwen, RuntimeAuthStatus.LoggedIn()))
+        assertEquals(
+            ComputerRuntimeAuthAction.Unavailable(RuntimeAuthUnavailableReason.NotInstalled),
+            action(RuntimeAuthRuntime.Qwen, RuntimeAuthStatus.Unavailable(RuntimeAuthUnavailableReason.NotInstalled)),
+        )
+        assertEquals(
+            ComputerRuntimeAuthAction.Caption(notAttached = true),
+            action(RuntimeAuthRuntime.Qwen, null, VIEW.copy(availability = RuntimeAuthAvailability.ComputerNotAttached)),
+        )
         assertEquals(ComputerRuntimeAuthAction.Caption(notAttached = false), action(RuntimeAuthRuntime.Kimi, null), "a Computer that predates Kimi's sign-in")
         assertEquals(
             ComputerRuntimeAuthAction.Caption(notAttached = true),
@@ -226,9 +244,139 @@ class ComputerRuntimeAuthSessionTest {
         )
         assertNull(action(RuntimeAuthRuntime.Codex, null, VIEW.copy(availability = RuntimeAuthAvailability.ComputerOffline)))
         assertNull(action(RuntimeAuthRuntime.Codex, RuntimeAuthStatus.LoggedOut(), VIEW.copy(canAct = false)), "a viewer who may not act")
-        // Signed out turns the chip orange; Pi with no stored sign-in does not (a key may still serve it).
+        // Signed out turns the chip orange; Pi and Qwen do not.
         assertTrue(ComputerRuntimeAuthCardState("codex", RuntimeAuthRuntime.Codex, VIEW.copy(status = mapOf(RuntimeAuthRuntime.Codex to RuntimeAuthStatus.LoggedOut()))).signedOut)
         assertTrue(!ComputerRuntimeAuthCardState("pi", RuntimeAuthRuntime.Pi, VIEW.copy(status = mapOf(RuntimeAuthRuntime.Pi to RuntimeAuthStatus.LoggedOut()))).signedOut)
+        assertTrue(!ComputerRuntimeAuthCardState("qwen", RuntimeAuthRuntime.Qwen, VIEW.copy(status = mapOf(RuntimeAuthRuntime.Qwen to RuntimeAuthStatus.LoggedOut()))).signedOut)
+    }
+
+    @Test
+    fun qwenProviderConnectSessionValidatesResetsOnBackMapsFieldErrorsAndRefreshesView() = runTest {
+        val choiceProvider =
+            RuntimeAuthProvider(
+                id = "bailian",
+                label = "Alibaba Cloud Model Studio",
+                group = RuntimeAuthProviderGroup("alibaba", "Alibaba Cloud"),
+                configured = true,
+                endpoint =
+                    RuntimeAuthProviderEndpoint.Choice(
+                        listOf(
+                            RuntimeAuthProviderEndpointOption("cn", "China", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+                            RuntimeAuthProviderEndpointOption("intl", "International", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"),
+                        )
+                    ),
+            )
+        val customProvider =
+            RuntimeAuthProvider(
+                id = "custom-openai",
+                label = "OpenAI-compatible",
+                group = RuntimeAuthProviderGroup("custom"),
+                endpoint = RuntimeAuthProviderEndpoint.Custom("https://api.example.com/v1"),
+                needsModelIds = true,
+            )
+        val ops =
+            FakeAuthOps(
+                providers = RuntimeAuthCall.Done(RuntimeAuthProvidersResult.Listed(listOf(choiceProvider, customProvider))),
+            )
+        val controller = controller(RuntimeAuthRuntime.Qwen, ops)
+        controller.openSignIn()
+        runCurrent()
+        val dialog = assertIs<ComputerRuntimeAuthDialog.ConnectProvider>(controller.dialog)
+        val session = dialog.session
+        assertEquals(ComputerRuntimeProviderConnectStep.Choose, session.step)
+        assertEquals(2, assertIs<ComputerRuntimePiProviderList.Listed>(session.list).providers.size)
+
+        // Choice endpoint provider requires endpoint + apiKey.
+        session.choose("bailian")
+        session.continueWithChoice()
+        assertEquals(ComputerRuntimeProviderConnectStep.Details, session.step)
+        assertTrue(!session.ready)
+        session.apiKeyChanged("sk-secret-1")
+        assertTrue(!session.ready, "choice endpoint still missing")
+        session.endpointChanged("intl")
+        assertTrue(session.ready)
+
+        // Back resets form + key while keeping chosenId.
+        session.back()
+        assertEquals(ComputerRuntimeProviderConnectStep.Choose, session.step)
+        assertEquals("bailian", session.chosenId)
+        assertEquals("", session.apiKey)
+        assertNull(session.endpointId)
+
+        // Switch to custom provider requiring baseUrl + model + apiKey.
+        session.choose("custom-openai")
+        session.continueWithChoice()
+        session.baseUrlChanged("bad-url")
+        session.modelChanged("qwen3-coder")
+        session.apiKeyChanged("sk-secret-2")
+        assertTrue(session.ready)
+
+        // 400 field errors map directly to their fields.
+        ops.connectResult = RuntimeAuthCall.Refused(RuntimeAuthRequestError(400, "invalid_base_url", TRACE))
+        session.connect()
+        runCurrent()
+        assertEquals(ComputerRuntimeProviderField.BaseUrl, session.fieldError)
+        assertNull(session.failure)
+        session.baseUrlChanged("https://api.example.com/v1")
+        assertNull(session.fieldError)
+
+        ops.connectResult = RuntimeAuthCall.Refused(RuntimeAuthRequestError(400, "invalid_model", TRACE))
+        session.connect()
+        runCurrent()
+        assertEquals(ComputerRuntimeProviderField.Model, session.fieldError)
+        session.modelChanged("qwen-coder-plus")
+        assertNull(session.fieldError)
+
+        ops.connectResult = RuntimeAuthCall.Refused(RuntimeAuthRequestError(400, "invalid_api_key", TRACE))
+        session.connect()
+        runCurrent()
+        assertEquals(ComputerRuntimeProviderField.ApiKey, session.fieldError)
+        session.apiKeyChanged("sk-valid-key")
+        assertNull(session.fieldError)
+
+        // Timed out triggers view refresh and shows warning banner.
+        ops.connectResult = RuntimeAuthCall.Done(RuntimeAuthProviderConnectResult.Failed("timed_out"))
+        val viewsBeforeTimeout = ops.calls.count { it == "view" }
+        session.connect()
+        runCurrent()
+        assertEquals(ComputerRuntimeAuthProblem.ProviderConnectTimedOut, session.failure?.problem)
+        assertEquals(viewsBeforeTimeout + 1, ops.calls.count { it == "view" })
+
+        // Connected clears key, transitions to Done, and refreshes view.
+        ops.connectResult = RuntimeAuthCall.Done(RuntimeAuthProviderConnectResult.Connected)
+        session.connect()
+        runCurrent()
+        assertEquals(ComputerRuntimeProviderConnectStep.Done, session.step)
+        assertEquals("", session.apiKey, "key cleared once saved")
+        assertEquals(
+            "connect qwen custom-openai baseUrl=https://api.example.com/v1 models=[qwen-coder-plus]",
+            ops.calls.last { it.startsWith("connect ") },
+        )
+        assertTrue(ops.calls.none { "sk-valid-key" in it }, "key is never logged in call records")
+        assertEquals(viewsBeforeTimeout + 2, ops.calls.count { it == "view" })
+
+        controller.closeDialog()
+        runCurrent()
+        assertNull(controller.dialog)
+
+        // Closing or disposing mid-entry clears apiKey immediately.
+        controller.openSignIn()
+        runCurrent()
+        val midEntry = assertIs<ComputerRuntimeAuthDialog.ConnectProvider>(controller.dialog).session
+        midEntry.choose("custom-openai")
+        midEntry.continueWithChoice()
+        midEntry.apiKeyChanged("sk-unsent-secret")
+        controller.closeDialog()
+        assertEquals("", midEntry.apiKey, "closing mid-entry drops unsent apiKey")
+
+        controller.openSignIn()
+        runCurrent()
+        val disposedEntry = assertIs<ComputerRuntimeAuthDialog.ConnectProvider>(controller.dialog).session
+        disposedEntry.choose("custom-openai")
+        disposedEntry.continueWithChoice()
+        disposedEntry.apiKeyChanged("sk-disposed-secret")
+        controller.dispose()
+        assertEquals("", disposedEntry.apiKey, "disposing mid-entry drops unsent apiKey")
     }
 
     @Test
@@ -305,6 +453,7 @@ class ComputerRuntimeAuthSessionTest {
         val calls = mutableListOf<String>()
         val start = CompletableDeferred<RuntimeAuthCall<String>>()
         var code: RuntimeAuthCall<Unit> = RuntimeAuthCall.Done(Unit)
+        var connectResult: RuntimeAuthCall<RuntimeAuthProviderConnectResult> = RuntimeAuthCall.Done(RuntimeAuthProviderConnectResult.Connected)
 
         override suspend fun view(force: Boolean): RuntimeAuthView {
             calls += "view"
@@ -336,9 +485,15 @@ class ComputerRuntimeAuthSessionTest {
 
         override suspend fun providers(runtime: RuntimeAuthRuntime) = providers
 
-        override suspend fun connect(runtime: RuntimeAuthRuntime, providerId: String, apiKey: String): RuntimeAuthCall<RuntimeAuthProviderConnectResult> {
-            calls += "connect ${runtime.wire} $providerId"
-            return RuntimeAuthCall.Done(RuntimeAuthProviderConnectResult.Connected)
+        override suspend fun connect(
+            runtime: RuntimeAuthRuntime,
+            providerId: String,
+            apiKey: String,
+            baseUrl: String?,
+            modelIds: List<String>?,
+        ): RuntimeAuthCall<RuntimeAuthProviderConnectResult> {
+            calls += "connect ${runtime.wire} $providerId" + (baseUrl?.let { " baseUrl=$it" } ?: "") + (modelIds?.let { " models=$it" } ?: "")
+            return connectResult
         }
     }
 
@@ -350,7 +505,16 @@ class ComputerRuntimeAuthSessionTest {
             RuntimeAuthView(
                 canAct = true,
                 availability = RuntimeAuthAvailability.Ok,
-                runtimes = listOf(RuntimeAuthRuntime.Claude, RuntimeAuthRuntime.Codex, RuntimeAuthRuntime.Qoder, RuntimeAuthRuntime.Antigravity, RuntimeAuthRuntime.Pi, RuntimeAuthRuntime.Grok),
+                runtimes =
+                    listOf(
+                        RuntimeAuthRuntime.Claude,
+                        RuntimeAuthRuntime.Codex,
+                        RuntimeAuthRuntime.Qoder,
+                        RuntimeAuthRuntime.Qwen,
+                        RuntimeAuthRuntime.Antigravity,
+                        RuntimeAuthRuntime.Pi,
+                        RuntimeAuthRuntime.Grok,
+                    ),
                 logoutRuntimes = listOf(RuntimeAuthRuntime.Claude, RuntimeAuthRuntime.Codex, RuntimeAuthRuntime.Pi, RuntimeAuthRuntime.Grok),
             )
     }

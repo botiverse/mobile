@@ -499,10 +499,26 @@ private val RuntimeAuthLogoutFailureReasons = setOf("timed_out", "rejected", "pr
     }
 }
 
+/** One provider group of a provider-key runtime (slock `runtimeAuthProviderGroupSchema`). */
+@RaftCoreInternalApi data class RuntimeAuthProviderGroup(val id: String, val label: String? = null)
+
+/** One fixed endpoint choice offered by a provider (slock `runtimeAuthProviderEndpointOptionSchema`). */
+@RaftCoreInternalApi data class RuntimeAuthProviderEndpointOption(val id: String, val label: String, val url: String)
+
+/** How a provider's base URL is decided (slock `runtimeAuthProviderEndpointSchema`). */
+@RaftCoreInternalApi sealed interface RuntimeAuthProviderEndpoint {
+    data object Fixed : RuntimeAuthProviderEndpoint
+
+    data class Choice(val options: List<RuntimeAuthProviderEndpointOption>) : RuntimeAuthProviderEndpoint
+
+    data class Custom(val placeholder: String? = null) : RuntimeAuthProviderEndpoint
+}
+
 /**
- * One provider of a runtime's own list (slock `runtimeAuthProviderSchema`), as Pi's sign-in needs it:
- * its id and name, its account sign-in ([oauthLabel], [oauthFlow]) and its API key ([apiKeyEntry]), and
- * which of them is stored. Qwen's endpoint and model fields are not read here.
+ * One provider of a runtime's own list (slock `runtimeAuthProviderSchema`):
+ * its id and name, its grouping/description/endpoint/model metadata (Qwen Code), its account
+ * sign-in ([oauthLabel], [oauthFlow], [oauthMethodList]) and API key ([apiKeyEntry]), and which
+ * of them is stored (Pi / OpenCode).
  */
 @RaftCoreInternalApi data class RuntimeAuthProvider(
     val id: String,
@@ -514,6 +530,16 @@ private val RuntimeAuthLogoutFailureReasons = setOf("timed_out", "rejected", "pr
     val apiKeyEntry: RuntimeAuthProviderKeyEntry? = null,
     /** `oauth` or `api_key`: how its stored sign-in authenticates. */
     val stored: String? = null,
+    /** Qwen Code: short provider description under its name. */
+    val description: String? = null,
+    /** Qwen Code: menu group (`third-party`, `custom`, or named group). */
+    val group: RuntimeAuthProviderGroup? = null,
+    /** Qwen Code: whether this provider is already configured on this Computer. */
+    val configured: Boolean = false,
+    /** Qwen Code: fixed endpoint, choice of endpoints, or custom base URL. */
+    val endpoint: RuntimeAuthProviderEndpoint = RuntimeAuthProviderEndpoint.Fixed,
+    /** Qwen Code: whether connecting requires a model ID. */
+    val needsModelIds: Boolean = false,
 )
 
 /** One OAuth sign-in of a provider, by its label as the runtime lists it. */
@@ -552,10 +578,69 @@ private val RuntimeAuthProviderFailureReasons = setOf("rejected", "timed_out", "
     }
 }
 
+private const val RuntimeAuthProviderEndpointChoiceLimit = 10
+
+private fun JsonElement.toRuntimeAuthProviderGroup(): RuntimeAuthProviderGroup? {
+    val obj = this as? JsonObject ?: return null
+    val id = obj.plainString("id")?.takeIf(::isRuntimeAuthProviderId) ?: return null
+    if (obj.containsKey("label") && obj["label"] !is JsonNull && obj.safeText("label", 80) == null) return null
+    return RuntimeAuthProviderGroup(id = id, label = obj.safeText("label", 80))
+}
+
+private fun JsonElement.toRuntimeAuthProviderEndpoint(): RuntimeAuthProviderEndpoint? {
+    val obj = this as? JsonObject ?: return null
+    return when (obj.plainString("kind")) {
+        "fixed" -> RuntimeAuthProviderEndpoint.Fixed
+        "choice" -> {
+            val rawOptions = obj["options"] as? JsonArray ?: return null
+            if (rawOptions.isEmpty() || rawOptions.size > RuntimeAuthProviderEndpointChoiceLimit) return null
+            val options =
+                rawOptions.map { element ->
+                    val opt = element as? JsonObject ?: return null
+                    val id = opt.plainString("id")?.takeIf(::isRuntimeAuthProviderId) ?: return null
+                    val label = opt.safeText("label", 80) ?: return null
+                    val url = opt.plainString("url")?.takeIf(::isRuntimeAuthHttpsUrl) ?: return null
+                    RuntimeAuthProviderEndpointOption(id = id, label = label, url = url)
+                }
+            RuntimeAuthProviderEndpoint.Choice(options)
+        }
+        "custom" -> {
+            if (obj.containsKey("placeholder") && obj["placeholder"] !is JsonNull && obj.safeText("placeholder", 200) == null) return null
+            RuntimeAuthProviderEndpoint.Custom(placeholder = obj.safeText("placeholder", 200))
+        }
+        else -> null
+    }
+}
+
 private fun JsonElement.toRuntimeAuthProvider(): RuntimeAuthProvider? {
     val obj = this as? JsonObject ?: return null
     val id = obj.plainString("id")?.takeIf(::isRuntimeAuthProviderId) ?: return null
     val label = obj.safeText("label", 80) ?: return null
+    if (obj.containsKey("description") && obj["description"] !is JsonNull && obj.safeText("description", 200) == null) return null
+    val group =
+        if (obj.containsKey("group") && obj["group"] !is JsonNull) {
+            obj["group"]?.toRuntimeAuthProviderGroup() ?: return null
+        } else {
+            null
+        }
+    val configured =
+        if (obj.containsKey("configured") && obj["configured"] !is JsonNull) {
+            (obj["configured"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: return null
+        } else {
+            false
+        }
+    val endpoint =
+        if (obj.containsKey("endpoint") && obj["endpoint"] !is JsonNull) {
+            obj["endpoint"]?.toRuntimeAuthProviderEndpoint() ?: return null
+        } else {
+            RuntimeAuthProviderEndpoint.Fixed
+        }
+    val needsModelIds =
+        if (obj.containsKey("needsModelIds") && obj["needsModelIds"] !is JsonNull) {
+            (obj["needsModelIds"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull ?: return null
+        } else {
+            false
+        }
     val signIn = obj["signIn"] as? JsonObject
     val oauth = signIn?.get("oauth") as? JsonObject
     val apiKey = signIn?.get("apiKey") as? JsonObject
@@ -574,6 +659,11 @@ private fun JsonElement.toRuntimeAuthProvider(): RuntimeAuthProvider? {
         oauthMethodList = methods,
         apiKeyEntry = apiKey?.let { RuntimeAuthProviderKeyEntry.fromWire(it.plainString("entry")) ?: return null },
         stored = signIn?.plainString("stored")?.takeIf { it == "oauth" || it == "api_key" },
+        description = obj.safeText("description", 200),
+        group = group,
+        configured = configured,
+        endpoint = endpoint,
+        needsModelIds = needsModelIds,
     )
 }
 
@@ -620,9 +710,14 @@ private fun JsonElement.toRuntimeAuthProvider(): RuntimeAuthProvider? {
 @Serializable
 @RaftCoreInternalApi data class RuntimeAuthLogoutBody(val providerId: String? = null, val respondAsync: Boolean)
 
-/** `POST …/:runtime/connect-provider` body for Pi: a provider and a key only. The key is never logged. */
+/** `POST …/:runtime/connect-provider` body (Pi / OpenCode / Qwen Code). The key is never logged. */
 @Serializable
-@RaftCoreInternalApi data class RuntimeAuthConnectProviderBody(val providerId: String, val apiKey: String)
+@RaftCoreInternalApi data class RuntimeAuthConnectProviderBody(
+    val providerId: String,
+    val apiKey: String,
+    val baseUrl: String? = null,
+    val modelIds: List<String>? = null,
+)
 
 /** Why a runtime-auth request got no answer to read: the HTTP status, the route's `code`, trace id, and refusal message. */
 @RaftCoreInternalApi data class RuntimeAuthRequestError(
