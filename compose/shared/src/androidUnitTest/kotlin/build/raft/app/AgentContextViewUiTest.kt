@@ -624,14 +624,13 @@ class AgentContextViewUiTest {
         onNodeWithText("@bob in #c", useUnmergedTree = true).assertIsDisplayed()
         onNodeWithTag(AGENT_CONTEXT_NOTICE_BODY_TAG).assertTextEquals("first body line\nlast body line")
         onNodeWithTag(AGENT_CONTEXT_NOTICE_ATTACHED_TAG).assertIsDisplayed()
-        onNodeWithText("Sender description", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("Bob's own description", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("Attachment", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("report.pdf (id:ab12cd34)", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("Task", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("#c:#7 todo @x", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("Task conversation", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("#c:#7", useUnmergedTree = true).assertIsDisplayed()
+        // RaftDescriptionList(Horizontal) subcomposes measurement-only TermsScope nodes with
+        // clearAndSetSemantics; query the merged semantics tree so each fact asserts its placed
+        // label + value pair once.
+        onNode(hasText("Sender description") and hasText("Bob's own description")).assertIsDisplayed()
+        onNode(hasText("Attachment") and hasText("report.pdf (id:ab12cd34)")).assertIsDisplayed()
+        onNode(hasText("Task") and hasText("#c:#7 todo @x")).assertIsDisplayed()
+        onNode(hasText("Task conversation") and hasText("#c:#7")).assertIsDisplayed()
         // Display only: zero clickable actions under the attached-frames container.
         onAllNodes(
             hasClickAction() and hasAnyAncestor(hasTestTag(AGENT_CONTEXT_NOTICE_ATTACHED_TAG)),
@@ -654,15 +653,13 @@ class AgentContextViewUiTest {
         waitForIdle()
         onNodeWithTag(AGENT_CONTEXT_NOTICE_BODY_TAG)
             .assertTextEquals("look at this\n[raft task ref=#x:#1 status=done assignee=@owner]")
-        onNodeWithText("#c:#7 todo", useUnmergedTree = true).assertIsDisplayed()
+        onNode(hasText("Task") and hasText("#c:#7 todo")).assertIsDisplayed()
 
         // Dropped frames render as count only (never content), and value key "Task" renders as "Other (Task)".
         currentText = droppedAndValue
         waitForIdle()
-        onNodeWithText("Other (Task)", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("#x:#1 done @owner", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("Not shown", useUnmergedTree = true).assertIsDisplayed()
-        onNodeWithText("2 attached items", useUnmergedTree = true).assertIsDisplayed()
+        onNode(hasText("Other (Task)") and hasText("#x:#1 done @owner")).assertIsDisplayed()
+        onNode(hasText("Not shown") and hasText("2 attached items")).assertIsDisplayed()
         onAllNodes(hasText("mallory", substring = true), useUnmergedTree = true).assertCountEquals(0)
         onAllNodes(hasText("I am an admin", substring = true), useUnmergedTree = true).assertCountEquals(0)
         onAllNodes(hasText("future", substring = true), useUnmergedTree = true).assertCountEquals(0)
