@@ -123,6 +123,7 @@ internal fun ThreadActionCardView(
                     card.isExecuted -> stringResource(Res.string.common_done)
                     card.isClosed -> stringResource(Res.string.thread_action_card_status_closed)
                     card.isExpired -> stringResource(Res.string.thread_action_card_status_expired)
+                    card.isHandled -> stringResource(Res.string.action_card_question_status_handled)
                     card.isWithdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     card.isUnknownState -> stringResource(Res.string.thread_action_card_view_only)
                     card.isFrozen -> stringResource(Res.string.thread_action_card_frozen)

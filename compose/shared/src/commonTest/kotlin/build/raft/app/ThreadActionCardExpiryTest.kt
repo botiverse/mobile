@@ -9,6 +9,7 @@ import build.raft.app.data.RaftIntegrationsActionsPushApiClient
 import build.raft.app.data.ScreenError
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardClosedBy
+import build.raft.app.data.ThreadActionCardHandledBy
 import build.raft.app.data.WireActionCardMetadata
 import build.raft.app.data.actionCardFromMessageMetadata
 import build.raft.app.data.expiredAsOf
@@ -21,14 +22,17 @@ import build.raft.app.data.toMessageMetadata
 import build.raft.app.data.toThreadActionCard
 import build.raft.app.model.MessageId
 import build.raft.app.model.parseRaftTimestampEpochMillisOrNull
+import build.raft.app.thread.ActionCardHandledByNavigation
 import build.raft.app.thread.RaftActionCardFrameState
 import build.raft.app.thread.RaftActionCardStatus
+import build.raft.app.thread.RaftThreadScreenPayload
 import build.raft.app.thread.ThreadActionCardSpecIntent
 import build.raft.app.thread.ThreadActionCardSpecPress
 import build.raft.app.thread.ThreadActionCardSpecStore
 import build.raft.app.thread.actionCardFrameButtonState
 import build.raft.app.thread.actionCardSpecStatus
 import build.raft.app.thread.dispatch
+import build.raft.app.thread.resolveActionCardHandledByNavigation
 import build.raft.app.thread.threadActionCardCommitBlockedByEnd
 import build.raft.app.thread.threadActionCardSpecPress
 import kotlin.test.Test
@@ -123,6 +127,12 @@ class ThreadActionCardExpiryTest {
         assertEquals(RaftActionCardStatus.Expired, card().expiredAsOf(after).actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Prepared, card().expiredAsOf(before).actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Withdrawn, card(type = "question:ask", state = "withdrawn").actionCardSpecStatus())
+        assertEquals(
+            RaftActionCardStatus.Handled,
+            card(type = "question:ask", state = "withdrawn")
+                .copy(handledBy = ThreadActionCardHandledBy(messageId = "m-2", userId = "u-1", handle = "mei", inCardThread = false))
+                .actionCardSpecStatus(),
+        )
         assertEquals(RaftActionCardStatus.Expired, card(type = "question:ask", state = "expired").actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Expired, card(type = "seats:add", state = "expired").actionCardSpecStatus())
         assertEquals(RaftActionCardStatus.Closed, card(type = "question:ask", state = "closed").actionCardSpecStatus())
@@ -183,6 +193,168 @@ class ThreadActionCardExpiryTest {
     }
 
     @Test
+    fun aHandledQuestionCardReadsHandledByAndRoundTripsThroughMetadata() {
+        // Withdrawn as handled by a message in the card's conversation (`inCardThread: false`, slock #17265).
+        val beside =
+            wire(
+                """{"kind":"action-card","state":"withdrawn","withdrawnAt":"2026-11-27T10:00:00.000Z",
+                   "handledBy":{"messageId":"m-2","userId":"u-mei","handle":"mei","inCardThread":false},
+                   "action":{"type":"question:ask"}}""",
+            )
+        assertTrue(beside.isWithdrawn)
+        assertTrue(beside.isHandled)
+        assertTrue(beside.hasEnded)
+        assertEquals(ThreadActionCardHandledBy("m-2", "u-mei", "mei", inCardThread = false), beside.handledBy)
+        assertEquals(RaftActionCardStatus.Handled, beside.actionCardSpecStatus())
+        assertEquals(beside, actionCardFromMessageMetadata(beside.toMessageMetadata()))
+
+        // Withdrawn as handled by a message in the card's own thread (`inCardThread: true`).
+        val inThread =
+            wire(
+                """{"kind":"action-card","state":"withdrawn","withdrawnAt":"2026-11-27T10:00:00.000Z",
+                   "handledBy":{"messageId":"m-3","userId":"u-mei","handle":"mei","inCardThread":true},
+                   "action":{"type":"question:ask"}}""",
+            )
+        assertTrue(inThread.isHandled)
+        assertEquals(ThreadActionCardHandledBy("m-3", "u-mei", "mei", inCardThread = true), inThread.handledBy)
+        assertEquals(RaftActionCardStatus.Handled, inThread.actionCardSpecStatus())
+        assertEquals(inThread, actionCardFromMessageMetadata(inThread.toMessageMetadata()))
+
+        // Missing `inCardThread` defaults safely to false.
+        val missingInCardThread =
+            wire(
+                """{"kind":"action-card","state":"withdrawn",
+                   "handledBy":{"messageId":"m-4","userId":"u-mei","handle":"mei"},
+                   "action":{"type":"question:ask"}}""",
+            )
+        assertEquals(ThreadActionCardHandledBy("m-4", "u-mei", "mei", inCardThread = false), missingInCardThread.handledBy)
+        assertTrue(missingInCardThread.isHandled)
+
+        // Absent or null `handledBy` stays plain Withdrawn.
+        val plainWithdrawn = wire("""{"kind":"action-card","state":"withdrawn","action":{"type":"question:ask"}}""")
+        assertNull(plainWithdrawn.handledBy)
+        assertTrue(plainWithdrawn.isWithdrawn)
+        assertFalse(plainWithdrawn.isHandled)
+        assertEquals(RaftActionCardStatus.Withdrawn, plainWithdrawn.actionCardSpecStatus())
+
+        val nullHandledBy = wire("""{"kind":"action-card","state":"withdrawn","handledBy":null,"action":{"type":"question:ask"}}""")
+        assertNull(nullHandledBy.handledBy)
+        assertFalse(nullHandledBy.isHandled)
+        assertEquals(RaftActionCardStatus.Withdrawn, nullHandledBy.actionCardSpecStatus())
+
+        // Malformed or incomplete `handledBy` payloads are ignored cleanly without crashing.
+        val malformedCases =
+            listOf(
+                """{"kind":"action-card","state":"withdrawn","handledBy":"not-an-object","action":{"type":"question:ask"}}""",
+                """{"kind":"action-card","state":"withdrawn","handledBy":{},"action":{"type":"question:ask"}}""",
+                """{"kind":"action-card","state":"withdrawn","handledBy":{"messageId":"","userId":"u-mei","handle":"mei","inCardThread":false},"action":{"type":"question:ask"}}""",
+                """{"kind":"action-card","state":"withdrawn","handledBy":{"messageId":"m-2","userId":" ","handle":"mei","inCardThread":false},"action":{"type":"question:ask"}}""",
+                """{"kind":"action-card","state":"withdrawn","handledBy":{"messageId":"m-2","userId":"u-mei","handle":"","inCardThread":false},"action":{"type":"question:ask"}}""",
+                """{"kind":"action-card","state":"withdrawn","handledBy":{"messageId":"m-2","userId":"u-mei","handle":"mei","inCardThread":"true"},"action":{"type":"question:ask"}}""",
+            )
+        for (raw in malformedCases) {
+            val parsed = wire(raw)
+            assertNull(parsed.handledBy, raw)
+            assertFalse(parsed.isHandled, raw)
+            assertEquals(RaftActionCardStatus.Withdrawn, parsed.actionCardSpecStatus(), raw)
+        }
+
+        // Non-withdrawn state or non-question card never reports Handled.
+        val preparedWithHandled =
+            wire(
+                """{"kind":"action-card","state":"prepared",
+                   "handledBy":{"messageId":"m-2","userId":"u-mei","handle":"mei","inCardThread":false},
+                   "action":{"type":"question:ask"}}""",
+            )
+        assertFalse(preparedWithHandled.isHandled)
+        assertEquals(RaftActionCardStatus.Prepared, preparedWithHandled.actionCardSpecStatus())
+
+        val requestCardWithHandled =
+            wire(
+                """{"kind":"action-card","state":"withdrawn",
+                   "handledBy":{"messageId":"m-2","userId":"u-mei","handle":"mei","inCardThread":false},
+                   "action":{"type":"request:prepare"}}""",
+            )
+        assertFalse(requestCardWithHandled.isHandled)
+        assertEquals(RaftActionCardStatus.Withdrawn, requestCardWithHandled.actionCardSpecStatus())
+    }
+
+    @Test
+    fun handledByNavigationResolvesChannelDmReplyThreadAndTaskSurfaces() {
+        val beside = ThreadActionCardHandledBy(messageId = "m-2", userId = "u-mei", handle = "mei", inCardThread = false)
+        val inThread = ThreadActionCardHandledBy(messageId = "m-3", userId = "u-mei", handle = "mei", inCardThread = true)
+
+        val channel = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.Channel, channelKind = "channel", sourceThreadId = "ch-1")
+        assertEquals(
+            ActionCardHandledByNavigation.JumpInCurrentConversation("m-2"),
+            resolveActionCardHandledByNavigation(channel, cardMessageId = "m-1", handledBy = beside),
+        )
+        assertEquals(
+            ActionCardHandledByNavigation.OpenCardThread(
+                parentMessageId = "m-1",
+                parentChannelId = "ch-1",
+                threadChannelId = "th-1",
+                focusedMessageId = "m-3",
+            ),
+            resolveActionCardHandledByNavigation(channel, cardMessageId = "m-1", handledBy = inThread, knownThreadChannelId = "th-1"),
+        )
+
+        val dm = RaftThreadScreenPayload(surfaceKind = RaftThreadSurfaceKind.DirectMessage, channelKind = "dm", sourceThreadId = "dm-1")
+        assertEquals(
+            ActionCardHandledByNavigation.JumpInCurrentConversation("m-2"),
+            resolveActionCardHandledByNavigation(dm, cardMessageId = "m-1", handledBy = beside),
+        )
+        assertEquals(
+            ActionCardHandledByNavigation.OpenCardThread(
+                parentMessageId = "m-1",
+                parentChannelId = "dm-1",
+                threadChannelId = null,
+                focusedMessageId = "m-3",
+            ),
+            resolveActionCardHandledByNavigation(dm, cardMessageId = "m-1", handledBy = inThread),
+        )
+
+        val replyThread =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.ReplyThread,
+                channelKind = "thread",
+                sourceThreadId = "th-1",
+                parentChannelId = "ch-1",
+                parentMessageId = "m-1",
+            )
+        // Origin card viewed inside its own reply thread: in-thread jumps in place; same-conversation opens parent channel.
+        assertEquals(
+            ActionCardHandledByNavigation.JumpInCurrentConversation("m-3"),
+            resolveActionCardHandledByNavigation(replyThread, cardMessageId = "m-1", handledBy = inThread),
+        )
+        assertEquals(
+            ActionCardHandledByNavigation.OpenParentConversation("m-2"),
+            resolveActionCardHandledByNavigation(replyThread, cardMessageId = "m-1", handledBy = beside),
+        )
+        // Reply card inside a reply thread: same-conversation jumps in place; nested threads do not exist.
+        assertEquals(
+            ActionCardHandledByNavigation.JumpInCurrentConversation("m-2"),
+            resolveActionCardHandledByNavigation(replyThread, cardMessageId = "m-9", handledBy = beside),
+        )
+        assertNull(resolveActionCardHandledByNavigation(replyThread, cardMessageId = "m-9", handledBy = inThread))
+
+        val taskConversation =
+            RaftThreadScreenPayload(
+                surfaceKind = RaftThreadSurfaceKind.Channel,
+                channelKind = RaftTaskConversationChannelKind,
+                sourceThreadId = "task-ch-1",
+            )
+        assertEquals(
+            ActionCardHandledByNavigation.JumpInCurrentConversation("m-2"),
+            resolveActionCardHandledByNavigation(taskConversation, cardMessageId = "m-1", handledBy = beside),
+        )
+        assertNull(resolveActionCardHandledByNavigation(taskConversation, cardMessageId = "m-1", handledBy = inThread))
+
+        assertNull(resolveActionCardHandledByNavigation(channel, cardMessageId = "", handledBy = beside))
+        assertNull(resolveActionCardHandledByNavigation(channel, cardMessageId = "m-1", handledBy = beside.copy(messageId = " ")))
+    }
+
+    @Test
     fun anEndedSpecCardShowsNoButtonThatChangesItButKeepsItsLinks() {
         val read =
             assertNotNull(
@@ -202,7 +374,7 @@ class ThreadActionCardExpiryTest {
         val spec = assertNotNull(stripActionCardSpec(read, RAFT_APP_ACTION_CARD_CAPABILITIES))
         val go = spec.spec.element("go") as ActionCardSpecButton
         val site = spec.spec.element("site") as ActionCardSpecButton
-        for (status in listOf(RaftActionCardStatus.Expired, RaftActionCardStatus.Withdrawn, RaftActionCardStatus.Closed, RaftActionCardStatus.Ended)) {
+        for (status in listOf(RaftActionCardStatus.Expired, RaftActionCardStatus.Withdrawn, RaftActionCardStatus.Handled, RaftActionCardStatus.Closed, RaftActionCardStatus.Ended)) {
             val frame = RaftActionCardFrameState(status = status)
             assertEquals(RaftCardButtonState.Hidden, actionCardFrameButtonState(frame, "go", go), status.name)
             assertEquals(RaftCardButtonState.Enabled, actionCardFrameButtonState(frame, "site", site), status.name)
@@ -237,6 +409,13 @@ class ThreadActionCardExpiryTest {
             assertTrue(threadActionCardCommitBlockedByEnd(card(type = type, state = "expired", expiresAt = null), before), type)
         }
         assertTrue(threadActionCardCommitBlockedByEnd(card(type = "question:ask", state = "withdrawn"), before))
+        assertTrue(
+            threadActionCardCommitBlockedByEnd(
+                card(type = "question:ask", state = "withdrawn")
+                    .copy(handledBy = ThreadActionCardHandledBy("m-2", "u-1", "mei", inCardThread = false)),
+                before,
+            ),
+        )
         assertTrue(threadActionCardCommitBlockedByEnd(card(type = "question:ask", state = "closed"), before))
         assertTrue(threadActionCardCommitBlockedByEnd(card(type = "question:ask", state = "someday"), before))
         assertTrue(threadActionCardCommitBlockedByEnd(card(state = "someday"), before))

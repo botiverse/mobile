@@ -5492,6 +5492,9 @@
     <string name="action_card_question_expired_line_anyone">За %1$s никто не ответил. Агент %2$s уведомлён.</string>
     <string name="action_card_question_withdrawn_line_one">Агент %1$s отозвал этот вопрос.</string>
     <string name="action_card_question_withdrawn_line_other">Агент %1$s отозвал эти вопросы.</string>
+    <string name="action_card_question_status_handled">Решён</string>
+    <string name="action_card_question_handled_line">Решён %1$s.</string>
+    <string name="action_card_question_handled_line_link">сообщением %1$s</string>
     <string name="action_card_question_closed_line">Вопрос закрыт: %1$s.</string>
     <string name="action_card_question_wait_days_one">%1$d день</string>
     <string name="action_card_question_wait_days_other">%1$d дн.</string>

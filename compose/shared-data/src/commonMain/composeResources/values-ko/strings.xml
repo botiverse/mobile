@@ -4921,6 +4921,9 @@
     <string name="action_card_question_expired_line_anyone">%1$s 안에 아무도 답변하지 않았어요. %2$s에게 알렸어요.</string>
     <string name="action_card_question_withdrawn_line_one">%1$s이(가) 질문을 철회했어요.</string>
     <string name="action_card_question_withdrawn_line_other">%1$s이(가) 질문을 철회했어요.</string>
+    <string name="action_card_question_status_handled">처리됨</string>
+    <string name="action_card_question_handled_line">%1$s로 처리했어요.</string>
+    <string name="action_card_question_handled_line_link">%1$s의 메시지</string>
     <string name="action_card_question_closed_line">%1$s 님이 질문을 닫았어요.</string>
     <string name="action_card_question_wait_days_one">%1$d일</string>
     <string name="action_card_question_wait_days_other">%1$d일</string>

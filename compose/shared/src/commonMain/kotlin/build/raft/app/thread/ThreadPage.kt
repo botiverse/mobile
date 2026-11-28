@@ -3402,6 +3402,8 @@ private fun SharedThreadRouteContentContent(
             genericActionCardSuccessLabel = genericActionCardSuccessLabel,
             routeAuthRequired = { result -> routeAuthRequired(result) },
             renderedThread = renderedThread,
+            replyMetadataByParentId = replyMetadataByParentId,
+            onOpenThreadPayload = onOpenThreadPayload,
             currentServerSlug = currentServerSlug,
             sharedHomeState = sharedHomeState,
             currentSession = currentSession,
