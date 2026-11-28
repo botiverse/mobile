@@ -2,13 +2,18 @@ package build.raft.app.data
 
 /**
  * Shared domain models for Agent View Context and Settings › Administration › Context access
- * for agents (`botiverse/slock` #12980, #13548, #13550, #14072, #14560).
+ * for agents (`botiverse/slock` #12980, #13548, #13550, #14072, #14560, #17276, #17284,
+ * #17300, #17306, #17311, #17316).
  *
  * Wire contract sources:
  * - `packages/shared/src/agentContextView.ts`
  * - `packages/shared/src/agentContextViewStatus.ts`
  * - `packages/shared/src/agentContextViewGrant.ts`
  * - `packages/shared/src/diagnosticRedaction.ts`
+ * - `packages/shared/src/agentMessageText.ts`
+ * - `packages/shared/src/agentText/raftDeliveryParse.ts`
+ * - `packages/shared/src/agentText/attachedFrames.ts`
+ * - `packages/shared/src/agentText/raftBlocks.ts`
  */
 
 const val AGENT_CONTEXT_VIEW_DEFAULT_RETENTION_DAYS: Int = 30
@@ -538,3 +543,217 @@ fun agentContextViewSectionCharCounts(context: AgentContextView): Triple<Int, In
         }
     return Triple(systemChars, toolsChars, messageChars)
 }
+
+/**
+ * Longest external display name agents are handed, in Unicode code points
+ * (`botiverse/slock` #17276 `AGENT_EXTERNAL_SENDER_DISPLAY_NAME_MAX`).
+ */
+const val AGENT_EXTERNAL_SENDER_DISPLAY_NAME_MAX: Int = 80
+
+/** Stand-in display name when cleaning leaves no printable text (`AGENT_EXTERNAL_SENDER_UNNAMED`). */
+const val AGENT_EXTERNAL_SENDER_UNNAMED: String = "unknown"
+
+/** Prefix of every continuation line of a quoted agent body (`AGENT_BODY_CONTINUATION_PREFIX`). */
+const val AGENT_BODY_CONTINUATION_PREFIX: String = "  \u2502 "
+
+/**
+ * Closed set of external author sources for agent-facing text (`botiverse/slock` #17276):
+ * `slack`, or `external` for any other provider.
+ */
+enum class AgentExternalSenderSource(val wireValue: String) {
+    Slack("slack"),
+    External("external");
+
+    companion object {
+        fun fromWire(raw: String?): AgentExternalSenderSource? =
+            entries.firstOrNull { it.wireValue == raw }
+    }
+}
+
+/**
+ * Author mirrored from another service (never a Raft account, never rendered as `@handle`).
+ * `displayName` is normalized via [normalizeAgentExternalSenderDisplayName].
+ */
+data class AgentExternalSender(
+    val source: AgentExternalSenderSource,
+    val displayName: String,
+)
+
+/** Header field gating attached-frame parsing (`botiverse/slock` #17311). */
+const val RAFT_MESSAGE_FRAMES_FIELD: String = "frames"
+const val RAFT_MESSAGE_FRAMES_VALUE: String = "1"
+const val RAFT_MESSAGE_FRAMES_MARKER: String = "$RAFT_MESSAGE_FRAMES_FIELD=$RAFT_MESSAGE_FRAMES_VALUE"
+
+/** First character of an attached-frame content line and its standard prefix (`botiverse/slock` #17306). */
+const val RAFT_FRAME_GUTTER: String = "\u2502"
+const val RAFT_FRAME_CONTENT_PREFIX: String = "$RAFT_FRAME_GUTTER "
+const val RAFT_FRAME_DOWNLOAD_LABEL: String = "Download: "
+const val RAFT_FRAME_REPLY_LABEL: String = "Reply: "
+
+/** Parsed `[raft <kind> key=value ...]` frame header. */
+data class RaftFrameHeader(
+    val kind: String,
+    val fields: Map<String, String>,
+)
+
+/** Sender's own profile description (`[raft about who=@x by=self]`). */
+data class RaftAttachedAbout(
+    val who: String,
+    val description: String,
+)
+
+/** Attachment frame (`[raft attachment id=<hex|uuid>]` + content filename). */
+data class RaftAttachedAttachment(
+    val id: String,
+    val filename: String,
+)
+
+/** Task frame (`[raft task ref=<taskRef> status=<status> [assignee=@handle]]`). */
+data class RaftAttachedTask(
+    val ref: String,
+    val status: String,
+    val assignee: String? = null,
+)
+
+/**
+ * `[raft value key=<name>]`: unchecked free text under a free-text key.
+ * Never treated as a ref, handle, or Raft label.
+ */
+data class RaftAttachedValue(
+    val key: String,
+    val text: String,
+)
+
+/**
+ * Structured attached frames parsed under a message whose header explicitly carries `frames=1`
+ * (`botiverse/slock` #17306, #17311).
+ */
+data class RaftAttached(
+    val about: RaftAttachedAbout? = null,
+    val attachments: List<RaftAttachedAttachment> = emptyList(),
+    val tasks: List<RaftAttachedTask> = emptyList(),
+    val replyRef: String? = null,
+    val values: List<RaftAttachedValue> = emptyList(),
+    val skipped: List<String> = emptyList(),
+)
+
+/** Half-open line span `[start, end)` of one frame or sentence inside an attached run. */
+data class RaftAttachedUnit(
+    val start: Int,
+    val end: Int,
+)
+
+/** Output of [readRaftAttached]: accumulated attached data, frame units, and next unread line index. */
+data class RaftAttachedRun(
+    val attached: RaftAttached,
+    val units: List<RaftAttachedUnit>,
+    val end: Int,
+)
+
+enum class RaftNoticeKind {
+    Inbox,
+    Task,
+    Message,
+    Generic,
+}
+
+enum class RaftInboxNoticeReason {
+    New,
+    Away,
+    Idle,
+}
+
+data class RaftInboxOlderUnread(
+    val messages: Int,
+    val targets: Int,
+)
+
+data class RaftInboxTarget(
+    val target: String,
+    val pending: Int? = null,
+    val latestSender: String? = null,
+    /** Set when the latest sender is not a Raft account (`latestSender` is then null). */
+    val latestExternalSender: AgentExternalSender? = null,
+    val preview: String? = null,
+    val mentioned: Boolean = false,
+)
+
+data class RaftTaskItem(
+    val ref: String,
+    val status: String,
+    val title: String,
+    val why: String? = null,
+)
+
+data class RaftField(
+    val key: String,
+    val value: String,
+)
+
+/**
+ * One segment of a Raft-delivered user text part (`packages/shared/src/agentText/raftDeliveryParse.ts`),
+ * with exact `[start, end)` character offsets into the original text.
+ */
+sealed interface RaftNoticeSegment {
+    val start: Int
+    val end: Int
+
+    data class Text(
+        override val start: Int,
+        override val end: Int,
+    ) : RaftNoticeSegment
+
+    sealed interface Notice : RaftNoticeSegment {
+        val noticeKind: RaftNoticeKind
+    }
+
+    data class Inbox(
+        override val start: Int,
+        override val end: Int,
+        val pendingTotal: Int?,
+        val targets: List<RaftInboxTarget>,
+        val reason: RaftInboxNoticeReason? = null,
+        val older: RaftInboxOlderUnread? = null,
+    ) : Notice {
+        override val noticeKind: RaftNoticeKind get() = RaftNoticeKind.Inbox
+    }
+
+    data class Task(
+        override val start: Int,
+        override val end: Int,
+        val count: Int?,
+        val tasks: List<RaftTaskItem>,
+    ) : Notice {
+        override val noticeKind: RaftNoticeKind get() = RaftNoticeKind.Task
+    }
+
+    data class Message(
+        override val start: Int,
+        override val end: Int,
+        val fields: List<RaftField>,
+        val target: String?,
+        val time: String?,
+        val sender: String?,
+        /** Set when the author is not a Raft account (`sender` is then null). */
+        val externalSender: AgentExternalSender? = null,
+        val body: String,
+        /** Present only when the message header carries `frames=1` and at least one frame run follows. */
+        val attached: RaftAttached? = null,
+    ) : Notice {
+        override val noticeKind: RaftNoticeKind get() = RaftNoticeKind.Message
+    }
+
+    data class Generic(
+        override val start: Int,
+        override val end: Int,
+        val label: String,
+    ) : Notice {
+        override val noticeKind: RaftNoticeKind get() = RaftNoticeKind.Generic
+    }
+}
+
+/** A user text part delivered by Raft: its ordered segments and count of notice segments (>= 1). */
+data class RaftDelivery(
+    val segments: List<RaftNoticeSegment>,
+    val notices: Int,
+)
