@@ -322,7 +322,7 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
-    fun generatedVariantConfigEnablesDeltaOnlyForExactAlphaPreviewAndMainRelease() {
+    fun generatedVariantConfigEnablesDeltaOnlyForExactAlphaBetaPreviewAndMainRelease() {
         val isExactAlpha =
             BuildConfig.BUILD_TYPE == "alpha" &&
                 BuildConfig.APPLICATION_ID == HANDS_DELTA_ALPHA_APPLICATION_ID
@@ -331,6 +331,11 @@ class HandsDeltaUpdateGateTest {
                 BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
                 BuildConfig.HANDS_APP_SLUG == HANDS_DELTA_PRODUCTION_APP_SLUG &&
                 BuildConfig.HANDS_CHANNEL == HANDS_DELTA_RELEASE_ALPHA_CHANNEL
+        val isExactBetaRelease =
+            BuildConfig.BUILD_TYPE == "release" &&
+                BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
+                BuildConfig.HANDS_APP_SLUG == HANDS_DELTA_PRODUCTION_APP_SLUG &&
+                BuildConfig.HANDS_CHANNEL == HANDS_DELTA_BETA_CHANNEL
         val isExactPreviewRelease =
             BuildConfig.BUILD_TYPE == "release" &&
                 BuildConfig.APPLICATION_ID == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
@@ -345,7 +350,7 @@ class HandsDeltaUpdateGateTest {
 
         assertEquals(!isPlay, BuildConfig.HANDS_APK_UPDATE_ENABLED)
         assertEquals(
-            isExactAlpha || isExactAlphaChannelRelease || isExactPreviewRelease || isExactMainRelease,
+            isExactAlpha || isExactAlphaChannelRelease || isExactBetaRelease || isExactPreviewRelease || isExactMainRelease,
             BuildConfig.HANDS_DELTA_UPDATE_ENABLED
         )
         when {
@@ -356,6 +361,10 @@ class HandsDeltaUpdateGateTest {
             isExactAlphaChannelRelease -> {
                 assertEquals(HANDS_DELTA_PRODUCTION_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
                 assertEquals(HANDS_DELTA_RELEASE_ALPHA_CHANNEL, BuildConfig.HANDS_DELTA_CHANNEL)
+            }
+            isExactBetaRelease -> {
+                assertEquals(HANDS_DELTA_PRODUCTION_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
+                assertEquals(HANDS_DELTA_BETA_CHANNEL, BuildConfig.HANDS_DELTA_CHANNEL)
             }
             isExactPreviewRelease -> {
                 assertEquals(HANDS_DELTA_PRODUCTION_APP_SLUG, BuildConfig.HANDS_DELTA_APP_SLUG)
@@ -380,7 +389,10 @@ class HandsDeltaUpdateGateTest {
                 appSlug = BuildConfig.HANDS_DELTA_APP_SLUG,
                 channel = BuildConfig.HANDS_DELTA_CHANNEL
             )
-        assertEquals(isExactAlpha || isExactAlphaChannelRelease || isExactPreviewRelease || isExactMainRelease, allowed)
+        assertEquals(
+            isExactAlpha || isExactAlphaChannelRelease || isExactBetaRelease || isExactPreviewRelease || isExactMainRelease,
+            allowed
+        )
 
         val route =
             resolveHandsUpdateRoute(
@@ -407,6 +419,16 @@ class HandsDeltaUpdateGateTest {
                         mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
                         appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                         channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                        deltaEnabled = true
+                    ),
+                    route
+                )
+            isExactBetaRelease ->
+                assertEquals(
+                    HandsUpdateRoute(
+                        mode = HANDS_UPDATE_MODE_BETA_DELTA,
+                        appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                        channel = HANDS_DELTA_BETA_CHANNEL,
                         deltaEnabled = true
                     ),
                     route
@@ -473,6 +495,36 @@ class HandsDeltaUpdateGateTest {
                 buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                 runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                 appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_BETA_CHANNEL
+            )
+        )
+        assertTrue(
+            handsDeltaUpdateAllowed(
+                configuredEnabled = true,
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary"
+            )
+        )
+        assertTrue(
+            handsDeltaUpdateAllowed(
+                configuredEnabled = true,
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary-1"
+            )
+        )
+        assertTrue(
+            handsDeltaUpdateAllowed(
+                configuredEnabled = true,
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 channel = HANDS_DELTA_PREVIEW_CHANNEL
             )
         )
@@ -514,7 +566,7 @@ class HandsDeltaUpdateGateTest {
                     appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_MAIN_CHANNEL
                 ),
-                // Play (apkUpdateEnabled=false) denied even with exact Main, Preview, or Alpha tuples
+                // Play (apkUpdateEnabled=false) denied even with exact Main, Beta, Preview, or Alpha tuples
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
                     apkUpdateEnabled = false,
@@ -522,6 +574,14 @@ class HandsDeltaUpdateGateTest {
                     runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = HANDS_DELTA_MAIN_CHANNEL
+                ),
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = false,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_BETA_CHANNEL
                 ),
                 handsDeltaUpdateAllowed(
                     configuredEnabled = true,
@@ -563,6 +623,14 @@ class HandsDeltaUpdateGateTest {
                     runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                     appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                     channel = ""
+                ),
+                handsDeltaUpdateAllowed(
+                    configuredEnabled = true,
+                    apkUpdateEnabled = true,
+                    buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = "../bad"
                 ),
                 // Other application IDs or app slugs
                 handsDeltaUpdateAllowed(
@@ -708,7 +776,7 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
-    fun routeResolutionSelectsAlphaDeltaPreviewDeltaMainDeltaOrFullApk() {
+    fun routeResolutionSelectsAlphaDeltaBetaDeltaPreviewDeltaMainDeltaOrFullApk() {
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_ALPHA_DELTA,
@@ -722,6 +790,51 @@ class HandsDeltaUpdateGateTest {
                 defaultChannel = "debug",
                 deltaAppSlug = HANDS_DELTA_ALPHA_APP_SLUG,
                 deltaChannel = HANDS_DELTA_ALPHA_CHANNEL
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "alpha",
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_BETA_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_BETA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "beta",
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_BETA_CHANNEL
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
+                mode = "canary_channel_delta",
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary",
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = "raft-android",
+                defaultChannel = "canary",
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = "canary"
             )
         )
         assertEquals(
@@ -818,17 +931,30 @@ class HandsDeltaUpdateGateTest {
     }
 
     @Test
-    fun previewRetiresToMainAndRuntimeChannelOverrideSwitchesBetweenMainAndAlpha() {
+    fun previewRetiresToMainAndRuntimeChannelOverrideFollowsServerConfiguredTargetChannel() {
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel("preview"))
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel(" PREVIEW "))
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsReleaseChannel("main"))
+        assertEquals(HANDS_DELTA_BETA_CHANNEL, normalizeHandsReleaseChannel("beta"))
         assertEquals(HANDS_DELTA_RELEASE_ALPHA_CHANNEL, normalizeHandsReleaseChannel("alpha"))
+        assertEquals("canary", normalizeHandsReleaseChannel("canary"))
         assertEquals("debug", normalizeHandsReleaseChannel("debug"))
 
-        assertEquals(HANDS_DELTA_RELEASE_ALPHA_CHANNEL, normalizeHandsRuntimeOverrideChannel("ALPHA"))
+        // Persisted overrides capture intent ("early_access" vs "main"); legacy 1.31.0 "alpha" and any
+        // valid dynamic channel slug normalize to "early_access" so users track the live server variant.
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("early_access"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel(" EARLY_ACCESS "))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("beta"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel(" BETA "))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("ALPHA"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("alpha"))
+        assertEquals(HANDS_OVERRIDE_EARLY_ACCESS, normalizeHandsRuntimeOverrideChannel("canary"))
         assertEquals(HANDS_DELTA_MAIN_CHANNEL, normalizeHandsRuntimeOverrideChannel("main"))
         assertNull(normalizeHandsRuntimeOverrideChannel("preview"))
         assertNull(normalizeHandsRuntimeOverrideChannel("debug"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("nightly"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("alpha-delta"))
+        assertNull(normalizeHandsRuntimeOverrideChannel("../bad"))
         assertNull(normalizeHandsRuntimeOverrideChannel(null))
 
         assertTrue(
@@ -846,7 +972,34 @@ class HandsDeltaUpdateGateTest {
                 buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                 runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
                 defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_BETA_CHANNEL
+            )
+        )
+        assertTrue(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = "canary"
+            )
+        )
+        assertTrue(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 defaultChannel = HANDS_DELTA_PREVIEW_CHANNEL
+            )
+        )
+        assertTrue(
+            handsRuntimeChannelSwitchSupported(
+                apkUpdateEnabled = true,
+                buildApplicationId = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                runtimePackageName = HANDS_DELTA_PRODUCTION_APPLICATION_ID,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL
             )
         )
         assertFalse(
@@ -868,12 +1021,99 @@ class HandsDeltaUpdateGateTest {
             )
         )
 
-        // Switching a production main/preview build to alpha enables alpha_channel_delta when visible.
+        // Switching a production main/preview build to Early access enables beta_channel_delta by default.
         assertEquals(
             HandsUpdateRoute(
-                mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
+                mode = HANDS_UPDATE_MODE_BETA_DELTA,
                 appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
-                channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                channel = HANDS_DELTA_BETA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                overrideChannel = HANDS_OVERRIDE_EARLY_ACCESS,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = false,
+                earlyAccessChannel = HANDS_DELTA_BETA_CHANNEL
+            )
+        )
+        // Server variant "canary" routes BOTH defaultOn and explicit opt-in (including legacy "alpha"
+        // prefs) to canary with delta updates enabled.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = "canary_channel_delta",
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary",
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                overrideChannel = null,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = true,
+                earlyAccessChannel = "canary"
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
+                mode = "canary_channel_delta",
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = "canary",
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                overrideChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true,
+                earlyAccessDefaultOn = false,
+                earlyAccessChannel = "canary"
+            )
+        )
+        // Invalid or production earlyAccessChannel variants safely fall back to "beta".
+        for (invalidTarget in listOf("", "main", "preview", "../bad")) {
+            assertEquals(
+                invalidTarget,
+                HandsUpdateRoute(
+                    mode = HANDS_UPDATE_MODE_BETA_DELTA,
+                    appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    channel = HANDS_DELTA_BETA_CHANNEL,
+                    deltaEnabled = true
+                ),
+                resolveHandsUpdateRoute(
+                    deltaEnabled = true,
+                    defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    defaultChannel = HANDS_DELTA_MAIN_CHANNEL,
+                    deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                    deltaChannel = HANDS_DELTA_MAIN_CHANNEL,
+                    overrideChannel = HANDS_OVERRIDE_EARLY_ACCESS,
+                    channelSwitchSupported = true,
+                    earlyAccessVisible = true,
+                    earlyAccessDefaultOn = false,
+                    earlyAccessChannel = invalidTarget
+                )
+            )
+        }
+        // Legacy 1.31.0 persisted "alpha" override seamlessly migrates to default "beta" when visible.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_BETA_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_BETA_CHANNEL,
                 deltaEnabled = true
             ),
             resolveHandsUpdateRoute(
@@ -888,12 +1128,12 @@ class HandsDeltaUpdateGateTest {
                 earlyAccessDefaultOn = false
             )
         )
-        // Server defaultOn=true (with visible=true) routes untouched installs to alpha.
+        // Server defaultOn=true (with visible=true) routes untouched installs to beta by default.
         assertEquals(
             HandsUpdateRoute(
-                mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
+                mode = HANDS_UPDATE_MODE_BETA_DELTA,
                 appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
-                channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                channel = HANDS_DELTA_BETA_CHANNEL,
                 deltaEnabled = true
             ),
             resolveHandsUpdateRoute(
@@ -908,7 +1148,7 @@ class HandsDeltaUpdateGateTest {
                 earlyAccessDefaultOn = true
             )
         )
-        // Explicit user opt-out (overrideChannel=main) wins over server defaultOn=true.
+        // Explicit user opt-out (overrideChannel=main) wins over server defaultOn=true even for "canary".
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_MAIN_DELTA,
@@ -925,10 +1165,11 @@ class HandsDeltaUpdateGateTest {
                 overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
                 channelSwitchSupported = true,
                 earlyAccessVisible = true,
-                earlyAccessDefaultOn = true
+                earlyAccessDefaultOn = true,
+                earlyAccessChannel = "canary"
             )
         )
-        // Revoking visibility falls back to main even when overrideChannel or defaultOn was set.
+        // Revoking visibility falls back to main for main/preview builds even when override or defaultOn was set.
         assertEquals(
             HandsUpdateRoute(
                 mode = HANDS_UPDATE_MODE_MAIN_DELTA,
@@ -942,10 +1183,67 @@ class HandsDeltaUpdateGateTest {
                 defaultChannel = HANDS_DELTA_PREVIEW_CHANNEL,
                 deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
                 deltaChannel = HANDS_DELTA_PREVIEW_CHANNEL,
-                overrideChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                overrideChannel = HANDS_DELTA_BETA_CHANNEL,
                 channelSwitchSupported = true,
                 earlyAccessVisible = false,
                 earlyAccessDefaultOn = true
+            )
+        )
+        // A beta-built release APK enables beta_channel_delta and can opt back out to main.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_BETA_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_BETA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_BETA_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_BETA_CHANNEL,
+                overrideChannel = null,
+                channelSwitchSupported = true,
+                earlyAccessVisible = false
+            )
+        )
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_MAIN_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_MAIN_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_BETA_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_BETA_CHANNEL,
+                overrideChannel = HANDS_DELTA_MAIN_CHANNEL,
+                channelSwitchSupported = true,
+                earlyAccessVisible = true
+            )
+        )
+        // An engineering alpha-built release APK continues to delta-update on alpha when earlyAccessVisible=false.
+        assertEquals(
+            HandsUpdateRoute(
+                mode = HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA,
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                deltaEnabled = true
+            ),
+            resolveHandsUpdateRoute(
+                deltaEnabled = true,
+                defaultAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                defaultChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                deltaAppSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                deltaChannel = HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
+                overrideChannel = null,
+                channelSwitchSupported = true,
+                earlyAccessVisible = false,
+                earlyAccessDefaultOn = false
             )
         )
         // Switching back to main returns to main_delta even if originally built for alpha.
@@ -1125,6 +1423,16 @@ class HandsDeltaUpdateGateTest {
                 fullSizeBytes = 94_411_540L
             ),
             updateResponse().handsUpdateDisplaySizes(deltaEnabled = true)
+        )
+        assertEquals(
+            HandsUpdateDisplaySizes(
+                patchSizeBytes = 95_256L,
+                fullSizeBytes = 94_411_540L
+            ),
+            updateResponse(
+                appSlug = HANDS_DELTA_PRODUCTION_APP_SLUG,
+                channel = HANDS_DELTA_BETA_CHANNEL
+            ).handsUpdateDisplaySizes(deltaEnabled = true)
         )
         assertEquals(
             HandsUpdateDisplaySizes(

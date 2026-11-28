@@ -245,19 +245,42 @@ const val MOBILE_FCM_PROBE_FEATURE_FLAG_KEY: String = "mobile_fcm_probe_v0"
 
 /**
  * Long-lived UI visibility gate for Early access enrollment in Settings › About
- * (`#proj-mobile:e48030bc`, artin 2026-11-26). Per server, default OFF (unresolved evaluates false).
- * Enabled on any joined server surfaces the Early access row (Android direct-install `alpha` toggle
- * or Google Play / iOS TestFlight enrollment link).
+ * (`#proj-mobile:e48030bc`, artin 2026-11-26; dynamic target channel via `variant` in
+ * `#proj-mobile:#430`, `dm:@artin msg=fec09e0f`). Per server, default OFF (unresolved evaluates
+ * false). Enabled on any joined server surfaces the Early access row (Android direct-install
+ * runtime channel toggle or Google Play / iOS TestFlight enrollment link). Its optional `variant`
+ * names the target Hands channel slug (defaulting to [DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL]).
  */
 const val MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY: String = "mobile_early_access_visible_v0"
 
 /**
- * Long-lived default-channel gate for Early access (`#proj-mobile:e48030bc`, artin 2026-11-26).
- * Per server, default OFF (unresolved evaluates false). When [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY]
+ * Long-lived default-channel gate for Early access (`#proj-mobile:e48030bc`, artin 2026-11-26;
+ * dynamic target channel via `variant` in `#proj-mobile:#430`, `dm:@artin msg=fec09e0f`). Per
+ * server, default OFF (unresolved evaluates false). When [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY]
  * is also enabled and the user has not explicitly toggled the local channel override, Android
- * direct-install defaults to the Hands `alpha` channel.
+ * direct-install defaults to the server-configured Early access Hands channel (`variant`, fallback
+ * [DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL]).
  */
 const val MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY: String = "mobile_early_access_default_on_v0"
+
+/** Fallback Hands channel slug for Early access when neither flag specifies a valid `variant`. */
+const val DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL: String = "beta"
+
+private val MOBILE_EARLY_ACCESS_CHANNEL_SLUG_REGEX = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+private val MOBILE_EARLY_ACCESS_FORBIDDEN_CHANNELS: Set<String> =
+    setOf("main", "preview", "debug", "nightly", "alpha-delta")
+
+/**
+ * Normalizes a server feature-flag `variant` naming the Hands Early access target channel
+ * (`#proj-mobile:#430`, `dm:@artin msg=fec09e0f`). Accepts lowercase Hands release channel slugs
+ * (`^[a-z0-9]+(?:-[a-z0-9]+)*$`) other than production, retired, or non-release carriers (`main`,
+ * `preview`, `debug`, `nightly`, `alpha-delta`); rejects blank or invalid values with `null`.
+ */
+fun normalizeMobileEarlyAccessChannelVariant(raw: String?): String? {
+    val normalized = raw?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    if (normalized in MOBILE_EARLY_ACCESS_FORBIDDEN_CHANNELS) return null
+    return normalized.takeIf { MOBILE_EARLY_ACCESS_CHANNEL_SLUG_REGEX.matches(it) }
+}
 
 /**
  * Per-server wide rail places (botiverse/slock #16715 `packages/web/src/store/serverFeatureFlags.ts`
@@ -392,6 +415,7 @@ const val PRIVATE_MENTION_ADD_FEATURE_FLAG_KEY: String = "private_mention_add_v0
 data class RaftEarlyAccessFlagPolicy(
     val visible: Boolean = false,
     val defaultOn: Boolean = false,
+    val channel: String = DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL,
 )
 
 /**
@@ -911,16 +935,44 @@ class SharedServerFeatureFlags(
         isEnabled(serverId, PRO_SEAT_ADD_FEATURE_FLAG_KEY)
 
     /**
-     * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`):
-     * visible iff any joined server enables [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY];
-     * defaultOn iff visible and any joined server enables [MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY].
+     * Resolves the account-wide Early access policy across [serverIds] (`#proj-mobile:e48030bc`,
+     * `#proj-mobile:#430`):
+     * - `visible`: true iff any joined server enables [MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY];
+     * - `defaultOn`: true iff `visible` and any joined server enables [MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY];
+     * - `channel`: target Hands channel slug from `variant` on enabled visibility flags first, then
+     *   enabled default-on flags, normalized via [normalizeMobileEarlyAccessChannelVariant], falling
+     *   back to [DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL] (`"beta"`).
      */
     fun earlyAccessPolicy(serverIds: Collection<String>): RaftEarlyAccessFlagPolicy {
         val ids = serverIds.asSequence().map(String::trim).filter(String::isNotEmpty).distinct().toList()
         if (ids.isEmpty()) return RaftEarlyAccessFlagPolicy()
-        val visible = ids.any { isEnabled(ServerId(it), MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY) }
-        val defaultOn = visible && ids.any { isEnabled(ServerId(it), MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY) }
-        return RaftEarlyAccessFlagPolicy(visible = visible, defaultOn = defaultOn)
+        val visibleServerIds = ids.filter { isEnabled(ServerId(it), MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY) }
+        val visible = visibleServerIds.isNotEmpty()
+        val defaultOnServerIds =
+            if (visible) {
+                ids.filter { isEnabled(ServerId(it), MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY) }
+            } else {
+                emptyList()
+            }
+        val defaultOn = defaultOnServerIds.isNotEmpty()
+        val channel =
+            if (visible) {
+                visibleServerIds
+                    .firstNotNullOfOrNull { id ->
+                        normalizeMobileEarlyAccessChannelVariant(
+                            serverEffectiveVariant(ServerId(id), MOBILE_EARLY_ACCESS_VISIBLE_FEATURE_FLAG_KEY)
+                        )
+                    }
+                    ?: defaultOnServerIds.firstNotNullOfOrNull { id ->
+                        normalizeMobileEarlyAccessChannelVariant(
+                            serverEffectiveVariant(ServerId(id), MOBILE_EARLY_ACCESS_DEFAULT_ON_FEATURE_FLAG_KEY)
+                        )
+                    }
+                    ?: DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+            } else {
+                DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+            }
+        return RaftEarlyAccessFlagPolicy(visible = visible, defaultOn = defaultOn, channel = channel)
     }
 
     /**
@@ -934,6 +986,13 @@ class SharedServerFeatureFlags(
         val stored = lastKnown?.read(serverId, key) ?: return key in clientDefaultOnKeys
         logLastKnownUse(serverId, key, stored)
         return stored
+    }
+
+    private fun serverEffectiveVariant(serverId: ServerId?, key: String): String? {
+        val online = serverId?.let { snapshots[it.value] }
+        if (online != null) return online.variant(key)
+        if (serverId == null) return null
+        return lastKnown?.readVariant(serverId, key)
     }
 
     private val loggedLastKnownUses = mutableSetOf<String>()
@@ -1123,7 +1182,10 @@ class SharedServerFeatureFlags(
         // with the global request generation and performs its own ordering/active-selection checks.
         if (accepted == null) return snapshotFor(serverId)
         if (accepted && lastKnown != null) {
-            val stored = lastKnownScope?.let { scope -> lastKnown.writeIfCurrent(scope, snapshot.values) } == true
+            val stored =
+                lastKnownScope?.let { scope ->
+                    lastKnown.writeIfCurrent(scope, snapshot.values, snapshot.variants)
+                } == true
             val persistedKeys = snapshot.values.keys.filter { it in lastKnown.keys }
             if (persistedKeys.isNotEmpty()) {
                 diagnosticsLogger?.invoke(

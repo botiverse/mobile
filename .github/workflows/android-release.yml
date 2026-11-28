@@ -154,12 +154,13 @@ on:
         type: string
         default: ""
       hands_channel:
-        description: "Hands channel: main | preview | alpha | nightly | debug"
+        description: "Hands channel: main | beta | preview | alpha | nightly | debug"
         required: true
         type: choice
         default: "main"
         options:
           - main
+          - beta
           - preview
           - alpha
           - nightly
@@ -174,7 +175,7 @@ on:
           - play
           - debug
       android_abi_filters:
-        description: "Optional comma-separated Android ABIs (arm64-v8a | x86_64 | arm64-v8a,x86_64); empty defaults to arm64-v8a for release main/preview/alpha, else arm64-v8a,x86_64"
+        description: "Optional comma-separated Android ABIs (arm64-v8a | x86_64 | arm64-v8a,x86_64); empty defaults to arm64-v8a for release main/beta/preview/alpha, else arm64-v8a,x86_64"
         required: false
         type: string
         default: ""
@@ -302,7 +303,7 @@ jobs:
           esac
           RAW_ABI_FILTERS="$(printf '%s' "${INPUT_ANDROID_ABI_FILTERS}" | tr -d '[:space:]')"
           if [ -z "${RAW_ABI_FILTERS}" ]; then
-            if [ "${INPUT_ANDROID_VARIANT}" = "release" ] && { [ "${INPUT_HANDS_CHANNEL}" = "main" ] || [ "${INPUT_HANDS_CHANNEL}" = "preview" ] || [ "${INPUT_HANDS_CHANNEL}" = "alpha" ]; }; then
+            if [ "${INPUT_ANDROID_VARIANT}" = "release" ] && { [ "${INPUT_HANDS_CHANNEL}" = "main" ] || [ "${INPUT_HANDS_CHANNEL}" = "beta" ] || [ "${INPUT_HANDS_CHANNEL}" = "preview" ] || [ "${INPUT_HANDS_CHANNEL}" = "alpha" ]; }; then
               ANDROID_ABI_FILTERS="arm64-v8a"
               HANDS_ARCH="arm64-v8a"
             else

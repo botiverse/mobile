@@ -6,11 +6,13 @@ import build.hands.update.INSTALL_PERMISSION_REQUIRED
 import build.hands.update.models.UpdateCheckResponse
 import build.raft.app.BuildConfig
 import build.raft.app.core.data.diagnostics.RaftAppLog
+import build.raft.app.data.DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
 import build.raft.app.data.RaftAppUpdatePermissionResumeRepository
 import build.raft.app.data.RaftEarlyAccessFlagPolicy
 import build.raft.app.data.RaftEarlyAccessPolicyHost
 import build.raft.app.data.RaftEarlyAccessPolicyHostListener
 import build.raft.app.data.SharedSettingsUpdateTransactionState
+import build.raft.app.data.normalizeMobileEarlyAccessChannelVariant
 import java.util.concurrent.atomic.AtomicBoolean
 
 internal const val HANDS_DELTA_ALPHA_APPLICATION_ID = "build.raft.app.alpha"
@@ -21,14 +23,25 @@ internal const val HANDS_DELTA_PRODUCTION_APP_SLUG = "raft-android"
 internal const val HANDS_DELTA_PREVIEW_APPLICATION_ID = HANDS_DELTA_PRODUCTION_APPLICATION_ID
 internal const val HANDS_DELTA_PREVIEW_APP_SLUG = HANDS_DELTA_PRODUCTION_APP_SLUG
 internal const val HANDS_DELTA_RELEASE_ALPHA_CHANNEL = "alpha"
+internal const val HANDS_DELTA_BETA_CHANNEL = "beta"
 internal const val HANDS_DELTA_PREVIEW_CHANNEL = "preview"
 internal const val HANDS_DELTA_MAIN_CHANNEL = "main"
+internal const val HANDS_OVERRIDE_EARLY_ACCESS = "early_access"
 internal const val HANDS_UPDATE_MODE_ALPHA_DELTA = "alpha_delta"
 internal const val HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA = "alpha_channel_delta"
+internal const val HANDS_UPDATE_MODE_BETA_DELTA = "beta_channel_delta"
 internal const val HANDS_UPDATE_MODE_PREVIEW_DELTA = "preview_delta"
 internal const val HANDS_UPDATE_MODE_MAIN_DELTA = "main_delta"
 internal const val HANDS_UPDATE_MODE_FULL_APK = "full_apk"
 internal const val HANDS_DELTA_PROGRESS_TOKEN_PREFIX = "hands_sdk:"
+
+private val HANDS_RELEASE_CHANNEL_SLUG_REGEX = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$")
+private val HANDS_NON_RELEASE_CHANNELS = setOf("debug", "nightly", HANDS_DELTA_ALPHA_CHANNEL)
+
+internal fun isValidHandsReleaseChannelSlug(channel: String): Boolean =
+    channel.isNotEmpty() &&
+        channel !in HANDS_NON_RELEASE_CHANNELS &&
+        HANDS_RELEASE_CHANNEL_SLUG_REGEX.matches(channel)
 
 /** The bridge's Hands update actions a person starts: Settings' Check for update, and Install. */
 internal val HandsUpdateUserActions = setOf("handsUpdateCheck", "handsUpdateInstall")
@@ -92,17 +105,29 @@ internal fun normalizeHandsReleaseChannel(channel: String): String {
     return if (trimmed == HANDS_DELTA_PREVIEW_CHANNEL) HANDS_DELTA_MAIN_CHANNEL else trimmed
 }
 
-internal fun normalizeHandsRuntimeOverrideChannel(overrideChannel: String?): String? =
-    when (overrideChannel?.trim()?.lowercase()) {
-        HANDS_DELTA_MAIN_CHANNEL -> HANDS_DELTA_MAIN_CHANNEL
-        HANDS_DELTA_RELEASE_ALPHA_CHANNEL -> HANDS_DELTA_RELEASE_ALPHA_CHANNEL
+/**
+ * Normalizes a persisted or user-requested runtime Early access override intent (#proj-mobile:#430).
+ *
+ * Persisted state captures user intent (`"main"` = opted out, `"early_access"` = opted in) rather
+ * than hardcoding a single target channel so server feature-flag `variant` updates move opted-in
+ * installs without a client release. Legacy 1.31.0 installs that stored `"alpha"` (or any valid
+ * early-access channel slug such as `"beta"` or `"canary"`) normalize cleanly to `"early_access"`.
+ */
+internal fun normalizeHandsRuntimeOverrideChannel(overrideChannel: String?): String? {
+    val normalized = overrideChannel?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: return null
+    return when {
+        normalized == HANDS_DELTA_MAIN_CHANNEL -> HANDS_DELTA_MAIN_CHANNEL
+        normalized == HANDS_OVERRIDE_EARLY_ACCESS -> HANDS_OVERRIDE_EARLY_ACCESS
+        normalizeMobileEarlyAccessChannelVariant(normalized) != null -> HANDS_OVERRIDE_EARLY_ACCESS
         else -> null
     }
+}
 
 /**
- * Whether this build supports switching between Hands `main` and `alpha` at runtime without
- * reinstalling: production direct-install APKs (`build.raft.app` / `raft-android`) only.
- * Play builds, standalone `build.raft.app.alpha`, debug, and connectedTest stay locked.
+ * Whether this build supports switching between Hands `main` and the server-configured Early
+ * access channel at runtime without reinstalling: production direct-install release APKs
+ * (`build.raft.app` / `raft-android`) only. Play builds, standalone `build.raft.app.alpha`,
+ * debug, nightly, and connectedTest stay locked.
  */
 internal fun handsRuntimeChannelSwitchSupported(
     apkUpdateEnabled: Boolean,
@@ -115,11 +140,7 @@ internal fun handsRuntimeChannelSwitchSupported(
         buildApplicationId == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
         runtimePackageName == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
         defaultAppSlug == HANDS_DELTA_PRODUCTION_APP_SLUG &&
-        defaultChannel.trim().lowercase() in setOf(
-            HANDS_DELTA_MAIN_CHANNEL,
-            HANDS_DELTA_PREVIEW_CHANNEL,
-            HANDS_DELTA_RELEASE_ALPHA_CHANNEL,
-        )
+        isValidHandsReleaseChannelSlug(defaultChannel.trim().lowercase())
 
 internal fun resolveHandsEffectiveChannel(
     configuredChannel: String,
@@ -127,12 +148,18 @@ internal fun resolveHandsEffectiveChannel(
     switchSupported: Boolean,
     earlyAccessVisible: Boolean = false,
     earlyAccessDefaultOn: Boolean = false,
+    earlyAccessChannel: String = DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL,
 ): String {
     val normalizedDefault = normalizeHandsReleaseChannel(configuredChannel)
     if (!switchSupported) return normalizedDefault
     if (!earlyAccessVisible) return normalizedDefault
-    return normalizeHandsRuntimeOverrideChannel(overrideChannel)
-        ?: if (earlyAccessDefaultOn) HANDS_DELTA_RELEASE_ALPHA_CHANNEL else normalizedDefault
+    val targetChannel =
+        normalizeMobileEarlyAccessChannelVariant(earlyAccessChannel) ?: DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+    return when (normalizeHandsRuntimeOverrideChannel(overrideChannel)) {
+        HANDS_DELTA_MAIN_CHANNEL -> HANDS_DELTA_MAIN_CHANNEL
+        HANDS_OVERRIDE_EARLY_ACCESS -> targetChannel
+        else -> if (earlyAccessDefaultOn) targetChannel else normalizedDefault
+    }
 }
 
 internal class RaftHandsUpdateChannelStore(context: Context) {
@@ -151,15 +178,26 @@ internal class RaftHandsUpdateChannelStore(context: Context) {
     fun readServerPolicy(): RaftEarlyAccessFlagPolicy {
         val visible = preferences.getBoolean(KEY_SERVER_POLICY_VISIBLE, false)
         val defaultOn = visible && preferences.getBoolean(KEY_SERVER_POLICY_DEFAULT_ON, false)
-        return RaftEarlyAccessFlagPolicy(visible = visible, defaultOn = defaultOn)
+        val channel =
+            if (visible) {
+                normalizeMobileEarlyAccessChannelVariant(
+                    preferences.getString(KEY_SERVER_POLICY_CHANNEL, null)
+                ) ?: DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+            } else {
+                DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
+            }
+        return RaftEarlyAccessFlagPolicy(visible = visible, defaultOn = defaultOn, channel = channel)
     }
 
     fun writeServerPolicy(policy: RaftEarlyAccessFlagPolicy) {
         val visible = policy.visible
         val defaultOn = visible && policy.defaultOn
+        val channel =
+            normalizeMobileEarlyAccessChannelVariant(policy.channel) ?: DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
         preferences.edit()
             .putBoolean(KEY_SERVER_POLICY_VISIBLE, visible)
             .putBoolean(KEY_SERVER_POLICY_DEFAULT_ON, defaultOn)
+            .putString(KEY_SERVER_POLICY_CHANNEL, channel)
             .apply()
     }
 
@@ -168,6 +206,7 @@ internal class RaftHandsUpdateChannelStore(context: Context) {
             .remove(KEY_OVERRIDE_CHANNEL)
             .remove(KEY_SERVER_POLICY_VISIBLE)
             .remove(KEY_SERVER_POLICY_DEFAULT_ON)
+            .remove(KEY_SERVER_POLICY_CHANNEL)
             .apply()
     }
 
@@ -176,6 +215,7 @@ internal class RaftHandsUpdateChannelStore(context: Context) {
         const val KEY_OVERRIDE_CHANNEL = "override_channel"
         const val KEY_SERVER_POLICY_VISIBLE = "server_policy_visible"
         const val KEY_SERVER_POLICY_DEFAULT_ON = "server_policy_default_on"
+        const val KEY_SERVER_POLICY_CHANNEL = "server_policy_channel"
     }
 }
 
@@ -192,7 +232,7 @@ internal fun installAndroidEarlyAccessPolicyHost(context: Context) {
                     RaftAppLog.infoAlways(
                         "SlockHandsUpdate",
                         "early_access_policy_channel_changed previous=$previous next=$next " +
-                            "visible=${policy.visible} defaultOn=${policy.defaultOn}"
+                            "visible=${policy.visible} defaultOn=${policy.defaultOn} channel=${policy.channel}"
                     )
                 }
             }
@@ -231,6 +271,7 @@ internal fun handsEffectiveReleaseChannelForRuntime(context: Context): String {
         switchSupported = switchSupported,
         earlyAccessVisible = policy.visible,
         earlyAccessDefaultOn = policy.defaultOn,
+        earlyAccessChannel = policy.channel,
     )
 }
 
@@ -247,6 +288,7 @@ internal fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute {
                 switchSupported = switchSupported,
                 earlyAccessVisible = policy.visible,
                 earlyAccessDefaultOn = policy.defaultOn,
+                earlyAccessChannel = policy.channel,
             )
         } else {
             BuildConfig.HANDS_DELTA_CHANNEL
@@ -280,6 +322,7 @@ internal fun handsUpdateRouteForRuntime(context: Context): HandsUpdateRoute {
         channelSwitchSupported = switchSupported,
         earlyAccessVisible = policy.visible,
         earlyAccessDefaultOn = policy.defaultOn,
+        earlyAccessChannel = policy.channel,
     )
 }
 
@@ -292,10 +335,14 @@ internal fun handsDeltaUpdateMode(
             HANDS_UPDATE_MODE_ALPHA_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_RELEASE_ALPHA_CHANNEL ->
             HANDS_UPDATE_MODE_RELEASE_ALPHA_DELTA
+        appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_BETA_CHANNEL ->
+            HANDS_UPDATE_MODE_BETA_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_PREVIEW_CHANNEL ->
             HANDS_UPDATE_MODE_MAIN_DELTA
         appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && channel == HANDS_DELTA_MAIN_CHANNEL ->
             HANDS_UPDATE_MODE_MAIN_DELTA
+        appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG && isValidHandsReleaseChannelSlug(channel) ->
+            "${channel}_channel_delta"
         else -> null
     }
 
@@ -309,6 +356,7 @@ internal fun resolveHandsUpdateRoute(
     channelSwitchSupported: Boolean = false,
     earlyAccessVisible: Boolean = false,
     earlyAccessDefaultOn: Boolean = false,
+    earlyAccessChannel: String = DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL,
 ): HandsUpdateRoute {
     val effectiveDefaultChannel =
         resolveHandsEffectiveChannel(
@@ -317,6 +365,7 @@ internal fun resolveHandsUpdateRoute(
             switchSupported = channelSwitchSupported,
             earlyAccessVisible = earlyAccessVisible,
             earlyAccessDefaultOn = earlyAccessDefaultOn,
+            earlyAccessChannel = earlyAccessChannel,
         )
     val effectiveDeltaChannel =
         if (deltaAppSlug == HANDS_DELTA_PRODUCTION_APP_SLUG) {
@@ -326,6 +375,7 @@ internal fun resolveHandsUpdateRoute(
                 switchSupported = channelSwitchSupported,
                 earlyAccessVisible = earlyAccessVisible,
                 earlyAccessDefaultOn = earlyAccessDefaultOn,
+                earlyAccessChannel = earlyAccessChannel,
             )
         } else {
             deltaChannel
@@ -384,11 +434,7 @@ internal fun handsDeltaUpdateAllowed(
         buildApplicationId == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
             runtimePackageName == HANDS_DELTA_PRODUCTION_APPLICATION_ID &&
             appSlug == HANDS_DELTA_PRODUCTION_APP_SLUG &&
-            (
-                channel == HANDS_DELTA_RELEASE_ALPHA_CHANNEL ||
-                    channel == HANDS_DELTA_PREVIEW_CHANNEL ||
-                    channel == HANDS_DELTA_MAIN_CHANNEL
-                )
+            isValidHandsReleaseChannelSlug(channel)
     return isExactAlpha || isExactRelease
 }
 
@@ -603,7 +649,7 @@ internal fun handsUpdateBridgeErrorCode(
 /** Reported for a waiting update when the build does not declare REQUEST_INSTALL_PACKAGES. */
 internal const val HANDS_DELTA_INSTALL_UNSUPPORTED = "install_unsupported"
 
-/** How the Hands delta route (Alpha, Preview, and Main) shows its transaction. */
+/** How the Hands delta route (Alpha, Beta, Preview, and Main) shows its transaction. */
 internal enum class HandsDeltaInstallPresentation {
     /** The state's own status and detail. */
     AsReported,
@@ -624,7 +670,7 @@ internal data class HandsDeltaInstallPermissionDecision(
 )
 
 /**
- * The Hands delta route (Alpha, Preview, and Main) while Android may block installs from Raft.
+ * The Hands delta route (Alpha, Beta, Preview, and Main) while Android may block installs from Raft.
  * Since hands-android-sdk 0.14
  * an update downloaded or patched without that permission stops at READY_TO_INSTALL with
  * [INSTALL_PERMISSION_REQUIRED] and the SDK opens nothing; another `install()` only checks Hands

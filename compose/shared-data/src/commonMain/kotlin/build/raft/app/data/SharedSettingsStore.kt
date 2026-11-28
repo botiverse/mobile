@@ -280,9 +280,9 @@ data class SharedSettingsUpdateCheckSnapshot(
     val forceUpdate: Boolean = false,
     val updatePriority: Int = 0,
     val stalenessDays: Int? = null,
-    /** Effective update channel reported by the host (`main`, `alpha`, `play`, etc.). */
+    /** Effective update channel reported by the host (`main`, `beta`, server-configured early-access channel, `play`, etc.). */
     val updateChannel: String = "",
-    /** True when the host supports runtime switching between `main` and `alpha` (Android direct APK). */
+    /** True when the host supports runtime switching between `main` and the Early access channel (Android direct APK). */
     val updateChannelSwitchSupported: Boolean = false,
     /** Optional external early-access enrollment kind (`google_play_beta`, `ios_testflight_join`, `ios_testflight_active`). */
     val earlyAccessGuideKind: String = "",

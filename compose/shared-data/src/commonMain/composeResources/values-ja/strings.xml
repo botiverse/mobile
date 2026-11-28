@@ -4097,13 +4097,12 @@
     <string name="settings_about_action_copy_environment">環境情報をコピー</string>
     <string name="settings_about_action_copy">コピー</string>
     <string name="settings_about_early_access_title">早期アクセス</string>
-    <string name="settings_about_early_access_alpha_off_detail">alpha チャネルから Raft の先行テスト版アップデートを直接受け取ります。</string>
-    <string name="settings_about_early_access_alpha_active_detail">alpha チャネルの先行テスト版を受け取っています。オフにすると次の正式リリースで通常チャネルに戻ります。</string>
+    <string name="settings_about_early_access_channel_off_detail">%1$s チャネルから Raft の先行テスト版アップデートを直接受け取ります。</string>
+    <string name="settings_about_early_access_channel_active_detail">%1$s チャネルの先行テスト版を受け取っています。オフにすると次の正式リリースで通常チャネルに戻ります。</string>
     <string name="settings_about_early_access_play_beta_detail">Google Play ベータ版テストに参加して Raft の先行アップデートを受け取ります。</string>
     <string name="settings_about_early_access_ios_testflight_join_detail">TestFlight で Raft のベータテストに参加して iOS の先行ビルドを受け取ります。</string>
     <string name="settings_about_early_access_ios_testflight_active_detail">TestFlight 版の Raft を使用しており、iOS の先行ビルドを受け取っています。</string>
     <string name="settings_about_early_access_action_join">参加</string>
-    <string name="settings_about_early_access_badge_alpha">Alpha</string>
     <string name="settings_about_early_access_badge_testflight">TestFlight</string>
     <string name="settings_about_source_code">ソースコード</string>
     <string name="settings_developer_title">開発者</string>
