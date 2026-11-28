@@ -821,12 +821,18 @@ class VoiceDictationV2Test {
         assertEquals("Note: ship it", updates.last().composerText)
         assertFalse(updates.last().refined)
 
-        // Non-blocking stop: foreground IMMEDIATELY returns to Idle while background drains.
+        // Non-blocking stop: foreground IMMEDIATELY returns to Idle while post-roll + background drain run.
         controller.stop()
         runCurrent()
         assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
         assertTrue(controller.state.value.hasBackgroundDrain)
         assertEquals(0f, controller.state.value.audioLevel)
+        assertEquals(0, recorder.stopCalls)
+        assertEquals(listOf("""{"deck":"start","v":2,"sample_rate":16000}"""), wsSession.sentText.toList())
+
+        // Once the default 300 ms post-roll completes, recorder stops and `{"deck":"stop"}` is dispatched.
+        advanceTimeBy(VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS)
+        runCurrent()
         assertEquals(1, recorder.stopCalls)
         assertEquals(
             listOf("""{"deck":"start","v":2,"sample_rate":16000}""", """{"deck":"stop"}"""),
@@ -834,7 +840,7 @@ class VoiceDictationV2Test {
         )
 
         // Late chunk after stop is ignored.
-        recorder.emitChunk(byteArrayOf(7, 8))
+        recorder.emitLateChunkAfterStop(byteArrayOf(7, 8))
         runCurrent()
         assertEquals(2, wsSession.sentBinary.size)
 
@@ -880,6 +886,10 @@ class VoiceDictationV2Test {
         runCurrent()
         assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
         assertTrue(controller.state.value.hasBackgroundDrain)
+        assertEquals(0, rec1.stopCalls)
+
+        advanceTimeBy(VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS)
+        runCurrent()
         assertEquals(1, rec1.stopCalls)
 
         permitGate.complete(defaultPermitOutcome())
@@ -2467,6 +2477,433 @@ class VoiceDictationV2Test {
     }
 
     // -------------------------------------------------------------------------
+    // 11. Stop post-roll (300 ms) & native stop() tail-chunk flush (#wg-call:#17)
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun controllerStopPostRollStreamsTailAudioAndFlushesRecorderStopTailBeforeWsStop() = runTest {
+        assertEquals(300L, VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS)
+        val ws = FakeDictationWebSocketSession()
+        val liveChunk = byteArrayOf(1, 2, 3, 4)
+        val postRollChunk1 = byteArrayOf(5, 6, 7, 8)
+        val postRollChunk2 = byteArrayOf(9, 10, 11, 12)
+        val nativeStopTailChunk = byteArrayOf(13, 14)
+        val recorder = FakeDictationAudioRecorder(onStopTailChunks = listOf(nativeStopTailChunk))
+        val controller =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws },
+                scope = backgroundScope,
+                audioRecorderProvider = { recorder },
+            )
+
+        controller.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        ws.pushText("""{"deck":"ready"}""")
+        runCurrent()
+
+        recorder.emitChunk(liveChunk)
+        recorder.emitLevel(0.6f)
+        runCurrent()
+        assertEquals(1, ws.sentBinary.size)
+        assertEquals(0.6f, controller.state.value.audioLevel)
+
+        // Stopping immediately transitions foreground to Idle (audioLevel = 0f, hasBackgroundDrain = true)
+        // while keeping the mic open for the 300 ms post-roll window.
+        controller.stop()
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
+        assertEquals(0f, controller.state.value.audioLevel)
+        assertTrue(controller.state.value.hasBackgroundDrain)
+        assertEquals(0, recorder.stopCalls)
+        assertEquals(listOf("""{"deck":"start","v":2,"sample_rate":16000}"""), ws.sentText.toList())
+
+        // Audio captured during post-roll streams to WS while audioLevel callbacks stay ignored.
+        advanceTimeBy(100L)
+        runCurrent()
+        recorder.emitChunk(postRollChunk1)
+        recorder.emitLevel(0.95f)
+        runCurrent()
+        assertEquals(0f, controller.state.value.audioLevel)
+        assertEquals(VoiceDictationV2Phase.Idle, controller.state.value.phase)
+        assertEquals(2, ws.sentBinary.size)
+        assertContentEquals(postRollChunk1, ws.sentBinary[1])
+
+        advanceTimeBy(199L)
+        runCurrent()
+        recorder.emitChunk(postRollChunk2)
+        runCurrent()
+        assertEquals(0, recorder.stopCalls, "recorder must stay open until full 300 ms post-roll elapses")
+        assertEquals(listOf("""{"deck":"start","v":2,"sample_rate":16000}"""), ws.sentText.toList())
+        assertEquals(3, ws.sentBinary.size)
+        assertContentEquals(postRollChunk2, ws.sentBinary[2])
+
+        // At 300 ms: recorder.stop() flushes its final <100 ms tail chunk synchronously, which MUST
+        // be accepted by handleAudioChunk and sent strictly BEFORE `{"deck":"stop"}`.
+        advanceTimeBy(1L)
+        runCurrent()
+        assertEquals(1, recorder.stopCalls)
+        assertEquals(4, ws.sentBinary.size)
+        assertContentEquals(liveChunk, ws.sentBinary[0])
+        assertContentEquals(postRollChunk1, ws.sentBinary[1])
+        assertContentEquals(postRollChunk2, ws.sentBinary[2])
+        assertContentEquals(nativeStopTailChunk, ws.sentBinary[3])
+        assertEquals(
+            listOf("""{"deck":"start","v":2,"sample_rate":16000}""", """{"deck":"stop"}"""),
+            ws.sentText.toList(),
+        )
+
+        // Stray chunk after recorder.stop() finishes is dropped once micFlushed latches.
+        recorder.emitLateChunkAfterStop(byteArrayOf(99, 100))
+        runCurrent()
+        assertEquals(4, ws.sentBinary.size)
+
+        ws.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertFalse(controller.state.value.hasBackgroundDrain)
+    }
+
+    @Test
+    fun controllerStopBeforeReadyCapturesPostRollAndStopTailIntoPreReadyQueueAndFlushesInOrder() = runTest {
+        val permitGate = CompletableDeferred<VoiceDictationV2PermitOutcome>()
+        val ws = FakeDictationWebSocketSession()
+        val openingChunk = byteArrayOf(1, 2)
+        val postRollChunk = byteArrayOf(3, 4)
+        val stopTailChunk = byteArrayOf(5, 6)
+        val recorder = FakeDictationAudioRecorder(onStopTailChunks = listOf(stopTailChunk))
+        val controller =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome(), gate = permitGate),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws },
+                scope = backgroundScope,
+                audioRecorderProvider = { recorder },
+            )
+
+        controller.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        recorder.emitChunk(openingChunk)
+
+        controller.stop()
+        runCurrent()
+        assertEquals(0, recorder.stopCalls)
+
+        advanceTimeBy(150L)
+        runCurrent()
+        recorder.emitChunk(postRollChunk)
+
+        advanceTimeBy(150L)
+        runCurrent()
+        assertEquals(1, recorder.stopCalls)
+        assertEquals(0, ws.sentBinary.size)
+
+        permitGate.complete(defaultPermitOutcome())
+        runCurrent()
+        ws.pushText("""{"deck":"ready"}""")
+        runCurrent()
+
+        assertEquals(3, ws.sentBinary.size)
+        assertContentEquals(openingChunk, ws.sentBinary[0])
+        assertContentEquals(postRollChunk, ws.sentBinary[1])
+        assertContentEquals(stopTailChunk, ws.sentBinary[2])
+        assertEquals(
+            listOf("""{"deck":"start","v":2,"sample_rate":16000}""", """{"deck":"stop"}"""),
+            ws.sentText.toList(),
+        )
+
+        ws.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertFalse(controller.state.value.hasBackgroundDrain)
+    }
+
+    @Test
+    fun controllerInterruptionsDuringPostRollAbortImmediatelyAndReleaseRecorderBeforeRestart() = runTest {
+        // 1. cancel() during post-roll aborts immediately, drops stop-tail, and never sends WS stop.
+        val wsCancel = FakeDictationWebSocketSession()
+        val recCancel = FakeDictationAudioRecorder(onStopTailChunks = listOf(byteArrayOf(42, 43)))
+        val cCancel =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsCancel },
+                scope = backgroundScope,
+                audioRecorderProvider = { recCancel },
+            )
+        cCancel.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsCancel.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cCancel.stop()
+        advanceTimeBy(100L)
+        runCurrent()
+        assertEquals(0, recCancel.stopCalls)
+
+        cCancel.cancel()
+        runCurrent()
+        assertEquals(1, recCancel.stopCalls)
+        assertEquals(0, wsCancel.sentBinary.size, "aborted stop tail must not be sent")
+        assertEquals(listOf("""{"deck":"start","v":2,"sample_rate":16000}"""), wsCancel.sentText.toList())
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_USER_CANCEL), wsCancel.closeEvents)
+
+        // 2. New start() during post-roll awaits previous recorder stop BEFORE reacquiring mic.
+        val events = mutableListOf<String>()
+        val stopGate = CompletableDeferred<Unit>()
+        val wsFirst = FakeDictationWebSocketSession()
+        val wsSecond = FakeDictationWebSocketSession()
+        var wsIdx = 0
+        val sharedRecorder =
+            object : RaftVoiceDictationAudioRecorder {
+                private var onChunk: ((ByteArray) -> Unit)? = null
+                var activeStarts = 0
+
+                override suspend fun start(
+                    onPcmChunk: (ByteArray) -> Unit,
+                    onAudioLevel: (Float) -> Unit,
+                ): VoiceDictationAudioStartResult {
+                    activeStarts += 1
+                    events += "start#$activeStarts"
+                    onChunk = onPcmChunk
+                    return VoiceDictationAudioStartResult.Started
+                }
+
+                override suspend fun stop() {
+                    events += "stop-begin#$activeStarts"
+                    if (activeStarts == 1) {
+                        stopGate.await()
+                        onChunk?.invoke(byteArrayOf(77, 78))
+                    }
+                    events += "stop-end#$activeStarts"
+                    onChunk = null
+                }
+            }
+        val cRestart =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> if (wsIdx++ == 0) wsFirst else wsSecond },
+                scope = backgroundScope,
+                audioRecorderProvider = { sharedRecorder },
+            )
+        cRestart.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsFirst.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cRestart.stop()
+        advanceTimeBy(100L)
+        runCurrent()
+
+        cRestart.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        assertEquals(listOf("start#1", "stop-begin#1"), events, "new start must wait for prior recorder release")
+        stopGate.complete(Unit)
+        runCurrent()
+        assertEquals(listOf("start#1", "stop-begin#1", "stop-end#1", "start#2"), events)
+        assertEquals(0, wsFirst.sentBinary.size)
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_SUPERSEDED), wsFirst.closeEvents)
+        assertEquals(VoiceDictationV2Phase.Listening, cRestart.state.value.phase)
+        cRestart.cancel()
+        runCurrent()
+
+        // 3. finishForSubmit(), onOwnerChanged(), and server done during post-roll all release recorder immediately.
+        val wsSubmit = FakeDictationWebSocketSession()
+        val recSubmit = FakeDictationAudioRecorder()
+        val cSubmit =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsSubmit },
+                scope = backgroundScope,
+                audioRecorderProvider = { recSubmit },
+            )
+        cSubmit.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsSubmit.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cSubmit.stop()
+        advanceTimeBy(50L)
+        runCurrent()
+        cSubmit.finishForSubmit()
+        runCurrent()
+        assertEquals(1, recSubmit.stopCalls)
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_SUBMIT), wsSubmit.closeEvents)
+
+        val wsOwner = FakeDictationWebSocketSession()
+        val recOwner = FakeDictationAudioRecorder()
+        val cOwner =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsOwner },
+                scope = backgroundScope,
+                audioRecorderProvider = { recOwner },
+            )
+        cOwner.start(serverId = "srv-1", channelId = validChannelUuid, onComposerUpdate = {})
+        runCurrent()
+        wsOwner.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cOwner.stop()
+        advanceTimeBy(50L)
+        runCurrent()
+        cOwner.onOwnerChanged(serverId = "srv-2", channelId = validChannelUuid)
+        runCurrent()
+        assertEquals(1, recOwner.stopCalls)
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_OWNER_CHANGED), wsOwner.closeEvents)
+
+        val wsDone = FakeDictationWebSocketSession()
+        val recDone = FakeDictationAudioRecorder()
+        val cDone =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsDone },
+                scope = backgroundScope,
+                audioRecorderProvider = { recDone },
+            )
+        cDone.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsDone.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cDone.stop()
+        advanceTimeBy(50L)
+        runCurrent()
+        wsDone.pushText("""{"deck":"done"}""")
+        runCurrent()
+        assertEquals(1, recDone.stopCalls)
+        assertFalse(cDone.state.value.hasBackgroundDrain)
+        assertEquals(listOf(1000 to VOICE_DICTATION_CLOSE_REASON_DONE), wsDone.closeEvents)
+
+        // 4. Explicit stopPostRollMs = 0L stops immediately while still flushing recorder stop tail.
+        val wsZero = FakeDictationWebSocketSession()
+        val tailZero = byteArrayOf(11, 22)
+        val recZero = FakeDictationAudioRecorder(onStopTailChunks = listOf(tailZero))
+        val cZero =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsZero },
+                scope = backgroundScope,
+                audioRecorderProvider = { recZero },
+                stopPostRollMs = 0L,
+            )
+        cZero.start(serverId = "srv-1", onComposerUpdate = {})
+        runCurrent()
+        wsZero.pushText("""{"deck":"ready"}""")
+        runCurrent()
+        cZero.stop()
+        runCurrent()
+        assertEquals(1, recZero.stopCalls)
+        assertEquals(1, wsZero.sentBinary.size)
+        assertContentEquals(tailZero, wsZero.sentBinary.single())
+        assertEquals(
+            listOf("""{"deck":"start","v":2,"sample_rate":16000}""", """{"deck":"stop"}"""),
+            wsZero.sentText.toList(),
+        )
+        cZero.cancel()
+        runCurrent()
+    }
+
+    @Test
+    fun controllerAwaitPendingFinalBeforeSendFlushesActiveSessionWithZeroPostRollAndBounded1sTimeout() = runTest {
+        // 1. Connecting (mic not yet live) -> needsSubmitFinalWait() is false; once Listening -> true;
+        //    after manual edit -> false.
+        val micGate = CompletableDeferred<VoiceDictationAudioStartResult>()
+        val ws1 = FakeDictationWebSocketSession()
+        val tail1 = byteArrayOf(21, 22, 23, 24)
+        val rec1 = FakeDictationAudioRecorder(startGate = micGate, onStopTailChunks = listOf(tail1))
+        val updates1 = mutableListOf<VoiceDictationComposerUpdate>()
+        val c1 =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> ws1 },
+                scope = backgroundScope,
+                audioRecorderProvider = { rec1 },
+            )
+        c1.start(serverId = "srv-1", baseText = "", onComposerUpdate = { updates1 += it })
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Connecting, c1.state.value.phase)
+        assertFalse(c1.needsSubmitFinalWait(), "Connecting before mic starts must not block Send")
+
+        micGate.complete(VoiceDictationAudioStartResult.Started)
+        runCurrent()
+        ws1.pushText("""{"deck":"ready"}""")
+        ws1.pushText("""{"deck":"text","text":"Ship this","stable_len":9}""")
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Listening, c1.state.value.phase)
+        assertTrue(c1.needsSubmitFinalWait(), "live Listening session must wait briefly on Send for final tail")
+
+        // Sending while actively listening immediately stops mic with 0 ms post-roll, flushes native
+        // tail chunk before WS stop, and waits up to 1 s for the confirmed post-stop snapshot.
+        val wait1 = async { c1.awaitPendingFinalBeforeSend() }
+        runCurrent()
+        assertEquals(VoiceDictationV2Phase.Idle, c1.state.value.phase)
+        assertTrue(c1.state.value.hasBackgroundDrain)
+        assertTrue(c1.state.value.awaitingSubmitFinal)
+        assertEquals(1, rec1.stopCalls, "Send-while-active must stop recorder with 0 ms post-roll")
+        assertEquals(1, ws1.sentBinary.size)
+        assertContentEquals(tail1, ws1.sentBinary.single())
+        assertEquals(
+            listOf("""{"deck":"start","v":2,"sample_rate":16000}""", """{"deck":"stop"}"""),
+            ws1.sentText.toList(),
+        )
+        assertFalse(wait1.isCompleted)
+
+        // Confirmed post-stop snapshot with final word resolves wait immediately with true.
+        ws1.pushText("""{"deck":"text","text":"Ship this now.","stable_len":14}""")
+        runCurrent()
+        assertTrue(wait1.await())
+        assertEquals("Ship this now.", updates1.last().composerText)
+        assertFalse(c1.state.value.awaitingSubmitFinal)
+        c1.finishForSubmit()
+        runCurrent()
+
+        // 2. Manual user edit while actively listening disables submit wait immediately.
+        val wsEdit = FakeDictationWebSocketSession()
+        val cEdit =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsEdit },
+                scope = backgroundScope,
+                audioRecorderProvider = { FakeDictationAudioRecorder() },
+            )
+        cEdit.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsEdit.pushText("""{"deck":"ready"}""")
+        wsEdit.pushText("""{"deck":"text","text":"Draft","stable_len":5}""")
+        runCurrent()
+        assertTrue(cEdit.needsSubmitFinalWait())
+        cEdit.onUserEditedComposer("Draft edited")
+        assertFalse(cEdit.needsSubmitFinalWait())
+        assertTrue(cEdit.awaitPendingFinalBeforeSend())
+        cEdit.finishForSubmit()
+        runCurrent()
+
+        // 3. Server stalls after active-Send stop -> times out cleanly at 1,000 ms (not 1,300 ms) and returns true.
+        val wsTimeout = FakeDictationWebSocketSession()
+        val recTimeout = FakeDictationAudioRecorder()
+        val cTimeout =
+            VoiceDictationV2Controller(
+                permitApi = FakeDictationPermitApi(defaultPermitOutcome()),
+                streamConnector = VoiceDictationV2StreamClient { _, _ -> wsTimeout },
+                scope = backgroundScope,
+                audioRecorderProvider = { recTimeout },
+            )
+        cTimeout.start(serverId = "srv-1", baseText = "", onComposerUpdate = {})
+        runCurrent()
+        wsTimeout.pushText("""{"deck":"ready"}""")
+        wsTimeout.pushText("""{"deck":"text","text":"Still waiting","stable_len":13}""")
+        runCurrent()
+
+        val waitTimeout = async { cTimeout.awaitPendingFinalBeforeSend() }
+        runCurrent()
+        assertEquals(1, recTimeout.stopCalls)
+        assertTrue(cTimeout.state.value.awaitingSubmitFinal)
+
+        advanceTimeBy(VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS - 1L)
+        runCurrent()
+        assertFalse(waitTimeout.isCompleted)
+
+        advanceTimeBy(1L)
+        runCurrent()
+        assertTrue(waitTimeout.await())
+        assertFalse(cTimeout.state.value.awaitingSubmitFinal)
+        cTimeout.finishForSubmit()
+        runCurrent()
+    }
+
+    // -------------------------------------------------------------------------
     // Test helpers
     // -------------------------------------------------------------------------
 
@@ -2577,10 +3014,12 @@ class VoiceDictationV2Test {
         override val sampleRateHz: Int = VOICE_DICTATION_DEFAULT_SAMPLE_RATE_HZ,
         private val startResult: VoiceDictationAudioStartResult = VoiceDictationAudioStartResult.Started,
         private val startGate: CompletableDeferred<VoiceDictationAudioStartResult>? = null,
+        private val onStopTailChunks: List<ByteArray> = emptyList(),
     ) : RaftVoiceDictationAudioRecorder {
         var startCalls: Int = 0
         var stopCalls: Int = 0
         private var chunkCallback: ((ByteArray) -> Unit)? = null
+        private var lastChunkCallback: ((ByteArray) -> Unit)? = null
         private var levelCallback: ((Float) -> Unit)? = null
 
         override suspend fun start(
@@ -2591,6 +3030,7 @@ class VoiceDictationV2Test {
             val resolved = startGate?.await() ?: startResult
             if (resolved is VoiceDictationAudioStartResult.Started) {
                 chunkCallback = onPcmChunk
+                lastChunkCallback = onPcmChunk
                 levelCallback = onAudioLevel
             }
             return resolved
@@ -2598,12 +3038,19 @@ class VoiceDictationV2Test {
 
         override suspend fun stop() {
             stopCalls += 1
+            for (tail in onStopTailChunks) {
+                chunkCallback?.invoke(tail)
+            }
             chunkCallback = null
             levelCallback = null
         }
 
         fun emitChunk(bytes: ByteArray) {
             chunkCallback?.invoke(bytes)
+        }
+
+        fun emitLateChunkAfterStop(bytes: ByteArray) {
+            lastChunkCallback?.invoke(bytes)
         }
 
         fun emitLevel(level: Float) {

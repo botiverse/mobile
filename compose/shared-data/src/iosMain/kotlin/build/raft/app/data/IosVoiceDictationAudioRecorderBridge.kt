@@ -123,10 +123,16 @@ private class IosVoiceDictationAudioRecorderAdapter(
     }
 
     override suspend fun stop() {
-        synchronized(lock) {
-            generation += 1L
+        val stopGeneration = synchronized(lock) { generation }
+        try {
+            runCatching { nativeRecorder.stopCapture() }
+        } finally {
+            synchronized(lock) {
+                if (generation == stopGeneration) {
+                    generation += 1L
+                }
+            }
         }
-        runCatching { nativeRecorder.stopCapture() }
     }
 }
 

@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 #if canImport(LiveKitClient)
 import LiveKitClient
@@ -204,5 +205,106 @@ final class RaftIosAgentVoiceCallEngineTests: XCTestCase {
             RaftIosVoiceDictationRecorderHost.shared.currentSampleRateHz(),
             Int32(RaftIosVoiceDictationPolicy.sampleRateHz)
         )
+    }
+
+    func testVoiceDictationPolicyDrainPendingChunksPreservesRemainderUntilIncludeTailAndAlignsEvenBytes() {
+        let speechSample = Int16(3_600).littleEndian
+        var pending = Data()
+        // 1 full 3,200-byte chunk + 601 trailing bytes (odd byte verifies 2-byte PCM16 alignment).
+        let totalSamples = (3_200 + 600) / MemoryLayout<Int16>.size
+        for _ in 0..<totalSamples {
+            withUnsafeBytes(of: speechSample) { pending.append(contentsOf: $0) }
+        }
+        pending.append(0x7F)
+        XCTAssertEqual(pending.count, 3_801)
+
+        var meter = RaftIosVoiceDictationAudioLevelMeter()
+        let liveChunks = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+            pendingBytes: &pending,
+            meter: &meter,
+            includeTail: false
+        )
+        XCTAssertEqual(liveChunks.count, 1)
+        XCTAssertEqual(liveChunks[0].0.count, 3_200)
+        XCTAssertGreaterThan(liveChunks[0].1, 0.2)
+        XCTAssertEqual(pending.count, 601)
+
+        let tailChunks = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+            pendingBytes: &pending,
+            meter: &meter,
+            includeTail: true
+        )
+        XCTAssertEqual(tailChunks.count, 1)
+        XCTAssertEqual(tailChunks[0].0.count, 600)
+        XCTAssertGreaterThan(tailChunks[0].1, 0.2)
+        XCTAssertTrue(pending.isEmpty)
+
+        // Single stray byte (< 1 Int16 sample) is discarded cleanly on tail drain.
+        var singleByte = Data([0x42])
+        let emptyTail = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+            pendingBytes: &singleByte,
+            meter: &meter,
+            includeTail: true
+        )
+        XCTAssertTrue(emptyTail.isEmpty)
+        XCTAssertTrue(singleByte.isEmpty)
+    }
+
+    func testVoiceDictationPolicyDrainConverterEndOfStreamFlushesResamplerTailCleanly() throws {
+        let inputFormat = try XCTUnwrap(
+            AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, channels: 1, interleaved: false)
+        )
+        let targetFormat = try XCTUnwrap(
+            AVAudioFormat(
+                commonFormat: .pcmFormatInt16,
+                sampleRate: Double(RaftIosVoiceDictationPolicy.sampleRateHz),
+                channels: 1,
+                interleaved: true
+            )
+        )
+        let converter = try XCTUnwrap(AVAudioConverter(from: inputFormat, to: targetFormat))
+
+        // Feed 4,800 frames (100 ms at 48 kHz -> ~1,600 frames / 3,200 bytes at 16 kHz).
+        let inputFrames: AVAudioFrameCount = 4_800
+        let inputBuffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: inputFrames))
+        inputBuffer.frameLength = inputFrames
+        let floatChannel = try XCTUnwrap(inputBuffer.floatChannelData)[0]
+        for i in 0..<Int(inputFrames) {
+            floatChannel[i] = Float(sin(2.0 * Double.pi * 440.0 * Double(i) / 48_000.0)) * 0.25
+        }
+
+        let outputBuffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: 2_048))
+        var provided = false
+        var convertError: NSError?
+        let status = converter.convert(to: outputBuffer, error: &convertError) { _, outStatus in
+            if provided {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            provided = true
+            outStatus.pointee = .haveData
+            return inputBuffer
+        }
+        XCTAssertNotEqual(status, .error)
+        XCTAssertNil(convertError)
+
+        var totalBytes = Data()
+        if outputBuffer.frameLength > 0, let channelData = outputBuffer.int16ChannelData {
+            totalBytes.append(Data(bytes: channelData[0], count: Int(outputBuffer.frameLength) * MemoryLayout<Int16>.size))
+        }
+
+        let eosBytes = RaftIosVoiceDictationPolicy.drainConverterEndOfStreamPcm16(
+            converter: converter,
+            targetFormat: targetFormat
+        )
+        XCTAssertEqual(eosBytes.count % MemoryLayout<Int16>.size, 0)
+        totalBytes.append(eosBytes)
+
+        // 100 ms of 48 kHz input downsampled to 16 kHz Int16 mono should yield ~3,200 bytes total.
+        XCTAssertGreaterThanOrEqual(totalBytes.count, 3_000)
+        XCTAssertEqual(totalBytes.count % MemoryLayout<Int16>.size, 0)
+        let level = RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: totalBytes)
+        XCTAssertGreaterThan(level, 0.1)
+        XCTAssertLessThanOrEqual(level, 1.0)
     }
 }

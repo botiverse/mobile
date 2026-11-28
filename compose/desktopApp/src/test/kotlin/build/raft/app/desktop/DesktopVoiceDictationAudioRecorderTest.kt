@@ -8,13 +8,18 @@ import build.raft.app.data.DesktopVoiceDictationLineFactory
 import build.raft.app.data.DesktopVoiceDictationPcmLine
 import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
 import build.raft.app.data.VoiceDictationAudioStartResult
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import javax.sound.sampled.LineUnavailableException
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -140,6 +145,200 @@ class DesktopVoiceDictationAudioRecorderTest {
         assertEquals(0f, levels[0])
         assertTrue(levels[1] > 0.35f && levels[1] < 0.70f, "expected calibrated un-AGC level, got ${levels[1]}")
         recorder.stop()
+    }
+
+    @Test
+    fun stopFlushesPartialSub100msTailChunkViaStopRecordingBeforeClose() = runBlocking<Unit> {
+        val fullChunk = pcm16LeChunk(sample = 3_600, byteSize = 3_200)
+        val tailBytes = pcm16LeChunk(sample = 4_100, byteSize = 1_001)
+        val events = CopyOnWriteArrayList<String>()
+        val blockingReadEntered = CountDownLatch(1)
+        val unblockRead = CountDownLatch(1)
+
+        val blockingLine =
+            object : DesktopVoiceDictationPcmLine {
+                private var step = 0
+
+                override fun openAndStart(bufferBytes: Int) = Unit
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                    when (step++) {
+                        0 -> {
+                            fullChunk.copyInto(buffer, destinationOffset = offset)
+                            fullChunk.size
+                        }
+                        1 -> {
+                            val count = minOf(length, tailBytes.size)
+                            tailBytes.copyInto(buffer, destinationOffset = offset, startIndex = 0, endIndex = count)
+                            count
+                        }
+                        else -> {
+                            blockingReadEntered.countDown()
+                            unblockRead.await(2, TimeUnit.SECONDS)
+                            0
+                        }
+                    }
+
+                override fun stopRecording() {
+                    events += "stopRecording"
+                    unblockRead.countDown()
+                }
+
+                override fun stopAndClose() {
+                    events += "stopAndClose"
+                    unblockRead.countDown()
+                }
+            }
+
+        val recorder =
+            DesktopVoiceDictationAudioRecorder(
+                lineFactory = DesktopVoiceDictationLineFactory { blockingLine },
+                captureDispatcher = Dispatchers.IO,
+            )
+
+        val chunks = CopyOnWriteArrayList<ByteArray>()
+        val levels = CopyOnWriteArrayList<Float>()
+        assertEquals<VoiceDictationAudioStartResult>(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { chunks += it }, onAudioLevel = { levels += it }),
+        )
+        assertTrue(blockingReadEntered.await(2, TimeUnit.SECONDS))
+        assertEquals(1, chunks.size)
+
+        recorder.stop()
+
+        assertEquals(2, chunks.size)
+        assertContentEquals(fullChunk, chunks[0])
+        assertEquals(1_000, chunks[1].size)
+        assertContentEquals(tailBytes.copyOf(1_000), chunks[1])
+        assertEquals(2, levels.size)
+        assertTrue(levels[1] > 0.2f && levels[1] <= 1f)
+        assertEquals(listOf("stopRecording", "stopAndClose"), events.toList())
+    }
+
+    @Test
+    fun stopTimesOutAndForcesCloseWithoutLeakingTailWhenReadIgnoresStopRecording() = runBlocking<Unit> {
+        val partialTail = pcm16LeChunk(sample = 3_900, byteSize = 640)
+        val blockingReadEntered = CountDownLatch(1)
+        val unblockOnClose = CountDownLatch(1)
+        val closeCalls = AtomicInteger(0)
+
+        val stubbornLine =
+            object : DesktopVoiceDictationPcmLine {
+                private var step = 0
+
+                override fun openAndStart(bufferBytes: Int) = Unit
+
+                override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                    if (step++ == 0) {
+                        partialTail.copyInto(buffer, destinationOffset = offset)
+                        partialTail.size
+                    } else {
+                        blockingReadEntered.countDown()
+                        unblockOnClose.await(2, TimeUnit.SECONDS)
+                        0
+                    }
+
+                override fun stopRecording() = Unit
+
+                override fun stopAndClose() {
+                    closeCalls.incrementAndGet()
+                    unblockOnClose.countDown()
+                }
+            }
+
+        val recorder =
+            DesktopVoiceDictationAudioRecorder(
+                lineFactory = DesktopVoiceDictationLineFactory { stubbornLine },
+                captureDispatcher = Dispatchers.IO,
+                stopJoinTimeoutMs = 50L,
+            )
+
+        val chunks = CopyOnWriteArrayList<ByteArray>()
+        assertEquals<VoiceDictationAudioStartResult>(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { chunks += it }, onAudioLevel = {}),
+        )
+        assertTrue(blockingReadEntered.await(2, TimeUnit.SECONDS))
+
+        recorder.stop()
+
+        assertTrue(closeCalls.get() >= 1)
+        assertTrue(chunks.isEmpty(), "timed-out stop fallback must discard stale tail")
+    }
+
+    @Test
+    fun startSupersedingActiveCaptureDiscardsOrphanedTailFromPreviousSession() = runBlocking<Unit> {
+        val partialFirst = pcm16LeChunk(sample = 3_700, byteSize = 700)
+        val fullSecond = pcm16LeChunk(sample = 3_800, byteSize = 3_200)
+        val firstReadBlocked = CountDownLatch(1)
+        val firstClosed = CountDownLatch(1)
+        val secondReadDone = CountDownLatch(1)
+        val lineCount = AtomicInteger(0)
+
+        val recorder =
+            DesktopVoiceDictationAudioRecorder(
+                lineFactory = DesktopVoiceDictationLineFactory {
+                    if (lineCount.getAndIncrement() == 0) {
+                        object : DesktopVoiceDictationPcmLine {
+                            private var step = 0
+
+                            override fun openAndStart(bufferBytes: Int) = Unit
+
+                            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                                if (step++ == 0) {
+                                    partialFirst.copyInto(buffer, destinationOffset = offset)
+                                    partialFirst.size
+                                } else {
+                                    firstReadBlocked.countDown()
+                                    firstClosed.await(2, TimeUnit.SECONDS)
+                                    0
+                                }
+
+                            override fun stopAndClose() {
+                                firstClosed.countDown()
+                            }
+                        }
+                    } else {
+                        object : DesktopVoiceDictationPcmLine {
+                            private var step = 0
+
+                            override fun openAndStart(bufferBytes: Int) = Unit
+
+                            override fun read(buffer: ByteArray, offset: Int, length: Int): Int =
+                                if (step++ == 0) {
+                                    fullSecond.copyInto(buffer, destinationOffset = offset)
+                                    fullSecond.size
+                                } else {
+                                    secondReadDone.countDown()
+                                    0
+                                }
+
+                            override fun stopAndClose() = Unit
+                        }
+                    }
+                },
+                captureDispatcher = Dispatchers.IO,
+            )
+
+        val firstChunks = CopyOnWriteArrayList<ByteArray>()
+        val secondChunks = CopyOnWriteArrayList<ByteArray>()
+        assertEquals<VoiceDictationAudioStartResult>(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { firstChunks += it }, onAudioLevel = {}),
+        )
+        assertTrue(firstReadBlocked.await(2, TimeUnit.SECONDS))
+
+        assertEquals<VoiceDictationAudioStartResult>(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { secondChunks += it }, onAudioLevel = {}),
+        )
+        assertTrue(secondReadDone.await(2, TimeUnit.SECONDS))
+        recorder.stop()
+
+        assertTrue(firstChunks.isEmpty(), "superseded capture must discard orphaned tail")
+        assertEquals(1, secondChunks.size)
+        assertContentEquals(fullSecond, secondChunks[0])
     }
 
     @Test

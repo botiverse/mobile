@@ -29,6 +29,10 @@ import kotlinx.coroutines.withContext
 @RaftCoreInternalApi
 const val VOICE_DICTATION_DEFAULT_STOP_DRAIN_TIMEOUT_MS: Long = 10_500L
 
+/** Default post-roll capture window after `stop()` before stopping the mic (captures release-tail / Bluetooth latency). */
+@RaftCoreInternalApi
+const val VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS: Long = 300L
+
 /** Strict fail-closed pre-ready PCM chunk cap (100 * 100 ms = 10 s; mirrors web MAX_PRE_READY_CHUNKS). */
 @RaftCoreInternalApi
 const val VOICE_DICTATION_MAX_PRE_READY_CHUNKS: Int = 100
@@ -484,6 +488,7 @@ class VoiceDictationV2Controller(
         RaftVoiceDictationAudioRecorderRegistry::currentOrNull,
     private val stopDrainTimeoutMs: Long = VOICE_DICTATION_DEFAULT_STOP_DRAIN_TIMEOUT_MS,
     private val submitFinalWaitMs: Long = VOICE_DICTATION_DEFAULT_SUBMIT_FINAL_WAIT_MS,
+    private val stopPostRollMs: Long = VOICE_DICTATION_DEFAULT_STOP_POST_ROLL_MS,
     private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
     private val onOutcomeReport: ((VoiceDictationOutcomeReport) -> Unit)? = null,
     private val privacyModeProvider: () -> RaftPrivacyMode = { RaftTelemetryPrivacy.state.value },
@@ -523,6 +528,7 @@ class VoiceDictationV2Controller(
         var stopDispatchStarted: Boolean = false
         var postStopFinalReceived: Boolean = false
         var recorderNeedsStop: Boolean = false
+        var recorderStopStarted: Boolean = false
         var recorderStopped: Boolean = false
         var micFlushed: Boolean = false
         var sessionId: String? = null
@@ -566,23 +572,30 @@ class VoiceDictationV2Controller(
         suspend fun stopRecorderOnce() {
             val target =
                 synchronized(stateLock) {
-                    if (recorderNeedsStop && !recorderStopped) {
-                        recorderStopped = true
+                    if (recorderNeedsStop && !recorderStopStarted) {
+                        recorderStopStarted = true
                         recorder
                     } else {
                         null
                     }
                 }
             if (target != null) {
-                try {
-                    runCatching { target.stop() }
-                } finally {
-                    recorderReleased.complete(Unit)
+                withContext(NonCancellable) {
+                    try {
+                        runCatching { target.stop() }
+                    } finally {
+                        synchronized(stateLock) {
+                            recorderStopped = true
+                        }
+                        recorderReleased.complete(Unit)
+                    }
                 }
             } else {
                 val shouldComplete = synchronized(stateLock) { !recorderNeedsStop || recorderStopped }
                 if (shouldComplete) {
                     recorderReleased.complete(Unit)
+                } else {
+                    recorderReleased.await()
                 }
             }
         }
@@ -663,12 +676,17 @@ class VoiceDictationV2Controller(
 
     /**
      * True when composer Send should call [awaitPendingFinalBeforeSend] before reading text and
-     * dispatching the message (either already waiting, or a background session has not yet
-     * delivered a confirmed post-stop snapshot and the user has not edited the composer).
+     * dispatching the message (either already waiting, an active listening session whose mic is
+     * live, or a background session that has not yet delivered a confirmed post-stop snapshot and
+     * whose composer has not been manually edited).
      */
     fun needsSubmitFinalWait(): Boolean =
         synchronized(stateLock) {
             if (pendingSubmitWait != null) return@synchronized true
+            val active = activeSession
+            if (active != null && !active.aborted && active.recorderNeedsStop && !active.span.ignoreSubsequentText) {
+                return@synchronized true
+            }
             val bg = backgroundSession ?: return@synchronized false
             !bg.aborted && !bg.postStopFinalReceived && !bg.span.ignoreSubsequentText
         }
@@ -1039,6 +1057,13 @@ class VoiceDictationV2Controller(
      * If stopped before microphone acquisition even resolved, aborts cleanly with no background work.
      */
     fun stop(stoppedBy: VoiceDictationStopReason = VoiceDictationStopReason.Button) {
+        stopInternal(stoppedBy = stoppedBy, postRollMs = stopPostRollMs)
+    }
+
+    private fun stopInternal(
+        stoppedBy: VoiceDictationStopReason,
+        postRollMs: Long,
+    ) {
         var sessionToDrain: Session? = null
         var abortImmediately = false
         var previousBg: Session? = null
@@ -1120,6 +1145,11 @@ class VoiceDictationV2Controller(
             }
         val stopJob =
             scope.launch {
+                val postRoll = postRollMs.coerceAtLeast(0L)
+                if (postRoll > 0L) {
+                    delay(postRoll)
+                }
+                if (!isLive(session)) return@launch
                 session.stopRecorderOnce()
                 val shouldSendStopNow =
                     synchronized(stateLock) {
@@ -1157,16 +1187,30 @@ class VoiceDictationV2Controller(
     }
 
     /**
-     * Waits briefly (up to [timeoutMs], default 1 s) before sending when a just-stopped background
-     * session has not yet delivered its confirmed post-stop snapshot.
+     * Waits briefly (up to [timeoutMs], default 1 s) before sending when either an active listening
+     * session is still capturing audio or a just-stopped background session has not yet delivered
+     * its confirmed post-stop snapshot.
      *
-     * - Returns `true` immediately when no background drain needs to wait or the user already edited.
+     * - If an active listening session has a live mic (`recorderNeedsStop`) and untouched composer,
+     *   immediately stops it with 0 ms post-roll (`VoiceDictationStopReason.Submit`) so native tail
+     *   audio flushes and `{"deck":"stop"}` sends right away within the bounded [timeoutMs] budget.
+     * - Returns `true` immediately when no live/background drain needs to wait or the user already edited.
      * - Returns `false` when a submit wait is already in progress (prevents duplicate sends) or if
      *   aborted by [start], [cancel], or [onOwnerChanged].
      * - Resolves `true` as soon as a confirmed post-stop `text` applies, `done`/close completes
      *   background drain, the user edits the composer, or [timeoutMs] elapses.
      */
     suspend fun awaitPendingFinalBeforeSend(timeoutMs: Long = submitFinalWaitMs): Boolean {
+        val shouldStopActiveFirst =
+            synchronized(stateLock) {
+                if (pendingSubmitWait != null) return false
+                val active = activeSession
+                active != null && !active.aborted && active.recorderNeedsStop && !active.span.ignoreSubsequentText
+            }
+        if (shouldStopActiveFirst) {
+            stopInternal(stoppedBy = VoiceDictationStopReason.Submit, postRollMs = 0L)
+        }
+
         val waitDeferred: CompletableDeferred<Boolean> =
             synchronized(stateLock) {
                 if (pendingSubmitWait != null) return false
@@ -1423,7 +1467,7 @@ class VoiceDictationV2Controller(
         val copy = bytes.copyOf()
         var overflow = false
         synchronized(stateLock) {
-            if (session.aborted || session.recorderStopped || session.micFlushed || !isLiveLocked(session)) return
+            if (session.aborted || session.micFlushed || !isLiveLocked(session)) return
             if (session.transportReady) {
                 session.liveAudioChannel.trySend(QueuedAudioChunk(copy, preReady = false))
             } else if (session.preReadyQueue.size >= VOICE_DICTATION_MAX_PRE_READY_CHUNKS) {
