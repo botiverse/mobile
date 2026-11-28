@@ -514,6 +514,9 @@ private fun raftSignInSafeOAuthReturnUrl(value: String): RaftHttpUrl? =
         (it.scheme == "https" || it.host in RaftOAuthLoopbackHosts) && it.userInfo == null && it.fragment == null
     }
 
+/** Public-within-module predicate matching slock shared `isSafeOAuthReturnUrl`. */
+internal fun isSafeOAuthReturnUrl(value: String): Boolean = raftSignInSafeOAuthReturnUrl(value) != null
+
 /**
  * Where the page is sent with the code (slock shared `appendOAuthAuthorizationParams`): [returnUrl] (the
  * approval's) with `code` set and, when it is not empty, `state` (the setup query's) set, every other

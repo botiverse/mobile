@@ -45,6 +45,17 @@ class MessageContextHistoryLimitedApiTest {
     }
 
     @Test
+    fun readsSenderAvatarUrlWhenPresent() {
+        val body =
+            upstreamBody.replace(
+                "\"senderAvatarUrl\": null",
+                "\"senderAvatarUrl\": \"https://cdn.raft.build/avatars/juno.png\"",
+            )
+        val target = parseMessageContextHiddenTarget(body)
+        assertEquals("https://cdn.raft.build/avatars/juno.png", target?.senderAvatarUrl)
+    }
+
+    @Test
     fun anyOtherBodyIsNotAHiddenTarget() {
         // The plain not found (a missing message, or one this person may not read).
         assertNull(parseMessageContextHiddenTarget("""{"error":"Message not found"}"""))

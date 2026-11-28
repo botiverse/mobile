@@ -5,6 +5,7 @@ import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.ThreadQuotedPermalinkCache
 import build.raft.app.thread.ThreadQuotedPermalinkCacheLookup
 import build.raft.app.thread.ThreadQuotedPermalinkFetchOutcome
+import build.raft.app.thread.ThreadQuotedPermalinkLoadResult
 import build.raft.app.thread.ThreadQuotedPermalinkMessage
 import build.raft.app.thread.ThreadQuotedPermalinkUiState
 import build.raft.app.thread.toQuotedPermalinkUiState
@@ -339,6 +340,38 @@ class ThreadQuotedPermalinkCacheTest {
         assertEquals(
             ThreadQuotedPermalinkCacheLookup.Miss,
             cache.peekLookup(viewerA2.userId, viewerA2.serverId, "chan-1", "msg-403-b"),
+        )
+    }
+
+    @Test
+    fun olderOutcomeReturnsOlderWithoutNegativeCaching() = runTest {
+        val clock = TestTimeSource()
+        val cache = ThreadQuotedPermalinkCache(timeSource = clock)
+        val hiddenTarget =
+            build.raft.app.data.MessageContextHiddenTarget(
+                messageId = "msg-older",
+                senderType = "user",
+                senderId = "user-juno",
+                senderName = "Juno",
+                preview = "Older message",
+                createdAt = "2020-01-02T00:00:00Z",
+                senderAvatarUrl = "https://cdn.raft.build/avatars/juno.png",
+            )
+        var calls = 0
+        val result =
+            cache.getOrFetchResult(
+                viewerProvider = { viewerA1 },
+                channelId = "chan-1",
+                messageId = "msg-older",
+            ) {
+                calls += 1
+                ThreadQuotedPermalinkFetchOutcome.Older(hiddenTarget)
+            }
+        assertEquals(ThreadQuotedPermalinkLoadResult.Older(hiddenTarget), result)
+        assertEquals(1, calls)
+        assertEquals(
+            ThreadQuotedPermalinkCacheLookup.Miss,
+            cache.peekLookup(viewerA1.userId, viewerA1.serverId, "chan-1", "msg-older"),
         )
     }
 }

@@ -279,4 +279,107 @@ class ThreadActionCardsTest {
         assertEquals("agent-proposer-1", projected.requesterAgentId)
         assertEquals(card.suggestedEnvVars, projected.suggestedEnvVars)
     }
+
+    @Test
+    fun seatOutcomeParsesAllKnownVariantsRoundTripsAndIgnoresUnknown() {
+        val cases =
+            listOf(
+                """{"kind":"invites","sent":2,"failed":1}""" to ThreadActionCardSeatOutcome.Invites(sent = 2, failed = 1),
+                """{"kind":"promoted","name":"Ada","role":"admin"}""" to ThreadActionCardSeatOutcome.Promoted(name = "Ada", role = "admin"),
+                """{"kind":"ready","purpose":"agent:create","name":"Scout"}""" to ThreadActionCardSeatOutcome.ReadyAgentCreate(name = "Scout"),
+                """{"kind":"ready","purpose":"assistant:create"}""" to ThreadActionCardSeatOutcome.ReadyAssistantCreate,
+                """{"kind":"ready","purpose":"invite","count":3}""" to ThreadActionCardSeatOutcome.ReadyInvite(count = 3),
+                """{"kind":"ready","purpose":"member:promote","name":"Maya","role":"member"}""" to
+                    ThreadActionCardSeatOutcome.ReadyMemberPromote(name = "Maya", role = "member"),
+                """{"kind":"ready","purpose":"join"}""" to ThreadActionCardSeatOutcome.ReadyJoin,
+                """{"kind":"requester_cannot"}""" to ThreadActionCardSeatOutcome.RequesterCannot,
+                """{"kind":"not_needed"}""" to ThreadActionCardSeatOutcome.NotNeeded,
+            )
+        cases.forEach { (outcomeJson, expected) ->
+            val wire =
+                json.decodeFromString<WireActionCardMetadata>(
+                    """{"kind":"action-card","state":"executed","requesterUserId":"u1","seatOutcome":$outcomeJson,"action":{"type":"seats:add","seats":1}}"""
+                )
+            val card = assertNotNull(wire.toThreadActionCard())
+            assertEquals(expected, card.seatOutcome)
+            val projected = assertNotNull(actionCardFromMessageMetadata(card.toMessageMetadata()))
+            assertEquals(expected, projected.seatOutcome)
+        }
+        val unknownWire =
+            json.decodeFromString<WireActionCardMetadata>(
+                """{"kind":"action-card","state":"executed","seatOutcome":{"kind":"future_outcome"},"action":{"type":"seats:add","seats":1}}"""
+            )
+        val unknownCard = assertNotNull(unknownWire.toThreadActionCard())
+        assertEquals(null, unknownCard.seatOutcome)
+
+        val invalidOutcomes =
+            listOf(
+                """{"kind":"invites","sent":-1,"failed":0}""",
+                """{"kind":"invites","sent":1.5,"failed":0}""",
+                """{"kind":"invites","sent":"2","failed":0}""",
+                """{"kind":"promoted","name":"Ada","role":"owner"}""",
+                """{"kind":"promoted","name":"","role":"admin"}""",
+                """{"kind":"ready","purpose":"invite","count":0}""",
+                """{"kind":"ready","purpose":"agent:create","name":""}""",
+                """{"kind":"ready","purpose":"member:promote","name":"Maya","role":"guest"}""",
+                """{"kind":"ready","purpose":"unknown"}""",
+            )
+        invalidOutcomes.forEach { badJson ->
+            val badWire =
+                json.decodeFromString<WireActionCardMetadata>(
+                    """{"kind":"action-card","state":"executed","seatOutcome":$badJson,"action":{"type":"seats:add","seats":1}}"""
+                )
+            assertEquals(null, assertNotNull(badWire.toThreadActionCard()).seatOutcome, "must reject invalid seatOutcome: $badJson")
+        }
+    }
+
+    @Test
+    fun upgradeCardPastFreeLineDerivesStatusFromServerPlanAndOwnership() {
+        val card = ThreadActionCard(type = PlanUpgradeActionCardType, sourceServerId = "server-1")
+        assertEquals(null, card.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = "free"))
+        assertEquals(null, card.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = " FREE "))
+        assertEquals(null, card.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = "   "))
+        assertEquals(null, card.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = null))
+        assertEquals(UpgradeCardPastFreeLine.Pro, card.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = "pro"))
+        assertEquals(UpgradeCardPastFreeLine.Pro, card.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = " PRO "))
+        assertEquals(UpgradeCardPastFreeLine.NotFree, card.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = "founder"))
+        assertEquals(null, card.upgradeCardPastFreeLine(viewerServerId = "server-2", currentServerPlan = "pro"))
+        val otherCard = ThreadActionCard(type = SeatsAddActionCardType, sourceServerId = "server-1")
+        assertEquals(null, otherCard.upgradeCardPastFreeLine(viewerServerId = "server-1", currentServerPlan = "pro"))
+    }
+
+    @Test
+    fun installMarketplaceAppCardParsesSetupUrlAndValidatesSafety() {
+        val wire =
+            json.decodeFromString<WireActionCardMetadata>(
+                """
+                {
+                  "kind":"action-card",
+                  "state":"executed",
+                  "action":{"type":"integration:install_marketplace_app","clientName":"Linear"},
+                  "result":{"kind":"marketplace-app-installation","clientName":"Linear","setupUrl":"https://linear.app/raft/setup"}
+                }
+                """.trimIndent()
+            )
+        val card = assertNotNull(wire.toThreadActionCard())
+        assertEquals("https://linear.app/raft/setup", card.resultSetupUrl)
+        assertEquals(
+            "https://linear.app/raft/setup",
+            card.installedAppSetupUrl { it.startsWith("https://") },
+        )
+        assertEquals(
+            null,
+            card.installedAppSetupUrl { false },
+        )
+        assertEquals(
+            null,
+            card.copy(state = "prepared").installedAppSetupUrl { true },
+        )
+        assertEquals(
+            null,
+            card.copy(resultKind = "agent").installedAppSetupUrl { true },
+        )
+        val projected = assertNotNull(actionCardFromMessageMetadata(card.toMessageMetadata()))
+        assertEquals("https://linear.app/raft/setup", projected.resultSetupUrl)
+    }
 }

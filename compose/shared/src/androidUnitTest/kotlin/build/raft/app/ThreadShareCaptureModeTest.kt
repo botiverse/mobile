@@ -285,14 +285,16 @@ private val PlainLinkMessage = message("m-plain", "See $PlainLink")
 private val AppLinkMessage = message(AppLinkMessageId, "Merged: $StampPr")
 
 private val QuoteLoader: ThreadQuotedPermalinkLoader = { _ ->
-    ThreadQuotedPermalinkMessage(
-        RaftThreadMessageItem(
-            id = "1949b70d-3814-4e40-8364-8ffad2fff299",
-            authorId = "agent-alpha",
-            authorName = "Alpha",
-            authorKind = "agent",
-            timestampLabel = "2026-10-22T00:24:00Z",
-            body = "$QuotedBody; the private error rate is flat again.",
+    build.raft.app.thread.ThreadQuotedPermalinkLoadResult.Loaded(
+        ThreadQuotedPermalinkMessage(
+            RaftThreadMessageItem(
+                id = "1949b70d-3814-4e40-8364-8ffad2fff299",
+                authorId = "agent-alpha",
+                authorName = "Alpha",
+                authorKind = "agent",
+                timestampLabel = "2026-10-22T00:24:00Z",
+                body = "$QuotedBody; the private error rate is flat again.",
+            ),
         ),
     )
 }

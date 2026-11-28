@@ -2,6 +2,7 @@ package build.raft.app.thread
 
 import build.raft.app.resources.*
 import build.raft.app.thread.actionCardIconName
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -9,6 +10,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftCardButtonState
@@ -87,6 +89,8 @@ internal enum class RaftActionCardStatus {
 internal data class RaftActionCardFrameState(
     val status: RaftActionCardStatus = RaftActionCardStatus.Prepared,
     val record: String? = null,
+    /** Executed `seats:add` outcome line drawn under [record] (or alone with check when [record] is absent). */
+    val outcomeLine: String? = null,
     val blockedReason: String? = null,
     val readOnly: Boolean = false,
     val busyElementKey: String? = null,
@@ -231,12 +235,38 @@ internal fun RaftActionCardView(
                 when {
                     slim != null ->
                         (state.blockedReason ?: slimDescription)?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
-                    executed ->
-                        state.record?.takeIf { it.isNotBlank() }?.let { line ->
-                            // Folded, what came of it after an arrow (web ActionCardFoldedResult): "✓ By Ada · 20:28 → Sent to Raft".
-                            val shown = foldedResult?.takeIf { !expanded }?.let { "$line $ACTION_CARD_RESULT_ARROW$it" } ?: line
-                            { RaftMessageActionCardHeaderDescription(shown, check = true) }
+                    executed -> {
+                        val recordLine = state.record?.takeIf { it.isNotBlank() }
+                        val outcome = state.outcomeLine?.takeIf { it.isNotBlank() }
+                        if (recordLine != null || outcome != null) {
+                            {
+                                // Folded, what came of it after an arrow (web ActionCardFoldedResult): "✓ By Ada · 20:28 → Sent to Raft".
+                                val shownRecord = recordLine?.let { line ->
+                                    foldedResult?.takeIf { !expanded }?.let { "$line $ACTION_CARD_RESULT_ARROW$it" } ?: line
+                                }
+                                if (shownRecord != null && outcome != null) {
+                                    Column {
+                                        RaftMessageActionCardHeaderDescription(shownRecord, check = true)
+                                        RaftMessageActionCardHeaderDescription(
+                                            outcome,
+                                            modifier = Modifier.testTag("action-card-outcome"),
+                                            check = false,
+                                        )
+                                    }
+                                } else if (shownRecord != null) {
+                                    RaftMessageActionCardHeaderDescription(shownRecord, check = true)
+                                } else if (outcome != null) {
+                                    RaftMessageActionCardHeaderDescription(
+                                        outcome,
+                                        modifier = Modifier.testTag("action-card-outcome"),
+                                        check = true,
+                                    )
+                                }
+                            }
+                        } else {
+                            null
                         }
+                    }
                     ended -> state.endedLine?.takeIf { it.isNotBlank() }?.let { line -> { RaftMessageActionCardHeaderDescription(line) } }
                     else -> state.blockedReason?.takeIf { foldsByDefault }?.let { reason -> { RaftMessageActionCardHeaderDescription(reason) } }
                 },

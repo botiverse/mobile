@@ -1,6 +1,7 @@
 package build.raft.app.thread
 
 import build.raft.app.resources.*
+import build.raft.app.isSafeOAuthReturnUrl
 import build.raft.app.settings.settingsBillingOffersUpgrade
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,13 +22,16 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import build.raft.app.RaftCardTree
 import build.raft.app.RaftCardTreeContext
+import build.raft.app.RaftLucideIconName
 import build.raft.app.RaftTraceIdNote
 import build.raft.app.actionCardMsgPlain
 import build.raft.app.components.RaftDesignSystemTheme
+import build.raft.app.components.RaftSlotIcon
 import build.raft.app.currentRaftDateTimeContext
 import build.raft.app.currentRaftTimeContextProvider
 import build.raft.app.data.ActionCardSpecAction
@@ -54,21 +58,28 @@ import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.SeatsAddPurpose
 import build.raft.app.data.ThreadActionCard
 import build.raft.app.data.ThreadActionCardHandledBy
+import build.raft.app.data.ThreadActionCardSeatOutcome
+import build.raft.app.data.UpgradeCardPastFreeLine
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.expiresAtEpochMillis
+import build.raft.app.data.installedAppSetupUrl
 import build.raft.app.data.isAgentMigrateAction
 import build.raft.app.data.isConnectMcpAction
 import build.raft.app.data.isPreparedRequestAction
 import build.raft.app.data.isInviteExternalAction
+import build.raft.app.data.upgradeCardPastFreeLine
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.MemberProfile
 import build.raft.app.rememberActionCardDisplayLocale
 import build.raft.designsystem.components.RaftBanner
 import build.raft.designsystem.components.RaftBannerSize
 import build.raft.designsystem.components.RaftBannerStatus
+import build.raft.designsystem.components.RaftButton
+import build.raft.designsystem.components.RaftButtonSize
 import build.raft.designsystem.components.RaftButtonVariant
 import build.raft.designsystem.components.RaftDialogSheet
+import build.raft.designsystem.components.RaftMessageActionCardActions
 import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftTheme
 
@@ -90,8 +101,12 @@ internal data class ThreadActionCardSpecHost(
     val state: StateFlow<ThreadActionCardSpecState> = MutableStateFlow(ThreadActionCardSpecState()),
     val onIntent: (ThreadActionCardSpecIntent) -> Unit = {},
     val openInWeb: (messageId: String) -> Unit = {},
+    /** Opens an external browser URL (e.g. a done `install_marketplace_app` card's `setupUrl`). */
+    val openExternalUrl: (String) -> Unit = {},
     val isDirectMessageChannel: (channelId: String) -> Boolean = { false },
     val viewerUserId: String? = null,
+    /** Current server's billing plan (`"free"`, `"pro"`, etc.) for auto-marking `plan:upgrade` cards Done. */
+    val currentServerPlan: String? = null,
     val clientOs: String = "",
     val openFeedbackTicket: (ticketId: String?) -> Unit = {},
     /** iOS view-only Billing: "View your plan" opens the view-only Plan & Billing page. */
@@ -311,8 +326,11 @@ internal fun ThreadActionCardSpecView(
     LaunchedEffect(messageId, effectiveCard.isExecuted, effectiveCard.hasEnded) {
         if (effectiveCard.isExecuted || effectiveCard.hasEnded) clearActionCardFormDrafts(messageId)
     }
+    val pastFree = effectiveCard.upgradeCardPastFreeLine(viewerServerId = viewerServerId, currentServerPlan = host.currentServerPlan)
+    val effectiveDone = effectiveCard.isExecuted || pastFree != null
+    val continueSetupUrl = effectiveCard.installedAppSetupUrl(::isSafeOAuthReturnUrl)
     val migrateAgentAccess =
-        if (!effectiveCard.isExecuted && !effectiveCard.hasEnded && effectiveCard.isAgentMigrateAction()) {
+        if (!effectiveDone && !effectiveCard.hasEnded && effectiveCard.isAgentMigrateAction()) {
             host.evaluateMigrateAgentAccess(effectiveCard)
         } else {
             null
@@ -321,14 +339,14 @@ internal fun ThreadActionCardSpecView(
     val preparedRequestForOther = isPreparedRequest && !effectiveCard.preparedRequestAddressedToViewer(host.viewerUserId)
     val preparedRequestAddresseeName = if (preparedRequestForOther) effectiveCard.localizedAddresseeName() else null
     val inviteExternalAccess =
-        if (!effectiveCard.isExecuted && !effectiveCard.hasEnded && effectiveCard.isInviteExternalAction()) {
+        if (!effectiveDone && !effectiveCard.hasEnded && effectiveCard.isInviteExternalAction()) {
             host.evaluateInviteExternalAccess(effectiveCard)
         } else {
             null
         }
     val blockedReason =
         when {
-            effectiveCard.isExecuted || effectiveCard.hasEnded -> null
+            effectiveDone || effectiveCard.hasEnded -> null
             effectiveCard.sourceServerId != null && viewerServerId != null && effectiveCard.sourceServerId != viewerServerId ->
                 effectiveCard.targetServerName?.let { stringResource(Res.string.thread_action_card_blocked_target_server, it) }
                     ?: stringResource(Res.string.thread_action_card_blocked_source_workspace)
@@ -343,7 +361,7 @@ internal fun ThreadActionCardSpecView(
                 stringResource(Res.string.thread_action_card_blocked_need_federate_channels)
             else -> null
         }
-    val endedLine = effectiveCard.actionCardEndedLine()
+    val endedLine = if (pastFree != null) null else effectiveCard.actionCardEndedLine()
     val committedBy =
         effectiveCard.executedByUserName?.takeIf { it.isNotBlank() }?.let { who ->
             if (effectiveCard.isInviteExternalAction()) {
@@ -352,7 +370,21 @@ internal fun ThreadActionCardSpecView(
                 stringResource(Res.string.thread_action_card_committed_by, who)
             }
         }
-    val record = committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
+    val record =
+        if (pastFree != null) {
+            when (pastFree) {
+                UpgradeCardPastFreeLine.Pro -> stringResource(Res.string.action_card_upgrade_done)
+                UpgradeCardPastFreeLine.NotFree -> stringResource(Res.string.action_card_upgrade_done_not_free)
+            }
+        } else {
+            committedBy?.let { by -> executedTimeLabel?.let { "$by · $it" } ?: by } ?: executedTimeLabel
+        }
+    val outcomeLine =
+        if (pastFree == null && effectiveCard.isExecuted) {
+            threadSeatOutcomeText(card = effectiveCard, viewerUserId = host.viewerUserId)
+        } else {
+            null
+        }
     val reconfirmLabel = stringResource(Res.string.thread_action_card_reconfirm)
     val viewPlanLabel = stringResource(Res.string.settings_billing_view_your_plan)
     val offersUpgrade = settingsBillingOffersUpgrade()
@@ -398,14 +430,14 @@ internal fun ThreadActionCardSpecView(
             !effectiveCard.isExecuted &&
             !effectiveCard.hasEnded
     val shown =
-        remember(rendered, inline, questionLayout, singleQuestion, stripPreparedRequestButtons, hideZeroExternalInviteResult, showMcpConnectFooter) {
+        remember(rendered, inline, questionLayout, singleQuestion, stripPreparedRequestButtons, hideZeroExternalInviteResult, pastFree != null, showMcpConnectFooter) {
             val body = if (inline == null) rendered.spec else rendered.spec.withoutInlineQuestions(inline)
             val layoutBody = if (questionLayout == QuestionCardLayout.SlimCard) body.withoutSlimQuestionRows(singleQuestion) else body
             val withoutAddressed = if (stripPreparedRequestButtons) layoutBody.withoutAddressedCardActionButtons() else layoutBody
             val finalSpec = if (showMcpConnectFooter) withoutAddressed.withoutMcpConnectLoginNotice() else withoutAddressed
             rendered.copy(
                 spec = finalSpec,
-                result = if (hideZeroExternalInviteResult) null else rendered.result,
+                result = if (hideZeroExternalInviteResult || pastFree != null) null else rendered.result,
             )
         }
     val currentCard by rememberUpdatedState(effectiveCard)
@@ -467,15 +499,16 @@ internal fun ThreadActionCardSpecView(
     }
     val frame =
         RaftActionCardFrameState(
-            status = effectiveCard.actionCardSpecStatus(),
+            status = if (pastFree != null) RaftActionCardStatus.Executed else effectiveCard.actionCardSpecStatus(),
             record = record,
+            outcomeLine = outcomeLine,
             blockedReason = blockedReason,
             readOnly = !commitEnabled,
             // Someone else's question (or a close waiting for Undo / in flight): the same card, its controls disabled.
             controlsDisabled = question?.asked == false || closeWaiting || closingInFlight,
             busyElementKey = slice.busyElement(typedPending),
-            error = error,
-            errorTraceId = slice.error.traceIdOrNull(),
+            error = error.takeUnless { effectiveDone },
+            errorTraceId = slice.error.traceIdOrNull().takeUnless { effectiveDone },
             endedLine = endedLine,
         )
     RaftActionCardView(
@@ -486,6 +519,7 @@ internal fun ThreadActionCardSpecView(
         modifier = modifier,
         sourceServerId = effectiveCard.sourceServerId,
         displayLocale = displayLocale,
+        initiallyExpanded = if (continueSetupUrl != null) true else null,
         linkNavigable = { button -> button.actionCardSpecLinkNavigable(effectiveCard.sourceServerId, viewerServerId) },
         fitLabels = inline != null,
         slim =
@@ -541,9 +575,127 @@ internal fun ThreadActionCardSpecView(
                         )
                     }
                 }
+                continueSetupUrl != null -> {
+                    {
+                        ThreadActionCardContinueSetup(onClick = { host.openExternalUrl(continueSetupUrl) })
+                    }
+                }
                 else -> null
             },
     )
+}
+
+/**
+ * Post-install setup button rendered on a completed `integration:install_marketplace_app` card
+ * whose result carries a safe `setupUrl` (web `ActionCardContinueSetup`).
+ */
+@Composable
+internal fun ThreadActionCardContinueSetup(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    RaftMessageActionCardActions(modifier = modifier) {
+        RaftButton(
+            text = stringResource(Res.string.app_setup_continue),
+            onClick = onClick,
+            variant = RaftButtonVariant.Default,
+            size = RaftButtonSize.Md,
+            trailingIcon = { RaftSlotIcon(RaftLucideIconName.ArrowUpRight) },
+            modifier = Modifier.testTag("action-card-continue-setup"),
+        )
+    }
+}
+
+/**
+ * What came of a completed `seats:add` request, formatted in the viewer's language (web
+ * `useSeatOutcomeText`). Renders "You can …" when the viewer is the requester.
+ */
+@Composable
+internal fun threadSeatOutcomeText(
+    card: ThreadActionCard,
+    viewerUserId: String?,
+): String? {
+    val outcome = card.seatOutcome ?: return null
+    val names = LocalThreadActionCardNames.current
+    val requesterId = card.requesterUserId?.trim()?.takeIf { it.isNotEmpty() }
+    val viewerId = viewerUserId?.trim()?.takeIf { it.isNotEmpty() }
+    val isMe = requesterId != null && viewerId != null && requesterId.equals(viewerId, ignoreCase = true)
+    val requester =
+        requesterId?.let { names.name(ThreadActionCardEntityKind.Human, it) }?.takeIf { it.isNotBlank() }
+            ?: stringResource(Res.string.action_card_person_someone)
+    return when (outcome) {
+        is ThreadActionCardSeatOutcome.Invites -> {
+            val sentPart =
+                when (outcome.sent) {
+                    0 -> stringResource(Res.string.action_card_person_outcome_invites_sent_zero)
+                    1 -> stringResource(Res.string.action_card_person_outcome_invites_sent_one, outcome.sent)
+                    else -> stringResource(Res.string.action_card_person_outcome_invites_sent_other, outcome.sent)
+                }
+            val failedPart =
+                when (outcome.failed) {
+                    0 -> stringResource(Res.string.action_card_person_outcome_invites_failed_zero)
+                    1 -> stringResource(Res.string.action_card_person_outcome_invites_failed_one, outcome.failed)
+                    else -> stringResource(Res.string.action_card_person_outcome_invites_failed_other, outcome.failed)
+                }
+            sentPart + failedPart
+        }
+        is ThreadActionCardSeatOutcome.Promoted ->
+            if (outcome.role == "admin") {
+                stringResource(Res.string.action_card_person_outcome_promoted_admin, outcome.name)
+            } else {
+                stringResource(Res.string.action_card_person_outcome_promoted_member, outcome.name)
+            }
+        is ThreadActionCardSeatOutcome.ReadyAgentCreate ->
+            if (isMe) {
+                stringResource(Res.string.action_card_person_outcome_ready_me_agent, outcome.name)
+            } else {
+                stringResource(Res.string.action_card_person_outcome_ready_other_agent, requester, outcome.name)
+            }
+        ThreadActionCardSeatOutcome.ReadyAssistantCreate ->
+            if (isMe) {
+                stringResource(Res.string.action_card_person_outcome_ready_me_assistant)
+            } else {
+                stringResource(Res.string.action_card_person_outcome_ready_other_assistant, requester)
+            }
+        is ThreadActionCardSeatOutcome.ReadyInvite ->
+            if (isMe) {
+                if (outcome.count == 1) {
+                    stringResource(Res.string.action_card_person_outcome_ready_me_invite_one)
+                } else {
+                    stringResource(Res.string.action_card_person_outcome_ready_me_invite_other, outcome.count)
+                }
+            } else {
+                if (outcome.count == 1) {
+                    stringResource(Res.string.action_card_person_outcome_ready_other_invite_one, requester)
+                } else {
+                    stringResource(Res.string.action_card_person_outcome_ready_other_invite_other, requester, outcome.count)
+                }
+            }
+        is ThreadActionCardSeatOutcome.ReadyMemberPromote ->
+            if (isMe) {
+                if (outcome.role == "admin") {
+                    stringResource(Res.string.action_card_person_outcome_ready_me_promote_admin, outcome.name)
+                } else {
+                    stringResource(Res.string.action_card_person_outcome_ready_me_promote_member, outcome.name)
+                }
+            } else {
+                if (outcome.role == "admin") {
+                    stringResource(Res.string.action_card_person_outcome_ready_other_promote_admin, requester, outcome.name)
+                } else {
+                    stringResource(Res.string.action_card_person_outcome_ready_other_promote_member, requester, outcome.name)
+                }
+            }
+        ThreadActionCardSeatOutcome.ReadyJoin ->
+            stringResource(Res.string.action_card_person_outcome_join)
+        ThreadActionCardSeatOutcome.RequesterCannot ->
+            if (isMe) {
+                stringResource(Res.string.action_card_person_outcome_requester_cannot_me)
+            } else {
+                stringResource(Res.string.action_card_person_outcome_requester_cannot_other, requester)
+            }
+        ThreadActionCardSeatOutcome.NotNeeded ->
+            stringResource(Res.string.action_card_person_outcome_not_needed)
+    }
 }
 
 /**
