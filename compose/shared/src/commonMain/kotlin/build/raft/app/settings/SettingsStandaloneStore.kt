@@ -249,7 +249,9 @@ internal fun StandaloneSettingsEffectHandler(
             SharedSettingsEffect.Logout -> pager.performStandaloneSettingsLogout(environment.authDataSource)
             is SharedSettingsEffect.ApiEnvironmentChanged -> {
                 environment.settingsCapabilities.bridgeToast(effect.message)
-                runCatchingPreservingCancellation { environment.authDataSource.logout() }
+                // SharedSettingsDataSource.applyApiEnvironmentChange already revoked the prior
+                // session against the old server and cleared local session/caches before switching
+                // environments.
                 pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
                     .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
             }

@@ -38,9 +38,27 @@ class SharedApiEnvironmentStore(
         )
     }
 
+    fun resolveSelection(key: String): SharedSettingsApiEnvironmentOption? =
+        predefined.firstOrNull { it.key == key }
+
+    fun resolve(request: SharedSettingsApiEnvironmentRequest): SharedSettingsApiEnvironmentOption? {
+        predefined.firstOrNull { it.key == request.key }?.let { return it }
+        val apiBaseUrl = request.apiBaseUrl.trim()
+        val socketBaseUrl = request.socketBaseUrl.trim()
+        val webUrl = request.webUrl.trim()
+        if (!apiBaseUrl.startsWith("http") || !socketBaseUrl.startsWith("http")) return null
+        return SharedSettingsApiEnvironmentOption(
+            key = CustomKey,
+            label = request.label.trim().ifBlank { "Custom" },
+            apiBaseUrl = apiBaseUrl,
+            socketBaseUrl = socketBaseUrl,
+            webUrl = webUrl
+        )
+    }
+
     fun select(key: String): SharedSettingsApiEnvironmentOption? =
         synchronized(writeLock) {
-            val environment = predefined.firstOrNull { it.key == key } ?: return@synchronized null
+            val environment = resolveSelection(key) ?: return@synchronized null
             store.putString(KEY_ENVIRONMENT, environment.key)
             mutableState.value = environment
             environment
@@ -48,30 +66,19 @@ class SharedApiEnvironmentStore(
 
     fun save(request: SharedSettingsApiEnvironmentRequest): SharedSettingsApiEnvironmentOption? =
         synchronized(writeLock) {
-            predefined.firstOrNull { it.key == request.key }?.let { environment ->
-                store.putString(KEY_ENVIRONMENT, environment.key)
-                mutableState.value = environment
-                return@synchronized environment
+            val resolved = resolve(request) ?: return@synchronized null
+            if (predefined.any { it.key == resolved.key }) {
+                store.putString(KEY_ENVIRONMENT, resolved.key)
+                mutableState.value = resolved
+                return@synchronized resolved
             }
-            val apiBaseUrl = request.apiBaseUrl.trim()
-            val socketBaseUrl = request.socketBaseUrl.trim()
-            val webUrl = request.webUrl.trim()
-            if (!apiBaseUrl.startsWith("http") || !socketBaseUrl.startsWith("http")) return@synchronized null
-            val custom =
-                SharedSettingsApiEnvironmentOption(
-                    key = CustomKey,
-                    label = request.label.trim().ifBlank { "Custom" },
-                    apiBaseUrl = apiBaseUrl,
-                    socketBaseUrl = socketBaseUrl,
-                    webUrl = webUrl
-                )
             store.putString(KEY_ENVIRONMENT, CustomKey)
-            store.putString(KEY_CUSTOM_LABEL, custom.label)
-            store.putString(KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl)
-            store.putString(KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl)
-            store.putString(KEY_CUSTOM_WEB_URL, custom.webUrl)
-            mutableState.value = custom
-            custom
+            store.putString(KEY_CUSTOM_LABEL, resolved.label)
+            store.putString(KEY_CUSTOM_API_BASE_URL, resolved.apiBaseUrl)
+            store.putString(KEY_CUSTOM_SOCKET_BASE_URL, resolved.socketBaseUrl)
+            store.putString(KEY_CUSTOM_WEB_URL, resolved.webUrl)
+            mutableState.value = resolved
+            resolved
         }
 
     fun rewriteApiUrl(url: String): String {

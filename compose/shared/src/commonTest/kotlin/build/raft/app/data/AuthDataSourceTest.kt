@@ -1,6 +1,7 @@
 package build.raft.app.data
 
 import build.raft.app.resources.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -1166,6 +1167,175 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loginRevokesExistingSessionBeforeClearingAndSkipsLogoutWhenSignedOut() = runBlocking {
+        // Fresh login when signed out does not call /api/auth/logout.
+        run {
+            val api = FakeAuthApi()
+            val store = InMemoryRaftAuthSessionStore()
+            val result = SharedAuthDataSource(transport = api, sessionStore = store).login("user@slock.ai", "password")
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(0, api.logoutCallCount)
+        }
+
+        // Login while already holding a live session revokes the prior session before clearing and logging in.
+        run {
+            val events = mutableListOf<String>()
+            val delegate =
+                InMemoryRaftAuthSessionStore(
+                    storedSession(accessToken = "old-access", refreshToken = "old-refresh")
+                )
+            val recordingStore =
+                object : RaftAuthSessionStore by delegate {
+                    override suspend fun clearSession(reason: String, source: String) {
+                        events += "clear:$reason"
+                        delegate.clearSession(reason, source)
+                    }
+                }
+            val api =
+                FakeAuthApi(
+                    onLogoutRequest = {
+                        events += "logout:hadSession=${delegate.readSession() != null}"
+                    },
+                    onLoginRequest = { events += "login" },
+                )
+            val source = SharedAuthDataSource(transport = api, sessionStore = recordingStore)
+
+            val result = source.login("user@slock.ai", "password")
+
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(1, api.logoutCallCount)
+            assertEquals("""{"refreshToken":"old-refresh"}""", api.logoutBody)
+            assertEquals("Bearer old-access", api.logoutAuthorization)
+            assertEquals(listOf("logout:hadSession=true", "clear:login_clear_cached_session", "login"), events)
+            assertEquals("access-token", delegate.readSession()?.accessToken)
+        }
+
+        // Logout failure or timeout never blocks password login.
+        run {
+            val hang = CompletableDeferred<Unit>()
+            val store = InMemoryRaftAuthSessionStore(storedSession(accessToken = "old-access", refreshToken = "old-refresh"))
+            val api = FakeAuthApi(onLogoutRequest = { hang.await() })
+            val source =
+                SharedAuthDataSource(transport = api, sessionStore = store).apply {
+                    bestEffortLogoutTimeoutMillis = 50L
+                }
+
+            val result = source.login("user@slock.ai", "password")
+
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(1, api.logoutCallCount)
+            assertEquals("access-token", store.readSession()?.accessToken)
+        }
+    }
+
+    @Test
+    fun browserAndSocialLoginRevokePreviousSessionBeforeReplacingAndSkipWhenSignedOut() = runBlocking {
+        // completeAppLogin when signed out does not call /api/auth/logout.
+        run {
+            val api = FakeAuthApi()
+            val result =
+                SharedAuthDataSource(transport = api, sessionStore = InMemoryRaftAuthSessionStore())
+                    .completeAppLogin("code", "verifier")
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(0, api.logoutCallCount)
+        }
+
+        // completeAppLogin while holding a live session revokes the previous session before replacing it.
+        run {
+            val events = mutableListOf<String>()
+            val delegate =
+                InMemoryRaftAuthSessionStore(
+                    storedSession(accessToken = "prior-access", refreshToken = "prior-refresh")
+                )
+            val recordingStore =
+                object : RaftAuthSessionStore by delegate {
+                    override suspend fun replaceAuthenticatedSessionIfCurrent(
+                        session: StoredAuthSession,
+                        isCurrent: () -> Boolean,
+                    ): Boolean {
+                        events += "replace:${session.accessToken}"
+                        return delegate.replaceAuthenticatedSessionIfCurrent(session, isCurrent)
+                    }
+                }
+            val api =
+                FakeAuthApi(
+                    loginResponse =
+                        AuthNetworkResponse(
+                            200,
+                            """{"user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"accessToken":"new-access","refreshToken":"new-refresh"}""",
+                        ),
+                    onLogoutRequest = { events += "logout" },
+                )
+            val source = SharedAuthDataSource(transport = api, sessionStore = recordingStore)
+
+            val result = source.completeAppLogin("code", "verifier")
+
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(1, api.logoutCallCount)
+            assertEquals("""{"refreshToken":"prior-refresh"}""", api.logoutBody)
+            assertEquals("Bearer prior-access", api.logoutAuthorization)
+            assertEquals(listOf("logout", "replace:new-access"), events)
+            assertEquals("new-access", delegate.readSession()?.accessToken)
+        }
+
+        // completeSocialLogin while holding a live session revokes the previous session (even when logout fails).
+        run {
+            val store =
+                InMemoryRaftAuthSessionStore(
+                    storedSession(accessToken = "prior-social-access", refreshToken = "prior-social-refresh")
+                )
+            val api =
+                FakeAuthApi(
+                    logoutResponse = AuthNetworkResponse(503, null, """{"error":"unavailable"}""")
+                )
+            val result = SharedAuthDataSource(transport = api, sessionStore = store).completeSocialLogin("google", "social-code")
+
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(1, api.logoutCallCount)
+            assertEquals("""{"refreshToken":"prior-social-refresh"}""", api.logoutBody)
+            assertEquals("Bearer prior-social-access", api.logoutAuthorization)
+            assertEquals("social-access", store.readSession()?.accessToken)
+        }
+
+        // QA bootstrap paths never call /api/auth/logout even when replacing a prior session.
+        run {
+            val api = FakeAuthApi(qaConsumeResponse = qaConsumeResponse)
+            val store =
+                InMemoryRaftAuthSessionStore(
+                    storedSession(accessToken = "qa-prior-access", refreshToken = "qa-prior-refresh")
+                )
+            val result =
+                SharedAuthDataSource(transport = api, sessionStore = store).consumeQaBootstrap(
+                    QaBootstrapConsumeRequest("raw-ticket", "build.raft.app.alpha", "sha256:cert", "sha256:boot")
+                )
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(0, api.logoutCallCount)
+        }
+
+        // QA login bootstrap also never calls /api/auth/logout when replacing a prior session.
+        run {
+            val api = FakeAuthApi()
+            val store =
+                InMemoryRaftAuthSessionStore(
+                    storedSession(accessToken = "qa-prior-access", refreshToken = "qa-prior-refresh")
+                )
+            val digest = "sha256:${"c".repeat(64)}"
+            val envelope =
+                """{"version":"qa-bootstrap-login/v1","run_case_id":"00000000-0000-4000-8000-000000000001","attempt":1,"ci_job_ref":"gha:job:1","principal_id":"user-1","server_id":"server-1","target_route":"compose_slock_app_shell","application_id":"build.raft.app.alpha","signing_cert_sha256":"sha256:cert","boot_generation":"sha256:boot","user":{"id":"user-1","email":"user@slock.ai","displayName":"Artin"},"access_token":"login-access","refresh_token":"login-refresh"}"""
+            val result =
+                SharedAuthDataSource(transport = api, sessionStore = store).consumeQaLoginBootstrap(
+                    envelopeJson = envelope,
+                    envelopeDigest = digest,
+                    applicationId = "build.raft.app.alpha",
+                    signingCertSha256 = "sha256:cert",
+                    deviceBootGeneration = "sha256:boot",
+                )
+            assertTrue(result is SharedAuthResult.Success)
+            assertEquals(0, api.logoutCallCount)
+        }
+    }
+
+    @Test
     fun loadServersClearsStaleSelectedServerInSharedLayer() = runBlocking {
         val store =
             InMemoryRaftAuthSessionStore(
@@ -1587,6 +1757,7 @@ class AuthDataSourceTest {
         private val onCreateServerRequest: suspend (Int) -> Unit = {},
         private val onLogoutRequest: suspend () -> Unit = {},
         private val onQaReadyRequest: suspend () -> Unit = {},
+        private val onLoginRequest: suspend () -> Unit = {},
     ) : RaftAuthTransport {
         var loginBody: String? = null
             private set
@@ -1634,6 +1805,8 @@ class AuthDataSourceTest {
             private set
         var logoutAuthorization: String? = null
             private set
+        var logoutCallCount: Int = 0
+            private set
         val serversAuthorizations = mutableListOf<String>()
         val serverOrderAuthorizations = mutableListOf<String>()
         var createServerBody: String? = null
@@ -1650,6 +1823,7 @@ class AuthDataSourceTest {
 
         override suspend fun login(bodyText: String): AuthNetworkResponse {
             loginBody = bodyText
+            onLoginRequest()
             return loginResponse
         }
 
@@ -1739,6 +1913,7 @@ class AuthDataSourceTest {
         }
 
         override suspend fun logout(bodyText: String, authorization: String?): AuthNetworkResponse {
+            logoutCallCount += 1
             logoutBody = bodyText
             logoutAuthorization = authorization
             onLogoutRequest()

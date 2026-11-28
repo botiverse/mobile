@@ -1,10 +1,13 @@
 package build.raft.app.shared
 
+import build.raft.app.data.AuthNetworkResponse
 import build.raft.app.data.InMemoryRaftKeyValueStore
 import build.raft.app.data.KeyValueAuthSessionStore
 import build.raft.app.data.RaftAuthSessionStore
+import build.raft.app.data.RaftAuthTransport
 import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
+import build.raft.app.data.revokeAuthSessionAtBaseUrlBestEffort
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -22,6 +25,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -136,12 +140,181 @@ class AndroidApiEnvironmentSessionResetTest {
         val auth = HeldLockAuthStore(events, lockHeld = false)
 
         val switch =
-            switchApiEnvironment(current = "production", persist = { "production" }, authStore = auth) { _, _ ->
+            switchApiEnvironment(
+                current = "production",
+                target = "production",
+                beforePersist = { _, _ -> events += "beforePersist" },
+                persist = { "production" },
+                authStore = auth,
+            ) { _, _ ->
                 events += "disconnect"
             }
 
         assertEquals(ApiEnvironmentSwitch(after = "production", changed = false), switch)
         assertEquals(emptyList<String>(), events)
+    }
+
+    @Test
+    fun switchApiEnvironmentRevokesAgainstOldServerBeforePersistingAndClearing() = runTest {
+        val events = mutableListOf<String>()
+        val authStore = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
+        authStore.replaceAuthenticatedSession(
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "a@example.com"),
+                accessToken = "old-access-token",
+                refreshToken = "old-refresh-token",
+                selectedServerId = "server-1",
+            )
+        )
+        val requestedUrls = mutableListOf<String>()
+        var capturedBody: String? = null
+        var capturedAuth: String? = null
+
+        val switch =
+            switchApiEnvironment(
+                current = "https://old.example/api/",
+                target = "https://new.example/api/",
+                beforePersist = { beforeBaseUrl, _ ->
+                    val session = authStore.readSession()
+                    assertNotNull(session)
+                    revokeAuthSessionAtBaseUrlBestEffort(
+                        apiBaseUrl = beforeBaseUrl,
+                        session = session!!,
+                        transportFactory = { baseUrl ->
+                            requestedUrls += baseUrl
+                            RecordingLogoutTransport { body, authorization ->
+                                capturedBody = body
+                                capturedAuth = authorization
+                                events += "logout:$baseUrl:hasSession=${authStore.readCommittedSessionSnapshot() != null}"
+                                AuthNetworkResponse(200, """{"ok":true}""")
+                            }
+                        },
+                    )
+                },
+                persist = {
+                    events += "persist"
+                    "https://new.example/api/"
+                },
+                authStore = authStore,
+            ) { before, after ->
+                events += "disconnect:$before->$after:cleared=${authStore.readCommittedSessionSnapshot() == null}"
+            }
+
+        assertEquals(ApiEnvironmentSwitch(after = "https://new.example/api/", changed = true), switch)
+        assertEquals(listOf("https://old.example/api/"), requestedUrls)
+        assertEquals("""{"refreshToken":"old-refresh-token"}""", capturedBody)
+        assertEquals("Bearer old-access-token", capturedAuth)
+        assertNull(authStore.readCommittedSessionSnapshot())
+        assertEquals(
+            listOf(
+                "logout:https://old.example/api/:hasSession=true",
+                "persist",
+                "disconnect:https://old.example/api/->https://new.example/api/:cleared=true",
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun switchApiEnvironmentStillPersistsAndClearsWhenBeforePersistThrowsOrTimesOut() = runTest {
+        // Case 1: beforePersist throws an unexpected error.
+        run {
+            val events = mutableListOf<String>()
+            val auth = HeldLockAuthStore(events, lockHeld = false)
+
+            val switch =
+                switchApiEnvironment(
+                    current = "production",
+                    target = "staging",
+                    beforePersist = { _, _ ->
+                        events += "beforePersist_throws"
+                        error("old server unreachable")
+                    },
+                    persist = {
+                        events += "persist"
+                        "staging"
+                    },
+                    authStore = auth,
+                ) { _, _ ->
+                    events += "disconnect"
+                }
+
+            assertEquals(ApiEnvironmentSwitch(after = "staging", changed = true), switch)
+            assertEquals(
+                listOf("beforePersist_throws", "persist", "clear:api_environment_changed", "disconnect"),
+                events,
+            )
+        }
+
+        // Case 2: revokeAuthSessionAtBaseUrlBestEffort times out against an unresponsive old server.
+        run {
+            val events = mutableListOf<String>()
+            val authStore = KeyValueAuthSessionStore(InMemoryRaftKeyValueStore())
+            authStore.replaceAuthenticatedSession(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "a@example.com"),
+                    accessToken = "old-access",
+                    refreshToken = "old-refresh",
+                    selectedServerId = "server-1",
+                )
+            )
+            val hang = CompletableDeferred<Unit>()
+
+            val switch =
+                switchApiEnvironment(
+                    current = "https://offline.example/api/",
+                    target = "https://api.raft.build/api/",
+                    beforePersist = { beforeBaseUrl, _ ->
+                        val session = requireNotNull(authStore.readSession())
+                        val outcome =
+                            revokeAuthSessionAtBaseUrlBestEffort(
+                                apiBaseUrl = beforeBaseUrl,
+                                session = session,
+                                timeoutMillis = 50L,
+                                transportFactory = {
+                                    RecordingLogoutTransport { _, _ ->
+                                        events += "logout_started"
+                                        hang.await()
+                                        AuthNetworkResponse(200, """{"ok":true}""")
+                                    }
+                                },
+                            )
+                        events += "logout_outcome:$outcome"
+                    },
+                    persist = {
+                        events += "persist"
+                        "https://api.raft.build/api/"
+                    },
+                    authStore = authStore,
+                ) { _, _ ->
+                    events += "disconnect"
+                }
+
+            assertEquals(ApiEnvironmentSwitch(after = "https://api.raft.build/api/", changed = true), switch)
+            assertNull(authStore.readCommittedSessionSnapshot())
+            assertEquals(
+                listOf("logout_started", "logout_outcome:failure_timeout", "persist", "disconnect"),
+                events,
+            )
+        }
+    }
+
+    private class RecordingLogoutTransport(
+        private val onLogout: suspend (String, String?) -> AuthNetworkResponse,
+    ) : RaftAuthTransport {
+        override suspend fun login(bodyText: String): AuthNetworkResponse = error("not used")
+        override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse = error("not used")
+        override suspend fun socialAuthProviders(platform: String): AuthNetworkResponse = error("not used")
+        override suspend fun startMobileOAuthLink(provider: String, bodyText: String, authorization: String): AuthNetworkResponse = error("not used")
+        override suspend fun completeMobileOAuthLink(provider: String, bodyText: String, authorization: String): AuthNetworkResponse = error("not used")
+        override suspend fun resendVerification(authorization: String): AuthNetworkResponse = error("not used")
+        override suspend fun verifyEmail(bodyText: String): AuthNetworkResponse = error("not used")
+        override suspend fun currentUser(authorization: String): AuthNetworkResponse = error("not used")
+        override suspend fun refresh(bodyText: String): AuthNetworkResponse = error("not used")
+        override suspend fun logout(bodyText: String, authorization: String?): AuthNetworkResponse = onLogout(bodyText, authorization)
+        override suspend fun servers(authorization: String): AuthNetworkResponse = error("not used")
+        override suspend fun serverOrder(authorization: String): AuthNetworkResponse = error("not used")
+        override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse = error("not used")
     }
 
     private fun TestScope.bridgeScope(): CoroutineScope =

@@ -19,6 +19,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -889,9 +890,23 @@ class SharedSettingsDataSource(
      * #proj-mobile:#396). Null where the host does not expose embedded WebView clearing.
      */
     private val clearInAppBrowserStorage: (suspend () -> Boolean)? = null,
+    /**
+     * Transport factory used to send best-effort `POST /api/auth/logout` against `before.apiBaseUrl`
+     * before persisting a new API environment and clearing local tokens.
+     */
+    private val apiEnvironmentLogoutTransportFactory: (String) -> RaftAuthTransport = { baseUrl ->
+        SharedRaftAuthTransport(
+            baseUrl = baseUrl,
+            warningLogger = { diagnosticsLogger?.invoke(it) },
+        )
+    },
+    private val clearWebViewAuthStorage: suspend () -> Unit = { RaftWebViewAuthStorageHooks.clearAuthStorage?.invoke() },
 ) {
     private var avatarCacheRuntime: RaftAvatarCacheRuntime? = null
     private var avatarCacheNativeCache: RaftAvatarNativeCache = UnsupportedRaftAvatarNativeCache
+
+    /** See [BEST_EFFORT_LOGOUT_TIMEOUT_MILLIS]; tests shorten it. */
+    @RaftCoreInternalApi var apiEnvironmentLogoutTimeoutMillis: Long = BEST_EFFORT_LOGOUT_TIMEOUT_MILLIS
 
     @RaftCoreInternalApi fun withAvatarCacheRuntime(
         runtime: RaftAvatarCacheRuntime?,
@@ -1790,10 +1805,12 @@ class SharedSettingsDataSource(
     suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> =
         apiEnvironmentStore?.let { store ->
             val before = store.current()
-            val after =
-                store.select(environmentKey)
+            val target =
+                store.resolveSelection(environmentKey)
                     ?: return DataResult.Error(ScreenError("settings_developer_environment_unknown", retryable = false))
-            return applyApiEnvironmentChange(store, before, after)
+            return applyApiEnvironmentChange(store = store, before = before, target = target) {
+                store.select(environmentKey)
+            }
         } ?: platformCapabilities.setApiEnvironment(environmentKey)
 
     suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
@@ -1808,10 +1825,12 @@ class SharedSettingsDataSource(
                 }
             }
             val before = store.current()
-            val after =
-                store.save(request)
+            val target =
+                store.resolve(request)
                     ?: return DataResult.Error(ScreenError("settings_developer_environment_unknown", retryable = false))
-            return applyApiEnvironmentChange(store, before, after)
+            return applyApiEnvironmentChange(store = store, before = before, target = target) {
+                store.save(request)
+            }
         } ?: platformCapabilities.saveApiEnvironment(request)
 
     suspend fun checkHandsUpdate(): DataResult<SharedSettingsDeveloperSnapshot> =
@@ -1829,34 +1848,68 @@ class SharedSettingsDataSource(
     private suspend fun applyApiEnvironmentChange(
         store: SharedApiEnvironmentStore,
         before: SharedSettingsApiEnvironmentOption,
-        after: SharedSettingsApiEnvironmentOption
+        target: SharedSettingsApiEnvironmentOption,
+        persist: () -> SharedSettingsApiEnvironmentOption?,
     ): DataResult<SharedSettingsDeveloperSnapshot> {
-        val changed = before != after
-        if (changed) {
-            val avatarRetirement =
-                avatarCacheRuntime?.captureSessionRetirement(
-                    environmentId = before.apiBaseUrl,
-                    session = sessionStore.readSession()
-                )
-            sessionStore.clearSession(reason = "api_environment_changed", source = "settings_store")
-            retireCapturedAvatarOwners(avatarRetirement, "api_environment_changed")
-            when (val result = platformCapabilities.onApiEnvironmentChanged(before, after)) {
-                is DataResult.Content -> Unit
-                is DataResult.Empty -> Unit
-                is DataResult.Error -> diagnosticsLogger?.invoke("api_environment_changed_hook_error code=${result.error.code}")
-                is DataResult.NoPermission -> diagnosticsLogger?.invoke("api_environment_changed_hook_no_permission code=${result.blocker.code}")
-            }
-        }
-        return DataResult.Content(
-            store.developerSnapshot(
-                feedback =
-                    if (changed) {
-                        "API server switched to ${after.label}. Sign in again to use this environment."
-                    } else {
-                        "${after.label} is already selected."
-                    }
+        val willChange = before != target
+        if (!willChange) {
+            val after =
+                persist()
+                    ?: return DataResult.Error(ScreenError("settings_developer_environment_unknown", retryable = false))
+            return DataResult.Content(
+                store.developerSnapshot(feedback = "${after.label} is already selected.")
             )
-        )
+        }
+        return withContext(NonCancellable) {
+            val previousSession =
+                runCatchingPreservingCancellation { sessionStore.readSession() }.getOrNull()
+            if (previousSession != null) {
+                revokeAuthSessionAtBaseUrlBestEffort(
+                    apiBaseUrl = before.apiBaseUrl,
+                    session = previousSession,
+                    timeoutMillis = apiEnvironmentLogoutTimeoutMillis,
+                    diagnosticsLogger = { diagnosticsLogger?.invoke(it) },
+                    source = "settings_api_environment_changed",
+                    transportFactory = apiEnvironmentLogoutTransportFactory,
+                )
+            }
+            val after =
+                persist()
+                    ?: return@withContext DataResult.Error(
+                        ScreenError("settings_developer_environment_unknown", retryable = false)
+                    )
+            val changed = before != after
+            if (changed) {
+                val avatarRetirement =
+                    avatarCacheRuntime?.captureSessionRetirement(
+                        environmentId = before.apiBaseUrl,
+                        session = sessionStore.readSession()
+                    )
+                sessionStore.clearSession(reason = "api_environment_changed", source = "settings_store")
+                retireCapturedAvatarOwners(avatarRetirement, "api_environment_changed")
+                runCatchingPreservingCancellation { RaftImageCacheHooks.clearImageCaches() }
+                    .onFailure { diagnosticsLogger?.invoke("image_cache_clear result=failure source=api_environment_changed") }
+                runCatchingPreservingCancellation { clearWebViewAuthStorage() }
+                    .onFailure { diagnosticsLogger?.invoke("webview_storage_clear result=failure source=api_environment_changed") }
+                RaftShareSuggestionsHostProvider.clear("api_environment_changed")
+                when (val result = platformCapabilities.onApiEnvironmentChanged(before, after)) {
+                    is DataResult.Content -> Unit
+                    is DataResult.Empty -> Unit
+                    is DataResult.Error -> diagnosticsLogger?.invoke("api_environment_changed_hook_error code=${result.error.code}")
+                    is DataResult.NoPermission -> diagnosticsLogger?.invoke("api_environment_changed_hook_no_permission code=${result.blocker.code}")
+                }
+            }
+            DataResult.Content(
+                store.developerSnapshot(
+                    feedback =
+                        if (changed) {
+                            "API server switched to ${after.label}. Sign in again to use this environment."
+                        } else {
+                            "${after.label} is already selected."
+                        }
+                )
+            )
+        }
     }
 
     private suspend fun captureCurrentAvatarOwnerRetirement(): RaftAvatarOwnerRetirementCapture? {

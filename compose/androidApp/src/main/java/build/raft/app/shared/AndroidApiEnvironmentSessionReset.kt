@@ -62,17 +62,38 @@ internal fun CoroutineScope.launchSettingsBridgeAction(
 internal data class ApiEnvironmentSwitch<E>(val after: E, val changed: Boolean)
 
 /**
- * Settings > Developer API-server switch: [persist] saves/selects the new environment (null =
- * unknown key, nothing changes); when it differs from [current], the old server's session is
- * cleared and then [afterClear] runs (realtime disconnect, log). The caller answers after this
- * returns, so the order is persist → clear → afterClear → answer.
+ * Settings > Developer API-server switch: when [beforePersist] and [target] are supplied and
+ * [current] != [target], [beforePersist] runs first (best-effort `POST /api/auth/logout` against
+ * the old server) before [persist] saves/selects the new environment (null = unknown key, nothing
+ * changes); when the saved environment differs from [current], the old server's session is cleared
+ * and then [afterClear] runs (realtime disconnect, log). The caller answers after this returns, so
+ * the order is beforePersist → persist → clear → afterClear → answer.
  */
 internal suspend fun <E : Any> switchApiEnvironment(
     current: E,
     persist: () -> E?,
     authStore: RaftAuthSessionStore,
+    target: E? = null,
+    beforePersist: (suspend (before: E, target: E) -> Unit)? = null,
     afterClear: (before: E, after: E) -> Unit,
 ): ApiEnvironmentSwitch<E>? {
+    if (beforePersist != null && target != null && current != target) {
+        return withContext(NonCancellable) {
+            try {
+                beforePersist(current, target)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                // Best-effort revocation must never block persisting the new environment and clearing tokens.
+            }
+            val after = persist() ?: return@withContext null
+            val changed = current != after
+            if (changed) {
+                clearSessionForApiEnvironmentChange(authStore) { afterClear(current, after) }
+            }
+            ApiEnvironmentSwitch(after = after, changed = changed)
+        }
+    }
     val after = persist() ?: return null
     val changed = current != after
     if (changed) {
