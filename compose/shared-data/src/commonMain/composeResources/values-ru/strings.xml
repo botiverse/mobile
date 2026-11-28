@@ -6546,6 +6546,7 @@
     <string name="settings_computers_runtime_install_installed">%1$s установлен.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s уже установлен на этом компьютере.</string>
     <string name="settings_computers_runtime_install_failed">Установщик %1$s не завершился, поэтому он по-прежнему не установлен.</string>
+    <string name="settings_computers_runtime_install_failed_output_tail">Последние строки вывода установки:</string>
     <string name="settings_computers_runtime_install_in_progress">%1$s уже устанавливается на этом компьютере.</string>
     <string name="settings_computers_runtime_install_error">Не удалось установить %1$s. Попробуйте ещё раз.</string>
     <string name="settings_computers_runtime_install_computer_too_old">Этот компьютер слишком старый, чтобы устанавливать среды выполнения отсюда. Сначала обновите компьютер.</string>

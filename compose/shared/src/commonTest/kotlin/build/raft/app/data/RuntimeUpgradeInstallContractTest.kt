@@ -197,6 +197,49 @@ class RuntimeUpgradeInstallContractTest {
         assertEquals(RuntimeInstallResult.Installed(null), parse("""{"kind":"installed","version":"/home/someone/.local/bin/grok"}""").toRuntimeInstallResult {})
     }
 
+    /**
+     * botiverse/slock #17305 (commit dc3153798): `failed` results may carry a redacted `outputTail`
+     * (at most 2 KB). Non-blank multiline tails are preserved, outer whitespace is trimmed, and
+     * null, blank, non-string, or oversized tails are ignored without dropping the failure outcome.
+     */
+    @Test
+    fun failedInstallOutputTailParsesMultilineAndIgnoresInvalidValues() {
+        val multiline = "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@deepseek-ai%2fdsh"
+        val logged = mutableListOf<String>()
+        assertEquals(
+            RuntimeInstallResult.Failed(exitCode = 1, outputTail = multiline),
+            parse(
+                """{"kind":"failed","exitCode":1,"reason":"installer_failed","outputTail":"npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@deepseek-ai%2fdsh"}"""
+            ).toRuntimeInstallResult { logged += it },
+        )
+        // Trims outer whitespace while preserving internal newlines and indentation.
+        assertEquals(
+            RuntimeInstallResult.Failed(exitCode = 1, outputTail = "line 1\n  line 2\nline 3"),
+            parse("""{"kind":"failed","exitCode":1,"outputTail":"  line 1\n  line 2\nline 3\n"}""").toRuntimeInstallResult { logged += it },
+        )
+        // Exact max length is accepted.
+        val atBound = "a".repeat(RUNTIME_INSTALL_OUTPUT_TAIL_MAX_CHARS)
+        assertEquals(
+            RuntimeInstallResult.Failed(exitCode = null, outputTail = atBound),
+            parse("""{"kind":"failed","exitCode":null,"outputTail":"$atBound"}""").toRuntimeInstallResult { logged += it },
+        )
+        // Null, blank, non-string, and over-bound outputTail values are ignored cleanly.
+        val overBound = "a".repeat(RUNTIME_INSTALL_OUTPUT_TAIL_MAX_CHARS + 1)
+        listOf(
+            """{"kind":"failed","exitCode":1,"outputTail":null}""",
+            """{"kind":"failed","exitCode":1,"outputTail":""}""",
+            """{"kind":"failed","exitCode":1,"outputTail":"   \n\t  "}""",
+            """{"kind":"failed","exitCode":1,"outputTail":42}""",
+            """{"kind":"failed","exitCode":1,"outputTail":true}""",
+            """{"kind":"failed","exitCode":1,"outputTail":["line 1","line 2"]}""",
+            """{"kind":"failed","exitCode":1,"outputTail":{"lines":["line 1"]}}""",
+            """{"kind":"failed","exitCode":1,"outputTail":"$overBound"}""",
+        ).forEach { wire ->
+            assertEquals(RuntimeInstallResult.Failed(exitCode = 1, outputTail = null), parse(wire).toRuntimeInstallResult { logged += it }, wire)
+        }
+        assertTrue(logged.isEmpty(), "outputTail decoding must never log diagnostics: $logged")
+    }
+
     @Test
     fun upgradeAndInstallPostOnlyTheAsyncFlagAndWaitOnTheOperation() = runTest {
         val api =
@@ -226,8 +269,34 @@ class RuntimeUpgradeInstallContractTest {
                 """POST servers/s1/machines/m1/runtimes/claude/upgrade {"respondAsync":true}""",
                 "GET servers/s1/machine-operations/$OP",
                 """POST servers/s1/machines/m1/runtimes/codex/install-plan {"respondAsync":true}""",
-                // Kimi Code installs by its sign-in id, as every runtime route names it.
-                """POST servers/s1/machines/m1/runtimes/kimi/install {"respondAsync":true}""",
+                // Kimi Code installs by its sign-in id, opting into redacted outputTail on failure (slock #17305).
+                """POST servers/s1/machines/m1/runtimes/kimi/install {"respondAsync":true,"outputTail":true}""",
+            ),
+            api.calls,
+        )
+    }
+
+    @Test
+    fun installRuntimeViaStoreCarriesFailedOutputTailFromAsyncOperation() = runTest {
+        val tail = "npm error code E404\nnpm error 404 Not Found"
+        val api =
+            FakeRuntimeOperationApi(
+                answer = { HomeNetworkResponse(code = 202, bodyText = """{"operationId":"$OP"}""") },
+                operation = {
+                    ok("""{"state":"done","status":200,"body":{"result":{"kind":"failed","exitCode":1,"outputTail":"npm error code E404\nnpm error 404 Not Found"}}}""")
+                },
+            )
+        val owner = SharedComputersOwner(environmentId = "https://raft.example", accountId = "user-1", sessionGeneration = "gen-1")
+        val store = SharedRuntimeAccountUsageStore(client = RaftComputersApiClient(api), currentIdentity = { owner }, detachedScope = backgroundScope)
+
+        assertEquals(
+            RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)),
+            store.installRuntime(owner, serverId = "s1", machineId = "m1", runtime = RuntimeAuthRuntime.Grok),
+        )
+        assertEquals(
+            listOf(
+                """POST servers/s1/machines/m1/runtimes/grok/install {"respondAsync":true,"outputTail":true}""",
+                "GET servers/s1/machine-operations/$OP",
             ),
             api.calls,
         )

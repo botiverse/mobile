@@ -3578,6 +3578,7 @@
     <string name="settings_computers_runtime_install_installed">已安装 %1$s。</string>
     <string name="settings_computers_runtime_install_already_installed">这台 Computer 上已经安装了 %1$s。</string>
     <string name="settings_computers_runtime_install_failed">%1$s 的安装程序没有完成，所以它仍未安装。</string>
+    <string name="settings_computers_runtime_install_failed_output_tail">安装输出的最后几行：</string>
     <string name="settings_computers_runtime_install_in_progress">这台 Computer 上的 %1$s 已经在安装中。</string>
     <string name="settings_computers_runtime_install_error">无法安装 %1$s，请重试。</string>
     <string name="settings_computers_runtime_install_computer_too_old">这台 Computer 版本太旧，无法在这里安装运行时。请先更新这台 Computer。</string>

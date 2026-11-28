@@ -161,8 +161,9 @@ interface RaftComputersApi {
     suspend fun runtimeAuthProviders(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse =
         error("runtimeAuthProviders is not implemented")
     /**
-     * `POST servers/:id/machines/:machineId/runtimes/:runtime/:operation` with `{respondAsync}`, for
-     * [operation] `upgrade`, `install-plan` or `install` (slock #15117 / #15214, RuntimeUpgradeInstall.kt).
+     * `POST servers/:id/machines/:machineId/runtimes/:runtime/:operation` with `{respondAsync}`
+     * (and `outputTail: true` on `install`, slock #17305), for [operation] `upgrade`,
+     * `install-plan` or `install` (slock #15117 / #15214, RuntimeUpgradeInstall.kt).
      */
     suspend fun runtimeOperation(serverId: ServerId, machineId: String, runtime: String, operation: String, body: String): HomeNetworkResponse =
         error("runtimeOperation is not implemented")
@@ -882,23 +883,35 @@ interface RaftComputersApi {
             (wire as? JsonObject)?.get("plan")?.toRuntimeInstallPlan()
         }
 
-    /** Runs the runtime's own installer on the Computer (the person confirmed its plan; web `installRuntime`). */
+    /**
+     * Runs the runtime's own installer on the Computer (the person confirmed its plan; web
+     * `installRuntime`). `outputTail: true` opts into a failed install's redacted last lines
+     * (botiverse/slock #17305; answered only to the person who attached the Computer).
+     */
     suspend fun installRuntime(serverId: ServerId, machineId: String, runtime: RuntimeAuthRuntime): RuntimeAuthCall<RuntimeInstallResult> =
-        runtimeOperationCall(serverId, machineId, runtime, "install", RUNTIME_INSTALL_RELAY_BUDGET_MILLIS) { wire ->
+        runtimeOperationCall(
+            serverId = serverId,
+            machineId = machineId,
+            runtime = runtime,
+            operation = "install",
+            budgetMillis = RUNTIME_INSTALL_RELAY_BUDGET_MILLIS,
+            body = RuntimeMachineOperationBody(respondAsync = true, outputTail = true),
+        ) { wire ->
             (wire as? JsonObject)?.get("result")?.toRuntimeInstallResult()
         }
 
-    /** Only the runtime is sent; what runs is the Computer's to say. */
+    /** Only the runtime is sent (plus opt-in flags on [body]); what runs is the Computer's to say. */
     private suspend fun <T> runtimeOperationCall(
         serverId: ServerId,
         machineId: String,
         runtime: RuntimeAuthRuntime,
         operation: String,
         budgetMillis: Long,
+        body: RuntimeMachineOperationBody = RuntimeMachineOperationBody(respondAsync = true),
         read: (JsonElement) -> T?,
     ): RuntimeAuthCall<T> {
-        val body = runtimeAuthBodyJson.encodeToString(RuntimeMachineOperationBody.serializer(), RuntimeMachineOperationBody(respondAsync = true))
-        val started = transport.runtimeOperation(serverId, machineId, runtime.wire, operation, body)
+        val encodedBody = runtimeAuthBodyJson.encodeToString(RuntimeMachineOperationBody.serializer(), body)
+        val started = transport.runtimeOperation(serverId, machineId, runtime.wire, operation, encodedBody)
         return answerOf(serverId, started, budgetMillis).runtimeAuthCall(read)
     }
 

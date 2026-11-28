@@ -6546,6 +6546,7 @@
     <string name="settings_computers_runtime_install_installed">%1$s을(를) 설치했어요.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s이(가) 이 컴퓨터에 이미 설치되어 있어요.</string>
     <string name="settings_computers_runtime_install_failed">%1$s 설치 프로그램이 끝나지 않아 아직 설치되지 않았어요.</string>
+    <string name="settings_computers_runtime_install_failed_output_tail">설치 출력의 마지막 몇 줄:</string>
     <string name="settings_computers_runtime_install_in_progress">이 컴퓨터에서 %1$s을(를) 이미 설치하고 있어요.</string>
     <string name="settings_computers_runtime_install_error">%1$s을(를) 설치하지 못했어요. 다시 시도하세요.</string>
     <string name="settings_computers_runtime_install_computer_too_old">이 컴퓨터는 너무 오래되어 여기서 런타임을 설치할 수 없어요. 먼저 컴퓨터를 업데이트하세요.</string>

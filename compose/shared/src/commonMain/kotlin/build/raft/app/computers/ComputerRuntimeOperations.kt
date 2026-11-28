@@ -478,7 +478,7 @@ internal class ComputerRuntimeInstallController(
     }
 }
 
-/** For the diagnostics line: never the plan's steps (they can name a home path). */
+/** For the diagnostics line: never the plan's steps (they can name a home path) or a failed install's `outputTail`. */
 internal fun RuntimeAuthCall<*>.operationLabel(): String =
     when (this) {
         is RuntimeAuthCall.Done ->
