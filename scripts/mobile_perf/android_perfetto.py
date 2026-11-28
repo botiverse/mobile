@@ -139,7 +139,7 @@ SELECT
   e.dur / 1e6 AS expected_dur_ms,
   a.jank_type AS jank_type,
   CASE
-    WHEN a.jank_type IS NOT NULL AND a.jank_type != 'None' AND a.jank_type != '' THEN 1
+    WHEN a.jank_type IS NOT NULL AND a.jank_type NOT IN ('None', '', 'Unknown Jank') THEN 1
     WHEN e.dur IS NOT NULL AND a.dur > e.dur THEN 1
     ELSE 0
   END AS is_jank
@@ -510,25 +510,47 @@ def parse_perfetto_query_results(
         durations: list[float] = []
         jank_flags: list[bool] = []
         has_jank_col = False
+        used_unknown_jank_fallback = False
+        default_budget_ms = 1000.0 / hz
         for row in frame_rows:
             dur = row.get("dur_ms")
             if isinstance(dur, (int, float)) and not isinstance(dur, bool) and float(dur) > 0:
-                durations.append(float(dur))
-                if "is_jank" in row and row["is_jank"] is not None:
+                dur_val = float(dur)
+                durations.append(dur_val)
+                exp_raw = row.get("expected_dur_ms")
+                row_budget_ms = (
+                    float(exp_raw)
+                    if isinstance(exp_raw, (int, float))
+                    and not isinstance(exp_raw, bool)
+                    and math.isfinite(float(exp_raw))
+                    and float(exp_raw) > 0
+                    else default_budget_ms
+                )
+                jt_raw = row.get("jank_type")
+                jt = str(jt_raw).strip() if jt_raw is not None else None
+                if jt is not None and jt.lower() == "unknown jank":
+                    # Virtual displays without hardware GPU completion fences (e.g. redroid/Wuying)
+                    # emit jank_type="Unknown Jank" on every frame regardless of duration; fall back
+                    # to actual duration vs expected frame budget.
+                    has_jank_col = True
+                    used_unknown_jank_fallback = True
+                    jank_flags.append(dur_val > row_budget_ms + 1e-6)
+                elif "is_jank" in row and row["is_jank"] is not None:
                     has_jank_col = True
                     jank_flags.append(bool(int(row["is_jank"])))
-                elif "jank_type" in row and row["jank_type"] is not None:
+                elif jt is not None:
                     has_jank_col = True
-                    jt = str(row["jank_type"]).strip()
-                    jank_flags.append(jt not in ("", "None", "0"))
+                    jank_flags.append(jt not in ("", "None", "0") or dur_val > row_budget_ms + 1e-6)
                 else:
-                    jank_flags.append(float(dur) > (1000.0 / hz) + 1e-6)
+                    jank_flags.append(dur_val > row_budget_ms + 1e-6)
         frame_summary = _summarize_frame_durations(
             durations,
             refresh_hz=hz,
             jank_flags=jank_flags if has_jank_col else None,
         )
         result.update(frame_summary)
+        if used_unknown_jank_fallback:
+            result["perfetto_jank_source"] = "duration_over_expected_unknown_jank_fallback"
 
     hotspots: list[dict[str, Any]] = []
     if main_thread_raw:
@@ -1196,6 +1218,8 @@ def parse_android_capture(
     extra_dict.setdefault("capture_mode", capture_mode)
     if throttled and thermal_invalid_reason:
         extra_dict["thermal_invalid_reason"] = thermal_invalid_reason
+    if used_perfetto_frames and perfetto_metrics.get("perfetto_jank_source"):
+        extra_dict["perfetto_jank_source"] = perfetto_metrics["perfetto_jank_source"]
     if not used_perfetto_frames and gfx_metrics.get("gfxinfo_profiledata_truncated"):
         extra_dict["gfxinfo_profiledata_truncated"] = True
         extra_dict["gfxinfo_profiledata_frame_count"] = gfx_metrics["gfxinfo_profiledata_frame_count"]
