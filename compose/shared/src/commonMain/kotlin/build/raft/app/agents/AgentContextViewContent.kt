@@ -46,6 +46,8 @@ import build.raft.app.data.AgentContextViewRedactionKind
 import build.raft.app.data.AgentContextViewStatus
 import build.raft.app.data.AgentContextViewTool
 import build.raft.app.data.AgentContextViewToolPairs
+import build.raft.app.data.RaftDelivery
+import build.raft.app.data.agentContextViewDelivery
 import build.raft.app.data.agentContextViewFilterMessageCount
 import build.raft.app.data.agentContextViewPartKey
 import build.raft.app.data.agentContextViewSectionCharCounts
@@ -316,6 +318,7 @@ internal fun AgentContextViewBodySections(
                                 row = row,
                                 toolPairs = toolPairs,
                                 agentName = agentName,
+                                timeContext = timeContext,
                                 isActiveMatch = isActiveMatch || highlightedMessageIndex == row.messageIndex,
                                 isSearchMatch = isMatch,
                                 onCopyText = onCopyText,
@@ -775,6 +778,7 @@ private fun AgentContextMessageRowCard(
     row: AgentContextViewDisplayRow,
     toolPairs: AgentContextViewToolPairs,
     agentName: String,
+    timeContext: RaftTimeContext?,
     isActiveMatch: Boolean,
     isSearchMatch: Boolean,
     onCopyText: (String) -> Unit,
@@ -868,8 +872,11 @@ private fun AgentContextMessageRowCard(
                     context.messages.getOrNull(place.messageIndex)?.parts?.getOrNull(place.partIndex)
                         as? AgentContextViewPart.ToolResult
                 }
+            val delivery = remember(message.role, part) { agentContextViewDelivery(message, part) }
             AgentContextMessagePartView(
                 part = part,
+                delivery = delivery,
+                timeContext = timeContext,
                 isTrigger = isTriggerPart,
                 stepNumber = stepNumber,
                 pairedResult = pairedResult,
@@ -886,6 +893,8 @@ private fun AgentContextMessageRowCard(
                 if (partKey !in toolPairs.callOf) {
                     AgentContextMessagePartView(
                         part = memberMsg.parts[partIndex],
+                        delivery = null,
+                        timeContext = timeContext,
                         isTrigger = false,
                         stepNumber = null,
                         pairedResult = null,
@@ -901,6 +910,8 @@ private fun AgentContextMessageRowCard(
 @Composable
 private fun AgentContextMessagePartView(
     part: AgentContextViewPart,
+    delivery: RaftDelivery?,
+    timeContext: RaftTimeContext?,
     isTrigger: Boolean,
     stepNumber: Int?,
     pairedResult: AgentContextViewPart.ToolResult?,
@@ -910,7 +921,16 @@ private fun AgentContextMessagePartView(
     val colors = RaftTheme.colors
     when (part) {
         is AgentContextViewPart.Text -> {
-            AgentContextFoldableText(text = part.text, mono = false)
+            if (delivery != null) {
+                AgentContextViewRaftDeliveryCard(
+                    text = part.text,
+                    delivery = delivery,
+                    timeContext = timeContext,
+                    onCopyText = onCopyText,
+                )
+            } else {
+                AgentContextFoldableText(text = part.text, mono = false)
+            }
         }
         is AgentContextViewPart.Thinking -> {
             val thinkingText = part.text?.takeIf { it.isNotBlank() }

@@ -31,19 +31,26 @@ data class AgentContextViewToolPairs(
 fun agentContextViewPartKey(messageIndex: Int, partIndex: Int): String = "$messageIndex:$partIndex"
 
 /**
- * Detects whether a user text part carries Raft-delivered notices (`[Raft ...]` or `[target=... msg=...]`).
+ * Parses a user text part delivered by Raft into its structured notices (skipping Raft's own
+ * quoted blocks such as `<memory-index>` per `botiverse/slock` #17300), or null for plain text.
+ */
+fun agentContextViewDelivery(
+    message: AgentContextViewMessage,
+    part: AgentContextViewPart,
+): RaftDelivery? {
+    if (message.role != AgentContextViewMessageRole.User) return null
+    val text = (part as? AgentContextViewPart.Text)?.text ?: return null
+    return parseRaftDelivery(text)
+}
+
+/**
+ * Detects whether a user text part carries Raft-delivered notices (parity with web
+ * `agentContextViewMessageFilter.ts`: `agentContextViewDelivery(message, part) !== null`).
  */
 fun isAgentContextViewRaftNoticePart(
     message: AgentContextViewMessage,
     part: AgentContextViewPart,
-): Boolean {
-    if (message.role != AgentContextViewMessageRole.User) return false
-    val text = (part as? AgentContextViewPart.Text)?.text ?: return false
-    return RAFT_DELIVERY_NOTICE_REGEX.containsMatchIn(text)
-}
-
-private val RAFT_DELIVERY_NOTICE_REGEX =
-    Regex("""\[Raft\s+[^\]]+\]|\[target=[^\s\]]+\s+msg=[^\s\]]+[^\]]*\]""")
+): Boolean = agentContextViewDelivery(message, part) != null
 
 /**
  * Pairs tool results in a non-assistant message with their preceding assistant tool calls,
