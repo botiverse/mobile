@@ -1,6 +1,6 @@
 package build.raft.app.thread
 
-import build.raft.app.composer.ThreadComposerQuoteInsert
+import build.raft.app.ThreadComposerQuoteInsert
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect

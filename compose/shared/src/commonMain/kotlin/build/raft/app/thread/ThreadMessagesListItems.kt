@@ -1,6 +1,6 @@
 package build.raft.app.thread
 
-import build.raft.app.composer.ThreadComposerQuoteInsert
+import build.raft.app.ThreadComposerQuoteInsert
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
