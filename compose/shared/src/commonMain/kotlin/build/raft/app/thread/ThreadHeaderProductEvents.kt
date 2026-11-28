@@ -52,6 +52,7 @@ internal fun threadHeaderOwnActionProductEvent(
             if (focusModeActive) RaftConversationHeaderAction.Restore
             else RaftConversationHeaderAction.Expand
         "thread-pane-close" -> RaftConversationHeaderAction.Close
+        THREAD_FOLLOWERS_MENU_ITEM_ID -> RaftConversationHeaderAction.OpenFollowers
         else -> null
     }
 

@@ -49,6 +49,8 @@ internal fun RaftAppRailHelpOverlay(
     onDocumentation: () -> Unit,
     onFeedback: () -> Unit,
     onEditNavigationBar: (() -> Unit)? = null,
+    onKeyboardShortcuts: (() -> Unit)? = null,
+    keyboardShortcutsShortcut: String? = null,
 ) {
     if (!open) return
     RaftBackHandler(enabled = true, label = "rail_help_menu", onBack = onDismiss)
@@ -80,6 +82,14 @@ internal fun RaftAppRailHelpOverlay(
                         onClick = onDocumentation,
                         leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.BookOpenText, size = 14.dp) },
                     )
+                    if (onKeyboardShortcuts != null) {
+                        RaftMenuItem(
+                            text = stringResource(Res.string.settings_keyboard_shortcuts_title),
+                            onClick = onKeyboardShortcuts,
+                            leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.Keyboard, size = 14.dp) },
+                            shortcut = keyboardShortcutsShortcut,
+                        )
+                    }
                     RaftMenuItem(
                         text = stringResource(Res.string.settings_feedback_title),
                         onClick = onFeedback,

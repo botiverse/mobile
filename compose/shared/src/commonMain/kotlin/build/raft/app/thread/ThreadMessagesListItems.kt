@@ -1,5 +1,7 @@
 package build.raft.app.thread
 
+import build.raft.app.ThreadComposerQuoteInsert
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -219,15 +221,28 @@ internal fun LazyListScope.threadMessageItems(
                     } == true,
                 hoverToolbar =
                     renderPayload.originMessage?.let { origin ->
+                        val originCapabilities =
+                            threadMessageMenuCapabilities(
+                                message = origin,
+                                replyMetadata = origin.toThreadReplyMetadata(),
+                                slice = renderPayload,
+                                writeActionsEnabled = writeActionsEnabled
+                            )
+                        val originQuoteHost = LocalThreadInPlaceTextSelectionHost.current
+                        val originQuoteIntoComposer = originQuoteHost?.quoteIntoComposer
+                        val originInsertQuoteIntoComposer = originQuoteHost?.insertQuoteIntoComposer
+                        val originPendingQuote =
+                            if (
+                                originCapabilities.copyText &&
+                                (originInsertQuoteIntoComposer != null || originQuoteIntoComposer != null)
+                            ) {
+                                threadMessageMenuPendingQuote(origin, origin.localizedAuthorName())
+                            } else {
+                                null
+                            }
                         threadMessageHoverToolbarActions(
                             message = origin,
-                            capabilities =
-                                threadMessageMenuCapabilities(
-                                    message = origin,
-                                    replyMetadata = origin.toThreadReplyMetadata(),
-                                    slice = renderPayload,
-                                    writeActionsEnabled = writeActionsEnabled
-                                ),
+                            capabilities = originCapabilities,
                             onShowReactions = { anchor ->
                                 if (menuState.actionMessageId == origin.id) {
                                     menuState.actionMessageId = null
@@ -257,7 +272,34 @@ internal fun LazyListScope.threadMessageItems(
                                 onThreadEventKeepingAnchor("toggleReaction", origin.id, null, emoji)
                             },
                             onForward = { onForwardMessage(origin.id) },
-                            onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", origin.id, null, null) }
+                            onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", origin.id, null, null) },
+                            quote = originPendingQuote != null,
+                            onQuote = {
+                                originPendingQuote?.let { pending ->
+                                    if (menuState.quickReactionBar?.messageId == origin.id) {
+                                        menuState.quickReactionBar = null
+                                    }
+                                    if (menuState.actionMessageId == origin.id) {
+                                        menuState.actionMessageId = null
+                                        menuState.classicMenuOverrideMessageId = null
+                                    }
+                                    RaftProductEvents.messageActionSelected(
+                                        RaftMessageAction.Quote,
+                                        inThread = false,
+                                        surface = RaftMessageActionSurface.HoverToolbar,
+                                    )
+                                    val insert =
+                                        ThreadComposerQuoteInsert(
+                                            quote = pending,
+                                            fallbackMarkdown = formatThreadMessageQuote(pending.excerpt),
+                                        )
+                                    if (originInsertQuoteIntoComposer != null) {
+                                        originInsertQuoteIntoComposer(insert)
+                                    } else {
+                                        threadMessageMenuQuote(origin)?.let { originQuoteIntoComposer?.invoke(it) }
+                                    }
+                                }
+                            },
                         )
                     }
             )
@@ -625,53 +667,95 @@ internal fun LazyListScope.threadMessageItems(
                             searchMatch = activeInlineSearchMessageId == message.id,
                             popupOpen = menuState.actionMessageId == message.id || menuState.quickReactionBar?.messageId == message.id,
                             hoverToolbar =
-                                threadMessageHoverToolbarActions(
-                                    message = message,
-                                    capabilities =
+                                run {
+                                    val hoverCapabilities =
                                         threadMessageMenuCapabilities(
                                             message = message,
                                             replyMetadata = replyMetadata,
                                             slice = renderPayload,
                                             writeActionsEnabled = writeActionsEnabled
-                                        ),
-                                    onShowReactions = { anchor ->
-                                        if (menuState.actionMessageId == message.id) {
-                                            menuState.actionMessageId = null
-                                            menuState.classicMenuOverrideMessageId = null
-                                        }
-                                        RaftProductEvents.messageActionSelected(
-                                            RaftMessageAction.OpenReactionPicker,
-                                            inThread = replyInThread,
-                                            surface = RaftMessageActionSurface.HoverToolbar,
                                         )
-                                        menuState.quickReactionBar =
-                                            ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
-                                    },
-                                    onQuickReact = { emoji ->
-                                        if (menuState.quickReactionBar?.messageId == message.id) {
-                                            menuState.quickReactionBar = null
+                                    val hoverSelectionHost = LocalThreadInPlaceTextSelectionHost.current
+                                    val hoverInsertQuote = hoverSelectionHost?.insertQuoteIntoComposer
+                                    val hoverQuoteFallback = hoverSelectionHost?.quoteIntoComposer
+                                    val hoverPendingQuote =
+                                        if (
+                                            hoverCapabilities.copyText &&
+                                            (hoverInsertQuote != null || hoverQuoteFallback != null)
+                                        ) {
+                                            threadMessageMenuPendingQuote(message, message.localizedAuthorName())
+                                        } else {
+                                            null
                                         }
-                                        if (menuState.actionMessageId == message.id) {
-                                            menuState.actionMessageId = null
-                                            menuState.classicMenuOverrideMessageId = null
+                                    threadMessageHoverToolbarActions(
+                                        message = message,
+                                        capabilities = hoverCapabilities,
+                                        onShowReactions = { anchor ->
+                                            if (menuState.actionMessageId == message.id) {
+                                                menuState.actionMessageId = null
+                                                menuState.classicMenuOverrideMessageId = null
+                                            }
+                                            RaftProductEvents.messageActionSelected(
+                                                RaftMessageAction.OpenReactionPicker,
+                                                inThread = replyInThread,
+                                                surface = RaftMessageActionSurface.HoverToolbar,
+                                            )
+                                            menuState.quickReactionBar =
+                                                ThreadQuickReactionBarRequest(message.id, anchor, fromHoverToolbar = true)
+                                        },
+                                        onQuickReact = { emoji ->
+                                            if (menuState.quickReactionBar?.messageId == message.id) {
+                                                menuState.quickReactionBar = null
+                                            }
+                                            if (menuState.actionMessageId == message.id) {
+                                                menuState.actionMessageId = null
+                                                menuState.classicMenuOverrideMessageId = null
+                                            }
+                                            RaftProductEvents.messageActionSelected(
+                                                RaftMessageAction.ReactQuick,
+                                                inThread = replyInThread,
+                                                surface = RaftMessageActionSurface.HoverToolbar,
+                                            )
+                                            onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
+                                        },
+                                        quote = hoverPendingQuote != null,
+                                        onQuote = {
+                                            if (hoverPendingQuote != null) {
+                                                if (menuState.quickReactionBar?.messageId == message.id) {
+                                                    menuState.quickReactionBar = null
+                                                }
+                                                if (menuState.actionMessageId == message.id) {
+                                                    menuState.actionMessageId = null
+                                                    menuState.classicMenuOverrideMessageId = null
+                                                }
+                                                RaftProductEvents.messageActionSelected(
+                                                    RaftMessageAction.Quote,
+                                                    inThread = replyInThread,
+                                                    surface = RaftMessageActionSurface.HoverToolbar,
+                                                )
+                                                val insert =
+                                                    ThreadComposerQuoteInsert(
+                                                        quote = hoverPendingQuote,
+                                                        fallbackMarkdown = formatThreadMessageQuote(hoverPendingQuote.excerpt),
+                                                    )
+                                                if (hoverInsertQuote != null) {
+                                                    hoverInsertQuote(insert)
+                                                } else {
+                                                    threadMessageMenuQuote(message)?.let { hoverQuoteFallback?.invoke(it) }
+                                                }
+                                            }
+                                        },
+                                        onForward = { onForwardMessage(message.id) },
+                                        onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
+                                        onShownChange = { shown ->
+                                            if (shown) {
+                                                menuState.hoverToolbarMessageId = message.id
+                                            } else if (menuState.hoverToolbarMessageId == message.id) {
+                                                menuState.hoverToolbarMessageId = null
+                                            }
                                         }
-                                        RaftProductEvents.messageActionSelected(
-                                            RaftMessageAction.ReactQuick,
-                                            inThread = replyInThread,
-                                            surface = RaftMessageActionSurface.HoverToolbar,
-                                        )
-                                        onThreadEventKeepingAnchor("toggleReaction", message.id, null, emoji)
-                                    },
-                                    onForward = { onForwardMessage(message.id) },
-                                    onToggleSave = { onThreadEventKeepingAnchor("toggleMessageSaved", message.id, null, null) },
-                                    onShownChange = { shown ->
-                                        if (shown) {
-                                            menuState.hoverToolbarMessageId = message.id
-                                        } else if (menuState.hoverToolbarMessageId == message.id) {
-                                            menuState.hoverToolbarMessageId = null
-                                        }
-                                    }
-                                ),
+                                    )
+                                },
                             shareSelectionActive = shareSelectionActive,
                             selectedForShare = message.id in selectedShareMessageIds,
                             onToggleShareSelection = { onToggleShareSelection(message.id) },

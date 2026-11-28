@@ -4904,6 +4904,7 @@ private fun RaftAppShellReadyContent(
     // The rail's Help menu (web LeftRail HelpMenu), beside the rail.
     val railHelpOpenState = remember { mutableStateOf(false) }
     var railHelpOpen by railHelpOpenState
+    var railKeyboardShortcutsOpen by remember { mutableStateOf(false) }
     // It belongs to the rail: it closes when the window leaves the wide layout, and when the
     // server panel or the bell opens.
     AppShellRailHelpEffects(
@@ -5670,6 +5671,7 @@ private fun RaftAppShellReadyContent(
     }
     // Held down, the key repeats: one press toggles once.
     var sidebarShortcutHeld by remember { mutableStateOf(false) }
+    var shortcutsHelpShortcutHeld by remember { mutableStateOf(false) }
     AppShellTopBarEffects(
         railHelpOpenState = railHelpOpenState,
         railWithoutTopBar = railWithoutTopBar,
@@ -5861,6 +5863,26 @@ private fun RaftAppShellReadyContent(
                         )
                     ) {
                         openSearchOverlay(source = "shortcut")
+                        return@onPreviewKeyEvent true
+                    }
+                    // web HelpMenu: ⌘/ / Ctrl+/ toggles the Keyboard shortcuts dialog (once per press).
+                    if (event.key == Key.Slash && event.type == KeyEventType.KeyUp) shortcutsHelpShortcutHeld = false
+                    if (
+                        raftKeyboardShortcutsHelpShortcut(
+                            keyDown = event.type == KeyEventType.KeyDown,
+                            key = event.key,
+                            meta = event.isMetaPressed,
+                            ctrl = event.isCtrlPressed,
+                            alt = event.isAltPressed,
+                            shift = event.isShiftPressed,
+                            apple = shortcutsUseCommand,
+                        )
+                    ) {
+                        if (!shortcutsHelpShortcutHeld) {
+                            shortcutsHelpShortcutHeld = true
+                            railHelpOpen = false
+                            railKeyboardShortcutsOpen = !railKeyboardShortcutsOpen
+                        }
                         return@onPreviewKeyEvent true
                     }
                     if (event.key == Key.Backslash && event.type == KeyEventType.KeyUp) sidebarShortcutHeld = false
@@ -6175,6 +6197,22 @@ private fun RaftAppShellReadyContent(
                                 } else {
                                     null
                                 },
+                            onKeyboardShortcuts =
+                                if (
+                                    settingsKeyboardShortcutsVisible(
+                                        finePointer = build.raft.app.raftPlatformHasFinePointer(),
+                                        largeScreenPossible = build.raft.app.raftPlatformLargeScreenPossible(),
+                                    )
+                                ) {
+                                    {
+                                        railHelpOpen = false
+                                        bridge.log("app_shell_rail_help_pick item=keyboard_shortcuts")
+                                        railKeyboardShortcutsOpen = true
+                                    }
+                                } else {
+                                    null
+                                },
+                            keyboardShortcutsShortcut = raftKeyboardShortcutsHelpShortcutLabel(shortcutsUseCommand),
                         )
                         desktopRailPlacesHost?.Overlays()
                         RaftRailPlacesEditDialog(
@@ -6205,6 +6243,14 @@ private fun RaftAppShellReadyContent(
                     @Suppress("NAME_SHADOWING")
                     val shellScope = if (navRailActive && !railWithoutTopBar) shellScope.copy(topSafeArea = 0.dp) else shellScope
                     if (!navRailActive && showAppShellBottomTabs) serverMenuOverlay(false)
+                    RaftShellKeyboardShortcutsDialogHost(
+                        open = railKeyboardShortcutsOpen,
+                        apple = shortcutsUseCommand,
+                        onDismiss = {
+                            shortcutsHelpShortcutHeld = false
+                            railKeyboardShortcutsOpen = false
+                        },
+                    )
                     serverSwitcherInviteServerId?.let { inviteServerId ->
                         val inviteMembersDataSource =
                             remember(memberRepository, settingsRepository, appShellServerMembersStore) {

@@ -182,6 +182,24 @@ private class FollowersOverlayOwner {
 }
 private val LocalFollowersOverlay = staticCompositionLocalOf<FollowersOverlayOwner?> { null }
 
+/**
+ * Narrow-header fold coordination between [ThreadPageHeader] and [ThreadAgentFollowersHeader]
+ * (web `ThreadPanelHeader` / `TaskConversationDialog` #189 rule 6): when [folded] is true,
+ * [ThreadAgentFollowersHeader] keeps its store, realtime subscription, and [LocalFollowersOverlay]
+ * alive without emitting the inline avatar chip, and reports [hasFollowers] + [openFromMenu] so
+ * the header's `⋯` menu can open the followers popover anchored to [anchorRef].
+ */
+internal class ThreadAgentFollowersFoldSlot(
+    val anchorRef: RaftLiveRootAnchorRef,
+) {
+    var folded by mutableStateOf(false)
+    var hasFollowers by mutableStateOf(false)
+    var openFromMenu: (() -> Unit)? by mutableStateOf(null)
+}
+
+internal val LocalThreadAgentFollowersFoldSlot =
+    staticCompositionLocalOf<ThreadAgentFollowersFoldSlot?> { null }
+
 /** Root sibling overlays: the notice never traps touches or disappears with the last avatar. */
 @Composable
 internal fun ThreadFollowersOverlayHost(content: @Composable () -> Unit) {
@@ -264,13 +282,28 @@ internal fun ThreadAgentFollowersHeader(
     trackHeaderActions: Boolean = false,
 ) {
     val agents = state.roster?.agents.orEmpty()
+    val hasFollowers = agents.isNotEmpty() || state.error == ThreadFollowersError.Load
     val owner = LocalFollowersOverlay.current
+    val foldSlot = LocalThreadAgentFollowersFoldSlot.current
+    val folded = foldSlot?.folded == true
     val anchorRef = remember { RaftLiveRootAnchorRef("thread-followers") }
-    var resolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
+    var inlineResolver by remember { mutableStateOf<RaftPopoverAnchorResolver?>(null) }
+    val foldedResolver = remember(foldSlot) {
+        foldSlot?.anchorRef?.resolver(RaftPopoverLocalPoint.BottomEnd)
+    }
     val compact = !raftWindowWide()
     val latestTrack by rememberUpdatedState(trackHeaderActions)
-    val latestCompact by rememberUpdatedState(compact)
+    val latestCompact by rememberUpdatedState(compact || folded)
     val latestDispatch by rememberUpdatedState(dispatch)
+    val openFromMenu = remember(foldedResolver) {
+        foldedResolver?.let { menuResolver ->
+            {
+                if (menuResolver.resolve() != null) {
+                    latestDispatch(ThreadAgentFollowersIntent.Open)
+                }
+            }
+        }
+    }
     val stableDispatch = remember {
         { intent: ThreadAgentFollowersIntent ->
             if (latestTrack && intent is ThreadAgentFollowersIntent.Remove) {
@@ -301,19 +334,37 @@ internal fun ThreadAgentFollowersHeader(
             latestOpenAgentProfile(threadFollowerProfileIdentity(agent))
         }
     }
-    SideEffect { owner?.value = FollowersOverlay(state, resolver, stableDispatch, openAgentProfile, agentStatusResolver) }
-    DisposableEffect(owner) { onDispose { owner?.value = null } }
-    if (agents.isEmpty() && !state.open && state.error != ThreadFollowersError.Load) return
+    val defaultInlineResolver = remember(anchorRef) { anchorRef.resolver(RaftPopoverLocalPoint.BottomEnd) }
+    val effectiveResolver =
+        if (folded && foldedResolver != null) {
+            foldedResolver
+        } else {
+            inlineResolver ?: defaultInlineResolver
+        }
+    SideEffect {
+        owner?.value = FollowersOverlay(state, effectiveResolver, stableDispatch, openAgentProfile, agentStatusResolver)
+        foldSlot?.hasFollowers = hasFollowers
+        foldSlot?.openFromMenu = if (hasFollowers) openFromMenu else null
+    }
+    DisposableEffect(owner, foldSlot) {
+        onDispose {
+            owner?.value = null
+            foldSlot?.hasFollowers = false
+            foldSlot?.openFromMenu = null
+        }
+    }
+    if (folded) return
+    if (!hasFollowers && !state.open) return
     // Keep the live anchor while an empty popover is open, but never leave an empty trigger.
     Box(Modifier.raftCaptureLiveRootAnchor(anchorRef)) {
-        if (agents.isNotEmpty() || state.error == ThreadFollowersError.Load) {
+        if (hasFollowers) {
             val description = stringResource(Res.string.thread_followers_count, agents.size)
             ThreadHeaderActionButton(
                 modifier = Modifier.semantics { contentDescription = description },
                 horizontalPadding = 6.dp,
                 onClick = {
-                    resolver = anchorRef.resolver(RaftPopoverLocalPoint.BottomEnd)
-                    if (resolver?.resolve() != null) {
+                    inlineResolver = anchorRef.resolver(RaftPopoverLocalPoint.BottomEnd)
+                    if (inlineResolver?.resolve() != null) {
                         if (latestTrack && !state.open) {
                             RaftProductEvents.conversationHeaderActionSelected(
                                 action = RaftConversationHeaderAction.OpenFollowers,

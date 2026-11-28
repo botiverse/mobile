@@ -52,7 +52,9 @@ internal enum class ThreadNewMessageMenuTool {
      * A right-click menu opened while part of the message was selected: copy that text ("Copy",
      * leading the second row). Never in the long-press menu or the selection menu.
      */
-    CopySelection
+    CopySelection,
+    /** Quotes the message into the conversation's composer (web MessageItem "Quote"). */
+    Quote
 }
 
 internal val ThreadNewMessageMenuToolOrder =
@@ -88,6 +90,7 @@ internal val ThreadNewMessageMenuSelectionToolOrder =
 internal val ThreadNewMessageMenuSecondaryToolOrder =
     listOf(
         ThreadNewMessageMenuTool.CopySelection,
+        ThreadNewMessageMenuTool.Quote,
         ThreadNewMessageMenuTool.SelectText,
         ThreadNewMessageMenuTool.CopyLink,
         ThreadNewMessageMenuTool.FollowThread,
@@ -117,7 +120,8 @@ internal data class ThreadNewMessageMenuToolCallbacks(
     val onSelectText: () -> Unit = {},
     val onSelectAll: () -> Unit = {},
     val onMarkThreadUnread: () -> Unit = {},
-    val onCopySelection: () -> Unit = {}
+    val onCopySelection: () -> Unit = {},
+    val onQuote: () -> Unit = {}
 )
 
 internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuToolCallbacks) {
@@ -137,6 +141,7 @@ internal fun ThreadNewMessageMenuTool.dispatch(callbacks: ThreadNewMessageMenuTo
         ThreadNewMessageMenuTool.SelectAll -> callbacks.onSelectAll()
         ThreadNewMessageMenuTool.MarkThreadUnread -> callbacks.onMarkThreadUnread()
         ThreadNewMessageMenuTool.CopySelection -> callbacks.onCopySelection()
+        ThreadNewMessageMenuTool.Quote -> callbacks.onQuote()
     }
 }
 
@@ -174,6 +179,8 @@ internal data class ThreadNewMessageMenuActionAvailability(
     val partialSelection: Boolean = false,
     /** A right-click menu opened over selected text in the message: "Copy" copies that text. */
     val copySelection: Boolean = false,
+    /** Quotes this message into the active composer (web MessageItem `canQuoteThisMessage`). */
+    val quote: Boolean = false,
     /** Select Text (the sheet for picking and quoting text); off for a cut Activity preview. */
     val selectText: Boolean = true,
     /**
@@ -202,6 +209,7 @@ internal data class ThreadNewMessageMenuActionAvailability(
             ThreadNewMessageMenuTool.SelectText -> selectText && !selectionContext
             ThreadNewMessageMenuTool.SelectAll -> selectionContext && partialSelection
             ThreadNewMessageMenuTool.CopySelection -> copySelection && !selectionContext
+            ThreadNewMessageMenuTool.Quote -> quote && !selectionContext
         }
 
     fun primaryTools(): List<ThreadNewMessageMenuTool> =
