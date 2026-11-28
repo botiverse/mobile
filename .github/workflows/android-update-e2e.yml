@@ -75,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: Install Hands CLI
-        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.83
+        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.87
       - id: p
         env:
           HANDS_AUTH_TOKEN: ${{ secrets.QUIVER_BEARER_TOKEN }}
@@ -136,7 +136,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install Hands CLI
-        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.83
+        run: npm install -g --ignore-scripts @botiverse/hands-cli@0.5.87
 
       - name: Download A and B
         if: needs.plan.outputs.mode == 'fixture'
