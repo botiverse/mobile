@@ -4,7 +4,7 @@ import androidx.compose.ui.platform.testTag
 import build.raft.designsystem.components.RaftTextFieldDefaults
 import build.raft.app.data.AgentBlockedState
 import build.raft.app.agents.AgentVoiceSection
-import build.raft.app.assistant.AssistantOwnerPausedNotice
+import build.raft.app.assistant.AssistantProfilePausedNotice
 import build.raft.app.assistant.AssistantOwnerSection
 import build.raft.app.badgeVariant
 import build.raft.app.resources.*
@@ -1197,6 +1197,8 @@ internal class MembersAgentLifecycleInputs(
     val computerRevokedNote: MembersAgentComputerRevokedNoteState? = null,
     /** True when the viewer is a Guest on the server (slock #17190): Workers render as presence-only. */
     val viewerIsGuest: Boolean = false,
+    /** Optimistic pause state set right after a server owner/admin pauses this assistant. */
+    val assistantPausedLocally: Boolean = false,
 )
 
 /**
@@ -2287,11 +2289,16 @@ private fun MembersAgentProfileIdentity(
             }
         }
     )
-    // Web AgentDetailPanel: under the hero, the owner's paused notice with Start. Here, not in
-    // [MembersAgentProfileTab], whose body is shape-sensitive (see MembersAgentRuntimeModelInputs).
-    // Only the viewer's own assistant of this server shows it, never a remote agent's profile.
+    // Web AgentDetailPanel: under the hero, the paused notice (with Start for the owner, read-only
+    // for other viewers). Here, not in [MembersAgentProfileTab], whose body is shape-sensitive.
     if (summary?.deletedAt.isNullOrBlank()) {
-        AssistantOwnerPausedNotice(agentId = member.id.value, fallbackPausedAt = member.assistantPausedAt)
+        AssistantProfilePausedNotice(
+            agentId = member.id.value,
+            assistantOwnerUserId = summary?.assistantOwnerUserId?.takeIf { it.isNotBlank() } ?: member.assistantOwnerUserId,
+            fallbackPausedAt = summary?.assistantPausedAt?.takeIf { it.isNotBlank() } ?: member.assistantPausedAt,
+            fallbackPausedByName = summary?.assistantPausedByName?.takeIf { it.isNotBlank() } ?: member.assistantPausedByName,
+            optimisticPaused = lifecycle.assistantPausedLocally,
+        )
     }
 }
 

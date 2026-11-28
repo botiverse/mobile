@@ -36,7 +36,14 @@ private val agentControlsJson = Json { ignoreUnknownKeys = true }
 private data class AgentTurnInterruptResponseDto(
     val outcome: String? = null,
     val toolName: String? = null,
-    val stuckForMs: Long? = null
+    val stuckForMs: Long? = null,
+    val paused: Boolean? = null
+)
+
+/** Result of an admin pausing another user's personal assistant via `POST /agents/:id/interrupt-turn`. */
+@RaftCoreInternalApi data class AgentPauseAssistantResult(
+    val outcome: AgentTurnStopOutcome,
+    val paused: Boolean
 )
 
 /** `{ error, code, errorCode, details }`: the agents/channels error envelope (`code`/`errorCode`/`details` are optional). */
@@ -54,13 +61,22 @@ private data class AgentControlsErrorDto(
  * provider's own kind, or a missing value) reads as "nothing was running".
  */
 @RaftCoreInternalApi fun parseSharedAgentTurnInterruptOutcome(bodyText: String): AgentTurnStopOutcome? =
+    parseSharedAgentPauseAssistantResult(bodyText)?.outcome
+
+/**
+ * Parses a 2xx `POST /agents/:id/interrupt-turn` body with its `paused` flag (web
+ * `agentStore.pauseAssistant`): `paused == true` when this call newly paused a personal assistant.
+ */
+@RaftCoreInternalApi fun parseSharedAgentPauseAssistantResult(bodyText: String): AgentPauseAssistantResult? =
     runCatching {
         val dto = agentControlsJson.decodeFromString(AgentTurnInterruptResponseDto.serializer(), bodyText)
-        when (dto.outcome) {
-            AgentTurnStopOutcome.Interrupted.wireValue -> AgentTurnStopOutcome.Interrupted
-            AgentTurnStopOutcome.Restarted.wireValue -> AgentTurnStopOutcome.Restarted
-            else -> AgentTurnStopOutcome.NotRunning
-        }
+        val outcome =
+            when (dto.outcome) {
+                AgentTurnStopOutcome.Interrupted.wireValue -> AgentTurnStopOutcome.Interrupted
+                AgentTurnStopOutcome.Restarted.wireValue -> AgentTurnStopOutcome.Restarted
+                else -> AgentTurnStopOutcome.NotRunning
+            }
+        AgentPauseAssistantResult(outcome = outcome, paused = dto.paused == true)
     }.getOrNull()
 
 /** What a stop-this-sub-agent request reported; web `SubagentStopOutcome` (`AgentSubagentInterruptOutcome`). */
@@ -244,6 +260,16 @@ private val agentControlsRequestJson = Json { explicitNulls = false }
             method = "POST",
             bodyText = "{}",
             parse = ::parseSharedAgentTurnInterruptOutcome
+        )
+
+    /** Server owner/admin pause of another member's personal assistant (`POST /agents/:id/interrupt-turn`). */
+    suspend fun pauseAssistant(agentId: MemberId): DataResult<AgentPauseAssistantResult> =
+        send(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/interrupt-turn",
+            method = "POST",
+            bodyText = "{}",
+            parse = ::parseSharedAgentPauseAssistantResult
         )
 
     /** Stops one running sub-agent; the agent and its other sub-agents keep running. */

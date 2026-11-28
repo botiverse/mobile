@@ -532,6 +532,9 @@ internal fun AgentDetailSnapshot.toStaticMembersProfile(server: ServerSummary): 
         managedByAppName = summary?.managedByAppName?.takeIf { it.isNotBlank() },
         managedByAppLogoUrl = summary?.managedByAppLogoUrl?.takeIf { it.isNotBlank() },
         managedByAppBotStatusText = summary?.managedByAppBotStatusText?.takeIf { it.isNotBlank() },
+        assistantOwnerUserId = summary?.assistantOwnerUserId?.takeIf { it.isNotBlank() },
+        assistantPausedAt = summary?.assistantPausedAt?.takeIf { it.isNotBlank() },
+        assistantPausedByName = summary?.assistantPausedByName?.takeIf { it.isNotBlank() },
         profileProjection = summary?.profileProjection?.takeIf { it.isNotBlank() },
         permissionBadges = listOfNotNull(
             summary?.runtime?.takeIf { it.isNotBlank() },
@@ -558,6 +561,9 @@ internal fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfi
             managedByAppName = member.managedByAppName ?: summary?.managedByAppName,
             managedByAppLogoUrl = member.managedByAppLogoUrl ?: summary?.managedByAppLogoUrl,
             managedByAppBotStatusText = member.managedByAppBotStatusText ?: summary?.managedByAppBotStatusText,
+            assistantOwnerUserId = member.assistantOwnerUserId ?: summary?.assistantOwnerUserId,
+            assistantPausedAt = if (summary != null) summary.assistantPausedAt else member.assistantPausedAt,
+            assistantPausedByName = if (summary != null) summary.assistantPausedByName else member.assistantPausedByName,
             profileProjection = member.profileProjection ?: summary?.profileProjection,
         )
     return copy(summary = nextSummary)

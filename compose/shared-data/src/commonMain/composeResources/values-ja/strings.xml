@@ -5383,6 +5383,13 @@
     <string name="assistant_paused_start">起動</string>
     <string name="assistant_paused_starting">起動中…</string>
     <string name="assistant_paused_start_failed">起動できませんでした。もう一度お試しください。</string>
+    <string name="assistant_paused_other_body">オーナーが起動するまで、返信もまとめの送信も行いません。</string>
+    <string name="assistant_pause_action">アシスタントを一時停止</string>
+    <string name="assistant_pause_confirm">一時停止</string>
+    <string name="assistant_pause_confirm_title">%1$s を一時停止しますか？</string>
+    <string name="assistant_pause_confirm_body">現在のターンは停止し、オーナーが再び起動するまで、返信もまとめの送信も行いません。オーナーには通知が届き、再開できるのはオーナーのみです。</string>
+    <string name="assistant_pause_pausing">一時停止しています…</string>
+    <string name="assistant_pause_paused">一時停止しました。オーナーに通知しました。</string>
     <string name="assistant_setting_reads_dms">自分の DM の読み取り</string>
     <string name="assistant_setting_reads_dms_description">DM を読んで、あなたを待っていることを伝えます。オフにするとすぐ止まります。</string>
     <string name="assistant_setting_send_as_owner">自分の名前でメッセージを送信</string>

@@ -85,6 +85,7 @@ import build.raft.app.RaftSidePaneCloseButton
 import build.raft.app.RaftTopPageHeader
 import build.raft.app.RaftTopPageHeaderBackContentSpacing
 import build.raft.app.RaftTopPageHeaderContentEndPadding
+import build.raft.app.RaftTraceIdNote
 import build.raft.app.RaftType
 import build.raft.app.RaftUnifiedDialog
 import androidx.compose.ui.semantics.Role
@@ -301,6 +302,8 @@ internal fun MembersDetailHeader(
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
     canManage: Boolean,
+    /** Web `canPauseAssistant`: server owner/admin viewing another member's active personal assistant. */
+    canPauseAssistant: Boolean = false,
     /** Web `canMessageAgent`: false for an agent of another server of a joint channel. */
     canMessage: Boolean = true,
     agentStatusIndicatorState: RaftAgentStatusIndicatorState?,
@@ -375,7 +378,7 @@ internal fun MembersDetailHeader(
                     if (directMessageEligibility != MembersDirectMessageEligibility.Unavailable) {
                         add(RaftNativeNavBarAction("member-message", nativeMessageLabel, "message", onOpenDirectMessage, icon = RaftLucideIconName.DirectMessage))
                     }
-                    if (member.kind == MemberKind.Agent) {
+                    if (member.kind == MemberKind.Agent && !deleted && (canManage || canPauseAssistant)) {
                         add(
                             RaftNativeNavBarAction(
                                 "member-manage",
@@ -429,7 +432,7 @@ internal fun MembersDetailHeader(
                 val hasCall = onStartCall != null
                 val hasLounge = onOpenLounge != null
                 val hasMessage = directMessageEligibility != MembersDirectMessageEligibility.Unavailable
-                val hasMore = member.kind == MemberKind.Agent && canManage && !deleted
+                val hasMore = member.kind == MemberKind.Agent && !deleted && (canManage || canPauseAssistant)
                 val ownCount = (if (hasCall) 1 else 0) + (if (hasLounge) 1 else 0) + (if (hasMessage) 1 else 0)
                 val shownOwn =
                     if (headRowTabs != null) {
@@ -587,8 +590,8 @@ internal fun MembersDetailHeader(
                                 leadingIcon = { RaftContentLucideIcon(RaftLucideIconName.DirectMessage) }
                             )
                         }
-                        // The More menu holds only Start/Stop and Restart / Reset: nothing to show without
-                        // manage rights or once the agent is archived.
+                        // The More menu holds runtime controls (for managers) and Pause assistant
+                        // (for server owners/admins viewing another member's active assistant).
                         if (hasMore) {
                             RaftIconButton(
                                 onClick = {
@@ -1189,6 +1192,76 @@ internal fun MembersRestartResetDialog(
                     )
                 }
             )
+        }
+    }
+}
+
+/**
+ * Web `AgentDetailPanel` / `ConfirmDialog` (`variant="warning"`): confirms pausing another
+ * member's personal assistant. Errors stay inside the dialog so the admin can retry or cancel.
+ */
+@Composable
+internal fun MembersPauseAssistantDialog(
+    agentName: String,
+    busy: Boolean,
+    errorMessage: String?,
+    errorTraceId: String?,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    RaftUnifiedDialog(
+        title = stringResource(Res.string.assistant_pause_confirm_title, agentName),
+        dismissEnabled = !busy,
+        dismissOnOutsideTap = false,
+        maxWidth = 384.dp,
+        contentPadding = 24.dp,
+        onDismiss = onDismiss,
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Sm),
+            ) {
+                MembersLifecycleWarningBanner(
+                    destructive = false,
+                    text = stringResource(Res.string.assistant_pause_confirm_body),
+                )
+                errorMessage?.takeIf { it.isNotBlank() }?.let { message ->
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        RaftBanner(
+                            description = message,
+                            status = RaftBannerStatus.Destructive,
+                            size = RaftBannerSize.Sm,
+                            modifier = Modifier.testTag("assistant-pause-error"),
+                        )
+                        RaftTraceIdNote(errorTraceId)
+                    }
+                }
+            }
+            RaftDialogFooter {
+                RaftButton(
+                    text = stringResource(Res.string.common_cancel),
+                    onClick = onDismiss,
+                    variant = RaftButtonVariant.Ghost,
+                    size = RaftButtonSize.Lg,
+                    enabled = !busy,
+                )
+                RaftButton(
+                    text = stringResource(Res.string.assistant_pause_confirm),
+                    onClick = onConfirm,
+                    modifier = Modifier.testTag("assistant-pause-confirm"),
+                    variant = RaftButtonVariant.Warning,
+                    size = RaftButtonSize.Lg,
+                    loading = busy,
+                    loadingLabel = stringResource(Res.string.assistant_pause_pausing),
+                )
+            }
         }
     }
 }

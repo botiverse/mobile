@@ -1,9 +1,13 @@
 package build.raft.app.data
 
 import build.raft.app.MembersAgentLifecycleAction
+import build.raft.app.members.MEMBERS_ACTION_PAUSE_ASSISTANT
 import build.raft.app.members.buildMembersManagementMenuItems
 import build.raft.app.members.membersRouteCanManageAgent
+import build.raft.app.members.toStaticMembersProfile
 import build.raft.app.model.MemberId
+import build.raft.app.model.ServerId
+import build.raft.app.model.ServerSummary
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -180,5 +184,242 @@ class AgentTurnStopStoreTest {
                 inProgress = false
             ).map { it.id }
         )
+        assertEquals(
+            listOf(MEMBERS_ACTION_PAUSE_ASSISTANT),
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = false,
+                deleted = false,
+                inProgress = false,
+                canPauseAssistant = true
+            ).map { it.id }
+        )
+        assertEquals(
+            listOf(
+                MembersAgentLifecycleAction.Stop.actionKey,
+                MembersAgentLifecycleAction.Restart.actionKey,
+                MEMBERS_ACTION_PAUSE_ASSISTANT
+            ),
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = true,
+                deleted = false,
+                inProgress = false,
+                canPauseAssistant = true
+            ).map { it.id }
+        )
+        assertEquals(
+            emptyList<String>(),
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = true,
+                deleted = true,
+                inProgress = false,
+                canPauseAssistant = true
+            ).map { it.id }
+        )
+    }
+
+    @Test
+    fun pauseAssistantParsesOutcomeAndPausedFlag() {
+        assertEquals(
+            AgentPauseAssistantResult(AgentTurnStopOutcome.Interrupted, paused = true),
+            parseSharedAgentPauseAssistantResult("""{"outcome":"interrupted","paused":true}""")
+        )
+        assertEquals(
+            AgentPauseAssistantResult(AgentTurnStopOutcome.NotRunning, paused = false),
+            parseSharedAgentPauseAssistantResult("""{"outcome":"stopped","paused":false}""")
+        )
+        assertEquals(
+            AgentPauseAssistantResult(AgentTurnStopOutcome.NotRunning, paused = false),
+            parseSharedAgentPauseAssistantResult("""{"outcome":"not_running"}""")
+        )
+        assertNull(parseSharedAgentPauseAssistantResult("not json"))
+    }
+
+    @Test
+    fun pauseAssistantPostsInterruptTurnRouteAndMapsRefusals() = runTest {
+        val network = ScriptedAgentControlsNetworkClient()
+        network.respond("POST", "agents/agent-1/interrupt-turn", 200, """{"outcome":"interrupted","paused":true}""")
+
+        val result = RaftAgentControlsApi(network).pauseAssistant(agentId)
+
+        assertEquals(DataResult.Content(AgentPauseAssistantResult(AgentTurnStopOutcome.Interrupted, paused = true)), result)
+        val request = network.requests.single()
+        assertEquals("POST", request.method)
+        assertEquals(DataRequestPriority.Foreground, request.priority)
+
+        val deniedNetwork = ScriptedAgentControlsNetworkClient()
+        deniedNetwork.respond("POST", "agents/agent-1/interrupt-turn", 403, """{"error":"Only owner","code":"assistant_owner_only"}""")
+        val denied = RaftAgentControlsApi(deniedNetwork).pauseAssistant(agentId)
+        assertTrue(denied is DataResult.Error && denied.error.serverCode == "assistant_owner_only")
+
+        val hostedFailNetwork = ScriptedAgentControlsNetworkClient()
+        hostedFailNetwork.respond("POST", "agents/agent-1/interrupt-turn", 503, """{"error":"Stop failed","code":"hosted_stop_failed","paused":false}""")
+        val hostedFail = RaftAgentControlsApi(hostedFailNetwork).pauseAssistant(agentId)
+        assertTrue(hostedFail is DataResult.Error && hostedFail.error.serverCode == AgentControlErrorCodes.HostedStopFailed)
+    }
+
+    @Test
+    fun canPausePersonalAssistantMatchesServerAndWebAuthorityMatrix() {
+        assertTrue(
+            canPausePersonalAssistant(
+                serverRole = "owner",
+                currentUserId = "admin-1",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+        assertTrue(
+            canPausePersonalAssistant(
+                serverRole = "admin",
+                currentUserId = "admin-1",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+        // Own assistant: owner never sees Pause even if server owner/admin.
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "owner",
+                currentUserId = "user-2",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+        // Regular member / guest cannot pause someone else's assistant.
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "member",
+                currentUserId = "member-1",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "guest",
+                currentUserId = "guest-1",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+        // Already paused, deleted, bounded public projection, or non-assistant agent.
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "owner",
+                currentUserId = "admin-1",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = "2026-11-28T10:00:00Z",
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "owner",
+                currentUserId = "admin-1",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = true,
+                isBoundedPublicProjection = false,
+            )
+        )
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "owner",
+                currentUserId = "admin-1",
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = true,
+            )
+        )
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "owner",
+                currentUserId = null,
+                assistantOwnerUserId = "user-2",
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+        assertFalse(
+            canPausePersonalAssistant(
+                serverRole = "owner",
+                currentUserId = "admin-1",
+                assistantOwnerUserId = null,
+                assistantPausedAt = null,
+                creatorType = "user",
+                creatorId = "user-2",
+                deleted = false,
+                isBoundedPublicProjection = false,
+            )
+        )
+    }
+
+    @Test
+    fun agentDetailSummaryPreservesAssistantPauseFieldsInStaticProfileAndOfflineCache() {
+        val snapshot =
+            AgentDetailSnapshot(
+                agentId = agentId,
+                summary =
+                    AgentDetailSummary(
+                        id = agentId.value,
+                        name = "alice-assistant",
+                        displayName = "Alice's Assistant",
+                        assistantOwnerUserId = "user-2",
+                        assistantPausedAt = "2026-11-28T10:00:00Z",
+                        assistantPausedByName = "Grace",
+                    ),
+                directMessages = emptyList(),
+                reminders = emptyList(),
+                activity = emptyList(),
+            )
+        val server = ServerSummary(id = ServerId("srv-1"), name = "Main", role = "admin")
+        val profile = snapshot.toStaticMembersProfile(server)
+        assertEquals("user-2", profile.assistantOwnerUserId)
+        assertEquals("2026-11-28T10:00:00Z", profile.assistantPausedAt)
+        assertEquals("Grace", profile.assistantPausedByName)
+
+        val roundTripped =
+            RaftCachedAgentDetail(
+                server = server,
+                currentUserId = "admin-1",
+                detail = snapshot,
+            ).toStoredAgentDetail().toCachedAgentDetail()
+        val storedSummary = roundTripped.detail.summary!!
+        assertEquals("user-2", storedSummary.assistantOwnerUserId)
+        assertEquals("2026-11-28T10:00:00Z", storedSummary.assistantPausedAt)
+        assertEquals("Grace", storedSummary.assistantPausedByName)
     }
 }

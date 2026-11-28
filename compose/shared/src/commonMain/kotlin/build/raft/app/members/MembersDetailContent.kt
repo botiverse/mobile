@@ -45,10 +45,13 @@ import build.raft.app.data.AgentWorkersState
 import build.raft.app.data.AgentWorkersStore
 import build.raft.app.data.canStopAgentSubagents
 import build.raft.app.data.canStopAgentWorkers
+import build.raft.app.data.AgentPauseAssistantResult
 import build.raft.app.data.AgentTurnStopIntent
 import build.raft.app.data.AgentTurnStopState
 import build.raft.app.data.AgentTurnStopStore
+import build.raft.app.data.canPausePersonalAssistant
 import build.raft.app.data.canStopAgentTurn
+import build.raft.app.data.toAgentTurnStopFeedback
 import build.raft.app.data.PlatformFile
 import build.raft.app.data.AgentArchiveWorkspaceChoice
 import build.raft.app.data.AgentIssueReportResult
@@ -288,6 +291,8 @@ internal class MembersAgentRemoteControls(
     /** The viewer's role on the agent's server; mirrors the server capability matrix. */
     val serverRole: String?,
     val turnStopStore: AgentTurnStopStore?,
+    /** Server owner/admin pause of another member's personal assistant (`POST /agents/:id/interrupt-turn`). */
+    val pauseAssistant: (suspend (MemberId) -> DataResult<AgentPauseAssistantResult>)? = null,
     val migration: MembersAgentMigrationBinding? = null,
     /** Stop one running sub-agent from the Activity tab's Sub-agents view (web stopSubagent). */
     val subagentStopStore: AgentSubagentStopStore? = null,
@@ -730,6 +735,53 @@ internal fun MembersDetailContent(
     var restartResetDialogOpen by remember(member.id.value, initialVisualMode) {
         mutableStateOf(false)
     }
+    var pauseAssistantDialogOpen by remember(member.id.value) { mutableStateOf(false) }
+    var pauseAssistantInFlight by remember(member.id.value) { mutableStateOf(false) }
+    var pauseAssistantError by remember(member.id.value) { mutableStateOf<ScreenError?>(null) }
+    var assistantPausedLocally by remember(member.id.value) { mutableStateOf(false) }
+    val rosteredMember =
+        currentServerId?.takeIf { it.isNotBlank() }?.let { serverId ->
+            serverMembersState.entryFor(ServerId(serverId))?.membersById?.get(member.id.value)
+        }
+    val serverAssistantPausedAt =
+        (when {
+            rosteredMember != null -> rosteredMember.assistantPausedAt
+            detail?.summary != null -> detail.summary.assistantPausedAt
+            else -> member.assistantPausedAt
+        })?.takeIf { it.isNotBlank() }
+    LaunchedEffect(serverAssistantPausedAt) {
+        if (serverAssistantPausedAt != null) {
+            assistantPausedLocally = false
+        }
+    }
+    val isBoundedPublicProjection =
+        membersAgentIsBoundedPublicProjection(
+            accessMode = accessMode,
+            profileProjection = detail?.summary?.profileProjection?.takeIf { it.isNotBlank() } ?: member.profileProjection,
+        )
+    val canPauseAssistant =
+        member.kind == MemberKind.Agent &&
+            remoteControls?.pauseAssistant != null &&
+            canPausePersonalAssistant(
+                serverRole = remoteControls.serverRole,
+                currentUserId = currentUserId,
+                assistantOwnerUserId =
+                    detail?.summary?.assistantOwnerUserId
+                        ?: rosteredMember?.assistantOwnerUserId
+                        ?: member.assistantOwnerUserId,
+                assistantPausedAt = serverAssistantPausedAt ?: if (assistantPausedLocally) "paused" else null,
+                creatorType = detail?.summary?.creatorType,
+                creatorId = detail?.summary?.creatorId,
+                deleted = deleted,
+                isBoundedPublicProjection = isBoundedPublicProjection,
+            )
+    LaunchedEffect(canPauseAssistant, pauseAssistantInFlight) {
+        if (!canPauseAssistant && !pauseAssistantInFlight) {
+            pauseAssistantDialogOpen = false
+            pauseAssistantError = null
+        }
+    }
+    val assistantPausedToast = stringResource(Res.string.assistant_pause_paused)
     var reportIssueDialogOpen by remember(member.id.value) { mutableStateOf(false) }
     // Web AgentDetailPanel / ReportIssueDialog (`isPrivacyModeOn()`): no entry and no upload until
     // this environment's client config has answered "off".
@@ -1206,6 +1258,58 @@ internal fun MembersDetailContent(
         actionState = null
         restartResetDialogOpen = true
     }
+    fun openPauseAssistantDialog() {
+        pauseAssistantError = null
+        pauseAssistantDialogOpen = true
+    }
+    fun confirmPauseAssistant() {
+        val action = remoteControls?.pauseAssistant ?: return
+        if (pauseAssistantInFlight) return
+        pauseAssistantInFlight = true
+        pauseAssistantError = null
+        scope.launch {
+            try {
+                val result =
+                    try {
+                        action(member.id)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError("agent_pause_assistant_failed", traceId = null))
+                    }
+                when (result) {
+                    is DataResult.Content -> {
+                        pauseAssistantDialogOpen = false
+                        pauseAssistantError = null
+                        if (result.data.paused) {
+                            assistantPausedLocally = true
+                            onUnavailableAction(assistantPausedToast)
+                        } else {
+                            val feedback = DataResult.Content(result.data.outcome).toAgentTurnStopFeedback()
+                            onUnavailableAction(turnStopMessages.getValue(feedback))
+                        }
+                    }
+                    is DataResult.Error -> {
+                        pauseAssistantError = result.error
+                    }
+                    is DataResult.NoPermission -> {
+                        pauseAssistantError =
+                            ScreenError(
+                                code = result.blocker.code,
+                                retryable = false,
+                                serverMessage = result.blocker.serverMessage,
+                                traceId = result.blocker.traceId,
+                            )
+                    }
+                    is DataResult.Empty -> {
+                        pauseAssistantError = ScreenError(code = result.reason.name, retryable = false)
+                    }
+                }
+            } finally {
+                pauseAssistantInFlight = false
+            }
+        }
+    }
     // The change-avatar dialog's Save (web AgentProfileEditDialog): a picked image goes through
     // the avatar upload, a pixel avatar or the default through the profile update.
     suspend fun saveAvatar(draft: MembersAgentAvatarDraft): DataResult<*> {
@@ -1259,6 +1363,7 @@ internal fun MembersDetailContent(
                     detail = detail,
                     deleted = deleted,
                     canManage = canManage,
+                    canPauseAssistant = canPauseAssistant,
                     canMessage = !membersAgentProfileIsRemote(accessMode),
                     onBack = onBack,
                     onOpenDirectMessage = onOpenDirectMessage,
@@ -1517,6 +1622,7 @@ internal fun MembersDetailContent(
                                                 stopTurnInProgress = turnStopState.inFlightAgentId != null,
                                                 showActivityDetail = canViewPrivate,
                                                 onOpenModelSettings = openModelSettings,
+                                                assistantPausedLocally = assistantPausedLocally,
                                                 runtimeEditorOpenRequested = runtimeEditorOpenRequested,
                                                 onRuntimeEditorOpenRequestHandled = { runtimeEditorOpenRequested = false },
                                                 timeContext = timeContext,
@@ -1722,8 +1828,9 @@ internal fun MembersDetailContent(
                 buildMembersManagementMenuItems(
                     primaryAction = menuPrimary,
                     canManage = canManage,
+                    canPauseAssistant = canPauseAssistant,
                     deleted = deleted,
-                    inProgress = lifecycleInFlight != null
+                    inProgress = lifecycleInFlight != null || pauseAssistantInFlight
                 ).map { item ->
                     RaftUiMenuItem(
                         id = item.id,
@@ -1742,12 +1849,28 @@ internal fun MembersDetailContent(
                         id = id,
                         primaryAction = menuPrimary,
                         openRestartResetDialog = { openRestartResetDialog() },
+                        openPauseAssistantDialog = { openPauseAssistantDialog() },
                         runLifecycleAction = { runLifecycleAction(it) }
                     )
                 },
                 onDismiss = {
                     managementMenuOpen = false
                 }
+            )
+        }
+        if (pauseAssistantDialogOpen && (canPauseAssistant || pauseAssistantInFlight) && member.kind == MemberKind.Agent) {
+            MembersPauseAssistantDialog(
+                agentName = member.displayName.ifBlank { member.handle },
+                busy = pauseAssistantInFlight,
+                errorMessage = pauseAssistantError?.userFacingMessage(errorStrings),
+                errorTraceId = pauseAssistantError?.traceId,
+                onConfirm = { confirmPauseAssistant() },
+                onDismiss = {
+                    if (!pauseAssistantInFlight) {
+                        pauseAssistantDialogOpen = false
+                        pauseAssistantError = null
+                    }
+                },
             )
         }
         if (restartResetDialogOpen && member.kind == MemberKind.Agent) {
@@ -1940,34 +2063,47 @@ internal data class MembersManagementMenuItemSpec(
     val enabled: Boolean
 )
 
+internal const val MEMBERS_ACTION_PAUSE_ASSISTANT = "pause-assistant"
+
 internal fun buildMembersManagementMenuItems(
     primaryAction: MembersAgentLifecycleAction?,
     canManage: Boolean,
     deleted: Boolean,
-    inProgress: Boolean
+    inProgress: Boolean,
+    canPauseAssistant: Boolean = false
 ): List<MembersManagementMenuItemSpec> {
-    // The agent More menu holds the runtime controls only (artin): Direct Message is the head's
-    // own button and there is no Stop Current Turn item.
-    if (deleted || !canManage) return emptyList()
+    // The agent More menu holds runtime controls (for managers) and Pause assistant (for server
+    // owners/admins viewing another member's active assistant); there is no Stop Current Turn item.
+    if (deleted || (!canManage && !canPauseAssistant)) return emptyList()
     val items = mutableListOf<MembersManagementMenuItemSpec>()
-    if (primaryAction != null) {
+    if (canManage) {
+        if (primaryAction != null) {
+            items += MembersManagementMenuItemSpec(
+                id = primaryAction.actionKey,
+                label = when (primaryAction) {
+                    MembersAgentLifecycleAction.Start -> Res.string.member_action_start_agent.desc()
+                    MembersAgentLifecycleAction.Stop -> Res.string.member_action_stop_agent.desc()
+                    else -> primaryAction.label.desc()
+                },
+                icon = primaryAction.iconName,
+                enabled = !inProgress
+            )
+        }
         items += MembersManagementMenuItemSpec(
-            id = primaryAction.actionKey,
-            label = when (primaryAction) {
-                MembersAgentLifecycleAction.Start -> Res.string.member_action_start_agent.desc()
-                MembersAgentLifecycleAction.Stop -> Res.string.member_action_stop_agent.desc()
-                else -> primaryAction.label.desc()
-            },
-            icon = primaryAction.iconName,
+            id = MembersAgentLifecycleAction.Restart.actionKey,
+            label = Res.string.member_label_restart_reset.desc(),
+            icon = RaftLucideIconName.RotateCcw,
             enabled = !inProgress
         )
     }
-    items += MembersManagementMenuItemSpec(
-        id = MembersAgentLifecycleAction.Restart.actionKey,
-        label = Res.string.member_label_restart_reset.desc(),
-        icon = RaftLucideIconName.RotateCcw,
-        enabled = !inProgress
-    )
+    if (canPauseAssistant) {
+        items += MembersManagementMenuItemSpec(
+            id = MEMBERS_ACTION_PAUSE_ASSISTANT,
+            label = Res.string.assistant_pause_action.desc(),
+            icon = RaftLucideIconName.Pause,
+            enabled = !inProgress
+        )
+    }
     return items
 }
 
@@ -1975,10 +2111,15 @@ private fun handleMembersManagementMenuSelection(
     id: String,
     primaryAction: MembersAgentLifecycleAction?,
     openRestartResetDialog: () -> Unit,
+    openPauseAssistantDialog: () -> Unit,
     runLifecycleAction: (MembersAgentLifecycleAction) -> Unit
 ) {
     if (id == MembersAgentLifecycleAction.Restart.actionKey) {
         openRestartResetDialog()
+        return
+    }
+    if (id == MEMBERS_ACTION_PAUSE_ASSISTANT) {
+        openPauseAssistantDialog()
         return
     }
     val action = MembersAgentLifecycleAction.values().firstOrNull { it.actionKey == id }

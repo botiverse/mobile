@@ -5384,6 +5384,13 @@
     <string name="assistant_paused_start">Start</string>
     <string name="assistant_paused_starting">Starting…</string>
     <string name="assistant_paused_start_failed">Couldn't start it. Try again.</string>
+    <string name="assistant_paused_other_body">It won't reply or run its brief until its owner starts it.</string>
+    <string name="assistant_pause_action">Pause assistant</string>
+    <string name="assistant_pause_confirm">Pause</string>
+    <string name="assistant_pause_confirm_title">Pause %1$s?</string>
+    <string name="assistant_pause_confirm_body">Its current turn stops, and it won't reply or run its brief until its owner starts it again. Its owner is notified, and only they can resume it.</string>
+    <string name="assistant_pause_pausing">Pausing…</string>
+    <string name="assistant_pause_paused">Paused. Its owner has been notified.</string>
     <string name="assistant_setting_reads_dms">Read my direct messages</string>
     <string name="assistant_setting_reads_dms_description">Reads your DMs to tell you what needs you. Turn it off and it stops at once.</string>
     <string name="assistant_setting_send_as_owner">Send messages as me</string>

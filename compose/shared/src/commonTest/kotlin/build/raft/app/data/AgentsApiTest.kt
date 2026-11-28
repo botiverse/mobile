@@ -1041,4 +1041,39 @@ class AgentsApiTest {
             )
         assertEquals(null, rosterInvalid?.agentServiceTier)
     }
+
+    @Test
+    fun agentSummaryAndDetailParseAssistantPauseMetadata() = runPortableCoroutineTest {
+        suspend fun readAgent(extraFields: String): Pair<AgentSummary, AgentDetailSummary> {
+            val body = """{"id":"agent-1","name":"alice-assistant","status":"active","assistantOwnerUserId":"user-2"$extraFields}"""
+            val summary =
+                assertIs<DataResult.Content<AgentSummary>>(
+                    RaftAgentsApiClient(RecordingAgentsApi(agentBody = body)).agent(MemberId("agent-1"))
+                ).data
+            return summary to summary.toAgentDetailSummary()
+        }
+
+        val (pausedSummary, pausedDetail) =
+            readAgent(""","assistantPausedAt":"2026-11-28T10:00:00Z","assistantPausedBy":{"id":"u-admin","name":"Grace"}""")
+        assertEquals("2026-11-28T10:00:00Z", pausedSummary.assistantPausedAt)
+        assertEquals("Grace", pausedSummary.assistantPausedByName)
+        assertEquals("2026-11-28T10:00:00Z", pausedDetail.assistantPausedAt)
+        assertEquals("Grace", pausedDetail.assistantPausedByName)
+
+        // Member view: `assistantPausedAt` is present without `assistantPausedBy`.
+        val (memberSummary, memberDetail) =
+            readAgent(""","assistantPausedAt":"2026-11-28T10:00:00Z" """)
+        assertEquals("2026-11-28T10:00:00Z", memberSummary.assistantPausedAt)
+        assertNull(memberSummary.assistantPausedByName)
+        assertEquals("2026-11-28T10:00:00Z", memberDetail.assistantPausedAt)
+        assertNull(memberDetail.assistantPausedByName)
+
+        // Stray `assistantPausedBy` without `assistantPausedAt` must not surface a stale name.
+        val (unpausedSummary, unpausedDetail) =
+            readAgent(""","assistantPausedBy":{"id":"u-admin","name":"Grace"}""")
+        assertNull(unpausedSummary.assistantPausedAt)
+        assertNull(unpausedSummary.assistantPausedByName)
+        assertNull(unpausedDetail.assistantPausedAt)
+        assertNull(unpausedDetail.assistantPausedByName)
+    }
 }

@@ -858,6 +858,69 @@ internal fun AssistantInstructionsDiscardDialog(
 }
 
 /**
+ * The paused notice under a personal assistant's profile hero (web `AssistantPausedNotice`):
+ * owners get the owner copy with Start ([AssistantOwnerPausedNotice]); every other viewer (such
+ * as a server owner/admin who just paused it, or a teammate opening its profile) gets the
+ * read-only notice explaining that only its owner can resume it.
+ */
+@Composable
+internal fun AssistantProfilePausedNotice(
+    agentId: String,
+    assistantOwnerUserId: String?,
+    fallbackPausedAt: String?,
+    fallbackPausedByName: String? = null,
+    optimisticPaused: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val owner = LocalAssistantOwnerScope.current
+    val ownAssistant = rememberOwnAssistant(agentId)
+    if (owner != null && ownAssistant != null) {
+        AssistantOwnerPausedNoticeBody(
+            owner = owner,
+            agentId = agentId,
+            fallbackPausedAt = fallbackPausedAt,
+            modifier = modifier,
+        )
+        return
+    }
+    // Wait for `SharedMyAssistantStore` when we already know this viewer owns the assistant, so
+    // owners never briefly flash the read-only non-owner copy without Start.
+    val cleanOwnerUserId = assistantOwnerUserId?.trim()?.takeIf { it.isNotEmpty() }
+    if (owner != null && !owner.viewerIsGuest && cleanOwnerUserId != null && cleanOwnerUserId == owner.userId.trim()) {
+        return
+    }
+    val rostered =
+        if (owner != null) {
+            val serverId = ServerId(owner.serverId)
+            val entryFlow = remember(owner.serverMembersStore, owner.serverId) { owner.serverMembersStore.serverMembersEntryFlow(serverId) }
+            val initialEntry = remember(owner.serverMembersStore, owner.serverId) { owner.serverMembersStore.currentServerMembersEntry(serverId) }
+            val entry by entryFlow.collectAsState(initialEntry)
+            entry.membersById[agentId.trim()]
+        } else {
+            null
+        }
+    val pausedAt =
+        (if (rostered != null) rostered.assistantPausedAt else fallbackPausedAt)?.takeIf { it.isNotBlank() }
+    val pausedByName =
+        (if (rostered != null) rostered.assistantPausedByName else fallbackPausedByName)
+            ?.takeIf { it.isNotBlank() && pausedAt != null }
+    val line =
+        when {
+            pausedAt != null -> assistantPausedLine(pausedAt, pausedByName)
+            optimisticPaused -> stringResource(Res.string.assistant_paused_chip)
+            else -> return
+        }
+    AssistantPausedBanner(
+        line = line,
+        starting = false,
+        failed = false,
+        onStart = null,
+        body = stringResource(Res.string.assistant_paused_other_body),
+        modifier = modifier,
+    )
+}
+
+/**
  * The paused notice for the assistant's owner (web `AssistantPausedNotice` with `isOwner`): who
  * paused it and when, that it won't reply or run its brief, and Start (`POST agents/:id/start`,
  * through the route's lifecycle Start), after which the roster is read again. The pause rides on
@@ -877,6 +940,21 @@ internal fun AssistantOwnerPausedNotice(
 ) {
     val owner = LocalAssistantOwnerScope.current ?: return
     rememberOwnAssistant(agentId) ?: return
+    AssistantOwnerPausedNoticeBody(
+        owner = owner,
+        agentId = agentId,
+        fallbackPausedAt = fallbackPausedAt,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun AssistantOwnerPausedNoticeBody(
+    owner: AssistantOwnerScope,
+    agentId: String,
+    fallbackPausedAt: String?,
+    modifier: Modifier = Modifier,
+) {
     val serverId = ServerId(owner.serverId)
     val entryFlow = remember(owner.serverMembersStore, owner.serverId) { owner.serverMembersStore.serverMembersEntryFlow(serverId) }
     val initialEntry = remember(owner.serverMembersStore, owner.serverId) { owner.serverMembersStore.currentServerMembersEntry(serverId) }
@@ -1005,8 +1083,8 @@ internal fun AssistantPausedBanner(
     onStart: (() -> Unit)?,
     modifier: Modifier = Modifier,
     failureTraceId: String? = null,
+    body: String = stringResource(Res.string.assistant_paused_owner_body),
 ) {
-    val body = stringResource(Res.string.assistant_paused_owner_body)
     val failure = stringResource(Res.string.assistant_paused_start_failed)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         RaftBanner(

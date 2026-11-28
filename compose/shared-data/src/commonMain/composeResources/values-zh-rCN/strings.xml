@@ -5383,6 +5383,13 @@
     <string name="assistant_paused_start">启动</string>
     <string name="assistant_paused_starting">启动中…</string>
     <string name="assistant_paused_start_failed">启动失败，请重试。</string>
+    <string name="assistant_paused_other_body">在它的所有者启动它之前，它不会回复，也不会发送简报。</string>
+    <string name="assistant_pause_action">暂停助理</string>
+    <string name="assistant_pause_confirm">暂停</string>
+    <string name="assistant_pause_confirm_title">暂停“%1$s”？</string>
+    <string name="assistant_pause_confirm_body">它当前这一轮会停止，在所有者重新启动之前，它不会回复，也不会发送简报。所有者会收到通知，且只有所有者能恢复它。</string>
+    <string name="assistant_pause_pausing">正在暂停…</string>
+    <string name="assistant_pause_paused">已暂停，已通知它的所有者。</string>
     <string name="assistant_setting_reads_dms">读我的私信</string>
     <string name="assistant_setting_reads_dms_description">读你的私信，告诉你哪些在等你。关掉立即停止。</string>
     <string name="assistant_setting_send_as_owner">以我的身份发消息</string>
