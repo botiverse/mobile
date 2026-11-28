@@ -65,9 +65,8 @@ internal fun InboxItemKind.productActivityItemKind(): RaftActivityItemKind? =
         InboxItemKind.DirectMessage -> RaftActivityItemKind.Dm
         InboxItemKind.Thread -> RaftActivityItemKind.Thread
         InboxItemKind.MentionAction -> RaftActivityItemKind.MentionAction
+        InboxItemKind.Object -> RaftActivityItemKind.Artifact
         InboxItemKind.System -> null
-        // Workspace Artifacts rows open on the web; this registry has no `artifact` kind yet.
-        InboxItemKind.Object -> null
     }
 
 internal fun RaftThreadTab.productChannelTab(): RaftChannelTab =

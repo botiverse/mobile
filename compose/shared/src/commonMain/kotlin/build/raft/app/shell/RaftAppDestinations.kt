@@ -135,8 +135,7 @@ internal enum class RaftAppDestination(
     /**
      * The Artifacts home (web LeftRail: after Tasks, only behind workspace_artifacts_v0,
      * `useArtifactsRailShown`); a page in the content area beside the rail, like Computers. The
-     * phone opens it from the server panel ([RaftServerMenuEntry.Artifacts]). NAV_DESTINATIONS has
-     * no `artifacts` yet: no nav event.
+     * phone opens it from the server panel ([RaftServerMenuEntry.Artifacts]).
      */
     Artifacts(
         id = "artifacts",
@@ -144,7 +143,7 @@ internal enum class RaftAppDestination(
         icon = RaftNavIcon.Lucide(RaftLucideIconName.Artifact),
         badge = RaftNavBadgeSource.None,
         route = RaftNavRoute.Page,
-        navEvent = null,
+        navEvent = RaftNavDestination.Artifacts,
     ),
     Members(
         id = "members",
@@ -168,8 +167,7 @@ internal enum class RaftAppDestination(
         icon = RaftNavIcon.Lucide(RaftLucideIconName.Blocks),
         badge = RaftNavBadgeSource.AppsReview,
         route = RaftNavRoute.Page,
-        // NAV_DESTINATIONS has `apps`; the app's mirror (RaftNavDestination) not yet.
-        navEvent = null,
+        navEvent = RaftNavDestination.Apps,
     ),
     /**
      * The personal assistant (web LeftRail's Assistant, last of the tabs, Ottie's face; slock

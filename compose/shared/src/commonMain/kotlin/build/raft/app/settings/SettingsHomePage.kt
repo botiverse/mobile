@@ -5323,6 +5323,11 @@ private fun RaftAppShellReadyContent(
             }
             RaftServerMenuEntry.Artifacts -> {
                 // web MobileServerTab `openArtifacts`: the page pushed over the shell.
+                RaftProductEvents.navEntrySelected(
+                    destination = RaftNavDestination.Artifacts,
+                    surface = RaftNavSurface.MobileMore,
+                    wasActive = false,
+                )
                 if (!navRailActive) serverTabFocusOnPageReturn = true
                 pager.openArtifactsHomePage(storeScope)
             }
@@ -5350,8 +5355,12 @@ private fun RaftAppShellReadyContent(
                 openComputersPage()
             }
             RaftServerMenuEntry.Apps -> {
-                // The phone's Apps (web MobileServerTab `openApps`): the page the wide rail's Apps
-                // shows. The app's nav events have no `apps` yet (RaftAppDestination.Apps).
+                // The phone's Apps (web MobileServerTab `openApps`): the page the wide rail's Apps shows.
+                RaftProductEvents.navEntrySelected(
+                    destination = RaftNavDestination.Apps,
+                    surface = RaftNavSurface.MobileMore,
+                    wasActive = false,
+                )
                 if (!navRailActive) serverTabFocusOnPageReturn = true
                 pager.openSettingsMarketplacePage(storeScope)
             }
