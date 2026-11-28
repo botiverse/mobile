@@ -23,6 +23,12 @@ class AndroidApiServerEnvironmentStore(context: Context) {
     fun current(): AndroidApiServerEnvironment =
         sharedStore.current().toAndroidEnvironment()
 
+    fun resolveSelection(key: String): AndroidApiServerEnvironment? =
+        sharedStore.resolveSelection(key)?.toAndroidEnvironment()
+
+    fun resolve(environment: AndroidApiServerEnvironment): AndroidApiServerEnvironment? =
+        sharedStore.resolve(environment.toSharedRequest())?.toAndroidEnvironment()
+
     fun select(key: String): AndroidApiServerEnvironment? {
         return sharedStore.select(key)
             ?.also { reloadRaftAppScopeApiEnvironmentIfLoaded() }

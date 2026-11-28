@@ -464,7 +464,10 @@ internal fun SettingsNativeDetailPageContent(
             is SharedSettingsEffect.ApiEnvironmentChanged -> {
                 settingsCapabilities.bridgeToast(effect.message)
                 val clearedSession = session
-                runCatchingPreservingCancellation { authDataSource.logout() }
+                // SharedSettingsDataSource.applyApiEnvironmentChange (and the Android bridge
+                // fallback) already revoked the prior session against the old server and cleared
+                // local session/caches before switching environments; calling authDataSource.logout()
+                // here would only emit a redundant logout clear or target the newly selected server.
                 if (clearedSession != null) {
                     onSessionCleared(clearedSession)
                 }

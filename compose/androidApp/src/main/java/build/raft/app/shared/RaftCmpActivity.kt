@@ -173,13 +173,16 @@ import build.raft.app.data.KeyValueChatLayoutPreferenceStore
 import build.raft.app.data.RAFT_APP_UPDATE_EVENT
 import build.raft.app.data.RaftAppUpdatePermissionResume
 import build.raft.app.data.RaftMinBuildGate
+import build.raft.app.data.RaftShareSuggestionsHostProvider
 import build.raft.app.data.SharedAuthDataSource
 import build.raft.app.data.SharedAuthResult
 import build.raft.app.data.SECOND_FACTOR_STEP_UP_REQUIRED_CODE
 import build.raft.app.data.SharedSettingsUpdateTransactionState
+import build.raft.app.data.clearRaftWebViewAuthStorageBestEffort
 import build.raft.app.data.installAndroidAppScopeEventBus
 import build.raft.app.data.postAndroidAppScopeEvent
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.data.revokeAuthSessionAtBaseUrlBestEffort
 import build.raft.app.data.realtime.RaftRealtimeNotifyContract
 import build.raft.app.data.realtime.RealtimeConnectionWitnessToken
 import build.raft.app.data.realtime.GeneratedRealtimeContract
@@ -7410,26 +7413,61 @@ internal class RaftBridgeModule(
     private suspend fun setApiEnvironment(request: JSONObject): Map<String, Any> {
         val environmentKey = request.optString("environmentKey")
         val store = AndroidApiServerEnvironmentStore(appContext)
+        val current = store.current()
+        val customCandidate =
+                if (environmentKey == AndroidApiServerEnvironmentStore.CustomKey) {
+                    AndroidApiServerEnvironment(
+                            key = environmentKey,
+                            label = request.optString("environmentLabel").ifBlank { "Custom" },
+                            apiBaseUrl = request.optString("apiBaseUrl"),
+                            socketBaseUrl = request.optString("socketBaseUrl"),
+                            webUrl = request.optString("webUrl")
+                    )
+                } else {
+                    null
+                }
+        val target =
+                if (customCandidate != null) {
+                    store.resolve(customCandidate)
+                } else {
+                    store.resolveSelection(environmentKey)
+                }
+                        ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
+        val authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
         val switch =
                 switchApiEnvironment(
-                        current = store.current(),
-                        persist = {
-                            if (environmentKey == AndroidApiServerEnvironmentStore.CustomKey) {
-                                store.save(
-                                        AndroidApiServerEnvironment(
-                                                key = environmentKey,
-                                                label = request.optString("environmentLabel").ifBlank { "Custom" },
-                                                apiBaseUrl = request.optString("apiBaseUrl"),
-                                                socketBaseUrl = request.optString("socketBaseUrl"),
-                                                webUrl = request.optString("webUrl")
-                                        )
+                        current = current,
+                        target = target,
+                        beforePersist = { before, _ ->
+                            val session =
+                                    try {
+                                        authStore.readSession()
+                                    } catch (cancellation: CancellationException) {
+                                        throw cancellation
+                                    } catch (_: Throwable) {
+                                        null
+                                    }
+                            if (session != null) {
+                                revokeAuthSessionAtBaseUrlBestEffort(
+                                        apiBaseUrl = before.apiBaseUrl,
+                                        session = session,
+                                        diagnosticsLogger = { message ->
+                                            RaftAppLog.record("SlockDeveloper", message)
+                                        },
+                                        source = "android_api_environment_changed",
                                 )
+                            }
+                        },
+                        persist = {
+                            if (customCandidate != null) {
+                                store.save(customCandidate)
                             } else {
                                 store.select(environmentKey)
                             }
                         },
-                        authStore = KeyValueAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
+                        authStore = authStore
                 ) { before, after ->
+                    RaftShareSuggestionsHostProvider.clear("api_environment_changed")
                     AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
                     RaftAppLog.record(
                             "SlockDeveloper",
@@ -7439,6 +7477,12 @@ internal class RaftBridgeModule(
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
         val after = switch.after
         val changed = switch.changed
+        if (changed) {
+            clearRaftWebViewAuthStorageBestEffort(
+                    diagnosticsLogger = { message -> RaftAppLog.record("SlockDeveloper", message) },
+                    source = "android_api_environment_changed",
+            )
+        }
         return loadSettingsDeveloper(
                 feedback =
                         if (changed) {

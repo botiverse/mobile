@@ -145,7 +145,8 @@ class SharedSettingsAvatarCacheTest {
             SharedSettingsDataSource(
                 sessionStore = sessionStore,
                 apiEnvironmentStore = environmentStore,
-                platformCapabilities = fixtures.avatarSettingsCapabilities()
+                platformCapabilities = fixtures.avatarSettingsCapabilities(),
+                apiEnvironmentLogoutTransportFactory = { AuthDataSourceTest.FakeAuthApi() },
             ).withAvatarCacheRuntime(runtime, native)
 
         assertIs<DataResult.Content<SharedSettingsDeveloperSnapshot>>(

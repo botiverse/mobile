@@ -2151,6 +2151,194 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun setApiEnvironmentRevokesPreviousSessionAgainstOldServerBeforePersistingAndClearing() = runBlocking {
+        val events = mutableListOf<String>()
+        val logoutUrls = mutableListOf<String>()
+        val logoutBodies = mutableListOf<String>()
+        val logoutAuthorizations = mutableListOf<String?>()
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
+        val backingSessionStore =
+            InMemoryRaftAuthSessionStore(
+                sampleSession().copy(
+                    accessToken = "prod-access-token",
+                    refreshToken = "prod-refresh-token",
+                )
+            )
+        val recordingSessionStore =
+            object : RaftAuthSessionStore by backingSessionStore {
+                override suspend fun clearSession(reason: String, source: String) {
+                    events += "clear:$reason:env=${environmentStore.current().key}"
+                    backingSessionStore.clearSession(reason, source)
+                }
+            }
+        val capabilities =
+            object : SharedSettingsPlatformCapabilities {
+                override suspend fun onApiEnvironmentChanged(
+                    before: SharedSettingsApiEnvironmentOption,
+                    after: SharedSettingsApiEnvironmentOption,
+                ): DataResult<Unit> {
+                    events += "hook:${before.key}->${after.key}"
+                    return DataResult.Content(Unit)
+                }
+            }
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = recordingSessionStore,
+                apiEnvironmentStore = environmentStore,
+                platformCapabilities = capabilities,
+                apiEnvironmentLogoutTransportFactory = { baseUrl ->
+                    logoutUrls += baseUrl
+                    val delegate =
+                        AuthDataSourceTest.FakeAuthApi(
+                            onLogoutRequest = {
+                                events += "logout:env=${environmentStore.current().key}:hadSession=${backingSessionStore.readSession() != null}"
+                            }
+                        )
+                    object : RaftAuthTransport by delegate {
+                        override suspend fun logout(bodyText: String, authorization: String?): AuthNetworkResponse {
+                            logoutBodies += bodyText
+                            logoutAuthorizations += authorization
+                            return delegate.logout(bodyText, authorization)
+                        }
+                    }
+                },
+                clearWebViewAuthStorage = { events += "clear_webview" },
+            )
+
+        val result = assertIs<DataResult.Content<SharedSettingsDeveloperSnapshot>>(dataSource.setApiEnvironment("staging"))
+
+        assertEquals("staging", result.data.environmentKey)
+        assertEquals("staging", environmentStore.current().key)
+        assertNull(backingSessionStore.readSession())
+        assertEquals(listOf(SharedApiEnvironmentStore.Production.apiBaseUrl), logoutUrls)
+        assertEquals(listOf("""{"refreshToken":"prod-refresh-token"}"""), logoutBodies)
+        assertEquals(listOf<String?>("Bearer prod-access-token"), logoutAuthorizations)
+        assertEquals(
+            listOf(
+                "logout:env=production:hadSession=true",
+                "clear:api_environment_changed:env=staging",
+                "clear_webview",
+                "hook:production->staging",
+            ),
+            events,
+        )
+    }
+
+    @Test
+    fun saveApiEnvironmentStillSwitchesAndClearsWhenOldServerLogoutFailsOrTimesOut() = runBlocking {
+        // Case 1: old server returns 500 error.
+        run {
+            val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
+            environmentStore.save(
+                SharedSettingsApiEnvironmentRequest(
+                    key = SharedApiEnvironmentStore.CustomKey,
+                    label = "Old Self-Host",
+                    apiBaseUrl = "https://old-selfhost.example/api/",
+                    socketBaseUrl = "https://old-selfhost.example",
+                    webUrl = "https://old-selfhost.example/web",
+                )
+            )
+            val sessionStore =
+                InMemoryRaftAuthSessionStore(
+                    sampleSession().copy(accessToken = "old-access", refreshToken = "old-refresh")
+                )
+            val logoutUrls = mutableListOf<String>()
+            var webViewCleared = 0
+            val dataSource =
+                SharedSettingsDataSource(
+                    sessionStore = sessionStore,
+                    apiEnvironmentStore = environmentStore,
+                    serverVersionProbe = { ServerVersionProbe.Compatible("1.32.0") },
+                    apiEnvironmentLogoutTransportFactory = { baseUrl ->
+                        logoutUrls += baseUrl
+                        AuthDataSourceTest.FakeAuthApi(
+                            logoutResponse = AuthNetworkResponse(500, null, """{"error":"boom"}""")
+                        )
+                    },
+                    clearWebViewAuthStorage = { webViewCleared += 1 },
+                )
+
+            val result =
+                assertIs<DataResult.Content<SharedSettingsDeveloperSnapshot>>(
+                    dataSource.saveApiEnvironment(
+                        SharedSettingsApiEnvironmentRequest(
+                            key = "production",
+                            label = "Production",
+                            apiBaseUrl = SharedApiEnvironmentStore.Production.apiBaseUrl,
+                            socketBaseUrl = SharedApiEnvironmentStore.Production.socketBaseUrl,
+                            webUrl = SharedApiEnvironmentStore.Production.webUrl,
+                        )
+                    )
+                )
+
+            assertEquals("production", result.data.environmentKey)
+            assertEquals("production", environmentStore.current().key)
+            assertEquals(listOf("https://old-selfhost.example/api/"), logoutUrls)
+            assertNull(sessionStore.readSession())
+            assertEquals(1, webViewCleared)
+        }
+
+        // Case 2: old server hangs until bounded timeout expires.
+        run {
+            val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
+            val sessionStore =
+                InMemoryRaftAuthSessionStore(
+                    sampleSession().copy(accessToken = "hanging-access", refreshToken = "hanging-refresh")
+                )
+            val hang = CompletableDeferred<Unit>()
+            var logoutAttempted = false
+            val dataSource =
+                SharedSettingsDataSource(
+                    sessionStore = sessionStore,
+                    apiEnvironmentStore = environmentStore,
+                    apiEnvironmentLogoutTransportFactory = {
+                        AuthDataSourceTest.FakeAuthApi(
+                            onLogoutRequest = {
+                                logoutAttempted = true
+                                hang.await()
+                            }
+                        )
+                    },
+                ).apply {
+                    apiEnvironmentLogoutTimeoutMillis = 50L
+                }
+
+            val result = assertIs<DataResult.Content<SharedSettingsDeveloperSnapshot>>(dataSource.setApiEnvironment("staging"))
+
+            assertTrue(logoutAttempted)
+            assertEquals("staging", result.data.environmentKey)
+            assertEquals("staging", environmentStore.current().key)
+            assertNull(sessionStore.readSession())
+        }
+    }
+
+    @Test
+    fun setApiEnvironmentSkipsLogoutWhenUnchangedOrSignedOut() = runBlocking {
+        var logoutCalls = 0
+        val environmentStore = SharedApiEnvironmentStore(InMemoryRaftKeyValueStore())
+        val sessionStore = InMemoryRaftAuthSessionStore(sampleSession())
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = sessionStore,
+                apiEnvironmentStore = environmentStore,
+                apiEnvironmentLogoutTransportFactory = {
+                    AuthDataSourceTest.FakeAuthApi(onLogoutRequest = { logoutCalls += 1 })
+                },
+            )
+
+        // Same environment -> no logout, session preserved.
+        assertIs<DataResult.Content<SharedSettingsDeveloperSnapshot>>(dataSource.setApiEnvironment("production"))
+        assertEquals(0, logoutCalls)
+        assertNotNull(sessionStore.readSession())
+
+        // Signed out -> switching environment skips logout.
+        sessionStore.clearSession()
+        assertIs<DataResult.Content<SharedSettingsDeveloperSnapshot>>(dataSource.setApiEnvironment("staging"))
+        assertEquals(0, logoutCalls)
+        assertEquals("staging", environmentStore.current().key)
+    }
+
+    @Test
     fun aboutSessionLabelsComeFromCanonicalSessionStoreWhenHostLabelsAreBlank() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities =

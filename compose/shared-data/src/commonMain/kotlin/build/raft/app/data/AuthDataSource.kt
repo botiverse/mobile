@@ -44,6 +44,9 @@ class SharedAuthDataSource(
     /** See [RESTORE_SERVER_LIST_BUDGET_MILLIS]; tests shorten it. */
     @RaftCoreInternalApi var restoreServerListBudgetMillis: Long = RESTORE_SERVER_LIST_BUDGET_MILLIS
 
+    /** See [BEST_EFFORT_LOGOUT_TIMEOUT_MILLIS]; tests shorten it. */
+    @RaftCoreInternalApi var bestEffortLogoutTimeoutMillis: Long = BEST_EFFORT_LOGOUT_TIMEOUT_MILLIS
+
     @RaftCoreInternalApi fun withAvatarCacheRuntime(
         runtime: RaftAvatarCacheRuntime?,
         nativeCache: RaftAvatarNativeCache,
@@ -110,7 +113,8 @@ class SharedAuthDataSource(
         runCatchingPreservingCancellation {
             clearSessionAndRetireAvatarOwners(
                 reason = "login_clear_cached_session",
-                source = "auth_login"
+                source = "auth_login",
+                revokePreviousSession = true,
             )
         }
             .getOrElse { throwable ->
@@ -183,7 +187,11 @@ class SharedAuthDataSource(
         diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=$selectedServerPresent")
         diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation {
-            replaceAuthenticatedSessionAndRetireChangedAccount(session, "password_login")
+            replaceAuthenticatedSessionAndRetireChangedAccount(
+                session = session,
+                source = "password_login",
+                revokePreviousSession = true,
+            )
         }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -260,7 +268,12 @@ class SharedAuthDataSource(
         diagnosticsLogger("auth_session_persist_start provider=browser_login userPresent=${login.user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         if (!isCurrent()) return SharedAuthResult.Unauthenticated
         val committed = runCatchingPreservingCancellation {
-            replaceAuthenticatedSessionAndRetireChangedAccount(session, "browser_login", isCurrent)
+            replaceAuthenticatedSessionAndRetireChangedAccount(
+                session = session,
+                source = "browser_login",
+                isCurrent = isCurrent,
+                revokePreviousSession = true,
+            )
         }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -513,7 +526,11 @@ class SharedAuthDataSource(
         val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
         diagnosticsLogger("auth_session_persist_start provider=$provider userPresent=${user.id.isNotBlank()} serversCount=${orderedServers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation {
-            replaceAuthenticatedSessionAndRetireChangedAccount(session, "${provider}_login")
+            replaceAuthenticatedSessionAndRetireChangedAccount(
+                session = session,
+                source = "${provider}_login",
+                revokePreviousSession = true,
+            )
         }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -1510,8 +1527,22 @@ class SharedAuthDataSource(
             SharedAuthResult.Success(Unit)
         }
 
-    private suspend fun clearSessionAndRetireAvatarOwners(reason: String, source: String) {
-        val capture = captureAvatarOwnerRetirement(sessionStore.readSession())
+    private suspend fun clearSessionAndRetireAvatarOwners(
+        reason: String,
+        source: String,
+        revokePreviousSession: Boolean = false,
+    ) {
+        val previous = sessionStore.readSession()
+        if (revokePreviousSession && previous != null) {
+            revokeAuthSessionBestEffort(
+                api = api,
+                session = previous,
+                timeoutMillis = bestEffortLogoutTimeoutMillis,
+                diagnosticsLogger = diagnosticsLogger,
+                source = source,
+            )
+        }
+        val capture = captureAvatarOwnerRetirement(previous)
         sessionStore.clearSession(reason = reason, source = source)
         retireCapturedAvatarOwners(capture, source)
         clearAccountImageCaches(source)
@@ -1523,6 +1554,7 @@ class SharedAuthDataSource(
         session: StoredAuthSession,
         source: String,
         isCurrent: () -> Boolean = { true },
+        revokePreviousSession: Boolean = false,
     ): Boolean {
         val previous = sessionStore.readSession()
         val accountChanged = previous != null && previous.user.id.trim() != session.user.id.trim()
@@ -1530,6 +1562,17 @@ class SharedAuthDataSource(
             previous
                 ?.takeIf { accountChanged }
                 ?.let(::captureAvatarOwnerRetirement)
+        if (!isCurrent()) return false
+        if (revokePreviousSession && previous != null && !previous.sharesTokenWith(session)) {
+            revokeAuthSessionBestEffort(
+                api = api,
+                session = previous,
+                timeoutMillis = bestEffortLogoutTimeoutMillis,
+                diagnosticsLogger = diagnosticsLogger,
+                source = source,
+            )
+            if (!isCurrent()) return false
+        }
         if (accountChanged) {
             if (!isCurrent()) return false
             // Clear and await previous account's WebView auth storage BEFORE persisting the new
@@ -2770,3 +2813,115 @@ private data class AuthAppLoginCompleteBody(val code: String, val codeVerifier: 
 
 /** How long a session restore waits for /servers + /servers/order before keeping the cached list. */
 @RaftCoreInternalApi const val RESTORE_SERVER_LIST_BUDGET_MILLIS: Long = 4_000L
+
+/**
+ * Bounded timeout for best-effort `POST /api/auth/logout` before clearing or replacing a prior
+ * session (API environment switch or login while already holding a live session), so an offline
+ * or unresponsive custom/self-hosted server never blocks the user.
+ */
+const val BEST_EFFORT_LOGOUT_TIMEOUT_MILLIS: Long = 5_000L
+
+suspend fun revokeAuthSessionBestEffort(
+    api: RaftAuthApi,
+    session: StoredAuthSession,
+    timeoutMillis: Long = BEST_EFFORT_LOGOUT_TIMEOUT_MILLIS,
+    diagnosticsLogger: (String) -> Unit = {},
+    source: String = "best_effort",
+): String =
+    withContext(NonCancellable) {
+        val bearerAuthorization =
+            session.accessToken.trim().takeIf { it.isNotEmpty() }?.let { "Bearer $it" }
+        val outcome =
+            withTimeoutOrNull(timeoutMillis) {
+                when (
+                    val apiResult =
+                        runCatchingPreservingCancellation {
+                            api.logout(
+                                refreshToken = session.refreshToken,
+                                authorization = bearerAuthorization,
+                            )
+                        }.getOrElse { throwable ->
+                            diagnosticsLogger(
+                                "auth_logout_api_result result=error source=$source " +
+                                    "errorType=${throwable.safeDiagnosticsType()}"
+                            )
+                            null
+                        }
+                ) {
+                    is AuthApiResult.Success -> {
+                        diagnosticsLogger("auth_logout_api_result result=success source=$source")
+                        "success"
+                    }
+                    is AuthApiResult.Failure -> {
+                        diagnosticsLogger(
+                            "auth_logout_api_result result=failure code=${apiResult.code} source=$source"
+                        )
+                        "failure_code_${apiResult.code}"
+                    }
+                    null -> "failure_exception"
+                }
+            }
+        if (outcome == null) {
+            diagnosticsLogger(
+                "auth_logout_api_result result=timeout timeoutMs=$timeoutMillis source=$source"
+            )
+            "failure_timeout"
+        } else {
+            outcome
+        }
+    }
+
+suspend fun revokeAuthSessionAtBaseUrlBestEffort(
+    apiBaseUrl: String,
+    session: StoredAuthSession,
+    timeoutMillis: Long = BEST_EFFORT_LOGOUT_TIMEOUT_MILLIS,
+    diagnosticsLogger: (String) -> Unit = {},
+    source: String = "api_environment_changed",
+    transportFactory: (String) -> RaftAuthTransport = { baseUrl ->
+        SharedRaftAuthTransport(baseUrl = baseUrl, warningLogger = diagnosticsLogger)
+    },
+): String =
+    withContext(NonCancellable) {
+        val normalizedBaseUrl = apiBaseUrl.trim()
+        if (normalizedBaseUrl.isEmpty()) {
+            diagnosticsLogger("auth_logout_api_result result=skipped_blank_base_url source=$source")
+            return@withContext "skipped_blank_base_url"
+        }
+        val api =
+            runCatchingPreservingCancellation {
+                RaftAuthApiClient(
+                    transport = transportFactory(normalizedBaseUrl),
+                    diagnosticsLogger = diagnosticsLogger,
+                )
+            }.getOrElse { throwable ->
+                diagnosticsLogger(
+                    "auth_logout_api_result result=error source=$source " +
+                        "errorType=${throwable.safeDiagnosticsType()}"
+                )
+                return@withContext "failure_exception"
+            }
+        revokeAuthSessionBestEffort(
+            api = api,
+            session = session,
+            timeoutMillis = timeoutMillis,
+            diagnosticsLogger = diagnosticsLogger,
+            source = source,
+        )
+    }
+
+suspend fun clearRaftWebViewAuthStorageBestEffort(
+    diagnosticsLogger: (String) -> Unit = {},
+    source: String = "best_effort",
+) {
+    withContext(NonCancellable) {
+        runCatchingPreservingCancellation {
+            RaftWebViewAuthStorageHooks.clearAuthStorage?.invoke()
+        }.onFailure {
+            diagnosticsLogger("webview_storage_clear result=failure source=$source")
+        }
+    }
+}
+
+private fun StoredAuthSession.sharesTokenWith(other: StoredAuthSession): Boolean =
+    (refreshToken.isNotBlank() && refreshToken == other.refreshToken) ||
+        (accessToken.isNotBlank() && accessToken == other.accessToken)
