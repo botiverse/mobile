@@ -337,6 +337,9 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(false, languageRegion.data.serverTranslation.enabled)
         assertEquals("original", languageRegion.data.translationDisplay.selectedKey)
         assertTrue(languageRegion.data.translationDisplay.available)
+        assertEquals("original", languageRegion.data.translationDefaultView.selectedKey)
+        assertEquals(listOf("translated", "original", "bilingual"), languageRegion.data.translationDefaultView.options.map { it.key })
+        assertTrue(languageRegion.data.translationDefaultView.available)
     }
 
     @Test

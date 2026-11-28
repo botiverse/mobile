@@ -1928,10 +1928,14 @@ private fun ThreadMessageCardContent(
                                         pending = translation?.pendingPlaceholder == true,
                                         alignEnd = alignOwnMessageRight,
                                     ) {
+                                        val bilingualOriginalBody =
+                                            translation?.bilingualOriginalBody?.takeIf { !translation.pendingPlaceholder }
                                         RaftLongMessageCollapsibleBody(
                                             controller = longMessageCollapse,
                                             messageId = message.id,
-                                            contentKey = "${message.id}:${bodyForRender.length}:${bodyForRender.hashCode()}",
+                                            contentKey =
+                                                "${message.id}:${bodyForRender.length}:${bodyForRender.hashCode()}:" +
+                                                    "${bilingualOriginalBody != null}",
                                             alignEnd = alignOwnMessageRight,
                                             onToggle = {
                                                 tapMovementGate.rejectChildAction("long_message_toggle")
@@ -1950,6 +1954,10 @@ private fun ThreadMessageCardContent(
                                                 wholeMessageText = threadMessageSelectionSourceText(message),
                                                 diagnosticsLogger = diagnosticsLogger
                                             ) {
+                                                Column(
+                                                    horizontalAlignment = contentAlignment,
+                                                    verticalArrangement = Arrangement.spacedBy(RaftAppSpacing.Xs),
+                                                ) {
                                                 // A cut Activity preview is plain text: no Markdown,
                                                 // link chips or mentions made from the cut text.
                                                 if (threadMessageRendersRichBody(message, richContentEnabled)) {
@@ -2065,6 +2073,27 @@ private fun ThreadMessageCardContent(
                                                         color = RaftColor.TextBlack,
                                                         modifier = if (!alignOwnMessageRight) Modifier.fillMaxWidth() else Modifier
                                                     )
+                                                }
+                                                if (bilingualOriginalBody != null) {
+                                                    ThreadMessageBilingualOriginalContent(
+                                                        message = message,
+                                                        bilingualOriginalBody = bilingualOriginalBody,
+                                                        messageBodyTextStyle = messageBodyTextStyle,
+                                                        richContentEnabled = richContentEnabled,
+                                                        alignOwnMessageRight = alignOwnMessageRight,
+                                                        searchMatch = searchMatch,
+                                                        highlightedMentions = highlightedMentions,
+                                                        isMarkdownTagValid = isMarkdownTagValid,
+                                                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
+                                                        activeMarkdownTagKey = activeMarkdownTagKey,
+                                                        mentionReadStates = mentionReadStates,
+                                                        codeBlockTapObserver = codeBlockTapObserver,
+                                                        linkLongPress = linkLongPress,
+                                                        tapMovementGate = tapMovementGate,
+                                                        onOpenMarkdownTag = onOpenMarkdownTag,
+                                                        onOpenMarkdownUrl = onOpenMarkdownUrl,
+                                                    )
+                                                }
                                                 }
                                             }
                                         }
@@ -2350,6 +2379,95 @@ private fun ThreadMessageCardContent(
                                 RaftMessageItemToolbarDefaults.TopOffset +
                                     if (showAuthorChrome) ThreadMessageTimelineTurn else 0.dp
                         )
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageBilingualOriginalContent(
+    message: RaftThreadMessageItem,
+    bilingualOriginalBody: String,
+    messageBodyTextStyle: TextStyle,
+    richContentEnabled: Boolean,
+    alignOwnMessageRight: Boolean,
+    searchMatch: Boolean,
+    highlightedMentions: Set<String>,
+    isMarkdownTagValid: (ThreadMarkdownTag) -> Boolean,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
+    activeMarkdownTagKey: String?,
+    mentionReadStates: build.raft.app.markdown.RaftMarkdownMentionReadStates?,
+    codeBlockTapObserver: () -> Unit,
+    linkLongPress: build.raft.app.markdown.RaftMarkdownLinkLongPressHandler?,
+    tapMovementGate: ThreadMessageTapMovementGate,
+    onOpenMarkdownTag: (ThreadMarkdownTag, String) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit,
+) {
+    ThreadMessageBilingualOriginalBlock(
+        messageId = message.id,
+        alignEnd = alignOwnMessageRight,
+        modifier = if (!alignOwnMessageRight) Modifier.fillMaxWidth() else Modifier,
+    ) {
+        val originalTextStyle =
+            messageBodyTextStyle.copy(color = RaftTheme.colors.foregroundMuted)
+        if (threadMessageRendersRichBody(message, richContentEnabled)) {
+            val originalMarkdownSignature =
+                remember(message.id, bilingualOriginalBody, message.externalMentionSpans) {
+                    message.copy(body = bilingualOriginalBody).threadMarkdownRenderSignature()
+                }
+            key(originalMarkdownSignature) {
+                RaftMarkdownOwnTaskStatusScope(
+                    taskNumber = message.taskNumber,
+                    taskStatus = message.taskStatus,
+                    isTagValid = isMarkdownTagValid,
+                ) { ownTaskTagValid ->
+                    RaftMarkdownMentionReadStateScope(mentionReadStates) {
+                        CompositionLocalProvider(
+                            LocalRaftMarkdownCodeTapObserver provides codeBlockTapObserver,
+                            LocalRaftMarkdownLinkLongPress provides linkLongPress,
+                            LocalRaftMarkdownFindQuery provides
+                                (if (searchMatch) LocalThreadFindHighlightQuery.current else null),
+                        ) {
+                            // Web MessageItem: bilingual original uses MessageMarkdownBody directly
+                            // (not QuoteReplyBlocks), avoiding duplicate quote reply cards.
+                            RaftMarkdownBody(
+                                body = bilingualOriginalBody,
+                                fillWidth = !alignOwnMessageRight,
+                                textStyle = originalTextStyle,
+                                highlightedMentions = highlightedMentions,
+                                isTagValid = ownTaskTagValid,
+                                resolveTagLabel = resolveMarkdownTagLabel,
+                                inlineContentScope = originalMarkdownSignature.inlineContentScope,
+                                activeTagKey = activeMarkdownTagKey,
+                                onOpenTagAction = { tag, actionId ->
+                                    tapMovementGate.rejectChildAction("markdown_tag")
+                                    onOpenMarkdownTag(tag, actionId)
+                                },
+                                onOpenUrl = { url ->
+                                    tapMovementGate.rejectChildAction("markdown_url")
+                                    onOpenMarkdownUrl(url)
+                                },
+                                externalMentionSpans =
+                                    if (
+                                        message.externalAuthor != null &&
+                                        bilingualOriginalBody == message.body
+                                    ) {
+                                        message.externalMentionSpans
+                                    } else {
+                                        emptyList()
+                                    }
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            val findQuery = if (searchMatch) LocalThreadFindHighlightQuery.current else null
+            Text(
+                text = AnnotatedString(stripQuoteReplyRefsForPreview(bilingualOriginalBody)).withRaftMarkdownFindMarks(findQuery),
+                style = originalTextStyle,
+                color = RaftTheme.colors.foregroundMuted,
+                modifier = if (!alignOwnMessageRight) Modifier.fillMaxWidth() else Modifier,
             )
         }
     }

@@ -14,7 +14,9 @@ import build.raft.app.data.MOBILE_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TIMEZONE
+import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW
 import build.raft.app.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
+import build.raft.app.data.TranslationDisplayPreference
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsIntent
 import build.raft.app.data.SettingsLanguageRegionPreferenceUpdateRequest
@@ -190,9 +192,18 @@ private fun SettingsLanguagePreferenceCard(
         )
     val selectedLanguage =
         settingsLanguageRegionShownValue(snapshot.browserLanguage.selectedKey, LANGUAGE_REGION_ACTION_LANGUAGE, pick, actionState)
+    val selectedDefaultView =
+        settingsLanguageRegionShownValue(
+            snapshot.translationDefaultView.selectedKey,
+            LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW,
+            pick,
+            actionState
+        )
     val languageFailure = stringResource(Res.string.settings_language_update_failed)
     val displayStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY, pick, actionState, languageFailure)
     val languageStatus = rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_LANGUAGE, pick, actionState, languageFailure)
+    val defaultViewStatus =
+        rememberSettingsPickSaveStatus(LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW, pick, actionState, languageFailure)
     SettingsFormSectionCard(iconName = RaftLucideIconName.Languages, title = stringResource(Res.string.settings_language_title)) {
         SettingsSegmentedControlField(
             modifier = Modifier.settingsSearchAnchor("translation-mode"),
@@ -216,6 +227,17 @@ private fun SettingsLanguagePreferenceCard(
                 onValueChange = { onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_LANGUAGE, it, actionState)) },
                 enabled = snapshot.browserLanguage.available && !busy,
                 saveStatus = languageStatus
+            )
+            SettingsSegmentedControlField(
+                modifier = Modifier.settingsSearchAnchor("translation-default-view"),
+                label = stringResource(Res.string.settings_translation_default_view),
+                selectedValue = selectedDefaultView,
+                options = snapshot.translationDefaultView.toTranslationDefaultViewOptions(),
+                onValueSelected = {
+                    onPick(SettingsLanguageRegionPick(LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW, it, actionState))
+                },
+                enabled = snapshot.translationDefaultView.available && !busy,
+                saveStatus = defaultViewStatus
             )
         }
     }
@@ -262,7 +284,12 @@ private fun SettingsDateTimePreferenceCard(
 }
 
 private val LANGUAGE_REGION_LANGUAGE_ACTIONS =
-    setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION)
+    setOf(
+        LANGUAGE_REGION_ACTION_LANGUAGE,
+        LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY,
+        LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW,
+        LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
+    )
 
 private val LANGUAGE_REGION_TIME_ACTIONS =
     setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT)
@@ -385,6 +412,10 @@ internal fun settingsLanguageRegionApplyIntent(
             SharedSettingsIntent.SetTranslationMode(value).takeIf { value != snapshot.translationDisplay.selectedKey }
         LANGUAGE_REGION_ACTION_LANGUAGE ->
             SharedSettingsIntent.SetTranslationTargetLanguage(value).takeIf { value != snapshot.browserLanguage.selectedKey }
+        LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW ->
+            SharedSettingsIntent.UpdateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTranslationDisplay = value)
+            ).takeIf { value != snapshot.translationDefaultView.selectedKey }
         LANGUAGE_REGION_ACTION_TIMEZONE ->
             SharedSettingsIntent.UpdateLanguageRegionPreference(SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = value))
                 .takeIf { value != snapshot.timezone.selectedKey }
@@ -407,6 +438,24 @@ private fun SettingsMobileSelectionSnapshot.toTranslationModeOptions(): List<Seg
                     "automatic" -> RaftLucideIconName.Languages
                     "manual" -> RaftLucideIconName.Pencil
                     else -> RaftLucideIconName.FileText
+                }
+        )
+    }
+
+@Composable
+private fun SettingsMobileSelectionSnapshot.toTranslationDefaultViewOptions(): List<SegmentedControlOption> =
+    options.map { option ->
+        SegmentedControlOption(
+            value = option.key,
+            label =
+                when (option.key) {
+                    TranslationDisplayPreference.Translated.wireValue ->
+                        stringResource(Res.string.settings_translation_display_translated)
+                    TranslationDisplayPreference.Original.wireValue ->
+                        stringResource(Res.string.settings_translation_display_original)
+                    TranslationDisplayPreference.Bilingual.wireValue ->
+                        stringResource(Res.string.settings_translation_display_bilingual)
+                    else -> option.label
                 }
         )
     }

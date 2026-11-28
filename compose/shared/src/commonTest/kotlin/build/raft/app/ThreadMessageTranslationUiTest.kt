@@ -4,6 +4,7 @@ import build.raft.app.data.SharedMessageTranslationEntry
 import build.raft.app.data.SharedMessageTranslationSettings
 import build.raft.app.data.SharedMessageTranslationState
 import build.raft.app.data.SharedMessageTranslationStatus
+import build.raft.app.data.TranslationDisplayPreference
 import build.raft.app.data.TranslationModePreference
 import build.raft.app.thread.RaftThreadMessageItem
 import build.raft.app.thread.ThreadMessageTranslationIndicatorAction
@@ -15,7 +16,8 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private fun availableSettings(
-    mode: TranslationModePreference = TranslationModePreference.Automatic
+    mode: TranslationModePreference = TranslationModePreference.Automatic,
+    preferredDisplay: TranslationDisplayPreference = TranslationDisplayPreference.Translated,
 ): SharedMessageTranslationSettings =
     SharedMessageTranslationSettings(
         loaded = true,
@@ -23,7 +25,8 @@ private fun availableSettings(
         serverTranslationEnabled = true,
         providerAvailable = true,
         translationMode = mode,
-        effectiveLanguage = "en"
+        effectiveLanguage = "en",
+        preferredTranslationDisplay = preferredDisplay,
     )
 
 private fun message(
@@ -122,5 +125,63 @@ class ThreadMessageTranslationUiTest {
             )
 
         assertNull(ui)
+    }
+
+    @Test
+    fun bilingualDefaultViewShowsTranslatedBodyAndOriginalBlockAndTogglesBackToOriginal() {
+        val bilingualSettings = availableSettings(preferredDisplay = TranslationDisplayPreference.Bilingual)
+
+        val defaultUi = resolveThreadMessageTranslationUi(message(), state(translatedEntry(), settings = bilingualSettings))
+        checkNotNull(defaultUi)
+        assertEquals("Hello", defaultUi.displayBody)
+        assertEquals("你好", defaultUi.bilingualOriginalBody)
+        assertFalse(defaultUi.showOriginal)
+        assertEquals("Show original", defaultUi.indicator?.actionLabel)
+
+        val toggledOriginal =
+            resolveThreadMessageTranslationUi(message(), state(translatedEntry(showOriginal = true), settings = bilingualSettings))
+        checkNotNull(toggledOriginal)
+        assertNull(toggledOriginal.displayBody)
+        assertNull(toggledOriginal.bilingualOriginalBody)
+        assertTrue(toggledOriginal.showOriginal)
+        assertEquals("Show translation", toggledOriginal.indicator?.actionLabel)
+
+        val toggledBack =
+            resolveThreadMessageTranslationUi(message(), state(translatedEntry(showOriginal = false), settings = bilingualSettings))
+        checkNotNull(toggledBack)
+        assertEquals("Hello", toggledBack.displayBody)
+        assertEquals("你好", toggledBack.bilingualOriginalBody)
+        assertFalse(toggledBack.showOriginal)
+    }
+
+    @Test
+    fun originalDefaultViewKeepsOriginalUntilToggledToTranslatedAndSkipsPendingPlaceholder() {
+        val originalSettings = availableSettings(preferredDisplay = TranslationDisplayPreference.Original)
+
+        val defaultUi = resolveThreadMessageTranslationUi(message(), state(translatedEntry(), settings = originalSettings))
+        checkNotNull(defaultUi)
+        assertNull(defaultUi.displayBody)
+        assertNull(defaultUi.bilingualOriginalBody)
+        assertTrue(defaultUi.showOriginal)
+        assertEquals("Show translation", defaultUi.indicator?.actionLabel)
+
+        val toggledTranslated =
+            resolveThreadMessageTranslationUi(message(), state(translatedEntry(showOriginal = false), settings = originalSettings))
+        checkNotNull(toggledTranslated)
+        assertEquals("Hello", toggledTranslated.displayBody)
+        assertNull(toggledTranslated.bilingualOriginalBody)
+        assertFalse(toggledTranslated.showOriginal)
+        assertEquals("Show original", toggledTranslated.indicator?.actionLabel)
+
+        val pendingEntry =
+            SharedMessageTranslationEntry(
+                messageId = "m1",
+                status = SharedMessageTranslationStatus.Pending,
+                originalContent = "你好",
+            )
+        val pendingUi = resolveThreadMessageTranslationUi(message(), state(pendingEntry, settings = originalSettings))
+        checkNotNull(pendingUi)
+        assertFalse(pendingUi.pendingPlaceholder)
+        assertTrue(pendingUi.showOriginal)
     }
 }

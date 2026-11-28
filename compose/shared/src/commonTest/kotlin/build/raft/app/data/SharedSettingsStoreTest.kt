@@ -250,6 +250,39 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun languageRegionDefaultViewPersistsThroughLocalTranslationPreferences() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(languageRegionResult = DataResult.Content(languageRegionSnapshot()))
+        val localeRepository = FakeLocaleRepository(AppLocale.English)
+        val chatLayoutRepository = FakeChatLayoutPreferenceRepository(translationMode = TranslationModePreference.Automatic)
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemoryRaftAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        localeRepository = localeRepository,
+                        chatLayoutPreferenceRepository = chatLayoutRepository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.LoadPageContent(SharedSettingsDestination.LanguageRegion))
+        store.accept(
+            SharedSettingsIntent.UpdateLanguageRegionPreference(
+                SettingsLanguageRegionPreferenceUpdateRequest(preferredTranslationDisplay = "bilingual")
+            )
+        )
+
+        val updated = assertIs<ScreenLoadState.Content<SettingsLanguageRegionSnapshot>>(store.state.value.languageRegion).data
+        assertEquals("automatic", updated.translationDisplay.selectedKey)
+        assertEquals("bilingual", updated.translationDefaultView.selectedKey)
+        assertEquals(LANGUAGE_REGION_ACTION_TRANSLATION_DEFAULT_VIEW, store.state.value.actionState?.action)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        scope.cancel()
+    }
+
+    @Test
     fun languageRegionFailedApplyKeepsSavedValueAndReportsError() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -3368,7 +3401,23 @@ class SharedSettingsStoreTest {
                                     statusLabel = if (it == "original") "Original" else "Translated",
                                     available = true
                                 )
-                            } ?: current.translationDisplay
+                            } ?: current.translationDisplay,
+                        translationDefaultView =
+                            request.preferredTranslationDisplay?.let {
+                                val normalized = TranslationDisplayPreference.fromWire(it)
+                                val label =
+                                    when (normalized) {
+                                        TranslationDisplayPreference.Translated -> "Translated"
+                                        TranslationDisplayPreference.Original -> "Original"
+                                        TranslationDisplayPreference.Bilingual -> "Bilingual"
+                                    }
+                                current.translationDefaultView.copy(
+                                    selectedKey = normalized.wireValue,
+                                    selectedLabel = label,
+                                    statusLabel = label,
+                                    available = true
+                                )
+                            } ?: current.translationDefaultView
                     )
                 )
             return languageRegionResult

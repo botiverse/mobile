@@ -31,6 +31,7 @@ data class SharedMessageTranslationSettings(
     // availability below stays the hard capability gate.
     val translationMode: TranslationModePreference = TranslationModePreference.Default,
     val effectiveLanguage: String? = null,
+    val preferredTranslationDisplay: TranslationDisplayPreference = TranslationDisplayPreference.Translated,
 ) {
     val available: Boolean
         get() = serverTranslationEnabled && providerAvailable
@@ -98,8 +99,15 @@ class SharedMessageTranslationStore @RaftCoreInternalApi constructor(
             val current = _state.value.settings
             if (!force && current.loaded && current.serverId == serverId) return@launch
             if (current.serverId != null && current.serverId != serverId) {
-                // Server switch: cached entries belong to the previous server.
-                _state.value = SharedMessageTranslationState()
+                // Server switch: cached entries belong to the previous server, but
+                // preferredTranslationDisplay is an account-level preference.
+                _state.value =
+                    SharedMessageTranslationState(
+                        settings =
+                            SharedMessageTranslationSettings(
+                                preferredTranslationDisplay = current.preferredTranslationDisplay
+                            )
+                    )
             }
             val serverResponse = runCatchingNetwork { api.serverTranslationSettings(serverId) } ?: return@launch
             val serverTranslation =
@@ -113,21 +121,31 @@ class SharedMessageTranslationStore @RaftCoreInternalApi constructor(
                 )
                 return@launch
             }
+            val accountResponse = runCatchingNetwork { api.accountPreferences() }
+            val loadedDisplay =
+                accountResponse
+                    ?.takeIf { it.isSuccessful }
+                    ?.bodyText
+                    ?.let(::parseSharedLanguageRegionAccountPreferences)
+                    ?.preferredTranslationDisplay
+                    ?.let(TranslationDisplayPreference::fromWire)
             val nextSettings =
                 SharedMessageTranslationSettings(
                     loaded = true,
                     serverId = serverId,
-                    serverTranslationEnabled = serverTranslation?.translationEnabled ?: false,
-                    providerAvailable = serverTranslation?.translationAvailable ?: false,
+                    serverTranslationEnabled = serverTranslation.translationEnabled,
+                    providerAvailable = serverTranslation.translationAvailable,
                     translationMode = translationMode(),
                     effectiveLanguage = normalizedTargetLanguage(),
+                    preferredTranslationDisplay = loadedDisplay ?: _state.value.settings.preferredTranslationDisplay,
                 )
             updateState { state ->
                 if (state.settings == nextSettings) state else state.copy(settings = nextSettings)
             }
             diagnosticsLogger(
                 "message_translation_settings_loaded server=$serverId available=${nextSettings.available} " +
-                    "mode=${nextSettings.translationMode.storageKey} language=${nextSettings.effectiveLanguage.orEmpty()}"
+                    "mode=${nextSettings.translationMode.storageKey} language=${nextSettings.effectiveLanguage.orEmpty()} " +
+                    "display=${nextSettings.preferredTranslationDisplay.wireValue}"
             )
         }
     }
@@ -159,6 +177,18 @@ class SharedMessageTranslationStore @RaftCoreInternalApi constructor(
 
     fun setShowOriginal(messageId: String, showOriginal: Boolean) {
         scope.launch { setShowOriginalOnStoreScope(messageId, showOriginal) }
+    }
+
+    fun updatePreferredTranslationDisplay(display: TranslationDisplayPreference) {
+        scope.launch {
+            updateState { state ->
+                if (state.settings.preferredTranslationDisplay == display) {
+                    state
+                } else {
+                    state.copy(settings = state.settings.copy(preferredTranslationDisplay = display))
+                }
+            }
+        }
     }
 
     fun reset() {
@@ -233,7 +263,7 @@ class SharedMessageTranslationStore @RaftCoreInternalApi constructor(
                         status = SharedMessageTranslationStatus.Pending,
                         targetLanguage = targetLanguage,
                         originalContent = candidate.body,
-                        showOriginal = state.entries[candidate.messageId]?.showOriginal,
+                        showOriginal = if (force) false else state.entries[candidate.messageId]?.showOriginal,
                     )
             }
             state.copy(entries = nextEntries)
@@ -370,7 +400,7 @@ class SharedMessageTranslationStore @RaftCoreInternalApi constructor(
             null
         }
 
-    private suspend fun runCatchingNetwork(block: suspend () -> HomeNetworkResponse): HomeNetworkResponse? =
+    private suspend fun runCatchingNetwork(block: suspend () -> HomeNetworkResponse?): HomeNetworkResponse? =
         try {
             block()
         } catch (cancellation: CancellationException) {
