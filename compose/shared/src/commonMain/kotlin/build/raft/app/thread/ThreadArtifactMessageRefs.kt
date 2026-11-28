@@ -2,7 +2,7 @@ package build.raft.app.thread
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import build.raft.designsystem.components.raftClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -926,7 +926,12 @@ internal fun ArtifactMessageCard(
                                 if (commentsClick != null) {
                                     base
                                         .clip(RoundedCornerShape(build.raft.designsystem.tokens.RaftRadius.Control))
-                                        .clickable(role = Role.Button, onClickLabel = label, onClick = commentsClick)
+                                        .raftClickable(
+                                            onClick = commentsClick,
+                                            role = Role.Button,
+                                            onClickLabel = label,
+                                            shape = RoundedCornerShape(build.raft.designsystem.tokens.RaftRadius.Control),
+                                        )
                                         .padding(horizontal = 6.dp, vertical = 4.dp)
                                 } else {
                                     base
