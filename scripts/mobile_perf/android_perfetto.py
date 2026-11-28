@@ -584,6 +584,9 @@ def parse_perfetto_query_results(
 
 _GFX_TOTAL_RE = re.compile(r"Total frames rendered:[ \t]*(\d+)")
 _GFX_JANKY_RE = re.compile(r"Janky frames:[ \t]*(\d+)")
+_GFX_JANKY_LEGACY_RE = re.compile(r"Janky frames \(legacy\):[ \t]*(\d+)")
+_GFX_HISTOGRAM_LINE_RE = re.compile(r"^HISTOGRAM:[ \t]*(.+)$", re.MULTILINE)
+_GFX_HISTOGRAM_BUCKET_RE = re.compile(r"(\d+(?:\.\d+)?)ms=(\d+)")
 _GFX_PCT_RE = re.compile(r"(\d+)th percentile:[ \t]*(\d+(?:\.\d+)?)ms")
 
 _MEMINFO_TOTAL_PSS_RE = re.compile(r"TOTAL PSS:[ \t]*(\d+)")
@@ -702,9 +705,12 @@ def parse_dumpsys_gfxinfo_framestats(
     summary_total_frames = int(total_match.group(1)) if total_match else 0
     summary_metrics: dict[str, Any] | None = None
     if summary_total_frames > 0:
+        budget_ms = 1000.0 / hz
         janky_match = _GFX_JANKY_RE.search(summary_text)
+        legacy_match = _GFX_JANKY_LEGACY_RE.search(summary_text)
         slow_count = int(janky_match.group(1)) if janky_match else None
-        slow_ratio = round(slow_count / summary_total_frames, 6) if slow_count is not None else None
+        legacy_count = int(legacy_match.group(1)) if legacy_match else None
+        janky_source: str | None = None
 
         pcts: dict[int, float] = {}
         for match in _GFX_PCT_RE.finditer(summary_text):
@@ -712,6 +718,39 @@ def parse_dumpsys_gfxinfo_framestats(
             val = float(match.group(2))
             if val > 0:
                 pcts[pct] = val
+
+        # Android 12+ virtual displays (e.g. redroid/Wuying where GpuCompleted=-1)
+        # report `Janky frames: 0 (0.00%)` while recording real CPU frame times in
+        # `HISTOGRAM:` and `Janky frames (legacy): N`. Recover refresh-rate-aware
+        # slow frames from `HISTOGRAM:` (or `legacy` when `HISTOGRAM:` is absent).
+        if slow_count is None or slow_count == 0:
+            hist_line_match = _GFX_HISTOGRAM_LINE_RE.search(summary_text)
+            hist_buckets = (
+                [
+                    (float(m.group(1)), int(m.group(2)))
+                    for m in _GFX_HISTOGRAM_BUCKET_RE.finditer(hist_line_match.group(1))
+                ]
+                if hist_line_match
+                else []
+            )
+            hist_total = sum(cnt for _, cnt in hist_buckets)
+            if hist_total > 0:
+                hist_slow = sum(cnt for b_ms, cnt in hist_buckets if b_ms > budget_ms + 1e-6)
+                if slow_count is None or hist_slow > 0:
+                    slow_count = min(hist_slow, summary_total_frames)
+                    janky_source = "histogram_fallback"
+            elif legacy_count is not None and legacy_count > 0:
+                p95 = pcts.get(95)
+                p99 = pcts.get(99)
+                pct_exceeds_budget = (
+                    (p95 is not None and p95 > budget_ms + 1e-6)
+                    or (p99 is not None and p99 > budget_ms + 1e-6)
+                )
+                if pct_exceeds_budget or hz >= 59.0:
+                    slow_count = min(legacy_count, summary_total_frames)
+                    janky_source = "legacy_fallback"
+
+        slow_ratio = round(slow_count / summary_total_frames, 6) if slow_count is not None else None
 
         summary_metrics = {
             "samples": summary_total_frames,
@@ -721,6 +760,8 @@ def parse_dumpsys_gfxinfo_framestats(
             "worst_frame_ms": None,
             "slow_frame_count": slow_count,
             "slow_frame_ratio": slow_ratio,
+            "gfxinfo_janky_source": janky_source,
+            "gfxinfo_janky_legacy_count": legacy_count if janky_source is not None else None,
         }
 
     # 3. Reconcile PROFILEDATA vs full-window summary.
@@ -1158,6 +1199,10 @@ def parse_android_capture(
     if not used_perfetto_frames and gfx_metrics.get("gfxinfo_profiledata_truncated"):
         extra_dict["gfxinfo_profiledata_truncated"] = True
         extra_dict["gfxinfo_profiledata_frame_count"] = gfx_metrics["gfxinfo_profiledata_frame_count"]
+    if not used_perfetto_frames and gfx_metrics.get("gfxinfo_janky_source"):
+        extra_dict["gfxinfo_janky_source"] = gfx_metrics["gfxinfo_janky_source"]
+        if gfx_metrics.get("gfxinfo_janky_legacy_count") is not None:
+            extra_dict["gfxinfo_janky_legacy_count"] = gfx_metrics["gfxinfo_janky_legacy_count"]
 
     common = {
         "project": project,
