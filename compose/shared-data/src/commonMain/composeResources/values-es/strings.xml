@@ -5574,6 +5574,9 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d de %2$d Artifacts</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d comentario nuevo</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d comentarios nuevos</string>
+    <string name="artifacts_card_new_version_label">Hay una versión nueva desde tu última visita</string>
+    <string name="artifacts_card_new_comments_one">%1$d comentario nuevo desde tu última visita</string>
+    <string name="artifacts_card_new_comments_many">%1$d comentarios nuevos desde tu última visita</string>
     <string name="artifacts_dashboard_status_label">Estado: %1$s</string>
     <string name="artifacts_dashboard_status_unsettled">Sin finalizar</string>
     <string name="artifacts_dashboard_status_all">Todos</string>

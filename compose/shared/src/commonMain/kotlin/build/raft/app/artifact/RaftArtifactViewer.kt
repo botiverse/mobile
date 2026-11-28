@@ -460,10 +460,11 @@ internal fun raftArtifactViewerInitialWarmBarReady(
     hostHead: Int?,
     langTag: String?,
     useMultiSlot: Boolean,
+    reloadIfShowsTarget: Boolean = false,
     cache: RaftArtifactViewerCache = RaftArtifactViewerMemory.cache,
     readKept: (String) -> RaftWebViewKeptDocument? = ::raftWebViewKeptDocument,
 ): Boolean {
-    if (scope == null || accessToken.isNullOrBlank()) return false
+    if (reloadIfShowsTarget || scope == null || accessToken.isNullOrBlank()) return false
     val slotKey = raftArtifactViewerSlotKey(scope, target, conversationId, hostHead, langTag, useMultiSlot)
     val kept = readKept(slotKey) ?: return false
     if (!raftArtifactViewerKeptDocumentHasEmbedContract(kept)) return false
@@ -476,7 +477,8 @@ internal fun raftArtifactViewerInitialWarmBarReady(
  * Resolves the keep-alive slot for opening [target] under [scope]:
  * 1. Checks [raftArtifactViewerSlotKey] directly (per-artifact slot in `compose/web-container`,
  *    server-wide slot in legacy mode), dropping only that slot if its embed contract or latched
- *    session/conversation/head/language no longer matches.
+ *    session/conversation/head/language no longer matches, or when [reloadIfShowsTarget] is true
+ *    (opening to a specific comment requires mounting `ArtifactStandalonePage` with `?comment=`).
  * 2. In multi-slot mode, if no direct slot exists, promotes a compatible `raft-app-warm` prewarm
  *    slot (`scope.keepAliveKey` -> `primarySlotKey`) so prewarm never leaks or wastes a pool slot.
  */
@@ -488,6 +490,7 @@ internal fun resolveRaftArtifactViewerKeptSlot(
     hostHead: Int? = null,
     langTag: String? = null,
     useMultiSlot: Boolean = true,
+    reloadIfShowsTarget: Boolean = false,
     cache: RaftArtifactViewerCache = RaftArtifactViewerMemory.cache,
     readKept: (String) -> RaftWebViewKeptDocument? = ::raftWebViewKeptDocument,
     promoteKept: (fromKey: String, toKey: String) -> Boolean = ::raftWebViewKeepAlivePromote,
@@ -504,22 +507,28 @@ internal fun resolveRaftArtifactViewerKeptSlot(
         } else if (cache.keptDocumentUsable(scope, accessToken, conversationId, hostHead, langTag, primarySlotKey)) {
             val urlMatchesTarget =
                 raftArtifactViewerKeptUrlMatchesTarget(directCandidate.currentUrl, scope.webOrigin, target)
-            val cacheShowsTarget = cache.keptDocumentShows(scope, target, primarySlotKey)
-            val isWarmRoute = raftArtifactViewerIsWarmUrl(directCandidate.currentUrl, scope.webOrigin)
-            val alreadyNavigated =
-                if (useMultiSlot) {
-                    urlMatchesTarget || (cacheShowsTarget && isWarmRoute)
-                } else {
-                    cacheShowsTarget && (urlMatchesTarget || isWarmRoute)
-                }
-            return RaftArtifactKeptResolution(
-                slotKey = primarySlotKey,
-                document = directCandidate,
-                showsTarget = urlMatchesTarget,
-                alreadyNavigated = alreadyNavigated,
-                promotedPrewarm = false,
-                renderedArtifact = cache.keptDocumentRenderedArtifact(scope, primarySlotKey),
-            )
+            if (urlMatchesTarget && reloadIfShowsTarget) {
+                onDroppedReason("opening_comment_requires_mount")
+                cache.forgetKeptDocument(scope, primarySlotKey)
+                dropKept(primarySlotKey)
+            } else {
+                val cacheShowsTarget = cache.keptDocumentShows(scope, target, primarySlotKey)
+                val isWarmRoute = raftArtifactViewerIsWarmUrl(directCandidate.currentUrl, scope.webOrigin)
+                val alreadyNavigated =
+                    if (useMultiSlot) {
+                        urlMatchesTarget || (cacheShowsTarget && isWarmRoute)
+                    } else {
+                        cacheShowsTarget && (urlMatchesTarget || isWarmRoute)
+                    }
+                return RaftArtifactKeptResolution(
+                    slotKey = primarySlotKey,
+                    document = directCandidate,
+                    showsTarget = urlMatchesTarget,
+                    alreadyNavigated = alreadyNavigated,
+                    promotedPrewarm = false,
+                    renderedArtifact = cache.keptDocumentRenderedArtifact(scope, primarySlotKey),
+                )
+            }
         } else {
             onDroppedReason("session_conversation_or_head_changed")
             cache.forgetKeptDocument(scope, primarySlotKey)
@@ -969,6 +978,54 @@ internal fun raftArtifactViewerEmbeddedUrl(url: String, conversationId: String? 
     return path + "?" + (kept + raftArtifactViewerEmbedQuery(conversationId, hostHead, langTag)).joinToString("&") + fragment
 }
 
+/** What the Artifact page's address asks it to open with (slock `artifactPageOpening.ts`). */
+internal data class RaftArtifactViewerOpening(
+    /** `"comments"`, `"versions"`, or `"files"`; anything else is ignored. */
+    val panel: String? = null,
+    /** Comment id to land on (`^l?c_[0-9A-Za-z-]{1,80}$`); malformed values are ignored. */
+    val commentId: String? = null,
+)
+
+private val RaftArtifactViewerAllowedPanels = setOf("comments", "versions", "files")
+private val RaftArtifactViewerCommentIdRegex = Regex("^l?c_[0-9A-Za-z-]{1,80}$")
+
+internal fun raftArtifactViewerPanelOrNull(panel: String?): String? =
+    panel?.trim()?.lowercase()?.takeIf { it in RaftArtifactViewerAllowedPanels }
+
+internal fun raftArtifactViewerCommentIdOrNull(commentId: String?): String? =
+    commentId?.trim()?.takeIf { RaftArtifactViewerCommentIdRegex.matches(it) }
+
+internal fun RaftArtifactViewerOpening?.normalizedOrNull(): RaftArtifactViewerOpening? {
+    val raw = this ?: return null
+    val panel = raftArtifactViewerPanelOrNull(raw.panel)
+    val commentId = raftArtifactViewerCommentIdOrNull(raw.commentId)
+    if (panel == null && commentId == null) return null
+    return RaftArtifactViewerOpening(panel = panel ?: "comments", commentId = commentId)
+}
+
+internal fun raftArtifactViewerOpeningQuery(opening: RaftArtifactViewerOpening?): String {
+    val clean = opening.normalizedOrNull() ?: return ""
+    return buildString {
+        clean.panel?.let { append("&panel=").append(it) }
+        clean.commentId?.let { append("&comment=").append(it) }
+    }
+}
+
+/** Opens [panel] (`#panel=comments|versions|files`) in an already-loaded kept Artifact document without reload. */
+internal fun raftArtifactViewerOpenPanelScript(webOrigin: String, panel: String): String {
+    val cleanPanel = raftArtifactViewerPanelOrNull(panel) ?: return ""
+    val hash = Json.encodeToString(String.serializer(), "#panel=$cleanPanel")
+    return raftArtifactViewerGuardedScript(
+        webOrigin,
+        """
+        var nextHash = $hash;
+        if (window.location.hash !== nextHash) {
+          window.location.hash = nextHash;
+        }
+        """.trimIndent(),
+    )
+}
+
 /**
  * What the viewer's WebView loads: [raftArtifactViewerPageUrl] under the App's title bar, naming the
  * conversation it was opened from ([conversationId]; null: none, e.g. Artifacts home or a link from outside)
@@ -980,7 +1037,10 @@ internal fun raftArtifactViewerEmbeddedPageUrl(
     conversationId: String? = null,
     hostHead: Int? = null,
     langTag: String? = null,
-): String = raftArtifactViewerEmbeddedUrl(raftArtifactViewerPageUrl(webBaseUrl, target), conversationId, hostHead, langTag)
+    opening: RaftArtifactViewerOpening? = null,
+): String =
+    raftArtifactViewerEmbeddedUrl(raftArtifactViewerPageUrl(webBaseUrl, target), conversationId, hostHead, langTag) +
+        raftArtifactViewerOpeningQuery(opening)
 
 /**
  * The page a prewarmed WebView boots: the canonical link's route with no Artifact (an address the
@@ -1023,13 +1083,29 @@ internal fun raftArtifactViewerNavigateScript(
     conversationId: String? = null,
     hostHead: Int? = null,
     langTag: String? = null,
+    opening: RaftArtifactViewerOpening? = null,
 ): String {
+    val cleanOpening = opening.normalizedOrNull()
     val path = Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target))
     // The address keeps the embed contract (the web's keeper would put it back; this saves a write). The kept
     // document latched its conversation and head height when it booted: only one booted with [conversationId] and
     // [hostHead] is routed ([RaftArtifactViewerCache.keptDocumentUsable]), so the address names the same ones.
     val address =
-        Json.encodeToString(String.serializer(), raftArtifactViewerPagePath(target) + "?" + raftArtifactViewerEmbedQuery(conversationId, hostHead, langTag))
+        Json.encodeToString(
+            String.serializer(),
+            raftArtifactViewerPagePath(target) + "?" +
+                raftArtifactViewerEmbedQuery(conversationId, hostHead, langTag) +
+                raftArtifactViewerOpeningQuery(cleanOpening),
+        )
+    val samePathPanelClause =
+        cleanOpening?.panel?.let { panel ->
+            val hash = Json.encodeToString(String.serializer(), "#panel=$panel")
+            """
+            else if (window.location.hash !== $hash) {
+              window.location.hash = $hash;
+            }
+            """.trimIndent()
+        }.orEmpty()
     return raftArtifactViewerGuardedScript(
         webOrigin,
         """
@@ -1040,7 +1116,7 @@ internal fun raftArtifactViewerNavigateScript(
           var index = typeof previous.idx === 'number' ? previous.idx + 1 : 0;
           window.history.pushState({usr: null, key: Math.random().toString(36).slice(2, 10), idx: index}, '', $address);
           window.dispatchEvent(new PopStateEvent('popstate', {state: window.history.state}));
-        }
+        } $samePathPanelClause
         """.trimIndent(),
     )
 }

@@ -5785,6 +5785,9 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d of %2$d Artifacts</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d new comment</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d new comments</string>
+    <string name="artifacts_card_new_version_label">New version since you last looked</string>
+    <string name="artifacts_card_new_comments_one">%1$d new comment since you last looked</string>
+    <string name="artifacts_card_new_comments_many">%1$d new comments since you last looked</string>
     <string name="artifacts_dashboard_status_label">Status: %1$s</string>
     <string name="artifacts_dashboard_status_unsettled">Unsettled</string>
     <string name="artifacts_dashboard_status_all">All</string>

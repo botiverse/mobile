@@ -5574,6 +5574,9 @@
     <string name="artifacts_dashboard_count_filtered_many">%1$d / 共 %2$d 個 Artifact</string>
     <string name="artifacts_dashboard_new_comments_one">%1$d 則新留言</string>
     <string name="artifacts_dashboard_new_comments_many">%1$d 則新留言</string>
+    <string name="artifacts_card_new_version_label">上次查看後有新版本</string>
+    <string name="artifacts_card_new_comments_one">上次查看後有 %1$d 則新留言</string>
+    <string name="artifacts_card_new_comments_many">上次查看後有 %1$d 則新留言</string>
     <string name="artifacts_dashboard_status_label">狀態：%1$s</string>
     <string name="artifacts_dashboard_status_unsettled">未定稿</string>
     <string name="artifacts_dashboard_status_all">全部</string>
