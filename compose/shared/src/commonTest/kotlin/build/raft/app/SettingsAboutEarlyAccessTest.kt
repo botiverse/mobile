@@ -1,24 +1,31 @@
 package build.raft.app
 
 import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL
+import build.raft.app.data.DEVELOPER_ACTION_HANDS_UPDATE_CHECK
 import build.raft.app.data.RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA
 import build.raft.app.data.RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_ACTIVE
 import build.raft.app.data.RAFT_EARLY_ACCESS_GUIDE_IOS_TESTFLIGHT_JOIN
 import build.raft.app.data.RAFT_GOOGLE_PLAY_BETA_URL
 import build.raft.app.data.RAFT_IOS_TESTFLIGHT_JOIN_URL
+import build.raft.app.data.RaftEarlyAccessFlagPolicy
 import build.raft.app.data.SharedApiEnvironmentStore
 import build.raft.app.data.SharedSettingsAboutSnapshot
 import build.raft.app.data.SharedSettingsActionState
 import build.raft.app.data.SharedSettingsDeveloperSnapshot
 import build.raft.app.data.SharedSettingsUpdateCheckSnapshot
+import build.raft.app.data.SharedSettingsUpdateTransactionState
 import build.raft.app.data.preservingChannelMetadataFrom
 import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_EXTERNAL_ACTION
 import build.raft.app.settings.SETTINGS_ABOUT_EARLY_ACCESS_TOGGLE_ACTION
 import build.raft.app.settings.SettingsAboutEarlyAccessOption
+import build.raft.app.settings.SettingsAboutEarlyAccessPolicyAction
+import build.raft.app.settings.SettingsNativeDetailPage
 import build.raft.app.settings.formatHandsEarlyAccessChannelBadge
 import build.raft.app.settings.settingsAboutEarlyAccessChannelForToggle
 import build.raft.app.settings.settingsAboutEarlyAccessOption
+import build.raft.app.settings.settingsAboutEarlyAccessPolicyAction
 import build.raft.app.settings.settingsAboutExternalUrl
+import build.raft.app.settings.settingsAboutUpdateShowsAttentionDot
 import build.raft.app.settings.toAboutPayload
 import build.raft.app.thread.key
 import kotlin.test.Test
@@ -288,5 +295,173 @@ class SettingsAboutEarlyAccessTest {
         assertEquals(RAFT_EARLY_ACCESS_GUIDE_GOOGLE_PLAY_BETA, merged.earlyAccessGuideKind)
         assertEquals(RAFT_GOOGLE_PLAY_BETA_URL, merged.earlyAccessGuideUrl)
         assertEquals("Raft is up to date.", merged.detail)
+    }
+
+    @Test
+    fun checkForUpdateRowShowsMatchingAttentionDotOnlyWhenUpdateNeedsAction() {
+        assertFalse(settingsAboutUpdateShowsAttentionDot(null))
+        assertFalse(
+            settingsAboutUpdateShowsAttentionDot(
+                SharedSettingsUpdateCheckSnapshot(supported = false, updateAvailable = true)
+            )
+        )
+        assertFalse(
+            settingsAboutUpdateShowsAttentionDot(
+                SharedSettingsUpdateCheckSnapshot(supported = true, updateAvailable = false, statusLabel = "Current")
+            )
+        )
+        assertFalse(
+            settingsAboutUpdateShowsAttentionDot(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    updateAvailable = true,
+                    currentVersionCode = 13100018L,
+                    latestVersionCode = 13100018L,
+                )
+            )
+        )
+        assertFalse(
+            settingsAboutUpdateShowsAttentionDot(
+                SharedSettingsUpdateCheckSnapshot(
+                    supported = true,
+                    updateAvailable = true,
+                    transactionState = SharedSettingsUpdateTransactionState.Installed,
+                )
+            )
+        )
+
+        val available =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                updateAvailable = true,
+                currentVersionCode = 13100018L,
+                latestVersionCode = 13200001L,
+                statusLabel = "Update available",
+            )
+        val readyToInstall =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                transactionState = SharedSettingsUpdateTransactionState.ReadyToInstall,
+                statusLabel = "Ready",
+            )
+        val installerOpened =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                transactionState = SharedSettingsUpdateTransactionState.InstallerOpened,
+                statusLabel = "Ready",
+            )
+        val readyToRestart =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                transactionState = SharedSettingsUpdateTransactionState.ReadyToRestart,
+                statusLabel = "Ready",
+            )
+        val upToDate =
+            SharedSettingsUpdateCheckSnapshot(
+                supported = true,
+                updateAvailable = false,
+                statusLabel = "Current",
+            )
+
+        assertTrue(settingsAboutUpdateShowsAttentionDot(available))
+        assertTrue(settingsAboutUpdateShowsAttentionDot(readyToInstall))
+        assertTrue(settingsAboutUpdateShowsAttentionDot(installerOpened))
+        assertTrue(settingsAboutUpdateShowsAttentionDot(readyToRestart))
+
+        fun checkRow(update: SharedSettingsUpdateCheckSnapshot) =
+            about.toAboutPayload(
+                webUrl = "https://app.raft.build",
+                errorStrings = englishErrorPresentationStringsForTest(),
+                updateCheck = update,
+            ).sections.first { it.title == "Actions" }.rows.single { it.key == DEVELOPER_ACTION_HANDS_UPDATE_CHECK }
+
+        assertTrue(checkRow(available).attentionDot)
+        assertTrue(checkRow(readyToInstall).attentionDot)
+        assertTrue(checkRow(readyToRestart).attentionDot)
+        assertFalse(checkRow(upToDate).attentionDot)
+    }
+
+    @Test
+    fun earlyAccessPolicyGuardWaitsForLoadedSessionAndRefreshesOnlyOnRealChange() {
+        val defaultPolicy = RaftEarlyAccessFlagPolicy(visible = false, defaultOn = false, channel = "beta")
+        val betaPolicy = RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "beta")
+        val canaryPolicy = RaftEarlyAccessFlagPolicy(visible = true, defaultOn = true, channel = "canary")
+
+        // Before session finishes loading, About must never push a synthetic default policy to the host.
+        assertEquals(
+            SettingsAboutEarlyAccessPolicyAction.Ignore,
+            settingsAboutEarlyAccessPolicyAction(
+                page = SettingsNativeDetailPage.About,
+                sessionLoaded = false,
+                hasSession = false,
+                lastAppliedPolicy = null,
+                policy = defaultPolicy,
+            ),
+        )
+        assertEquals(
+            SettingsAboutEarlyAccessPolicyAction.Ignore,
+            settingsAboutEarlyAccessPolicyAction(
+                page = SettingsNativeDetailPage.About,
+                sessionLoaded = false,
+                hasSession = true,
+                lastAppliedPolicy = null,
+                policy = betaPolicy,
+            ),
+        )
+        // Signed-out sessions do not overwrite the channel store either (onSignedOut owns that transition).
+        assertEquals(
+            SettingsAboutEarlyAccessPolicyAction.Ignore,
+            settingsAboutEarlyAccessPolicyAction(
+                page = SettingsNativeDetailPage.About,
+                sessionLoaded = true,
+                hasSession = false,
+                lastAppliedPolicy = null,
+                policy = defaultPolicy,
+            ),
+        )
+        // Non-About pages ignore Early access policy changes.
+        assertEquals(
+            SettingsAboutEarlyAccessPolicyAction.Ignore,
+            settingsAboutEarlyAccessPolicyAction(
+                page = SettingsNativeDetailPage.Appearance,
+                sessionLoaded = true,
+                hasSession = true,
+                lastAppliedPolicy = null,
+                policy = betaPolicy,
+            ),
+        )
+        // First resolved session on About applies policy without firing a duplicate RefreshHandsUpdateStatus.
+        assertEquals(
+            SettingsAboutEarlyAccessPolicyAction.ApplyOnly,
+            settingsAboutEarlyAccessPolicyAction(
+                page = SettingsNativeDetailPage.About,
+                sessionLoaded = true,
+                hasSession = true,
+                lastAppliedPolicy = null,
+                policy = betaPolicy,
+            ),
+        )
+        // Re-evaluating the same policy is a no-op.
+        assertEquals(
+            SettingsAboutEarlyAccessPolicyAction.Ignore,
+            settingsAboutEarlyAccessPolicyAction(
+                page = SettingsNativeDetailPage.About,
+                sessionLoaded = true,
+                hasSession = true,
+                lastAppliedPolicy = betaPolicy,
+                policy = betaPolicy,
+            ),
+        )
+        // A genuine subsequent policy change updates the host and refreshes update status.
+        assertEquals(
+            SettingsAboutEarlyAccessPolicyAction.ApplyAndRefreshStatus,
+            settingsAboutEarlyAccessPolicyAction(
+                page = SettingsNativeDetailPage.About,
+                sessionLoaded = true,
+                hasSession = true,
+                lastAppliedPolicy = betaPolicy,
+                policy = canaryPolicy,
+            ),
+        )
     }
 }

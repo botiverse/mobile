@@ -1798,9 +1798,17 @@ class SharedSettingsDataSource(
     suspend fun loadOpenSourceLicenses(): DataResult<SharedSettingsOpenSourceLicensesSnapshot> =
         platformCapabilities.loadOpenSourceLicenses()
 
-    suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> =
-        apiEnvironmentStore?.developerSnapshot()?.let { DataResult.Content(it) }
-            ?: platformCapabilities.loadDeveloper()
+    suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> {
+        val envSnapshot = apiEnvironmentStore?.developerSnapshot() ?: return platformCapabilities.loadDeveloper()
+        val hostDeveloper = (platformCapabilities.loadDeveloper() as? DataResult.Content)?.data
+        return DataResult.Content(
+            if (hostDeveloper != null) {
+                envSnapshot.copy(updateCheck = hostDeveloper.updateCheck)
+            } else {
+                envSnapshot
+            }
+        )
+    }
 
     suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> =
         apiEnvironmentStore?.let { store ->
@@ -2347,6 +2355,10 @@ class SharedSettingsStore(
     private val onAppSettingChanged:
         (RaftAppSettingKey, RaftAppSettingValue, RaftAppSettingValue, RaftAppSettingSurface) -> Unit =
         RaftProductEvents::appSettingChanged,
+    /** Process-wide cached update snapshot; injectable for unit test isolation. */
+    private val cachedUpdateSnapshotProvider: () -> SharedSettingsUpdateCheckSnapshot? = {
+        RaftAppUpdates.coordinator.state.value.snapshot
+    },
 ) {
     private val _state = MutableStateFlow(initialState)
     val state: StateFlow<SharedSettingsState> = _state.asStateFlow()
@@ -2392,6 +2404,8 @@ class SharedSettingsStore(
     /** Worker v1 step 2: in-flight optimistic toggles keyed by (machineId, runtime) -> desired enabled state. */
     private val pendingWorkerRuntimeToggles = mutableMapOf<Pair<String, String>, Boolean>()
     private var workerRuntimesScopeGeneration: Long = 0L
+    /** Bumped by explicit update check / channel-switch actions so older status checks cannot clobber them. */
+    private var handsUpdateMutationGeneration: Long = 0L
 
     init {
         authOwnerObservationJob =
@@ -3359,21 +3373,26 @@ class SharedSettingsStore(
                 }
             }
             SharedSettingsIntent.CheckHandsUpdate -> {
+                handsUpdateMutationGeneration += 1L
                 runAction(DEVELOPER_ACTION_HANDS_UPDATE_CHECK) {
                     dataSource.checkHandsUpdate()
                         .applyDeveloperActionResult(DEVELOPER_ACTION_HANDS_UPDATE_CHECK)
                 }
             }
             is SharedSettingsIntent.SetHandsUpdateChannel -> {
+                handsUpdateMutationGeneration += 1L
                 runAction(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL) {
                     dataSource.setHandsUpdateChannel(intent.channel)
                         .applyDeveloperActionResult(DEVELOPER_ACTION_HANDS_UPDATE_CHANNEL)
                 }
             }
             SharedSettingsIntent.RefreshHandsUpdateStatus -> {
+                val updateGeneration = handsUpdateMutationGeneration
                 val updateResult = dataSource.checkHandsUpdateStatus()
-                if (updateResult is DataResult.Content) {
-                    val currentDeveloper = (_state.value.developer as? ScreenLoadState.Content)?.data
+                if (updateResult is DataResult.Content && handsUpdateMutationGeneration == updateGeneration) {
+                    val currentDeveloper =
+                        (_state.value.developer as? ScreenLoadState.Content)?.data
+                            ?: (dataSource.loadDeveloper() as? DataResult.Content)?.data
                     if (currentDeveloper != null) {
                         _state.value =
                             _state.value.copy(
@@ -3615,47 +3634,69 @@ class SharedSettingsStore(
 
     private suspend fun loadAboutWithUpdateStatus() {
         dataSource.loadAbout().applyToState(SharedSettingsDestination.About) { copy(about = it) }
-        val updateResult = dataSource.checkHandsUpdateStatus()
-        when (val developerResult = dataSource.loadDeveloper()) {
-            is DataResult.Content -> {
-                val developer =
-                    when (updateResult) {
-                        is DataResult.Content ->
-                            developerResult.data.copy(
-                                updateCheck = updateResult.data.preservingChannelMetadataFrom(developerResult.data.updateCheck)
-                            )
-                        is DataResult.Empty ->
-                            developerResult.data.copy(
-                                updateCheck =
-                                    SharedSettingsUpdateCheckSnapshot(
-                                        supported = developerResult.data.updateCheck.supported,
-                                        statusLabel = "Check failed",
-                                        detail = "Update check returned no data. Try again later.",
-                                        errorCode = "update_check_empty"
-                                    ).preservingChannelMetadataFrom(developerResult.data.updateCheck)
-                            )
-                        is DataResult.Error ->
-                            developerResult.data.copy(
-                                updateCheck =
-                                    SharedSettingsUpdateCheckSnapshot(
-                                        supported = developerResult.data.updateCheck.supported,
-                                        statusLabel = "Check failed",
-                                        detail = "",
-                                        errorCode =
-                                            updateResult.error.code.ifBlank {
-                                                "update_check_failed"
-                                            },
-                                        screenError = updateResult.error
-                                    ).preservingChannelMetadataFrom(developerResult.data.updateCheck)
-                            )
-                        is DataResult.NoPermission -> developerResult.data
-                    }
-                _state.value = _state.value.copy(developer = ScreenLoadState.Content(developer))
-            }
-            is DataResult.Empty,
-            is DataResult.Error,
-            is DataResult.NoPermission -> Unit
+        val developerResult = dataSource.loadDeveloper()
+        if (developerResult is DataResult.Content) {
+            val initialDeveloper =
+                developerResult.data.copy(
+                    updateCheck =
+                        developerResult.data.updateCheck.overlayCachedUpdateSnapshot(
+                            cachedUpdateSnapshotProvider()
+                        )
+                )
+            _state.value = _state.value.copy(developer = ScreenLoadState.Content(initialDeveloper))
         }
+        val updateGeneration = handsUpdateMutationGeneration
+        val updateResult = dataSource.checkHandsUpdateStatus()
+        if (handsUpdateMutationGeneration != updateGeneration) return
+        val baseDeveloper =
+            (_state.value.developer as? ScreenLoadState.Content)?.data
+                ?: (developerResult as? DataResult.Content)?.data
+                ?: return
+        val developer =
+            when (updateResult) {
+                is DataResult.Content ->
+                    baseDeveloper.copy(
+                        updateCheck = updateResult.data.preservingChannelMetadataFrom(baseDeveloper.updateCheck)
+                    )
+                is DataResult.Empty ->
+                    baseDeveloper.copy(
+                        updateCheck =
+                            SharedSettingsUpdateCheckSnapshot(
+                                supported = baseDeveloper.updateCheck.supported,
+                                statusLabel = "Check failed",
+                                detail = "Update check returned no data. Try again later.",
+                                errorCode = "update_check_empty"
+                            ).preservingChannelMetadataFrom(baseDeveloper.updateCheck)
+                    )
+                is DataResult.Error ->
+                    baseDeveloper.copy(
+                        updateCheck =
+                            SharedSettingsUpdateCheckSnapshot(
+                                supported = baseDeveloper.updateCheck.supported,
+                                statusLabel = "Check failed",
+                                detail = "",
+                                errorCode =
+                                    updateResult.error.code.ifBlank {
+                                        "update_check_failed"
+                                    },
+                                screenError = updateResult.error
+                            ).preservingChannelMetadataFrom(baseDeveloper.updateCheck)
+                    )
+                is DataResult.NoPermission -> baseDeveloper
+            }
+        _state.value = _state.value.copy(developer = ScreenLoadState.Content(developer))
+    }
+
+    private fun SharedSettingsUpdateCheckSnapshot.overlayCachedUpdateSnapshot(
+        cached: SharedSettingsUpdateCheckSnapshot?,
+    ): SharedSettingsUpdateCheckSnapshot {
+        if (cached == null || !cached.supported) return this
+        val localChannel = updateChannel.trim().lowercase()
+        val cachedChannel = cached.updateChannel.trim().lowercase()
+        val channelMatches =
+            localChannel.isEmpty() || cachedChannel.isEmpty() || cachedChannel == localChannel
+        if (!channelMatches) return this
+        return cached.preservingChannelMetadataFrom(this)
     }
 
     /**

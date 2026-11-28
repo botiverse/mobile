@@ -20,6 +20,7 @@ import build.raft.app.base.Utils
 import build.raft.app.data.BridgeSettingsPlatformCapabilities
 import build.raft.app.data.DEFAULT_MOBILE_EARLY_ACCESS_CHANNEL
 import build.raft.app.data.RaftAppUpdateEvents
+import build.raft.app.data.RaftEarlyAccessFlagPolicy
 import build.raft.app.data.RaftEarlyAccessPolicyHost
 import build.raft.app.data.RaftNotificationPreferenceEvents
 import build.raft.app.data.MOBILE_ACTION_FOREGROUND_MESSAGE_BANNERS
@@ -142,6 +143,7 @@ internal fun SettingsNativeDetailScreen() {
         }
     val settingsState by settingsViewModel.state.collectAsState()
     var session by remember { mutableStateOf<StoredAuthSession?>(null) }
+    var sessionLoaded by remember { mutableStateOf(false) }
     val featureFlagRevision by sharedStores.serverFeatureFlags.snapshotRevision.collectAsState()
     val aboutServerIds =
         remember(session) {
@@ -156,6 +158,7 @@ internal fun SettingsNativeDetailScreen() {
         remember(sharedStores.serverFeatureFlags, aboutServerIds, featureFlagRevision) {
             sharedStores.serverFeatureFlags.earlyAccessPolicy(aboutServerIds)
         }
+    var lastAppliedEarlyAccessPolicy by remember(route.page) { mutableStateOf<RaftEarlyAccessFlagPolicy?>(null) }
     LaunchedEffect(route.page, aboutServerIds, sharedStores.serverFeatureFlags) {
         if (route.page != SettingsNativeDetailPage.About) return@LaunchedEffect
         aboutServerIds.forEach { serverId ->
@@ -165,10 +168,27 @@ internal fun SettingsNativeDetailScreen() {
             }
         }
     }
-    LaunchedEffect(route.page, earlyAccessPolicy) {
-        if (route.page != SettingsNativeDetailPage.About) return@LaunchedEffect
-        RaftEarlyAccessPolicyHost.onPolicyChanged(earlyAccessPolicy)
-        settingsViewModel.dispatch(SharedSettingsIntent.RefreshHandsUpdateStatus)
+    LaunchedEffect(route.page, sessionLoaded, session != null, earlyAccessPolicy) {
+        when (
+            settingsAboutEarlyAccessPolicyAction(
+                page = route.page,
+                sessionLoaded = sessionLoaded,
+                hasSession = session != null,
+                lastAppliedPolicy = lastAppliedEarlyAccessPolicy,
+                policy = earlyAccessPolicy,
+            )
+        ) {
+            SettingsAboutEarlyAccessPolicyAction.Ignore -> Unit
+            SettingsAboutEarlyAccessPolicyAction.ApplyOnly -> {
+                lastAppliedEarlyAccessPolicy = earlyAccessPolicy
+                RaftEarlyAccessPolicyHost.onPolicyChanged(earlyAccessPolicy)
+            }
+            SettingsAboutEarlyAccessPolicyAction.ApplyAndRefreshStatus -> {
+                lastAppliedEarlyAccessPolicy = earlyAccessPolicy
+                RaftEarlyAccessPolicyHost.onPolicyChanged(earlyAccessPolicy)
+                settingsViewModel.dispatch(SharedSettingsIntent.RefreshHandsUpdateStatus)
+            }
+        }
     }
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = true))
@@ -184,7 +204,10 @@ internal fun SettingsNativeDetailScreen() {
     // switch must re-point the server-scoped parts (the store reloads their content itself).
     LaunchedEffect(environment.authStore) {
         val wakes = (environment.authStore as? RaftAuthSessionEventSource)?.authSessionEvents ?: emptyFlow()
-        raftStoredSessionFlow(wakes) { environment.authStore.readSession() }.collect { session = it }
+        raftStoredSessionFlow(wakes) { environment.authStore.readSession() }.collect {
+            session = it
+            sessionLoaded = true
+        }
     }
     LaunchedEffect(environment.notificationPreferenceRepository) {
         notificationPreferenceSnapshot =
@@ -374,6 +397,36 @@ internal fun settingsServerNotificationRealtimeEventApplies(
     event is ServerNotificationPreferencesChanged &&
         eventServerId.trim() == serverId.trim() &&
         event.serverId.value.trim() == serverId.trim()
+
+internal enum class SettingsAboutEarlyAccessPolicyAction {
+    Ignore,
+    ApplyOnly,
+    ApplyAndRefreshStatus,
+}
+
+/**
+ * Decides how Settings › About applies a resolved server Early access policy to the host channel
+ * store: waits for the stored auth session to load so an unresolved initial `null` session never
+ * wipes the active channel to `main`, applies once on initial resolution without a redundant status
+ * refresh (`LoadPageContent(About)` already checks status), and triggers a status refresh only when
+ * the policy actually changes afterwards.
+ */
+internal fun settingsAboutEarlyAccessPolicyAction(
+    page: SettingsNativeDetailPage,
+    sessionLoaded: Boolean,
+    hasSession: Boolean = true,
+    lastAppliedPolicy: RaftEarlyAccessFlagPolicy?,
+    policy: RaftEarlyAccessFlagPolicy,
+): SettingsAboutEarlyAccessPolicyAction {
+    if (page != SettingsNativeDetailPage.About || !sessionLoaded || !hasSession) {
+        return SettingsAboutEarlyAccessPolicyAction.Ignore
+    }
+    return when (lastAppliedPolicy) {
+        null -> SettingsAboutEarlyAccessPolicyAction.ApplyOnly
+        policy -> SettingsAboutEarlyAccessPolicyAction.Ignore
+        else -> SettingsAboutEarlyAccessPolicyAction.ApplyAndRefreshStatus
+    }
+}
 
 @Composable
 internal fun SettingsNativeDetailPageContent(

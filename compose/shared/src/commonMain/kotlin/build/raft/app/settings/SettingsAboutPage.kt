@@ -540,7 +540,8 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
                                                     }
                                             },
                                         status = settingsAboutUpdateStatus(updateCheck, updateCheckBusy, copy),
-                                        enabled = !updateCheckBusy
+                                        enabled = !updateCheckBusy,
+                                        attentionDot = settingsAboutUpdateShowsAttentionDot(updateCheck)
                                     )
                                 )
                             }
@@ -645,6 +646,26 @@ internal fun SharedSettingsAboutSnapshot.toAboutPayload(
 }
 
 internal const val SETTINGS_ABOUT_UPDATE_CHECK_EMPTY = "update_check_empty"
+
+/**
+ * Whether About's Check for update row wears the accent attention dot, matching the Settings ›
+ * About entry's update dot (`RaftMoreAttention.AppUpdate`).
+ */
+internal fun settingsAboutUpdateShowsAttentionDot(
+    updateCheck: SharedSettingsUpdateCheckSnapshot?,
+): Boolean {
+    if (updateCheck == null || !updateCheck.supported) return false
+    if (updateCheck.transactionState == SharedSettingsUpdateTransactionState.Installed) return false
+    val readyToComplete =
+        updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToInstall ||
+            updateCheck.transactionState == SharedSettingsUpdateTransactionState.InstallerOpened ||
+            updateCheck.transactionState == SharedSettingsUpdateTransactionState.ReadyToRestart
+    if (readyToComplete) return true
+    if (!updateCheck.updateAvailable) return false
+    return updateCheck.currentVersionCode <= 0L ||
+        updateCheck.latestVersionCode <= 0L ||
+        updateCheck.latestVersionCode > updateCheck.currentVersionCode
+}
 
 /**
  * The Check for update row's trailing text. The host's `statusLabel` is an untranslated English
