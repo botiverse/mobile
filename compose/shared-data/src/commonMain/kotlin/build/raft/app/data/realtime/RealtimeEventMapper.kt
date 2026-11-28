@@ -48,6 +48,8 @@ import build.raft.app.model.Attachment
 import build.raft.app.model.AttachmentId
 import build.raft.app.model.ChannelActivityNotificationPreference
 import build.raft.app.model.ChannelAuthorityUpdated
+import build.raft.app.model.ToAnswerChangeKind
+import build.raft.app.model.ToAnswerChanged
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
 import build.raft.app.model.DirectMessageCreated
@@ -352,6 +354,7 @@ class RealtimeEventMapper(
             RealtimeSocketEvents.ChannelMembersUpdated ->
                 decodeChannelRefresh(element, RealtimeRefreshScope.ChannelMembers, RealtimeSocketEvents.ChannelMembersUpdated)
             RealtimeSocketEvents.ChannelAuthorityUpdated -> decodeChannelAuthorityUpdated(element)
+            RealtimeSocketEvents.ToAnswerChanged -> decodeToAnswerChanged(element)
             // Mobile-local: the native host could not replay a reconnect gap (see RealtimeLocalEvents).
             RealtimeLocalEvents.CatchUpRequired ->
                 RealtimeRefreshRequired(
@@ -608,6 +611,73 @@ class RealtimeEventMapper(
             channelRole = channelRole,
             authorityRevision = authorityRevision,
         )
+    }
+
+    /**
+     * `to-answer:changed` (botiverse/slock #17252 / #17261, `packages/shared/src/toAnswer.ts`):
+     * `{ serverId, messageId, change: "opened" }` or
+     * `{ serverId, messageId, change: "ended", state, byUserId?, byName? }`.
+     * Matches web `parseToAnswerChanged`: malformed payloads are dropped cleanly.
+     */
+    private fun decodeToAnswerChanged(element: JsonObject): ToAnswerChanged? {
+        val serverId =
+            (element["serverId"] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+        val messageId =
+            (element["messageId"] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?: return null
+        val changeWire =
+            (element["change"] as? JsonPrimitive)
+                ?.takeIf { it.isString }
+                ?.content
+                ?.trim()
+                ?: return null
+        return when (ToAnswerChangeKind.fromWire(changeWire)) {
+            ToAnswerChangeKind.Opened ->
+                ToAnswerChanged(
+                    serverId = ServerId(serverId),
+                    messageId = MessageId(messageId),
+                    change = ToAnswerChangeKind.Opened,
+                )
+            ToAnswerChangeKind.Ended -> {
+                val state =
+                    (element["state"] as? JsonPrimitive)
+                        ?.takeIf { it.isString }
+                        ?.content
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: return null
+                val byUserId =
+                    (element["byUserId"] as? JsonPrimitive)
+                        ?.takeIf { it.isString }
+                        ?.content
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                val byName =
+                    (element["byName"] as? JsonPrimitive)
+                        ?.takeIf { it.isString }
+                        ?.content
+                        ?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                ToAnswerChanged(
+                    serverId = ServerId(serverId),
+                    messageId = MessageId(messageId),
+                    change = ToAnswerChangeKind.Ended,
+                    state = state,
+                    byUserId = byUserId,
+                    byName = byName,
+                )
+            }
+            null -> null
+        }
     }
 
     private fun decodeServerMemberRefresh(element: JsonObject, reason: String): RealtimeRefreshRequired =

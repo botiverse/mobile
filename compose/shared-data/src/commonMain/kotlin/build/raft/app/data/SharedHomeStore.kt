@@ -7620,6 +7620,8 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is build.raft.app.model.ActivityChanged -> "activity_changed"
         // Never dirties Home (updatesHomeSnapshot is false); named for the diagnostics only.
         is build.raft.app.model.ActivityDoneUpdated -> "activity_done_updated"
+        // Handled by SharedToAnswerStore (updatesHomeSnapshot is false); named for diagnostics only.
+        is build.raft.app.model.ToAnswerChanged -> "to_answer_changed"
         is build.raft.app.model.JointInvitesChanged -> "joint_invites_changed"
         is build.raft.app.model.PermissionUpdatesChanged -> "permission_updates_changed"
         is build.raft.app.model.SeatJoinBlocksChanged -> "seat_join_blocks_changed"

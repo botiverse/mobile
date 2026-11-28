@@ -27,6 +27,8 @@ import build.raft.app.thread.toConversationOpenSourceMessageIdentity
 import build.raft.app.toConversationOpenSourceMessageIdentity
 import build.raft.app.base.BridgeModule
 import build.raft.app.data.raftSharedPreferenceStore
+import build.raft.app.data.ActivityFilterChoice
+import build.raft.app.data.ActivityFilterPreferenceRepository
 import build.raft.app.data.ActivityReplyThreadPrewarmKey
 import build.raft.app.data.ActivityReplyThreadPrewarmMarker
 import build.raft.app.data.RaftStaleReadRecoverySignals
@@ -35,6 +37,10 @@ import build.raft.app.data.ActivityUpdateTrackingState
 import build.raft.app.data.InboxFilter
 import build.raft.app.data.InboxItem
 import build.raft.app.data.RaftReadToggleNotice
+import build.raft.app.data.SharedToAnswerState
+import build.raft.app.data.ToAnswerItem
+import build.raft.app.data.ToAnswerStatus
+import build.raft.app.data.shownActivityFilterChoice
 import build.raft.app.data.showsUnread
 import build.raft.app.data.isTaskConversation
 import build.raft.app.data.RaftActivityAction
@@ -506,6 +512,34 @@ internal fun SharedHomeActivityScreen(
         remember(sharedStores, activitySummaryServerId, serverFlagRevision) {
             sharedStores.serverFeatureFlags.isTaskWaitingOnYouEnabled(activitySummaryServerId)
         }
+    val toAnswerEnabled =
+        remember(sharedStores, activitySummaryServerId, serverFlagRevision) {
+            sharedStores.serverFeatureFlags.isToAnswerListEnabled(activitySummaryServerId)
+        }
+    val filterPreferences = remember { ActivityFilterPreferenceRepository(raftSharedPreferenceStore()) }
+    var toAnswerChosen by remember(activitySummaryServerId) {
+        mutableStateOf(filterPreferences.readIsToAnswerChosen(activitySummaryServerId.value))
+    }
+    val toAnswerState by sharedStores.toAnswerStore.state.collectAsState()
+    var toAnswerPullRefreshing by remember(activitySummaryServerId) { mutableStateOf(false) }
+    val toAnswerScope = rememberCoroutineScope()
+    val showingToAnswer =
+        shownActivityFilterChoice(
+            inboxFilter = safeOpenProjectedState.selectedFilter,
+            toAnswerChosen = toAnswerChosen,
+            toAnswerEnabled = toAnswerEnabled,
+        ) == ActivityFilterChoice.ToAnswer
+    LaunchedEffect(sharedStores.toAnswerStore, activitySummaryServerId, toAnswerEnabled) {
+        val serverId = activitySummaryServerId.value
+        if (toAnswerEnabled && serverId.isNotBlank()) {
+            sharedStores.toAnswerStore.load(serverId)
+        } else {
+            sharedStores.toAnswerStore.onFlagStateChanged(
+                serverId = serverId.takeIf { it.isNotBlank() },
+                enabled = false,
+            )
+        }
+    }
     val listedTaskIds =
         remember(safeOpenProjectedState.items) {
             safeOpenProjectedState.items.mapNotNullTo(mutableSetOf()) { it.taskConversation?.taskId }
@@ -614,9 +648,14 @@ internal fun SharedHomeActivityScreen(
             }
         }
     }
+    val latestToAnswerEnabled by rememberUpdatedState(toAnswerEnabled)
+    val latestActivityServerId by rememberUpdatedState(activitySummaryServerId.value)
     LaunchedEffect(routeVisibleTick) {
         if (activityPageDidAppearShouldRefresh(routeVisibleTick, active = latestActive)) {
             activityStore.dispatch(SharedActivityIntent.Refresh)
+            if (latestToAnswerEnabled && latestActivityServerId.isNotBlank()) {
+                sharedStores.toAnswerStore.load(latestActivityServerId)
+            }
         }
     }
     if (refreshOnAppLifecycleResume) {
@@ -632,6 +671,9 @@ internal fun SharedHomeActivityScreen(
                     ) {
                         bridge.log("shared_activity_app_lifecycle_resume_refresh")
                         activityStore.dispatch(SharedActivityIntent.Refresh)
+                        if (latestToAnswerEnabled && latestActivityServerId.isNotBlank()) {
+                            sharedStores.toAnswerStore.load(latestActivityServerId)
+                        }
                     }
                 }
             onDispose { realtimeEvents.removeListener(subscription) }
@@ -652,6 +694,9 @@ internal fun SharedHomeActivityScreen(
             ActivityTabActiveEdge.Entered -> {
                 bridge.log("shared_activity_entry_refresh source=active_edge")
                 activityStore.dispatch(SharedActivityIntent.Refresh)
+                if (latestToAnswerEnabled && latestActivityServerId.isNotBlank()) {
+                    sharedStores.toAnswerStore.load(latestActivityServerId)
+                }
             }
             ActivityTabActiveEdge.Left -> activityStore.dispatch(SharedActivityIntent.SurfaceHidden)
             ActivityTabActiveEdge.None -> Unit
@@ -686,6 +731,68 @@ internal fun SharedHomeActivityScreen(
         }
     }
     val openActivityItem: (InboxItem) -> Unit = { item -> openActivityItemWithMode(item, false) }
+    val openToAnswerItem: (ToAnswerItem) -> Unit = { item ->
+        val targetServerId = activitySummaryServerId.value.ifBlank { state.snapshot?.server?.id?.value.orEmpty() }
+        when (
+            val resolution =
+                item.toHomeMessageOpenRequest(
+                    serverId = targetServerId,
+                    conversationDirectory = openConversationDirectory,
+                    diagnosticsLogger = bridge::log,
+                )
+        ) {
+            is ConversationOpenResolution.Resolved -> onOpenMessage(resolution.request)
+            is ConversationOpenResolution.Pending -> {
+                bridge.logWarn(
+                    "to_answer_open_request_pending reason=${resolution.reason} " +
+                        "messageId=${item.messageId} conversationType=${item.conversation.type}"
+                )
+                bridge.toast(conversationNotReadyMessage)
+            }
+        }
+    }
+    val toAnswerUiState =
+        if (toAnswerEnabled) {
+            val serverId = activitySummaryServerId.value
+            val serverToAnswerState =
+                if (toAnswerState.serverId == serverId) toAnswerState else SharedToAnswerState()
+            ActivityToAnswerUiState(
+                enabled = true,
+                selected = showingToAnswer,
+                state = serverToAnswerState,
+                pullRefreshing = toAnswerPullRefreshing,
+                onSelect = {
+                    if (activityStore.state.value.selectedFilter != InboxFilter.All) {
+                        activityStore.dispatch(SharedActivityIntent.SetFilter(InboxFilter.All))
+                    }
+                    toAnswerChosen = true
+                    filterPreferences.writeChoice(serverId, ActivityFilterChoice.ToAnswer)
+                    if (serverId.isNotBlank() && sharedStores.toAnswerStore.state.value.status == ToAnswerStatus.Idle) {
+                        sharedStores.toAnswerStore.load(serverId)
+                    }
+                },
+                onRetry = {
+                    if (serverId.isNotBlank()) {
+                        sharedStores.toAnswerStore.load(serverId)
+                    }
+                },
+                onPullRefresh = {
+                    if (serverId.isNotBlank() && !toAnswerPullRefreshing) {
+                        toAnswerPullRefreshing = true
+                        toAnswerScope.launch {
+                            try {
+                                sharedStores.toAnswerStore.loadNow(serverId)
+                            } finally {
+                                toAnswerPullRefreshing = false
+                            }
+                        }
+                    }
+                },
+                onOpenItem = openToAnswerItem,
+            )
+        } else {
+            ActivityToAnswerUiState.Disabled
+        }
     // Wide layout (the list-detail host owns the selection): once per visit, after the list loads,
     // reopen the conversation opened last time on this server when it is still listed and nothing
     // Activity opened is open beside the list (ActivityArrivalReopen.kt; another tab's conversation
@@ -699,7 +806,7 @@ internal fun SharedHomeActivityScreen(
             arrivalVisits?.of(activitySummaryServerId.value) ?: ActivityArrivalVisit()
         }
     val arrivalItems = safeOpenProjectedState.snapshot?.items
-    val arrivalLoaded = state.loaded && arrivalItems != null && !conversationListPending
+    val arrivalLoaded = state.loaded && arrivalItems != null && !conversationListPending && !showingToAnswer
     ActivityArrivalReopenEffect(visit = visit, active = active, loaded = arrivalLoaded) {
         val item =
             activityArrivalReopenTarget(
@@ -755,7 +862,13 @@ internal fun SharedHomeActivityScreen(
             lastOpenedStore.write(activitySummaryServerId.value, item.key)
         },
         onClose = onClose,
-        onIntent = activityStore::dispatch,
+        onIntent = { intent ->
+            if (intent is SharedActivityIntent.SetFilter) {
+                toAnswerChosen = false
+                filterPreferences.writeChoice(activitySummaryServerId.value, ActivityFilterChoice.Inbox(intent.filter))
+            }
+            activityStore.dispatch(intent)
+        },
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
@@ -774,6 +887,7 @@ internal fun SharedHomeActivityScreen(
         channelMute = channelMute,
         conversationListPending = conversationListPending,
         scrollToTopRequest = scrollToTopRequest,
+        toAnswerUiState = toAnswerUiState,
         modifier = modifier
     )
     }
@@ -1035,7 +1149,8 @@ internal fun SharedHomeActivityScreen(
     externalSelectionOwned: Boolean = false,
     mainTab: Boolean = false,
     conversationList: ActivityConversationListPresentation = ActivityConversationListPresentation(),
-    channelMute: ActivityChannelMuteControl? = null
+    channelMute: ActivityChannelMuteControl? = null,
+    toAnswerUiState: ActivityToAnswerUiState = ActivityToAnswerUiState.Disabled,
 ) {
     SharedActivityPanelContent(
         state = state,
@@ -1057,6 +1172,7 @@ internal fun SharedHomeActivityScreen(
         mainTab = mainTab,
         conversationList = conversationList,
         channelMute = channelMute,
+        toAnswerUiState = toAnswerUiState,
         modifier = modifier
     )
 }
@@ -1158,6 +1274,7 @@ private fun SharedActivityPanelContent(
     scrollToTopRequest: Int = 0,
     active: Boolean = true,
     prewarmActive: Boolean = active,
+    toAnswerUiState: ActivityToAnswerUiState = ActivityToAnswerUiState.Disabled,
 ) {
     val refreshPresentation = activityRefreshPresentation(state.headerRefreshing, state.pullRefreshing)
     // Delayed and held so a quick reload never flashes; a pull hides it at once.
@@ -1186,6 +1303,7 @@ private fun SharedActivityPanelContent(
                 rememberLazyListState(),
             )
         }
+    val toAnswerListState = key(serverScrollKey) { rememberLazyListState() }
     // Hoisted to the panel so outside-tap dismissal covers the Header and FilterBar above the list,
     // and switching tabs (`active = false`) or filters closes any open swipe row immediately.
     val swipeHostState = remember { ActivitySwipeListHostState() }
@@ -1196,7 +1314,7 @@ private fun SharedActivityPanelContent(
             filterMenuExpanded = false
         }
     }
-    LaunchedEffect(state.selectedFilter) {
+    LaunchedEffect(state.selectedFilter, toAnswerUiState.showing) {
         swipeHostState.close()
     }
     val scrollToTopScope = rememberCoroutineScope()
@@ -1205,7 +1323,11 @@ private fun SharedActivityPanelContent(
     // Once it lands, the list is parked at the top and keepTopIfParked holds it there across changes.
     suspend fun scrollSelectedPageToTop() {
         swipeHostState.close()
-        activityScrollToTopTarget(state.selectedFilter, pageListStates).animateScrollToTopExpressive()
+        if (toAnswerUiState.showing) {
+            toAnswerListState.animateScrollToTopExpressive()
+        } else {
+            activityScrollToTopTarget(state.selectedFilter, pageListStates).animateScrollToTopExpressive()
+        }
     }
     // Bottom-tab double tap targets the same list the title tap does (the selected filter's page).
     val scrollToTopRequestFence = remember { AppShellScrollToTopRequestFence(scrollToTopRequest) }
@@ -1215,6 +1337,12 @@ private fun SharedActivityPanelContent(
         }
     }
     val (headerTotalCount, headerTotalUnreadCount) = state.activityHeaderCounts()
+    val headerSubtitleOverride =
+        if (toAnswerUiState.showing) {
+            toAnswerHeaderSubtitle(toAnswerUiState.count)
+        } else {
+            null
+        }
     Column(
         modifier =
             swipeHostState.geometry
@@ -1236,13 +1364,14 @@ private fun SharedActivityPanelContent(
             refreshing = headerRefreshIndicatorVisible,
             onTitleClick = {
                 scrollToTopScope.launch { scrollSelectedPageToTop() }
-            }
+            },
+            subtitleOverride = headerSubtitleOverride,
         )
         RaftAppShellBodyTopBanner()
         // Task #164 (stdrc O2): under the head, above the filters; the rows and counts stay.
         // While the read warehouse is only behind (`state.stale`) there is no notice (artin): the
         // rows keep the last good result and update silently once a fresh read lands.
-        if (state.unavailable && state.snapshot != null) {
+        if (!toAnswerUiState.showing && state.unavailable && state.snapshot != null) {
             RaftReadWarehouseUnavailableNotice(stringResource(Res.string.activity_unavailable_notice))
         }
         // slock #11383 (stdrc option A): the filter is a menu now, so the swipe-between-filters
@@ -1267,44 +1396,65 @@ private fun SharedActivityPanelContent(
                 if (expanded) swipeHostState.close()
                 filterMenuExpanded = expanded
             },
+            toAnswerEnabled = toAnswerUiState.enabled,
+            toAnswerSelected = toAnswerUiState.showing,
+            toAnswerCount = toAnswerUiState.count,
+            onToAnswerSelected = {
+                swipeHostState.flushBeforeFilterChange()
+                toAnswerUiState.onSelect()
+            },
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            key(state.selectedFilter) {
-                if (state.snapshot != null && !conversationListPending) {
-                    CompositionLocalProvider(LocalRaftArtifactOpenInColumn provides (onOpenArtifact != null)) {
-                        SharedActivityBodyContent(
-                            active = active,
-                            prewarmActive = prewarmActive,
-                            state = state,
-                            onOpenItem = onOpenItem,
-                            onOpenArtifact = onOpenArtifact,
-                            onArtifactRowOpened = onArtifactRowOpened,
-                            onIntent = onIntent,
-                            bottomContentPadding = bottomContentPadding,
-                            timeContext = timeContext,
-                            listState = activityScrollToTopTarget(state.selectedFilter, pageListStates),
-                            draftProjection = draftProjection,
-                            presentationAccountId = state.ownerUserId.orEmpty(),
-                            stableOrderEnabled = stableOrderEnabled,
-                            stableOrderDecisionRevision = stableOrderDecisionRevision,
-                            presentationStore = presentationStore,
-                            foregroundEpoch = foregroundEpoch,
-                            externalSelectedThreadId = externalSelectedThreadId,
-                            externalSelectedArtifactId = externalSelectedArtifactId,
-                            externalSelectionOwned = externalSelectionOwned,
-                            conversationList = conversationList,
-                            channelMute = channelMute,
-                            swipeHostState = swipeHostState,
-                            modifier = Modifier.fillMaxSize()
+            if (toAnswerUiState.showing) {
+                ActivityToAnswerList(
+                    state = toAnswerUiState.state,
+                    pullRefreshing = toAnswerUiState.pullRefreshing,
+                    timeContext = timeContext,
+                    listState = toAnswerListState,
+                    bottomContentPadding = bottomContentPadding,
+                    onOpenItem = toAnswerUiState.onOpenItem,
+                    onRetry = toAnswerUiState.onRetry,
+                    onPullRefresh = toAnswerUiState.onPullRefresh,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                key(state.selectedFilter) {
+                    if (state.snapshot != null && !conversationListPending) {
+                        CompositionLocalProvider(LocalRaftArtifactOpenInColumn provides (onOpenArtifact != null)) {
+                            SharedActivityBodyContent(
+                                active = active,
+                                prewarmActive = prewarmActive,
+                                state = state,
+                                onOpenItem = onOpenItem,
+                                onOpenArtifact = onOpenArtifact,
+                                onArtifactRowOpened = onArtifactRowOpened,
+                                onIntent = onIntent,
+                                bottomContentPadding = bottomContentPadding,
+                                timeContext = timeContext,
+                                listState = activityScrollToTopTarget(state.selectedFilter, pageListStates),
+                                draftProjection = draftProjection,
+                                presentationAccountId = state.ownerUserId.orEmpty(),
+                                stableOrderEnabled = stableOrderEnabled,
+                                stableOrderDecisionRevision = stableOrderDecisionRevision,
+                                presentationStore = presentationStore,
+                                foregroundEpoch = foregroundEpoch,
+                                externalSelectedThreadId = externalSelectedThreadId,
+                                externalSelectedArtifactId = externalSelectedArtifactId,
+                                externalSelectionOwned = externalSelectionOwned,
+                                conversationList = conversationList,
+                                channelMute = channelMute,
+                                swipeHostState = swipeHostState,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        SharedActivityStateBody(
+                            title = stringResource(Res.string.common_loading),
+                            detail = "",
+                            loading = true,
+                            bottomContentPadding = bottomContentPadding
                         )
                     }
-                } else {
-                    SharedActivityStateBody(
-                        title = stringResource(Res.string.common_loading),
-                        detail = "",
-                        loading = true,
-                        bottomContentPadding = bottomContentPadding
-                    )
                 }
             }
         }
@@ -1460,15 +1610,17 @@ internal fun SharedActivityHeader(
     topSafeAreaPadding: Dp,
     refreshing: Boolean,
     onTitleClick: (() -> Unit)? = null,
-    mainTab: Boolean = false
+    mainTab: Boolean = false,
+    subtitleOverride: String? = null,
 ) {
+    val subtitle = subtitleOverride ?: activityHeaderSubtitle(totalCount, totalUnreadCount)
     if (mainTab && RaftTheme.scale == RaftScale.Wide) {
         // The wide layout's Activity column (web TabRootBar from `md` up, "the same head as every
         // panel": raft-ui PanelSectionHeader): on the canvas, not the phone tab root's frame, with
         // the title and the counts on one line. 56 with a finger, 44 under a mouse or trackpad.
         RaftTopPageHeader(
             title = stringResource(Res.string.tab_activity),
-            subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
+            subtitle = subtitle,
             backgroundColor = RaftColor.Canvas,
             topSafeAreaOverride = topSafeAreaPadding,
             // The column's margin, the toolbar's and the rows' edge (raft-design lists.md, One edge).
@@ -1488,7 +1640,7 @@ internal fun SharedActivityHeader(
         // the edge of the filter tray and of the rows below it.
         RaftTopPageHeader(
             title = stringResource(Res.string.tab_activity),
-            subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
+            subtitle = subtitle,
             topSafeAreaOverride = topSafeAreaPadding,
             contentStartPadding = 16.dp,
             titleStyle = RaftMainTabHeaderTitleStyle,
@@ -1501,7 +1653,7 @@ internal fun SharedActivityHeader(
     // web ThreadsInbox head: raft-ui PanelHeader with the phone Back.
     RaftPanelBackHeader(
         title = stringResource(Res.string.home_nav_activity),
-        subtitle = activityHeaderSubtitle(totalCount, totalUnreadCount),
+        subtitle = subtitle,
         onBack = onClose,
         topSafeArea = topSafeAreaPadding,
         refreshing = refreshing,
@@ -1572,6 +1724,10 @@ internal fun SharedActivityFilterBar(
     onMarkAllRead: () -> Unit,
     menuExpanded: Boolean = false,
     onMenuExpandedChange: (Boolean) -> Unit = {},
+    toAnswerEnabled: Boolean = false,
+    toAnswerSelected: Boolean = false,
+    toAnswerCount: Int = 0,
+    onToAnswerSelected: (() -> Unit)? = null,
 ) {
     // web inbox toolbar: a 1dp seam inside it, its controls centred. raft-design's list toolbar
     // line (spacing.md): 49 with a finger, on a phone too (web `h-[calc(--spacing(12)+1px)]`: a
@@ -1581,6 +1737,7 @@ internal fun SharedActivityFilterBar(
     // Its sides are the list column's margin (web `px-(--column-margin)`): 20, and 16 only on the
     // wide layout under a mouse or trackpad.
     val edge = activityColumnMargin(RaftTheme.scale, RaftTheme.pointerInput)
+    val showingToAnswer = toAnswerEnabled && toAnswerSelected
     // Test tags are the web's data-testid, so the visual comparison pairs the two by name.
     BoxWithConstraints(modifier = Modifier.fillMaxWidth().height(toolbarHeight).background(RaftColor.SurfaceWhite).testTag("inbox-toolbar")) {
         val markAllReadIconOnly = activityMarkAllReadIconOnly(maxWidth, edge)
@@ -1616,11 +1773,28 @@ internal fun SharedActivityFilterBar(
                             onPick = { filter ->
                                 onMenuExpandedChange(false)
                                 onFilterSelected(filter)
-                            }
+                            },
+                            toAnswerEnabled = toAnswerEnabled,
+                            toAnswerSelected = showingToAnswer,
+                            toAnswerCount = toAnswerCount,
+                            onPickToAnswer = {
+                                onMenuExpandedChange(false)
+                                onToAnswerSelected?.invoke()
+                            },
                         )
                     }
                 }
-                if (selectedFilter != InboxFilter.All) {
+                if (showingToAnswer) {
+                    val chipLabel = stringResource(Res.string.activity_filter_to_answer)
+                    val chipText = if (toAnswerCount > 0) "$chipLabel $toAnswerCount" else chipLabel
+                    RaftFilterChip(
+                        text = chipText,
+                        onRemove = { onFilterSelected(InboxFilter.All) },
+                        removeLabel = stringResource(Res.string.activity_filter_clear),
+                        modifier = Modifier.weight(1f, fill = false).testTag("inbox-filter-chip"),
+                        leadingIcon = { RaftContentLucideIcon(ActivityToAnswerFilterIcon, size = 14.dp) },
+                    )
+                } else if (selectedFilter != InboxFilter.All) {
                     RaftFilterChip(
                         text = selectedFilter.localizedLabel(),
                         onRemove = { onFilterSelected(InboxFilter.All) },
@@ -1630,7 +1804,7 @@ internal fun SharedActivityFilterBar(
                     )
                 }
             }
-            if (totalUnreadCount > 0) {
+            if (!showingToAnswer && totalUnreadCount > 0) {
                 SharedActivityMarkAllReadButton(iconOnly = markAllReadIconOnly, onClick = onMarkAllRead)
             }
         }
@@ -1650,15 +1824,32 @@ internal fun InboxFilter.startsActivityFilterMenuGroup(): Boolean =
     this == InboxFilter.Pinned || this == InboxFilter.Tasks
 
 @Composable
-internal fun ActivityFilterMenuRows(selectedFilter: InboxFilter, onPick: (InboxFilter) -> Unit) {
+internal fun ActivityFilterMenuRows(
+    selectedFilter: InboxFilter,
+    onPick: (InboxFilter) -> Unit,
+    toAnswerEnabled: Boolean = false,
+    toAnswerSelected: Boolean = false,
+    toAnswerCount: Int = 0,
+    onPickToAnswer: (() -> Unit)? = null,
+) {
     InboxFilter.entries.forEach { filter ->
         if (filter.startsActivityFilterMenuGroup()) RaftMenuSeparator()
         RaftMenuItem(
             text = filter.localizedLabel(),
             onClick = { onPick(filter) },
-            checked = filter == selectedFilter,
+            checked = !toAnswerSelected && filter == selectedFilter,
             leadingIcon = { RaftContentLucideIcon(filter.iconName(), size = 16.dp) },
         )
+        if (filter == InboxFilter.Mentions && toAnswerEnabled) {
+            RaftMenuItem(
+                text = stringResource(Res.string.activity_filter_to_answer),
+                onClick = { onPickToAnswer?.invoke() },
+                modifier = Modifier.testTag("inbox-filter-toAnswer"),
+                checked = toAnswerSelected,
+                leadingIcon = { RaftContentLucideIcon(ActivityToAnswerFilterIcon, size = 16.dp) },
+                shortcut = toAnswerCount.takeIf { it > 0 }?.toString(),
+            )
+        }
     }
 }
 

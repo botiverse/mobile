@@ -2036,6 +2036,34 @@ data class ActivityDoneUpdated(
     val position: String? = null,
 ) : RealtimeEvent
 
+/** What `to-answer:changed` says happened to the card (botiverse/slock `packages/shared/src/toAnswer.ts`). */
+@Serializable
+enum class ToAnswerChangeKind(val wireValue: String) {
+    Opened("opened"),
+    Ended("ended");
+
+    companion object {
+        fun fromWire(value: String): ToAnswerChangeKind? =
+            entries.firstOrNull { it.wireValue == value }
+    }
+}
+
+/**
+ * `to-answer:changed` (botiverse/slock #17252 / #17261, `packages/shared/src/toAnswer.ts`,
+ * `docs/contracts/to-answer.md`): sent to the `user:<id>:server:<id>` room of each person who may
+ * list an action card when one is posted (`opened`) or stops waiting (`ended`, carrying [state] and
+ * optionally [byUserId] / [byName]). Carries no card content and is not replayed on reconnect.
+ */
+@Serializable
+data class ToAnswerChanged(
+    val serverId: ServerId,
+    val messageId: MessageId,
+    val change: ToAnswerChangeKind,
+    val state: String? = null,
+    val byUserId: String? = null,
+    val byName: String? = null,
+) : RealtimeEvent
+
 /**
  * `joint-invites:changed` (botiverse/slock #12939 `listChangedEvents.ts`): the pending joint-channel
  * invites to this person on [serverId] changed (web `usePendingJointInvites` reads them again).

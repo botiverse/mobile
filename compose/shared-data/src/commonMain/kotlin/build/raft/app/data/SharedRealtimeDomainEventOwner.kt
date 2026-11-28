@@ -250,6 +250,14 @@ private class RealtimeGuardedSinkRegistration(
         channelAuthorityUpdatedSink = sink
     }
 
+    // `to-answer:changed` (slock #17252 / #17261): an action card waiting on the viewer opened or ended.
+    // Process entry only: routes directly to SharedToAnswerStore without triggering a Home refresh.
+    private var toAnswerChangedSink: ((serverId: String, event: build.raft.app.model.ToAnswerChanged) -> Unit)? = null
+
+    fun installToAnswerChangedSink(sink: (serverId: String, event: build.raft.app.model.ToAnswerChanged) -> Unit) {
+        toAnswerChangedSink = sink
+    }
+
     // `agent:activity:subscribed` answers this process's own subscribe on the grant's server socket.
     private var agentActivitySubscribedSink: ((serverId: String, event: AgentActivitySubscribed) -> Unit)? = null
 
@@ -469,6 +477,9 @@ private class RealtimeGuardedSinkRegistration(
             }
             if (acceptedEvent is build.raft.app.model.ChannelAuthorityUpdated) {
                 channelAuthorityUpdatedSink?.invoke(serverId, acceptedEvent)
+            }
+            if (acceptedEvent is build.raft.app.model.ToAnswerChanged) {
+                toAnswerChangedSink?.invoke(serverId, acceptedEvent)
             }
             // Sent to the user room: applied only for the connection's server (the next open of another
             // server's conversation reads its preferences anyway).
