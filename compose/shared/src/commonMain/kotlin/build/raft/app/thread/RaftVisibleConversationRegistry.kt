@@ -121,6 +121,7 @@ internal fun raftSystemNotificationPushEventOrNull(
             "dm", "direct_message" -> ConversationKind.DirectMessage
             "channel" -> ConversationKind.Channel
             "joint" -> ConversationKind.Joint
+            "task" -> ConversationKind.Task
             null ->
                 when {
                     parentMessage != null || (thread != null && channel != null && thread != channel) ->

@@ -1,3 +1,4 @@
+import UserNotifications
 import XCTest
 
 final class RaftIosNotificationRetractionTests: XCTestCase {
@@ -285,5 +286,312 @@ final class RaftIosNotificationRetractionTests: XCTestCase {
             "groupKey": "s1:reminder",
         ])
         XCTAssertTrue(reminderLanding.isActivityTarget)
+    }
+
+    // MARK: Foreground badge & alert presentation policy
+
+    func testForegroundWillPresentNeverAppliesBadgeForVisibleOrActiveAlerts() {
+        let retracted = RaftIosForegroundAlertPresentation.decide(
+            isCoveredByWatermark: true,
+            targetsVisibleConversation: true,
+            isForegroundActive: true,
+            raftCategory: "channel"
+        )
+        XCTAssertEqual(retracted.options, [])
+        XCTAssertFalse(retracted.appliesAlertBadge)
+        XCTAssertEqual(retracted.suppressReason, "retracted")
+
+        let visible = RaftIosForegroundAlertPresentation.decide(
+            isCoveredByWatermark: false,
+            targetsVisibleConversation: true,
+            isForegroundActive: true,
+            raftCategory: "dm"
+        )
+        XCTAssertEqual(visible.options, [])
+        XCTAssertFalse(visible.appliesAlertBadge)
+        XCTAssertEqual(visible.suppressReason, "visible_conversation")
+
+        let activeMessage = RaftIosForegroundAlertPresentation.decide(
+            isCoveredByWatermark: false,
+            targetsVisibleConversation: false,
+            isForegroundActive: true,
+            raftCategory: "mention"
+        )
+        XCTAssertEqual(activeMessage.options, [.list])
+        XCTAssertFalse(activeMessage.appliesAlertBadge)
+        XCTAssertEqual(activeMessage.suppressReason, "foreground_suppressed")
+
+        for category in ["reminder", "system_notice", "test"] {
+            let activeMessageLess = RaftIosForegroundAlertPresentation.decide(
+                isCoveredByWatermark: false,
+                targetsVisibleConversation: false,
+                isForegroundActive: true,
+                raftCategory: category
+            )
+            XCTAssertEqual(activeMessageLess.options, [.banner, .list, .sound])
+            XCTAssertFalse(activeMessageLess.appliesAlertBadge)
+            XCTAssertNil(activeMessageLess.suppressReason)
+        }
+
+        let inactive = RaftIosForegroundAlertPresentation.decide(
+            isCoveredByWatermark: false,
+            targetsVisibleConversation: false,
+            isForegroundActive: false,
+            raftCategory: "dm"
+        )
+        XCTAssertEqual(inactive.options, [.banner, .list, .sound, .badge])
+        XCTAssertTrue(inactive.appliesAlertBadge)
+        XCTAssertNil(inactive.suppressReason)
+    }
+
+    func testBackgroundPushBadgeSkippedWhileForegroundActive() {
+        XCTAssertFalse(RaftIosNotificationRetraction.shouldApplyBackgroundPushBadge(badge: 5, isForegroundActive: true))
+        XCTAssertFalse(RaftIosNotificationRetraction.shouldApplyBackgroundPushBadge(badge: 0, isForegroundActive: true))
+        XCTAssertFalse(RaftIosNotificationRetraction.shouldApplyBackgroundPushBadge(badge: nil, isForegroundActive: false))
+        XCTAssertTrue(RaftIosNotificationRetraction.shouldApplyBackgroundPushBadge(badge: 5, isForegroundActive: false))
+        XCTAssertTrue(RaftIosNotificationRetraction.shouldApplyBackgroundPushBadge(badge: 0, isForegroundActive: false))
+    }
+
+    func testForegroundBadgeReconcilerRepairsInactiveDriftWithoutReapplyingPreBackgroundCount() {
+        var reconciler = RaftIosForegroundBadgeReconciler()
+        // Cold start before Kotlin publishes an authoritative count: never clobber.
+        XCTAssertNil(reconciler.badgeToRestoreOnDidBecomeActive(currentIconBadge: 4))
+
+        // Kotlin publishes authoritative foreground badge = 2.
+        reconciler.recordAppBadge(2, isBackground: false)
+        XCTAssertNil(reconciler.badgeToRestoreOnDidBecomeActive(currentIconBadge: 2))
+        // Drift during transient .inactive (e.g. Notification Center pull-down): repair back to 2.
+        XCTAssertEqual(reconciler.badgeToRestoreOnDidBecomeActive(currentIconBadge: 7), 2)
+
+        // Entering background invalidates pre-background count; writes while backgrounded are ignored.
+        reconciler.didEnterBackground()
+        reconciler.recordAppBadge(1, isBackground: true)
+        XCTAssertNil(reconciler.badgeToRestoreOnDidBecomeActive(currentIconBadge: 4))
+
+        // Sign-out clears authoritative count.
+        reconciler.recordAppBadge(3, isBackground: false)
+        reconciler.didSignOut()
+        XCTAssertNil(reconciler.badgeToRestoreOnDidBecomeActive(currentIconBadge: 0))
+    }
+
+    // MARK: Local read & tap sibling retraction + sign-out cleanup
+
+    func testLocalReadRetractBuildsWholeGroupRetractAndCoversLateAlerts() {
+        XCTAssertNil(RaftIosNotificationRetraction.localReadRetract(serverId: " ", conversationId: "c1"))
+        XCTAssertNil(RaftIosNotificationRetraction.localReadRetract(serverId: "s1", conversationId: ""))
+
+        let retract = RaftIosNotificationRetraction.localReadRetract(serverId: " s1 ", conversationId: " task-ch-7 ")
+        XCTAssertEqual(
+            retract,
+            RaftIosNotificationRetract(
+                serverId: "s1",
+                groupKey: "s1:task-ch-7",
+                conversationId: "task-ch-7",
+                throughSeq: nil,
+                badge: nil
+            )
+        )
+
+        let delivered: [(identifier: String, userInfo: [AnyHashable: Any])] = [
+            ("t1", ["groupKey": "s1:task-ch-7", "seq": 10]),
+            ("t2", ["groupKey": "s1:task-ch-7", "seq": 11]),
+            ("other", ["groupKey": "s1:ch-1", "seq": 1]),
+        ]
+        XCTAssertEqual(
+            RaftIosNotificationRetraction.identifiersToRemove(delivered: delivered, retract: retract!),
+            ["t1", "t2"]
+        )
+
+        let suite = "RaftIosNotificationRetractionTests.localRead.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("no defaults") }
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let watermarks = RaftIosRetractWatermarks.record(retract!, defaults: defaults, now: t0)
+        XCTAssertTrue(
+            RaftIosRetractWatermarks.isCovered(
+                userInfo: ["groupKey": "s1:task-ch-7", "seq": 12],
+                postedAt: t0.addingTimeInterval(5),
+                watermarks: watermarks,
+                now: t0.addingTimeInterval(5)
+            )
+        )
+
+        // Sign-out clears persisted retract watermarks.
+        RaftIosRetractWatermarks.clearAll(defaults: defaults)
+        XCTAssertTrue(RaftIosRetractWatermarks.load(defaults: defaults, now: t0.addingTimeInterval(10)).isEmpty)
+    }
+
+    func testTappedSiblingRetractMatchesConversationsAndSkipsMessagelessNotices() {
+        let channelTap = RaftIosNotificationRetraction.tappedSiblingRetract(userInfo: [
+            "type": "alert",
+            "serverId": "s1",
+            "channelId": "c1",
+            "conversationId": "c1",
+            "groupKey": "s1:c1",
+            "raftCategory": "channel",
+            "seq": 5,
+        ])
+        XCTAssertEqual(
+            channelTap,
+            RaftIosNotificationRetract(serverId: "s1", groupKey: "s1:c1", conversationId: "c1", throughSeq: nil, badge: nil)
+        )
+
+        let taskTap = RaftIosNotificationRetraction.tappedSiblingRetract(userInfo: [
+            "type": "alert",
+            "serverId": "s1",
+            "channelId": "parent-ch",
+            "taskConversationChannelId": "task-ch-7",
+            "conversationId": "task-ch-7",
+            "groupKey": "s1:task-ch-7",
+            "raftCategory": "thread",
+            "route": [
+                "type": "task",
+                "serverId": "s1",
+                "parentChannelId": "parent-ch",
+                "parentChannelType": "channel",
+                "taskId": "task-7",
+                "messageId": "m-9",
+            ],
+        ])
+        XCTAssertEqual(
+            taskTap,
+            RaftIosNotificationRetract(
+                serverId: "s1",
+                groupKey: "s1:task-ch-7",
+                conversationId: "task-ch-7",
+                throughSeq: nil,
+                badge: nil
+            )
+        )
+
+        // Message-less notices, app routes, and background pushes do not wipe sibling notifications.
+        XCTAssertNil(
+            RaftIosNotificationRetraction.tappedSiblingRetract(userInfo: [
+                "type": "alert",
+                "serverId": "s1",
+                "raftCategory": "reminder",
+                "groupKey": "s1:reminder",
+                "route": NSNull(),
+            ])
+        )
+        XCTAssertNil(
+            RaftIosNotificationRetraction.tappedSiblingRetract(userInfo: [
+                "type": "alert",
+                "serverId": "s1",
+                "raftCategory": "system_notice",
+                "groupKey": "s1:app_permission_update",
+                "route": ["type": "app", "serverId": "s2", "appId": "app-42"],
+            ])
+        )
+        XCTAssertNil(
+            RaftIosNotificationRetraction.tappedSiblingRetract(userInfo: [
+                "type": "retract",
+                "serverId": "s1",
+                "groupKey": "s1:c1",
+                "conversationId": "c1",
+            ])
+        )
+    }
+
+    // MARK: Visible conversation matching (including task conversations)
+
+    func testVisibleConversationQueryResolvesTaskConversationWithoutParentFalseMatch() {
+        let taskWithAnchor = RaftIosNotificationOpen.visibleConversationQuery(userInfo: [
+            "serverId": "s1",
+            "channelId": "parent-ch-1",
+            "messageId": "anchor-msg-1",
+            "kind": "channel",
+            "taskId": "task-7",
+            "taskConversationChannelId": "task-ch-7",
+            "taskMessageId": "reply-msg-9",
+            "conversationId": "task-ch-7",
+            "raftCategory": "thread",
+            "aps": ["category": "RAFT_MESSAGE"],
+            "route": [
+                "type": "task",
+                "serverId": "s1",
+                "parentChannelId": "parent-ch-1",
+                "parentChannelType": "channel",
+                "taskId": "task-7",
+                "messageId": "reply-msg-9",
+            ],
+        ])
+        XCTAssertEqual(
+            taskWithAnchor,
+            RaftIosNotificationOpen.VisibleConversationQuery(
+                serverId: "s1",
+                kind: "task",
+                channelId: "task-ch-7",
+                threadId: nil,
+                parentChannelId: nil,
+                parentMessageId: nil,
+                messageId: "reply-msg-9",
+                category: "thread"
+            )
+        )
+
+        // Standalone task reply (no anchor messageId at top level) still resolves taskMessageId / route.messageId.
+        let standaloneTask = RaftIosNotificationOpen.visibleConversationQuery(userInfo: [
+            "serverId": "s1",
+            "channelId": "parent-ch-1",
+            "kind": "dm",
+            "conversationId": "task-ch-8",
+            "raftCategory": "mention",
+            "route": [
+                "type": "task",
+                "serverId": "s1",
+                "parentChannelId": "parent-ch-1",
+                "parentChannelType": "dm",
+                "taskId": "task-8",
+                "messageId": "reply-msg-10",
+            ],
+        ])
+        XCTAssertEqual(standaloneTask.kind, "task")
+        XCTAssertEqual(standaloneTask.channelId, "task-ch-8")
+        XCTAssertEqual(standaloneTask.messageId, "reply-msg-10")
+        XCTAssertNil(standaloneTask.parentChannelId)
+        XCTAssertEqual(standaloneTask.category, "mention")
+
+        // DM push prefers `raftCategory` over `aps.category` ("RAFT_MESSAGE").
+        let dmQuery = RaftIosNotificationOpen.visibleConversationQuery(userInfo: [
+            "serverId": "s1",
+            "conversationId": "dm-1",
+            "messageId": "m-1",
+            "raftCategory": "dm",
+            "aps": ["category": "RAFT_MESSAGE"],
+        ])
+        XCTAssertEqual(dmQuery.channelId, "dm-1")
+        XCTAssertEqual(dmQuery.category, "dm")
+
+        // Route-only thread push resolves kind, threadId, parentChannelId, parentMessageId, and messageId.
+        let threadQuery = RaftIosNotificationOpen.visibleConversationQuery(userInfo: [
+            "serverId": "s1",
+            "conversationId": "th-stream-1",
+            "raftCategory": "thread",
+            "route": [
+                "type": "thread",
+                "serverId": "s1",
+                "parentChannelId": "ch-1",
+                "parentMessageId": "pm-1",
+                "messageId": "m-4",
+            ],
+        ])
+        XCTAssertEqual(threadQuery.kind, "thread")
+        XCTAssertEqual(threadQuery.threadId, "th-stream-1")
+        XCTAssertEqual(threadQuery.channelId, "th-stream-1")
+        XCTAssertEqual(threadQuery.parentChannelId, "ch-1")
+        XCTAssertEqual(threadQuery.parentMessageId, "pm-1")
+        XCTAssertEqual(threadQuery.messageId, "m-4")
+
+        // Message-less reminder yields nil channelId/messageId so it is never suppressed as a visible conversation.
+        let reminderQuery = RaftIosNotificationOpen.visibleConversationQuery(userInfo: [
+            "type": "alert",
+            "serverId": "s1",
+            "raftCategory": "reminder",
+            "groupKey": "s1:reminder",
+            "route": NSNull(),
+        ])
+        XCTAssertNil(reminderQuery.channelId)
+        XCTAssertNil(reminderQuery.messageId)
     }
 }
