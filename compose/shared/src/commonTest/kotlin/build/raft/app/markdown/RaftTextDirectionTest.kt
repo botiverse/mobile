@@ -8,7 +8,9 @@ import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Unit tests for per-block RTL text direction and link bidi isolation
@@ -32,6 +34,22 @@ class RaftTextDirectionTest {
         assertEquals(RaftTextDirection.Rtl, raftTextDirection("#general https://example.com `code` שלום"))
         assertNull(raftTextDirection("@alice"))
         assertNull(raftTextDirection("#general https://example.com `code`"))
+    }
+
+    @Test
+    fun utf8BomDoesNotTriggerRtlAndAllowsSkippingLeadingMentions() {
+        assertTrue(isRaftRtlScriptChar('\uFEFC'))
+        assertFalse(isRaftRtlScriptChar('\uFEFD'))
+        assertFalse(isRaftRtlScriptChar('\uFEFE'))
+        assertFalse(isRaftRtlScriptChar('\uFEFF'))
+
+        assertEquals(RaftTextDirection.Ltr, raftTextDirection("\uFEFF@Taylor 请看下这个问题。"))
+        assertEquals(RaftTextDirection.Ltr, raftTextDirection("\uFEFF你好，世界。"))
+        assertEquals(RaftTextDirection.Ltr, raftTextDirection("\uFEFF@alice hello world."))
+        assertEquals(RaftTextDirection.Rtl, raftTextDirection("\uFEFF@alice אפשר לבדוק היום?"))
+        assertEquals(RaftTextDirection.Rtl, raftTextDirection("\uFEFFمرحبا بالعالم"))
+        assertNull(raftTextDirection("\uFEFF"))
+        assertNull(raftTextDirection("\uFEFF@Taylor"))
     }
 
     @Test
