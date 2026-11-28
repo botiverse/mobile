@@ -5385,7 +5385,8 @@
     <string name="agent_lounge_view_profile">Ver perfil</string>
     <string name="agent_lounge_switch_trigger_lounge">Lounge de %1$s. Alternar entre o Lounge e a conversa privada</string>
     <string name="agent_lounge_switch_trigger_private">Conversa privada com %1$s. Alternar entre o Lounge e a conversa privada</string>
-    <string name="agent_lounge_switch_trigger_other_unread">%1$d não lidas no outro lado</string>
+    <string name="agent_lounge_switch_trigger_lounge_unread">%1$d não lidas no Lounge</string>
+    <string name="agent_lounge_switch_trigger_private_unread">%1$d não lidas na conversa privada</string>
     <string name="agent_lounge_switch_unread">%1$d não lidas</string>
     <string name="agent_lounge_private_audience_notice">Somente você e %1$s podem ver isto.</string>
     <string name="agent_lounge_open_failed">Não foi possível abrir o Lounge. Tente novamente.</string>

@@ -117,6 +117,9 @@ import build.raft.designsystem.text.RaftText
 import build.raft.designsystem.theme.RaftPointerInput
 import build.raft.designsystem.theme.LocalRaftContentColor
 import build.raft.designsystem.theme.RaftTheme
+import build.raft.designsystem.tokens.RaftRadius
+import build.raft.designsystem.tokens.RaftStroke
+import build.raft.designsystem.tokens.RaftUiPalette
 import build.raft.app.components.RaftDesignSystemTheme
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.RowScope
@@ -555,6 +558,13 @@ data class RaftHomeConversationItem(
     val mergedAgentLounge: RaftHomeAgentLoungeRow? = null,
     /** True when tapping this merged agent DM row opens the agent's Lounge (creating on first click). */
     val opensAgentLoungeOnClick: Boolean = false,
+    /**
+     * Agent Lounge v0 (`botiverse/slock#17269` / `#17277`): when this row stands for both an
+     * agent's DM and its Lounge (both non-null), [unreadCount] split by side so the row shows one
+     * count per side with unread (lock for Private chat, sofa for Lounge; plain total when both 0).
+     */
+    val dmSideUnread: Int? = null,
+    val loungeSideUnread: Int? = null,
 )
 
 /** Whether this sidebar row matches [selectedConversationId] (including a merged Agent Lounge). */
@@ -3159,6 +3169,8 @@ private fun RaftStructuralHomeShellContent(
                                                         hasDraft = pinned?.hasDraft == true,
                                                         muted = pinned?.activityMuted == true,
                                                         unreadCount = pinned?.unreadCount ?: 0,
+                                                        dmSideUnread = pinned?.dmSideUnread,
+                                                        loungeSideUnread = pinned?.loungeSideUnread,
                                                         markedUnread = pinned?.markedUnread == true,
                                                         mentioned = pinned?.mentioned == true,
                                                         selected = pinnedSelected,
@@ -3517,6 +3529,8 @@ private fun RaftStructuralHomeShellContent(
                                                     hasDraft = dm.hasDraft,
                                                     muted = dm.activityMuted,
                                                     unreadCount = dm.unreadCount,
+                                                    dmSideUnread = dm.dmSideUnread,
+                                                    loungeSideUnread = dm.loungeSideUnread,
                                                     markedUnread = dm.markedUnread,
                                                     mentioned = dm.mentioned,
                                                     selected = dmSelected,
@@ -3632,6 +3646,8 @@ private fun RaftStructuralHomeShellContent(
                                                         hasDraft = item.hasDraft,
                                                         muted = item.activityMuted,
                                                         unreadCount = item.unreadCount,
+                                                        dmSideUnread = item.dmSideUnread,
+                                                        loungeSideUnread = item.loungeSideUnread,
                                                         markedUnread = item.markedUnread,
                                                         mentioned = item.mentioned,
                                                         selected = customSelected,
@@ -7240,6 +7256,8 @@ private fun HomeServerDrawerConversationRow(
                 hasDraft = item.hasDraft,
                 muted = item.activityMuted,
                 unreadCount = item.unreadCount,
+                dmSideUnread = item.dmSideUnread,
+                loungeSideUnread = item.loungeSideUnread,
                 markedUnread = item.markedUnread,
                 onClick = onClick.takeIf { enabled }
             )
@@ -8850,6 +8868,8 @@ internal fun HomeSidebarDirectMessageRow(
     selected: Boolean = false,
     muted: Boolean = false,
     unreadCount: Int = 0,
+    dmSideUnread: Int? = null,
+    loungeSideUnread: Int? = null,
     markedUnread: Boolean = false,
     mentioned: Boolean = false,
     hasDraft: Boolean = false,
@@ -8867,6 +8887,13 @@ internal fun HomeSidebarDirectMessageRow(
                 markedUnread = markedUnread,
                 mentionPierced = mentioned,
             )
+        )
+    val agentUnreadDisplay =
+        homeSidebarAgentUnreadDisplay(
+            unreadCount = unreadCount,
+            dmSideUnread = dmSideUnread,
+            loungeSideUnread = loungeSideUnread,
+            muted = muted,
         )
     val avatarWireValue = rememberRaftMemberAvatarWireValue(memberAvatarResolver, memberId)
     val avatarPending =
@@ -8949,9 +8976,13 @@ internal fun HomeSidebarDirectMessageRow(
                                         contentDescription = mentionDescription,
                                     )
                                 RaftHomeDmTrailingSlot.UnreadBadge ->
-                                    when (badge.tone) {
-                                        HomeSidebarBadgeTone.Loud -> RaftSidebarItemMarks(unreadCount = unreadCount, countDescription = null)
-                                        HomeSidebarBadgeTone.Quiet -> RaftSidebarItemMeta(badge.label.orEmpty())
+                                    if (agentUnreadDisplay != null) {
+                                        HomeSidebarAgentUnreadBadges(display = agentUnreadDisplay)
+                                    } else {
+                                        when (badge.tone) {
+                                            HomeSidebarBadgeTone.Loud -> RaftSidebarItemMarks(unreadCount = unreadCount, countDescription = null)
+                                            HomeSidebarBadgeTone.Quiet -> RaftSidebarItemMeta(badge.label.orEmpty())
+                                        }
                                     }
                                 RaftHomeDmTrailingSlot.MarkedUnreadDot ->
                                     RaftQuietUnreadDot(contentDescription = markedUnreadDescription)
@@ -8970,6 +9001,151 @@ internal fun HomeSidebarDirectMessageRow(
                 } else {
                     null
                 }
+        )
+    }
+}
+
+/**
+ * Per-side unread badges for a merged agent sidebar row (`botiverse/slock#17269` + `#17277`, web
+ * `SidebarPeerRowBody.tsx` `SideCount` / `NoSideCount`): lock + DM count, sofa + Lounge count, or
+ * the plain total without a side icon when neither side carries the unread.
+ */
+@Composable
+private fun HomeSidebarAgentUnreadBadges(display: HomeSidebarAgentUnreadDisplay) {
+    when (display) {
+        is HomeSidebarAgentUnreadDisplay.Sides -> {
+            if (display.dmCount > 0) {
+                HomeSidebarAgentSideCount(
+                    side = AgentLoungeConversationSide.Private,
+                    count = display.dmCount,
+                    quiet = display.dmQuiet,
+                    contentDescription =
+                        stringResource(Res.string.agent_lounge_switch_trigger_private_unread, display.dmCount),
+                )
+            }
+            if (display.loungeCount > 0) {
+                HomeSidebarAgentSideCount(
+                    side = AgentLoungeConversationSide.Lounge,
+                    count = display.loungeCount,
+                    quiet = false,
+                    contentDescription =
+                        stringResource(Res.string.agent_lounge_switch_trigger_lounge_unread, display.loungeCount),
+                )
+            }
+        }
+        is HomeSidebarAgentUnreadDisplay.TotalFallback -> {
+            HomeSidebarAgentTotalCount(
+                count = display.count,
+                quiet = display.quiet,
+                contentDescription = stringResource(Res.string.agent_lounge_switch_unread, display.count),
+            )
+        }
+    }
+}
+
+/**
+ * One side's count on an agent's sidebar row (web `SidebarPeerRowBody.tsx` `SideCount`): a 12dp
+ * lock or sofa icon (`strokeWidth = 1.75`) 2dp before the capped count, named with its side for
+ * screen readers. Uses the pink count sticker when loud or the grey mono meta style when muted.
+ */
+@Composable
+private fun HomeSidebarAgentSideCount(
+    side: AgentLoungeConversationSide,
+    count: Int,
+    quiet: Boolean,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    val icon = if (side == AgentLoungeConversationSide.Private) RaftLucideIconName.Lock else AgentLoungeIcon
+    val tag =
+        if (side == AgentLoungeConversationSide.Private) {
+            AgentLoungeTestTags.SidebarAgentUnreadPrivate
+        } else {
+            AgentLoungeTestTags.SidebarAgentUnreadLounge
+        }
+    if (quiet) {
+        val ink = LocalRaftContentColor.current
+        Row(
+            modifier =
+                modifier
+                    .raftSlot("sidebar-item-meta")
+                    .testTag(tag)
+                    .clearAndSetSemantics { this.contentDescription = contentDescription },
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftLucideIcon(
+                name = icon,
+                modifier = Modifier.size(12.dp),
+                color = raftArgbHex(ink),
+                strokeWidth = 1.75f,
+            )
+            RaftText(
+                text = raftUnreadCountText(count),
+                style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Normal, fontFeatureSettings = "tnum"),
+                color = ink,
+                maxLines = 1,
+            )
+        }
+    } else {
+        val shape = RoundedCornerShape(RaftRadius.Sticker)
+        Row(
+            modifier =
+                modifier
+                    .raftSlot("sidebar-item-count")
+                    .testTag(tag)
+                    .clearAndSetSemantics { this.contentDescription = contentDescription }
+                    .raftAppStickerDieCutEdge(RaftTheme.colors.stickerEdge)
+                    .height(20.dp)
+                    .widthIn(min = 20.dp)
+                    .background(RaftUiPalette.attention, shape)
+                    .border(RaftStroke.Control, RaftUiPalette.stickerInk, shape)
+                    .padding(horizontal = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftLucideIcon(
+                name = icon,
+                modifier = Modifier.size(12.dp),
+                color = raftArgbHex(RaftUiPalette.stickerInk),
+                strokeWidth = 1.75f,
+            )
+            RaftText(
+                text = raftUnreadCountText(count),
+                style = RaftTheme.typography.monoMeta.copy(fontWeight = FontWeight.Bold, fontFeatureSettings = "tnum"),
+                color = RaftUiPalette.stickerInk,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * Unread on a merged agent row that belongs to neither side (`botiverse/slock#17277` `NoSideCount`):
+ * the plain capped total with no side icon, read as `"N unread"`, grey meta when muted.
+ */
+@Composable
+private fun HomeSidebarAgentTotalCount(
+    count: Int,
+    quiet: Boolean,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+) {
+    if (quiet) {
+        Box(
+            modifier =
+                modifier
+                    .testTag(AgentLoungeTestTags.SidebarAgentUnreadTotal)
+                    .raftSlot("sidebar-item-meta")
+                    .clearAndSetSemantics { this.contentDescription = contentDescription },
+        ) {
+            RaftSidebarItemMeta(text = raftUnreadCountText(count))
+        }
+    } else {
+        RaftUnreadCount(
+            count = count,
+            contentDescription = contentDescription,
+            modifier = modifier.testTag(AgentLoungeTestTags.SidebarAgentUnreadTotal),
         )
     }
 }

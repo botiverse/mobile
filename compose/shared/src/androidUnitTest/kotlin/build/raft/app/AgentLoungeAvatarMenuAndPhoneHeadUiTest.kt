@@ -9,6 +9,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
@@ -184,7 +186,14 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             onNodeWithText("Tenny's Lounge").assertIsDisplayed()
             onNodeWithText("Members and agents of this server can take part.").assertIsDisplayed()
             onNodeWithTag(AgentLoungeTestTags.ConversationAvatarMark, useUnmergedTree = true).assertIsDisplayed()
-            onNodeWithTag(AgentLoungeTestTags.ConversationAvatarDot, useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTriggerCount, useUnmergedTree = true).assertIsDisplayed()
+            assertEquals(
+                listOf("Tenny's Lounge. Switch between Lounge and private chat, 3 unread in Private chat"),
+                onNodeWithTag(AgentLoungeTestTags.ConversationMenuTrigger)
+                    .fetchSemanticsNode()
+                    .config
+                    .getOrNull(SemanticsProperties.ContentDescription),
+            )
 
             // Open the avatar switcher menu.
             onNodeWithTag(AgentLoungeTestTags.ConversationMenuTrigger).performClick()
@@ -856,5 +865,138 @@ class AgentLoungeAvatarMenuAndPhoneHeadUiTest {
             onNodeWithContentDescription("Open files").assertIsDisplayed()
             onNodeWithContentDescription("Channel settings").assertIsDisplayed()
             onNodeWithContentDescription("Thread panel menu").assertDoesNotExist()
+        }
+
+    @Test
+    fun conversationHeaderSwitcherShowsOtherSideCountStickerAndKeepsSameNodeWhenCountClears() =
+        runRobolectricComposeUiTest {
+            var activeSide by mutableStateOf(AgentLoungeConversationSide.Private)
+            var loungeUnread by mutableStateOf(AgentLoungeSwitchUnread(count = 2))
+            var privateUnread by mutableStateOf(AgentLoungeSwitchUnread())
+            var switchedToLounge = 0
+            val loungeRecord =
+                RaftAgentLounge(
+                    channelId = ChannelId("lounge-tenny"),
+                    agentId = "agent-tenny",
+                    agentName = "Tenny",
+                    channelName = "tenny-lounge",
+                )
+            setContent {
+                val pager =
+                    remember {
+                        object : Pager() {}.apply { pageData = PageData(JSONObject().apply { put("slockVisualZeroSafeArea", true) }) }
+                    }
+                val isLounge = activeSide == AgentLoungeConversationSide.Lounge
+                val payload =
+                    RaftThreadScreenPayload(
+                        instanceId = if (isLounge) "lounge-tenny" else "dm-tenny",
+                        title = if (isLounge) "tenny-lounge" else "Tenny",
+                        status = "content",
+                        surfaceKind = if (isLounge) RaftThreadSurfaceKind.Channel else RaftThreadSurfaceKind.DirectMessage,
+                        sourceThreadId = if (isLounge) "lounge-tenny" else "dm-tenny",
+                        streamChannelId = if (isLounge) "lounge-tenny" else "dm-tenny",
+                        showModeTabs = true,
+                        showSettingsAction = true,
+                    )
+                val switch =
+                    AgentLoungeConversationSwitch(
+                        activeSide = activeSide,
+                        loungeUnread = loungeUnread,
+                        privateUnread = privateUnread,
+                        onSelectLounge = { switchedToLounge++ },
+                        onSelectPrivate = {},
+                    )
+                val lounge =
+                    ThreadPageLounge(
+                        lounge = if (isLounge) loungeRecord else null,
+                        agentAvatarWireValue = null,
+                        cacheServerId = null,
+                        canUnarchive = false,
+                        unarchiving = false,
+                        onUnarchive = {},
+                        onOpenAgentProfile = {},
+                        conversationSwitch = switch,
+                    )
+                CompositionLocalProvider(
+                    LocalActivity provides RaftPageActivity(pager),
+                    LocalThreadHeaderMenuEventBus provides QuietEventBus,
+                ) {
+                    RaftDesignSystemTheme {
+                        Column(Modifier.fillMaxSize()) {
+                            ThreadPageHeader(
+                                payload = payload,
+                                headerDisplay =
+                                    ThreadHeaderDisplayModel(
+                                        title = if (isLounge) "tenny-lounge" else "Tenny",
+                                        subtitle = null,
+                                        surfaceKind = payload.surfaceKind,
+                                        channelKind = if (isLounge) "public" else "dm",
+                                        dmPeerIdentity =
+                                            if (isLounge) null else MemberDetailIdentity(MemberId("agent-tenny"), MemberKind.Agent),
+                                    ),
+                                applyTopSafeArea = false,
+                                onBack = {},
+                                onOpenInChannel = {},
+                                onOpenMemberProfile = {},
+                                onOpenSearch = {},
+                                onShowMembers = {},
+                                onShowSettings = {},
+                                lounge = lounge,
+                            )
+                        }
+                    }
+                }
+            }
+
+            // In Private chat with 2 unread in the Lounge: sticker on avatar + side-specific description.
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTriggerCount, useUnmergedTree = true).assertIsDisplayed()
+            val triggerNodeBefore = onNodeWithTag(AgentLoungeTestTags.ConversationMenuTrigger).fetchSemanticsNode()
+            assertEquals(
+                listOf("Private chat with Tenny. Switch between Lounge and private chat, 2 unread in the Lounge"),
+                triggerNodeBefore.config.getOrNull(SemanticsProperties.ContentDescription),
+            )
+            // Menu keeps per-item count and switches to Lounge.
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTrigger).performClick()
+            waitForIdle()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuUnread, useUnmergedTree = true).assertIsDisplayed()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuLounge).performClick()
+            waitForIdle()
+            assertEquals(1, switchedToLounge)
+
+            // Clearing the other side's unread removes the sticker without remounting the trigger node.
+            runOnIdle { loungeUnread = AgentLoungeSwitchUnread(count = 0) }
+            waitForIdle()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTriggerCount, useUnmergedTree = true).assertDoesNotExist()
+            val triggerNodeAfterClear = onNodeWithTag(AgentLoungeTestTags.ConversationMenuTrigger).fetchSemanticsNode()
+            assertEquals(
+                triggerNodeBefore.id,
+                triggerNodeAfterClear.id,
+                "switcher button must stay the same node as other-side unread comes and goes",
+            )
+            assertEquals(
+                listOf("Private chat with Tenny. Switch between Lounge and private chat"),
+                triggerNodeAfterClear.config.getOrNull(SemanticsProperties.ContentDescription),
+            )
+
+            // In the Lounge with 120 unread in Private chat: sticker shows with full count announced.
+            runOnIdle {
+                activeSide = AgentLoungeConversationSide.Lounge
+                privateUnread = AgentLoungeSwitchUnread(count = 120)
+            }
+            waitForIdle()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTriggerCount, useUnmergedTree = true).assertIsDisplayed()
+            assertEquals(
+                listOf("Tenny's Lounge. Switch between Lounge and private chat, 120 unread in Private chat"),
+                onNodeWithTag(AgentLoungeTestTags.ConversationMenuTrigger)
+                    .fetchSemanticsNode()
+                    .config
+                    .getOrNull(SemanticsProperties.ContentDescription),
+            )
+
+            // Dot-only marked unread on the other side shows top-corner dot and no count sticker.
+            runOnIdle { privateUnread = AgentLoungeSwitchUnread(count = 0, dot = true) }
+            waitForIdle()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTriggerCount, useUnmergedTree = true).assertDoesNotExist()
+            onNodeWithTag(AgentLoungeTestTags.ConversationMenuTriggerDot, useUnmergedTree = true).assertIsDisplayed()
         }
 }

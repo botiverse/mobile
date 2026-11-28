@@ -148,6 +148,7 @@ internal fun RaftNativeNavBarTitleImageCapture(
                         label = leading.label,
                         cacheServerId = leading.cacheServerId,
                         side = if (leading.isLounge) AgentLoungeConversationSide.Lounge else AgentLoungeConversationSide.Private,
+                        otherSideUnreadCount = leading.otherSideUnreadCount,
                         attention = leading.attention,
                         captureSize = RaftNativeNavBarTitleImageSize,
                     )

@@ -5357,7 +5357,8 @@
     <string name="agent_lounge_view_profile">Открыть профиль</string>
     <string name="agent_lounge_switch_trigger_lounge">Гостиная агента %1$s. Переключение между гостиной и личным чатом</string>
     <string name="agent_lounge_switch_trigger_private">Личный чат с %1$s. Переключение между гостиной и личным чатом</string>
-    <string name="agent_lounge_switch_trigger_other_unread">Непрочитанных на другой стороне: %1$d</string>
+    <string name="agent_lounge_switch_trigger_lounge_unread">Непрочитанных в гостиной: %1$d</string>
+    <string name="agent_lounge_switch_trigger_private_unread">Непрочитанных в личном чате: %1$d</string>
     <string name="agent_lounge_switch_unread">Непрочитанных: %1$d</string>
     <string name="agent_lounge_private_audience_notice">Это видите только вы и %1$s.</string>
     <string name="agent_lounge_open_failed">Не удалось открыть гостиную. Попробуйте ещё раз.</string>

@@ -5570,7 +5570,8 @@
     <string name="agent_lounge_view_profile">View profile</string>
     <string name="agent_lounge_switch_trigger_lounge">%1$s's Lounge. Switch between Lounge and private chat</string>
     <string name="agent_lounge_switch_trigger_private">Private chat with %1$s. Switch between Lounge and private chat</string>
-    <string name="agent_lounge_switch_trigger_other_unread">%1$d unread on the other side</string>
+    <string name="agent_lounge_switch_trigger_lounge_unread">%1$d unread in the Lounge</string>
+    <string name="agent_lounge_switch_trigger_private_unread">%1$d unread in Private chat</string>
     <string name="agent_lounge_switch_unread">%1$d unread</string>
     <string name="agent_lounge_private_audience_notice">Only you and %1$s can see this.</string>
     <string name="agent_lounge_open_failed">Couldn't open the Lounge. Try again.</string>

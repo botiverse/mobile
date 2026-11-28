@@ -5385,7 +5385,8 @@
     <string name="agent_lounge_view_profile">查看資料</string>
     <string name="agent_lounge_switch_trigger_lounge">%1$s 的會客廳，切換會客廳或私訊</string>
     <string name="agent_lounge_switch_trigger_private">和 %1$s 的私訊，切換會客廳或私訊</string>
-    <string name="agent_lounge_switch_trigger_other_unread">另一邊 %1$d 則未讀</string>
+    <string name="agent_lounge_switch_trigger_lounge_unread">會客廳有 %1$d 則未讀</string>
+    <string name="agent_lounge_switch_trigger_private_unread">私訊有 %1$d 則未讀</string>
     <string name="agent_lounge_switch_unread">%1$d 則未讀</string>
     <string name="agent_lounge_private_audience_notice">只有你和 %1$s 能看到。</string>
     <string name="agent_lounge_open_failed">無法開啟會客廳，請再試一次。</string>
