@@ -85,6 +85,12 @@ class SharedHomeShellStore(
      */
     private val refreshHomeForFreshness: (suspend () -> Boolean)? = null,
     private val refreshActivityForFreshness: (suspend () -> Boolean)? = null,
+    /**
+     * Warm foreground return while Home is not the visible destination (Activity / Saved / Search):
+     * trigger a throttled `/servers/unread-summary` refresh on multi-server accounts so other
+     * servers' reads on Web/Desktop clear `serverActivityUnread[otherServer]`.
+     */
+    private val refreshHiddenServerActivityUnread: () -> Unit = {},
 ) {
     private val freshnessLock = SynchronizedObject()
     private val freshnessGate =
@@ -476,12 +482,22 @@ class SharedHomeShellStore(
 
     private fun refreshVisibleHomeDestination() {
         when (val destination = _state.value.destination) {
-            SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
-            SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
-            SharedHomeShellDestinationSearch -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSearch)
+            SharedHomeShellDestinationActivity -> {
+                dispatchActivity(SharedActivityIntent.Refresh)
+                refreshHiddenServerActivityUnread()
+            }
+            SharedHomeShellDestinationSaved -> {
+                dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
+                refreshHiddenServerActivityUnread()
+            }
+            SharedHomeShellDestinationSearch -> {
+                dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSearch)
+                refreshHiddenServerActivityUnread()
+            }
             null ->
                 if (_state.value.selectedTab == "activity") {
                     dispatchActivity(SharedActivityIntent.Refresh)
+                    refreshHiddenServerActivityUnread()
                 } else {
                     dispatchHomeVisibleRefresh()
                     refreshSavedSummary()

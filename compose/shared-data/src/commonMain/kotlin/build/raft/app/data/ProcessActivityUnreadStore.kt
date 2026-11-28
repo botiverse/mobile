@@ -2,10 +2,13 @@ package build.raft.app.data
 
 import build.raft.app.RaftCoreInternalApi
 
+import build.raft.app.model.ActivityDoneUpdated
 import build.raft.app.model.ServerId
 import build.raft.app.model.DirectMessageCreated
 import build.raft.app.model.MessageNew
 import build.raft.app.model.MessageUpdated
+import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.PerReceiverReadStateChanged
 import build.raft.app.model.RealtimeEvent
 import build.raft.app.model.RealtimeRefreshRequired
@@ -915,7 +918,10 @@ private val RealtimeOnlyActivitySummarySources = setOf("realtime", "realtime_sum
     when (this) {
         is SyncResumeResponse,
         is RealtimeRefreshRequired,
-        is PerReceiverReadStateChanged -> false
+        is PerReceiverReadStateChanged,
+        is ActivityDoneUpdated,
+        is NotificationRetracted,
+        is NotificationLevelChanged -> false
         else -> true
     }
 
@@ -1004,4 +1010,8 @@ private fun DataResult<ActivityUnreadSummarySnapshot>.resultLabel(): String =
     }
 
 @RaftCoreInternalApi fun RealtimeEvent.affectsActivityUnreadSummary(): Boolean =
-    affectsActivityContent() || this is PerReceiverReadStateChanged
+    affectsActivityContent() ||
+        this is PerReceiverReadStateChanged ||
+        this is ActivityDoneUpdated ||
+        this is NotificationRetracted ||
+        this is NotificationLevelChanged

@@ -1711,6 +1711,7 @@ private fun RaftAppShellReadyContent(
                 selectedConversationSeen = { raftHostShowsContent(storeScope.shellInstanceId) },
                 refreshHomeForFreshness = homeStore::refreshVisibleForegroundForFreshness,
                 refreshActivityForFreshness = homeActivityStore::refreshForFreshness,
+                refreshHiddenServerActivityUnread = homeStore::requestHiddenServerActivityUnreadRefreshIfMultiServer,
             )
         }
     AppShellHomeShellStoreEffects(

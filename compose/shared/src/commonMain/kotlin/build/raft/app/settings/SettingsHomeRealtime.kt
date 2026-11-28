@@ -301,6 +301,10 @@ private fun RealtimeEvent.serverIdHint(): ServerId? =
         is build.raft.app.model.MobilePlacesUpdated -> serverId
         is ServerAppearanceUpdated -> serverId
         is build.raft.app.model.UserProfileUpdated -> serverId
+        is NotificationPushReceived -> serverId
+        is build.raft.app.model.NotificationRetracted -> serverId
+        is build.raft.app.model.NotificationLevelChanged -> serverId
+        is PerReceiverReadStateChanged -> serverId
         else -> null
     }
 

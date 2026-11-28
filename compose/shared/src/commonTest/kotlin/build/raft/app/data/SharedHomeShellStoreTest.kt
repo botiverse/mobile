@@ -356,6 +356,36 @@ class SharedHomeShellStoreTest {
         fixture.cancel()
     }
 
+    @Test
+    fun foregroundRefreshOnNonHomeDestinationsRefreshesHiddenServerActivityUnread() {
+        val fixture = fixture()
+        val store = fixture.store
+
+        // Visible Home refreshes Home itself (not the hidden-Home summary hook).
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(0, fixture.hiddenServerActivityUnreadRefreshes)
+
+        // Activity tab, Activity destination, Saved, and Search all trigger the hidden-Home
+        // multi-server unread-summary refresh hook on foreground return.
+        store.dispatch(SharedHomeShellIntent.SetSelectedTab("activity"))
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(1, fixture.hiddenServerActivityUnreadRefreshes)
+
+        store.dispatch(SharedHomeShellIntent.OpenSaved)
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(2, fixture.hiddenServerActivityUnreadRefreshes)
+
+        store.dispatch(SharedHomeShellIntent.OpenSearch)
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(3, fixture.hiddenServerActivityUnreadRefreshes)
+
+        store.dispatch(SharedHomeShellIntent.OpenActivity)
+        store.dispatch(SharedHomeShellIntent.ForegroundRefresh)
+        assertEquals(4, fixture.hiddenServerActivityUnreadRefreshes)
+
+        fixture.cancel()
+    }
+
     private fun fixture(
         homeState: SharedHomeState = SharedHomeState(),
         activityState: SharedActivityState = SharedActivityState(),
@@ -370,6 +400,7 @@ class SharedHomeShellStoreTest {
         val activityIntents = mutableListOf<SharedActivityIntent>()
         val activitySummaryRefreshes = mutableListOf<Pair<String?, String>>()
         val searchSavedIntents = mutableListOf<SharedHomeSearchSavedIntent>()
+        var hiddenRefreshes = 0
         val store =
             SharedHomeShellStore(
                 homeState = homeFlow,
@@ -383,7 +414,8 @@ class SharedHomeShellStoreTest {
                 },
                 resetActivity = {},
                 scope = scope,
-                selectedConversationSeen = selectedConversationSeen
+                selectedConversationSeen = selectedConversationSeen,
+                refreshHiddenServerActivityUnread = { hiddenRefreshes += 1 },
             )
         return ShellFixture(
             store,
@@ -392,7 +424,8 @@ class SharedHomeShellStoreTest {
             homeIntents,
             activityIntents,
             activitySummaryRefreshes,
-            searchSavedIntents
+            searchSavedIntents,
+            hiddenServerActivityUnreadRefreshesProvider = { hiddenRefreshes },
         )
     }
 
@@ -466,8 +499,12 @@ class SharedHomeShellStoreTest {
         val homeIntents: MutableList<SharedHomeIntent>,
         val activityIntents: MutableList<SharedActivityIntent>,
         val activitySummaryRefreshes: MutableList<Pair<String?, String>>,
-        val searchSavedIntents: MutableList<SharedHomeSearchSavedIntent>
+        val searchSavedIntents: MutableList<SharedHomeSearchSavedIntent>,
+        private val hiddenServerActivityUnreadRefreshesProvider: () -> Int,
     ) {
+        val hiddenServerActivityUnreadRefreshes: Int
+            get() = hiddenServerActivityUnreadRefreshesProvider()
+
         fun cancel() {
             store.clear()
             scope.cancel()

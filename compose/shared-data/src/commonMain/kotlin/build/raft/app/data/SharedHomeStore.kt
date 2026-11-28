@@ -7,6 +7,7 @@ import build.raft.app.shownAuthorName
 import build.raft.app.RaftSidebarSortMode
 import build.raft.app.isHomeExternalSectionChannel
 import build.raft.app.base.putIfAbsent
+import build.raft.app.model.ActivityDoneUpdated
 import build.raft.app.model.ChannelCapabilities
 import build.raft.app.model.ChannelId
 import build.raft.app.model.ConversationKind
@@ -29,6 +30,8 @@ import build.raft.app.model.MemberId
 import build.raft.app.model.MemberKind
 import build.raft.app.model.MemberPresenceUpdated
 import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationRetracted
 import build.raft.app.model.PerReceiverNotificationPrefsChanged
 import build.raft.app.model.PerReceiverPinnedChanged
 import build.raft.app.model.PerReceiverReadStateChanged
@@ -229,6 +232,8 @@ private data class HomeNotificationAuthority(
     private val resolveExternalThreadParentChannelId: (ServerId, String) -> String? = { _, _ -> null },
     /** Coalesce window for Lounge listing DM-list refreshes (`slock #16474` `DM_LIST_READ_DELAY_MS`). */
     loungeDmListRefreshDelayMillis: Long = HOME_FOLLOWED_THREAD_REFRESH_DELAY_MS,
+    /** Coalesce window for non-selected server `servers/unread-summary` refreshes. */
+    backgroundServerActivityUnreadRefreshDelayMillis: Long = HOME_FOLLOWED_THREAD_REFRESH_DELAY_MS,
 ) : SharedConversationIdentityProvider {
     private val _state = raftStoreState(SharedHomeState(), "SharedHomeStore")
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -362,6 +367,12 @@ private data class HomeNotificationAuthority(
     private var hiddenServerUnreadJob: Job? = null
     private var hiddenServerUnreadAsked = false
     private var hiddenServerUnreadLastStartedAtMillis: Long? = null
+    // Coalesced `servers/unread-summary` refresh triggered by non-selected server realtime events
+    // (runs whether Home is visible or hidden so `serverActivityUnread` stays accurate for badges).
+    private val backgroundServerActivityUnreadRefresh =
+        HomeCoalescedRefresh(scope = scope, delayMillis = backgroundServerActivityUnreadRefreshDelayMillis) {
+            refreshServerActivityUnreadOnly()
+        }
 
     fun snapshotFor(serverId: ServerId): HomeSnapshot? =
         (_state.value.content as? SharedHomeContentState.Content)
@@ -645,6 +656,7 @@ private data class HomeNotificationAuthority(
         conversationIdentityOwners.value = emptyMap()
         hiddenHomeSnapshotDirty = false
         followedThreadUnreadRefresh.cancel()
+        backgroundServerActivityUnreadRefresh.cancel()
         resetLoungeListingState()
         synchronized(unreadReconcileLock) {
             unreadReconcileOwner = null
@@ -853,6 +865,7 @@ private data class HomeNotificationAuthority(
         // would be dropped anyway, so don't spend the request.
         if (serverId != currentServerId) {
             followedThreadUnreadRefresh.cancel()
+            backgroundServerActivityUnreadRefresh.cancel()
             resetLoungeListingState()
         }
         val nextSwitch =
@@ -1245,13 +1258,21 @@ private data class HomeNotificationAuthority(
         if (visibleServerId != null && visibleServerId != serverId) {
             return
         }
-        // `slock #16474`: a thread follow/unfollow frame of another server never touches this server's
-        // Home snapshot or dirty flag (the user's room spans every server they belong to).
-        if (
-            event is NotificationLevelChanged &&
-            visibleServerId != null &&
-            event.serverId != visibleServerId
-        ) {
+        // User-room events (`notification:*`, `activity_done:updated`, `read_state:updated`) span
+        // every server the account belongs to. When one arrives on the selected server's socket for
+        // another server, leave this server's Home snapshot and dirty flag untouched and update the
+        // other server's unread projection instead.
+        val crossServerEventServerId =
+            when (event) {
+                is NotificationLevelChanged -> event.serverId
+                is NotificationRetracted -> event.serverId
+                is NotificationPushReceived -> event.serverId
+                is ActivityDoneUpdated -> event.serverId
+                is PerReceiverReadStateChanged -> event.serverId
+                else -> null
+            }
+        if (crossServerEventServerId != null && visibleServerId != null && crossServerEventServerId != visibleServerId) {
+            applyBackgroundServerUnreadEvent(crossServerEventServerId, event)
             return
         }
         val realtimeMessages = event.homeRealtimeMessages()
@@ -1363,8 +1384,36 @@ private data class HomeNotificationAuthority(
         if (content.session.servers.none { it.id == serverId.value }) return false
         val memberId = MemberId(content.session.user.id)
         return when (event) {
-            is MessageNew -> applyBackgroundUnreadMessages(serverId, memberId, listOf(event.message))
-            is SyncResumeResponse -> applyBackgroundUnreadMessages(serverId, memberId, event.messages)
+            is MessageNew -> {
+                val updated = applyBackgroundUnreadMessages(serverId, memberId, listOf(event.message))
+                if (updated) backgroundServerActivityUnreadRefresh.request()
+                updated
+            }
+            is SyncResumeResponse -> {
+                val updated = applyBackgroundUnreadMessages(serverId, memberId, event.messages)
+                if (updated) backgroundServerActivityUnreadRefresh.request()
+                updated
+            }
+            is NotificationRetracted -> {
+                if (event.serverId != serverId) return false
+                backgroundServerActivityUnreadRefresh.request()
+                true
+            }
+            is NotificationPushReceived -> {
+                if (event.serverId != serverId) return false
+                backgroundServerActivityUnreadRefresh.request()
+                true
+            }
+            is ActivityDoneUpdated -> {
+                if (event.serverId != serverId) return false
+                backgroundServerActivityUnreadRefresh.request()
+                true
+            }
+            is NotificationLevelChanged -> {
+                if (event.serverId != serverId) return false
+                backgroundServerActivityUnreadRefresh.request()
+                true
+            }
             is PerReceiverReadStateChanged -> {
                 if (event.serverId != null && event.serverId != serverId) return false
                 var accepted = false
@@ -1392,7 +1441,13 @@ private data class HomeNotificationAuthority(
                         scope = scope
                     ) || accepted
                 }
-                if (accepted) scheduleReadStateReconcile()
+                if (accepted) {
+                    if (homeSurfaceVisible) {
+                        scheduleReadStateReconcile()
+                    } else {
+                        backgroundServerActivityUnreadRefresh.request()
+                    }
+                }
                 accepted
             }
             else -> false
@@ -1616,6 +1671,48 @@ private data class HomeNotificationAuthority(
     }
 
     /**
+     * Refreshes `/servers/unread-summary` on every background -> foreground return while Home is
+     * hidden (e.g. Activity tab or pushed Thread) for multi-server accounts, so reads made on
+     * Web/Desktop for non-selected servers clear `serverActivityUnread[otherServer]`. Started by
+     * the host (not the constructor) so test scopes terminate cleanly.
+     */
+    @RaftCoreInternalApi fun followAppLifecycle(
+        appForeground: Flow<Boolean> = RaftStaleReadRecoverySignals.foreground,
+    ): Job =
+        scope.launch {
+            var previous: Boolean? = null
+            appForeground.collect { foreground ->
+                val returned = foreground && previous == false
+                previous = foreground
+                if (returned) {
+                    requestHiddenServerActivityUnreadRefreshIfMultiServerOnStore()
+                }
+            }
+        }
+
+    /**
+     * Warm foreground return while Home is hidden on a multi-server account: schedule the
+     * throttled `/servers/unread-summary` refresh alone (no full Home reload).
+     */
+    @RaftCoreInternalApi fun requestHiddenServerActivityUnreadRefreshIfMultiServer() {
+        scope.launch { requestHiddenServerActivityUnreadRefreshIfMultiServerOnStore() }
+    }
+
+    private fun requestHiddenServerActivityUnreadRefreshIfMultiServerOnStore() {
+        if (homeSurfaceVisible) return
+        val content = _state.value.content as? SharedHomeContentState.Content ?: return
+        if (content.session.servers.size <= 1) return
+        // Warm foreground return can trigger both `followAppLifecycle` and `SharedHomeShellStore`'s
+        // foreground refresh within the same resume tick; skip queuing a redundant trailing fetch
+        // when a hidden summary refresh just started.
+        val lastStarted = hiddenServerUnreadLastStartedAtMillis
+        if (lastStarted != null && nowMillis() - lastStarted < HOME_HIDDEN_SERVER_UNREAD_COALESCE_WINDOW_MS) {
+            return
+        }
+        requestHiddenServerActivityUnreadRefresh()
+    }
+
+    /**
      * Hidden Home: `servers/unread-summary` alone, for [SharedHomeState.serverActivityUnread] (the
      * launcher badge's other-server counts), leading + trailing at most once per
      * [HOME_HIDDEN_SERVER_UNREAD_REFRESH_MIN_INTERVAL_MS]. Stops once Home shows: its full reload
@@ -1665,8 +1762,19 @@ private data class HomeNotificationAuthority(
         val liveOwner =
             authStore.readSession()?.let { live -> readReceiptOwnerFactory?.invoke(serverId.value, live.user.id) }
         if (nowContent.baseSnapshot.server.id != serverId || liveOwner != owner) return
+        val nextServerUnreadCounts =
+            if (summaries.isEmpty()) {
+                now.serverUnreadCounts
+            } else {
+                now.serverUnreadCounts +
+                    summaries.mapNotNull { summary ->
+                        val id = summary.serverId.trim().takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+                        id to summary.unreadCount.coerceAtLeast(0)
+                    }
+            }
         reduceState(
             now.copy(
+                serverUnreadCounts = nextServerUnreadCounts,
                 serverActivityUnread =
                     HomeServerActivityUnreadProjection(
                         requestOwner = owner,
@@ -3248,6 +3356,7 @@ private data class HomeNotificationAuthority(
         serverSwitchWatchdog?.cancel()
         serverSwitchWatchdog = null
         followedThreadUnreadRefresh.cancel()
+        backgroundServerActivityUnreadRefresh.cancel()
         resetLoungeListingState()
         val aligned = latest.alignToAuthoritativeServer(sessionServerId)
         diagnosticsLogger(
@@ -6317,6 +6426,7 @@ private const val MAX_REALTIME_UNREAD_RECONCILE_ROUNDS = 3
 
 /** fb-52cc0499: hidden Home reads `servers/unread-summary` for the launcher badge at most this often. */
 @RaftCoreInternalApi const val HOME_HIDDEN_SERVER_UNREAD_REFRESH_MIN_INTERVAL_MS: Long = 10_000L
+private const val HOME_HIDDEN_SERVER_UNREAD_COALESCE_WINDOW_MS: Long = 1_000L
 
 /** Task #60: a ForegroundRefresh joins a Start/ForegroundRefresh load launched at most this long ago. */
 @RaftCoreInternalApi const val FOREGROUND_REFRESH_COALESCE_WINDOW_MILLIS = 1_000L

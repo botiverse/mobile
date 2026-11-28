@@ -754,4 +754,92 @@ class ActivityDoneUpdatedSyncTest {
         assertEquals(1, f.facts.last().totalUnreadCount)
         assertEquals(1, f.inbox.listReads.size)
     }
+
+    // --- 13: Off-page (hasMore=true) Done, read receipt, and row-reread insert count accuracy ---
+
+    @Test
+    fun offPageDoneWhileHasMoreAndUnreadSchedulesAuthoritativeReconcile() = runTest {
+        val ch1 = channelRow("ch-1", latestActivitySeq = "40", unreadCount = 1)
+        val f =
+            fixture(
+                initial = snapshot(listOf(ch1), hasMore = true, totalCount = 40, totalUnreadCount = 4),
+                rowPosition = true,
+                inPlace = true,
+            )
+        f.inbox.serveList(snapshot(listOf(ch1), hasMore = true, totalCount = 39, totalUnreadCount = 1))
+
+        f.store.dispatch(doneEvent(rowKind = ActivityDoneRowKind.Channel, rowId = "ch-page2", done = true, position = "20"))
+        advanceTimeBy(ActivityRealtimeBackgroundRefreshIntervalMillis + 100L)
+        runCurrent()
+
+        assertEquals(2, f.inbox.listReads.size, "off-page Done while hasMore=true and unread>0 must reconcile")
+        assertEquals(1, f.store.state.value.totalUnreadCount)
+        assertEquals(1, f.facts.last().totalUnreadCount)
+    }
+
+    @Test
+    fun offPageReadReceiptResultWhileHasMoreAndUnreadSchedulesAuthoritativeReconcile() = runTest {
+        val ch1 = channelRow("ch-1", latestActivitySeq = "40", unreadCount = 1)
+        val owner = ReadReceiptOwner("production", "user-1", "server-1")
+        val f =
+            fixture(
+                initial = snapshot(listOf(ch1), hasMore = true, totalCount = 40, totalUnreadCount = 4),
+                rowPosition = true,
+                inPlace = true,
+            )
+        f.inbox.serveList(snapshot(listOf(ch1), hasMore = true, totalCount = 40, totalUnreadCount = 1))
+
+        val offPageChannel = ChannelId("ch-page2")
+        f.store.dispatch(
+            SharedActivityIntent.ApplyReadReceiptPrediction(
+                ReadReceiptPrediction(owner, offPageChannel, revision = 1L, target = ReadReceiptTarget.All)
+            )
+        )
+        runCurrent()
+        // Prediction alone waits for server ack before reconciling.
+        assertEquals(1, f.inbox.listReads.size)
+
+        f.store.dispatch(
+            SharedActivityIntent.ApplyReadReceiptResult(
+                request = ReadReceiptRequest.All(offPageChannel, owner, revision = 1L),
+                succeeded = true,
+                maxReadSeq = 50L,
+            )
+        )
+        advanceTimeBy(ActivityRealtimeBackgroundRefreshIntervalMillis + 100L)
+        runCurrent()
+
+        assertEquals(2, f.inbox.listReads.size, "acknowledged off-page read must reconcile totalUnreadCount")
+        assertEquals(1, f.store.state.value.totalUnreadCount)
+        assertEquals(1, f.facts.last().totalUnreadCount)
+    }
+
+    @Test
+    fun rowRereadInsertIntoPageOneWhileHasMoreDoesNotDoubleCountAndReconciles() = runTest {
+        val ch1 = channelRow("ch-1", latestActivitySeq = "40", unreadCount = 0, lastMessageAt = "2026-11-11T09:00:00.000Z")
+        val dmPage2 = dmRow("dm-page2", latestActivitySeq = "55", unreadCount = 6, lastMessageAt = "2026-11-11T10:00:00.000Z")
+        val f =
+            fixture(
+                initial = snapshot(listOf(ch1), hasMore = true, totalCount = 40, totalUnreadCount = 5),
+                rowPosition = true,
+                inPlace = true,
+                settleThrottle = false,
+            )
+        f.inbox.serveRows(dmPage2)
+        f.inbox.serveList(snapshot(listOf(dmPage2, ch1), hasMore = true, totalCount = 40, totalUnreadCount = 6))
+
+        f.store.dispatch(doneEvent(rowKind = ActivityDoneRowKind.Dm, rowId = "dm-page2", done = false, position = null))
+        advanceTimeBy(ActivityRowRereadDelayMillis + 10L)
+        runCurrent()
+
+        assertEquals(1, f.inbox.listReads.size, "still inside throttle window before reconcile")
+        assertEquals(listOf("dm:dm-page2", "channel:ch-1"), f.store.state.value.items.map { it.key })
+        assertEquals(6, f.store.state.value.totalUnreadCount, "must not double-count 5 + 6 = 11 while hasMore=true")
+        assertEquals(40, f.store.state.value.totalCount)
+
+        advanceTimeBy(ActivityRealtimeBackgroundRefreshIntervalMillis + 100L)
+        runCurrent()
+        assertEquals(2, f.inbox.listReads.size, "must reconcile authoritative server count after off-page insert")
+        assertEquals(6, f.store.state.value.totalUnreadCount)
+    }
 }

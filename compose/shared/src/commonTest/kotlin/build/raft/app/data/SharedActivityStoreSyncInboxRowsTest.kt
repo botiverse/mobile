@@ -41,8 +41,16 @@ class SharedActivityStoreSyncInboxRowsTest {
         fun row(key: String): InboxItem? = store.state.value.items.firstOrNull { it.key == key }
     }
 
-    private fun TestScope.loaded(rows: List<InboxItem>, rowPosition: Boolean = true, hasMore: Boolean = false): Fixture {
-        val inbox = CountingInbox(listOf(snapshot(rows, hasMore = hasMore)))
+    private fun TestScope.loaded(
+        rows: List<InboxItem>,
+        rowPosition: Boolean = true,
+        hasMore: Boolean = false,
+        totalCount: Int = rows.size,
+        totalUnreadCount: Int = rows.sumOf { it.unreadCount },
+        followUpSnapshots: List<InboxSnapshot> = emptyList(),
+    ): Fixture {
+        val initial = snapshot(rows, hasMore = hasMore, totalCount = totalCount, totalUnreadCount = totalUnreadCount)
+        val inbox = CountingInbox(listOf(initial) + followUpSnapshots)
         val store =
             activityStore(
                 scope = backgroundScope,
@@ -146,5 +154,71 @@ class SharedActivityStoreSyncInboxRowsTest {
         assertEquals(emptySet<String>(), assertIs<RaftSyncInboxRowsOutcome.Applied>(outcome).settledIds)
         settle()
         assertEquals(2, f.inbox.listReads)
+    }
+
+    @Test
+    fun offPageUpsertOlderThanWindowWhileHasMoreReconcilesTotalUnreadCount() = runTest {
+        val page1 = listOf(row("ch-1", "10", unread = 0, at = "2026-11-17T08:00:00.000Z"))
+        val f =
+            loaded(
+                rows = page1,
+                hasMore = true,
+                totalCount = 40,
+                totalUnreadCount = 5,
+                followUpSnapshots = listOf(snapshot(page1, hasMore = true, totalCount = 40, totalUnreadCount = 0)),
+            )
+
+        // Off-page row read on another device (older than items.last(), unread=0): skipped from page 1
+        // but must schedule an authoritative reconcile so totalUnreadCount clears from 5 -> 0.
+        f.sync(syncInboxRowUpsert(1, "ch-old", syncInboxChannelRow("ch-old", "3", unread = 0, at = "2026-11-16T08:00:00.000Z")))
+        assertNull(f.row("channel:ch-old"))
+        settle()
+        assertEquals(2, f.inbox.listReads, "off-page upsert while hasMore=true must reconcile totalUnreadCount")
+        assertEquals(0, f.store.state.value.snapshot!!.totalUnreadCount)
+    }
+
+    @Test
+    fun offPageDeleteWhileHasMoreAndUnreadReconcilesTotalUnreadCount() = runTest {
+        val page1 = listOf(row("ch-1", "10", unread = 1, at = "2026-11-17T08:00:00.000Z"))
+        val f =
+            loaded(
+                rows = page1,
+                hasMore = true,
+                totalCount = 40,
+                totalUnreadCount = 4,
+                followUpSnapshots = listOf(snapshot(page1, hasMore = true, totalCount = 39, totalUnreadCount = 1)),
+            )
+
+        f.sync(syncInboxRowDelete(1, "ch-page2", "20", reason = "done"))
+        settle()
+        assertEquals(2, f.inbox.listReads, "off-page delete while hasMore=true and totalUnreadCount>0 must reconcile")
+        assertEquals(1, f.store.state.value.snapshot!!.totalUnreadCount)
+    }
+
+    @Test
+    fun offPageUpsertInsertingIntoPageOneWhileHasMoreDoesNotDoubleCountAndReconciles() = runTest {
+        val ch1 = row("ch-1", "10", unread = 0, at = "2026-11-17T08:00:00.000Z")
+        val bumped = row("ch-page2", "25", unread = 6, at = "2026-11-17T10:00:00.000Z")
+        val f =
+            loaded(
+                rows = listOf(ch1),
+                hasMore = true,
+                totalCount = 40,
+                totalUnreadCount = 7,
+                followUpSnapshots = listOf(snapshot(listOf(bumped, ch1), hasMore = true, totalCount = 40, totalUnreadCount = 8)),
+            )
+
+        // ch-page2 already contributed 5 unreads (plus 2 on ch-page3 = 7 totalUnreadCount) on page 2;
+        // a 6th message bumps ch-page2 onto page 1 with unread=6. Must NOT double-count to 7 + 6 = 13
+        // before reconciling with the server's authoritative count (8).
+        f.sync(syncInboxRowUpsert(1, "ch-page2", syncInboxChannelRow("ch-page2", "25", unread = 6, at = "2026-11-17T10:00:00.000Z")))
+        assertEquals(1, f.inbox.listReads, "still inside throttle window before reconcile")
+        assertEquals(listOf("channel:ch-page2", "channel:ch-1"), f.store.state.value.items.map { it.key })
+        assertEquals(7, f.store.state.value.snapshot!!.totalUnreadCount, "must not double-count off-page unreads")
+        assertEquals(40, f.store.state.value.snapshot!!.totalCount, "must not inflate totalCount")
+
+        settle()
+        assertEquals(2, f.inbox.listReads, "must reconcile authoritative totalUnreadCount with server")
+        assertEquals(8, f.store.state.value.snapshot!!.totalUnreadCount)
     }
 }

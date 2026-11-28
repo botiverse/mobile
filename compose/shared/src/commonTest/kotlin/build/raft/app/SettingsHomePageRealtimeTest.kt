@@ -5,6 +5,14 @@ import build.raft.app.data.StoredAuthSession
 import build.raft.app.data.StoredAuthUser
 import build.raft.app.data.realtime.RealtimeEventMapper
 import build.raft.app.data.realtime.RealtimeSocketEvents
+import build.raft.app.model.ChannelId
+import build.raft.app.model.ConversationKind
+import build.raft.app.model.MessageId
+import build.raft.app.model.NotificationLevelChanged
+import build.raft.app.model.NotificationPushReceived
+import build.raft.app.model.NotificationRetracted
+import build.raft.app.model.PerReceiverReadStateChanged
+import build.raft.app.model.PerReceiverReadStateScope
 import build.raft.app.model.RealtimeRefreshRequired
 import build.raft.app.model.RealtimeRefreshScope
 import build.raft.app.model.ServerId
@@ -63,6 +71,46 @@ class SettingsHomePageRealtimeTest {
             "event-server",
             resolveSharedShellRealtimeServerId(JsonObject(emptyMap()), event, sampleSession())
         )
+    }
+
+    @Test
+    fun notificationAndReadStateEventsResolveServerIdFromPayloadWhenWrapperOmitsIt() {
+        val emptyWrapper = JsonObject(emptyMap())
+        val push =
+            NotificationPushReceived(
+                serverId = ServerId("server-2"),
+                kind = ConversationKind.Channel,
+                channelId = ChannelId("ch-1"),
+                messageId = MessageId("m-1"),
+                title = "#general",
+                body = "ping",
+                tag = "m-1",
+            )
+        val retract =
+            NotificationRetracted(
+                serverId = ServerId("server-2"),
+                groupKey = "server-2:ch-1",
+                conversationId = "ch-1",
+                throughSeq = 12L,
+            )
+        val levelChanged =
+            NotificationLevelChanged(
+                serverId = ServerId("server-2"),
+                scope = "server",
+                scopeId = "server-2",
+                level = "none",
+                prefsVersion = 3L,
+            )
+        val readState =
+            PerReceiverReadStateChanged(
+                serverId = ServerId("server-2"),
+                scopes = listOf(PerReceiverReadStateScope(ChannelId("ch-1"), maxReadSeq = 12L, readStateVersion = 2L)),
+            )
+
+        assertEquals("server-2", resolveSharedShellRealtimeServerId(emptyWrapper, push, sampleSession()))
+        assertEquals("server-2", resolveSharedShellRealtimeServerId(emptyWrapper, retract, sampleSession()))
+        assertEquals("server-2", resolveSharedShellRealtimeServerId(emptyWrapper, levelChanged, sampleSession()))
+        assertEquals("server-2", resolveSharedShellRealtimeServerId(emptyWrapper, readState, sampleSession()))
     }
 
     @Test
