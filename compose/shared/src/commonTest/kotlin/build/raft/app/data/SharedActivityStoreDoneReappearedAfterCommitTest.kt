@@ -16,6 +16,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -57,12 +58,16 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
         var serving: InboxSnapshot,
         var failNextDone: Boolean = false,
         var failOnDoneCallNumber: Int? = null,
+        var failErrorCode: String = "done_failed",
         var doneGate: CompletableDeferred<Unit>? = null,
     ) : InboxRepository {
         val doneCalls = mutableListOf<Pair<ChannelId, InboxDoneFrontier>>()
+        var loadInitialCount = 0
 
-        override suspend fun loadInitial(serverId: ServerId, filter: InboxFilter, limit: Int): DataResult<InboxSnapshot> =
-            DataResult.Content(serving)
+        override suspend fun loadInitial(serverId: ServerId, filter: InboxFilter, limit: Int): DataResult<InboxSnapshot> {
+            loadInitialCount += 1
+            return DataResult.Content(serving)
+        }
 
         override suspend fun loadMore(serverId: ServerId, filter: InboxFilter, offset: Int, limit: Int): DataResult<InboxSnapshot> =
             DataResult.Content(serving)
@@ -72,7 +77,7 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
             doneGate?.await()
             val shouldFail = failNextDone || (failOnDoneCallNumber != null && doneCalls.size == failOnDoneCallNumber)
             return if (shouldFail) {
-                DataResult.Error(ScreenError("done_failed"))
+                DataResult.Error(ScreenError(failErrorCode))
             } else {
                 DataResult.Content(InboxDoneResult(channelId))
             }
@@ -83,10 +88,12 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
         inbox: InboxRepository,
         traces: MutableList<Pair<String, ActivityDoneTraceEvent>>,
         holdMillis: Long = ActivityLocalMutationHoldMillis,
+        conversationRepository: FakeConversationRepository = FakeConversationRepository(),
     ): SharedActivityStore =
         activityStore(
             scope = backgroundScope,
             inboxRepository = inbox,
+            conversationRepository = conversationRepository,
             authStore = InMemoryRaftAuthSessionStore(sampleSession()),
             localMutationHoldMillis = holdMillis,
             nowMillis = { testScheduler.currentTime },
@@ -397,5 +404,113 @@ class SharedActivityStoreDoneReappearedAfterCommitTest {
             )
         trace.noteCommitted(obj.key, obj, meta)
         assertTrue(trace.detectReappeared(emptyList(), listOf(obj), ActivityDoneRowChange.ListRead).isEmpty())
+    }
+
+    @Test
+    fun http404OnMarkDoneKeepsRowClosedSkipsDoneFailedAndRefreshesInBackground() = runTest {
+        val deletedRow = storageRow(channelId = "ch-deleted", unread = 2, latestActivitySeq = "10", readStateSeq = "10", doneFrontierSeq = "10")
+        val keptRow = storageRow(channelId = "ch-kept", unread = 1, latestActivitySeq = "20", readStateSeq = "20", doneFrontierSeq = "20")
+        val inbox =
+            MutableInboxRepository(
+                serving = snapshot(listOf(deletedRow, keptRow)),
+                failNextDone = true,
+                failErrorCode = "http_404",
+            )
+        val traces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val store = testStore(inbox, traces)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+        assertEquals(1, inbox.loadInitialCount)
+
+        // Even if the next refresh transiently still serves the row during the hold, 404 keeps it closed
+        // without rolling back, setting an error banner, emitting done_failed, or recording noteCommitted.
+        store.dispatch(SharedActivityIntent.MarkDone(deletedRow))
+        runCurrent()
+
+        assertEquals(listOf("channel:ch-kept"), store.state.value.items.map { it.key })
+        assertNull(store.state.value.errorCode)
+        assertEquals(2, inbox.loadInitialCount, "404 must trigger background refresh")
+        assertTrue(traces.reappeared().isEmpty(), "404 must not emit done_failed")
+
+        // Past the hold, even if a stale list still had the row, noteCommitted was skipped so no after_commit_* fires.
+        advanceTimeBy(ActivityLocalMutationHoldMillis + 1_000L)
+        store.dispatch(SharedActivityIntent.PullRefresh)
+        runCurrent()
+        assertTrue(traces.reappeared().isEmpty(), "404 must not arm committed-reappear tracking")
+    }
+
+    @Test
+    fun http404OnFrontierCatchUpDoneKeepsRowClosedWithoutDoneFailed() = runTest {
+        val initialRow = storageRow(channelId = "ch-gone", unread = 1, latestActivitySeq = "10", readStateSeq = "10", doneFrontierSeq = "10")
+        val inbox =
+            MutableInboxRepository(
+                serving = snapshot(listOf(initialRow)),
+                failOnDoneCallNumber = 2,
+                failErrorCode = "http_404",
+            )
+        val traces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val store = testStore(inbox, traces)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.ApplyRealtimeEvent(MessageNew(message("msg-12", channelId = "ch-gone", seq = 12L))))
+        inbox.serving = snapshot(listOf(storageRow(channelId = "ch-gone", unread = 0, latestActivitySeq = "12", readStateSeq = "12", doneFrontierSeq = "12")))
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+        runCurrent()
+
+        assertEquals(2, inbox.doneCalls.size)
+        assertTrue(store.state.value.items.isEmpty(), "404 on catch-up Done must keep row closed")
+        assertNull(store.state.value.errorCode)
+        assertTrue(traces.reappeared().isEmpty(), "404 on catch-up Done must not emit done_failed")
+    }
+
+    @Test
+    fun non404ErrorStillRollsBackAndEmitsDoneFailed() = runTest {
+        val row = storageRow(channelId = "ch-conflict", unread = 1, latestActivitySeq = "10", readStateSeq = "10", doneFrontierSeq = "10")
+        val inbox =
+            MutableInboxRepository(
+                serving = snapshot(listOf(row)),
+                failNextDone = true,
+                failErrorCode = "http_409",
+            )
+        val traces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val store = testStore(inbox, traces)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.MarkDone(row))
+        runCurrent()
+
+        assertEquals(listOf("channel:ch-conflict"), store.state.value.items.map { it.key })
+        assertEquals(listOf(ActivityReappearCause.DoneFailed), traces.reappeared().map { it.cause })
+    }
+
+    @Test
+    fun http404OnThreadMarkDoneKeepsRowClosedWithoutDoneFailed() = runTest {
+        val threadRow =
+            threadItem("thread-gone", unreadCount = 1).copy(
+                latestActivitySeq = "30",
+                readStateLatestActivitySeq = "30",
+                doneFrontierSeq = "30",
+                doneFrontierSeqPresent = true,
+            )
+        val inbox = MutableInboxRepository(serving = snapshot(listOf(threadRow)))
+        val conversations =
+            FakeConversationRepository().apply {
+                markThreadDoneResult = DataResult.Error(ScreenError("http_404"))
+            }
+        val traces = mutableListOf<Pair<String, ActivityDoneTraceEvent>>()
+        val store = testStore(inbox, traces, conversationRepository = conversations)
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        runCurrent()
+
+        store.dispatch(SharedActivityIntent.MarkDone(threadRow))
+        runCurrent()
+
+        assertEquals(listOf(ChannelId("thread-gone")), conversations.doneThreadChannelIds)
+        assertTrue(store.state.value.items.isEmpty(), "404 on thread Done must keep row closed")
+        assertNull(store.state.value.errorCode)
+        assertEquals(2, inbox.loadInitialCount, "404 on thread Done must trigger background refresh")
+        assertTrue(traces.reappeared().isEmpty(), "404 on thread Done must not emit done_failed")
     }
 }

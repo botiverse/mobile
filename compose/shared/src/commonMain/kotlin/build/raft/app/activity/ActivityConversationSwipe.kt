@@ -62,10 +62,16 @@ import androidx.compose.ui.unit.dp
 import build.raft.designsystem.haptics.rememberRaftHaptics
 import build.raft.designsystem.motion.RaftMotion
 import build.raft.designsystem.motion.rememberRaftReducedMotion
+import build.raft.app.data.ActivityDoneCommitTrigger
+import build.raft.app.data.ActivityReappearCause
+import build.raft.app.data.ActivitySeqChange
 import build.raft.app.data.InboxItem
 import build.raft.app.data.RaftActivityMarkAction
 import build.raft.app.data.SharedActivityIntent
 import build.raft.app.data.activityDoneRequestFrontier
+import build.raft.app.data.compareActivitySeq
+import build.raft.app.data.isCanonicalActivitySeq
+import build.raft.app.data.isCanonicalPositiveActivitySeq
 import build.raft.app.data.isFollowedActivityThread
 import build.raft.app.data.isUnfollowedActivityThread
 import build.raft.app.data.showsUnread
@@ -641,6 +647,8 @@ internal data class ActivityPendingSwipeDone(
     val action: ActivitySwipeDeferredAction = ActivitySwipeDeferredAction.Done,
     val listOwnerUserId: String? = null,
     val listOwnerServerId: String? = null,
+    val clickedAtMillis: Long = 0L,
+    val wasUnreadAtClick: Boolean = item.unreadCount > 0,
 )
 
 /** One step of [ActivitySwipeDoneUndoState]: the next state, and the waiting row to commit now, if any. */
@@ -662,11 +670,20 @@ internal data class ActivitySwipeDoneUndoState(
         action: ActivitySwipeDeferredAction = ActivitySwipeDeferredAction.Done,
         listOwnerUserId: String? = null,
         listOwnerServerId: String? = null,
+        clickedAtMillis: Long = 0L,
     ): ActivitySwipeDoneTransition {
         if (pending?.item?.key == item.key) return ActivitySwipeDoneTransition(this, commit = null)
         return ActivitySwipeDoneTransition(
             ActivitySwipeDoneUndoState(
-                ActivityPendingSwipeDone(item, nextToken, action, listOwnerUserId, listOwnerServerId),
+                ActivityPendingSwipeDone(
+                    item = item,
+                    token = nextToken,
+                    action = action,
+                    listOwnerUserId = listOwnerUserId,
+                    listOwnerServerId = listOwnerServerId,
+                    clickedAtMillis = clickedAtMillis,
+                    wasUnreadAtClick = item.unreadCount > 0,
+                ),
                 nextToken + 1,
             ),
             commit = pending,
@@ -702,20 +719,138 @@ internal fun activitySwipeListedItems(
     }
 }
 
+/** Outcome of comparing a waiting Done row against the store's current copy of that row. */
+internal sealed interface ActivitySwipeDoneDecision {
+    data class Commit(val item: InboxItem, val frontierCaughtUp: Boolean) : ActivitySwipeDoneDecision
+
+    data class CallOff(val cause: ActivityReappearCause, val seqChanged: ActivitySeqChange) : ActivitySwipeDoneDecision
+}
+
+/** Which of a conversation row's seqs differ between the copy swiped and the one listed now (web `swipeDoneSeqChange`). */
+internal fun activitySwipeDoneSeqChange(swiped: InboxItem, current: InboxItem?): ActivitySeqChange {
+    if (
+        current == null ||
+        swiped.kind == InboxItemKind.MentionAction ||
+        current.kind == InboxItemKind.MentionAction ||
+        swiped.kind == InboxItemKind.Object ||
+        current.kind == InboxItemKind.Object ||
+        swiped.kind == InboxItemKind.System ||
+        current.kind == InboxItemKind.System
+    ) {
+        return ActivitySeqChange.None
+    }
+    val latest = current.latestActivitySeq != swiped.latestActivitySeq
+    val frontier = current.doneFrontierSeq != swiped.doneFrontierSeq
+    return when {
+        latest && frontier -> ActivitySeqChange.Both
+        latest -> ActivitySeqChange.Latest
+        frontier -> ActivitySeqChange.Frontier
+        else -> ActivitySeqChange.None
+    }
+}
+
+/** Whether [current] has activity newer than what the person saw on [swiped] (web `swipeDoneHasNewerActivity`). */
+internal fun activitySwipeDoneHasNewerActivity(swiped: InboxItem, current: InboxItem): Boolean {
+    if (
+        swiped.kind == InboxItemKind.MentionAction ||
+        current.kind == InboxItemKind.MentionAction ||
+        swiped.kind == InboxItemKind.Object ||
+        current.kind == InboxItemKind.Object ||
+        swiped.kind == InboxItemKind.System ||
+        current.kind == InboxItemKind.System
+    ) {
+        return false
+    }
+    val swipedSeq = swiped.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+    val currentSeq = current.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+    return if (swipedSeq != null || currentSeq != null) {
+        compareActivitySeq(currentSeq, swipedSeq) > 0
+    } else {
+        (current.latestActivityAt ?: current.lastMessageAt) != (swiped.latestActivityAt ?: swiped.lastMessageAt)
+    }
+}
+
+/**
+ * Evaluates a waiting Done against [current] (parity with web `swipeDoneCommitItem` / `#proj-o11y:#53`):
+ * - No longer listed: still commits [swiped] (store decides from what it holds).
+ * - Newer activity: calls off with [ActivityReappearCause.CalloffNewerActivity].
+ * - Same seqs and frontier: commits [current] with `frontierCaughtUp = false`.
+ * - Non-joint row whose `doneFrontierSeq` alone caught up to `<= swiped.latestActivitySeq` (with
+ *   `readStateLatestActivitySeq` absent or `<= swiped.latestActivitySeq`): commits [current] with
+ *   `frontierCaughtUp = true`.
+ * - Any other frontier or seq change (frontier past shown seq, joint row, seq regression): calls off
+ *   with [ActivityReappearCause.CalloffFrontierMoved].
+ */
+internal fun evaluateActivitySwipeDone(swiped: InboxItem, current: InboxItem?): ActivitySwipeDoneDecision {
+    if (current == null) return ActivitySwipeDoneDecision.Commit(swiped, frontierCaughtUp = false)
+    if (
+        current.kind == InboxItemKind.MentionAction ||
+        swiped.kind == InboxItemKind.MentionAction ||
+        current.kind == InboxItemKind.System ||
+        swiped.kind == InboxItemKind.System
+    ) {
+        return ActivitySwipeDoneDecision.Commit(current, frontierCaughtUp = false)
+    }
+    if (current.kind == InboxItemKind.Object || swiped.kind == InboxItemKind.Object) {
+        return if (
+            current.kind == InboxItemKind.Object &&
+            swiped.kind == InboxItemKind.Object &&
+            current.activityObject?.doneFrontierSeq == swiped.activityObject?.doneFrontierSeq
+        ) {
+            ActivitySwipeDoneDecision.Commit(current, frontierCaughtUp = false)
+        } else {
+            ActivitySwipeDoneDecision.CallOff(ActivityReappearCause.CalloffFrontierMoved, ActivitySeqChange.None)
+        }
+    }
+    val seqChange = activitySwipeDoneSeqChange(swiped, current)
+    if (activitySwipeDoneHasNewerActivity(swiped, current)) {
+        return ActivitySwipeDoneDecision.CallOff(ActivityReappearCause.CalloffNewerActivity, seqChange)
+    }
+    val requestFrontierChanged = current.activityDoneRequestFrontier() != swiped.activityDoneRequestFrontier()
+    if (seqChange == ActivitySeqChange.None && !requestFrontierChanged) {
+        return ActivitySwipeDoneDecision.Commit(current, frontierCaughtUp = false)
+    }
+    val swipedSeq = swiped.latestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+    val servedFrontier = current.doneFrontierSeq?.takeIf(::isCanonicalPositiveActivitySeq)
+    val servedReadMarker = current.readStateLatestActivitySeq?.takeIf(::isCanonicalActivitySeq)
+    val caughtUp =
+        seqChange == ActivitySeqChange.Frontier &&
+            !current.isJointActivityRow() &&
+            !swiped.isJointActivityRow() &&
+            swipedSeq != null &&
+            servedFrontier != null &&
+            compareActivitySeq(servedFrontier, swipedSeq) <= 0 &&
+            (servedReadMarker == null || compareActivitySeq(servedReadMarker, swipedSeq) <= 0)
+    return if (caughtUp) {
+        ActivitySwipeDoneDecision.Commit(current, frontierCaughtUp = true)
+    } else {
+        ActivitySwipeDoneDecision.CallOff(ActivityReappearCause.CalloffFrontierMoved, seqChange)
+    }
+}
+
 /**
  * The intent to send when [pending] commits, or null to write nothing. [current] is the row as the list
- * presents it now (null: no longer presented). A Done follows [activitySwipeDoneCommitItem]. An Unfollow
+ * presents it now (null: no longer presented). A Done follows [evaluateActivitySwipeDone]. An Unfollow
  * always goes out: the person stops following whatever the thread says next (raft-design #790); it names
  * its list owner so the store writes it even if that list has since moved to another filter.
  */
-internal fun activitySwipeDeferredCommitIntent(pending: ActivityPendingSwipeDone, current: InboxItem?): SharedActivityIntent? =
+internal fun activitySwipeDeferredCommitIntent(
+    pending: ActivityPendingSwipeDone,
+    current: InboxItem?,
+    trigger: ActivityDoneCommitTrigger = ActivityDoneCommitTrigger.ToastClosed,
+    nowMillis: Long = pending.clickedAtMillis,
+): SharedActivityIntent? =
     when (pending.action) {
         ActivitySwipeDeferredAction.Done ->
-            activitySwipeDoneCommitItem(pending.item, current)?.let { item ->
+            (evaluateActivitySwipeDone(pending.item, current) as? ActivitySwipeDoneDecision.Commit)?.let { decision ->
                 SharedActivityIntent.MarkDone(
-                    item = item,
+                    item = decision.item,
                     listOwnerUserId = pending.listOwnerUserId,
                     listOwnerServerId = pending.listOwnerServerId,
+                    commitTrigger = trigger,
+                    waitMs = (nowMillis - pending.clickedAtMillis).coerceAtLeast(0L),
+                    wasUnreadAtClick = pending.wasUnreadAtClick,
+                    frontierCaughtUp = decision.frontierCaughtUp,
                 )
             }
         ActivitySwipeDeferredAction.Unfollow ->
@@ -728,16 +863,11 @@ internal fun activitySwipeDeferredCommitIntent(pending: ActivityPendingSwipeDone
 
 /**
  * The row to send MarkDone for when a swiped Done commits. The person swiped what they saw; if the row has
- * moved on since (newer activity: another Done frontier or time), nothing is written and the row simply
+ * moved on since (newer activity or an un-catchable frontier move), nothing is written and the row simply
  * comes back with its news. A row no longer presented is still sent: the store decides from what it holds.
  */
-internal fun activitySwipeDoneCommitItem(swiped: InboxItem, current: InboxItem?): InboxItem? {
-    if (current == null) return swiped
-    val moved =
-        current.activityDoneRequestFrontier() != swiped.activityDoneRequestFrontier() ||
-            (current.latestActivityAt ?: current.lastMessageAt) != (swiped.latestActivityAt ?: swiped.lastMessageAt)
-    return if (moved) null else current
-}
+internal fun activitySwipeDoneCommitItem(swiped: InboxItem, current: InboxItem?): InboxItem? =
+    (evaluateActivitySwipeDone(swiped, current) as? ActivitySwipeDoneDecision.Commit)?.item
 
 /** An Unfollow / Mute (already applied) whose toast offers Undo. */
 @Immutable
@@ -1377,6 +1507,7 @@ internal data class ActivityPendingRowExit(
     val ownerIdentity: String? = null,
     val listOwnerUserId: String? = null,
     val listOwnerServerId: String? = null,
+    val clickedAtMillis: Long? = null,
 )
 
 /**
@@ -1410,6 +1541,7 @@ internal data class ActivityRowExitState(
         ownerIdentity: String? = null,
         listOwnerUserId: String? = null,
         listOwnerServerId: String? = null,
+        clickedAtMillis: Long? = null,
     ): ActivityRowExitState =
         if (item.key in exitingByKey) {
             this
@@ -1425,6 +1557,7 @@ internal data class ActivityRowExitState(
                                 ownerIdentity = ownerIdentity,
                                 listOwnerUserId = listOwnerUserId,
                                 listOwnerServerId = listOwnerServerId,
+                                clickedAtMillis = clickedAtMillis,
                             )),
             )
         }

@@ -360,10 +360,12 @@ internal class FakeConversationRepository : ConversationRepository {
         return unfollowResult
     }
 
+    var markThreadDoneResult: DataResult<ThreadActionResult>? = null
+
     override suspend fun markThreadDone(threadChannelId: ChannelId, frontier: InboxDoneFrontier): DataResult<ThreadActionResult> {
         doneThreadChannelIds += threadChannelId
         doneThreadFrontiers += frontier
-        return DataResult.Content(ThreadActionResult(threadChannelId = threadChannelId, changed = true))
+        return markThreadDoneResult ?: DataResult.Content(ThreadActionResult(threadChannelId = threadChannelId, changed = true))
     }
 
     override suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult> =

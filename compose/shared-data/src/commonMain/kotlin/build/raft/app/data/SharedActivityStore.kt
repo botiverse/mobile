@@ -941,6 +941,13 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
             is SharedActivityIntent.MarkDone ->
                 if (intent.item.kind == InboxItemKind.Object) markObjectDone(intent) else markDone(intent)
+            is SharedActivityIntent.ReportDoneTrace -> {
+                val targetServerId =
+                    intent.serverId?.trim()?.takeIf { it.isNotBlank() }
+                        ?: _state.value.ownerServerId
+                        ?: _state.value.snapshot?.server?.id?.value
+                if (targetServerId != null) activityDoneTraceSink(targetServerId, intent.event)
+            }
             is SharedActivityIntent.UnfollowThread -> unfollowThread(intent)
             is SharedActivityIntent.FollowThread -> followThread(intent.item)
             is SharedActivityIntent.MarkRead ->
@@ -6010,10 +6017,24 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
         }
         // The overlay entry is pending until the server confirms the Done;
         // confirmation starts this row's own hold.
-        val clickedAtMillis = nowMillis()
+        val commitNow = nowMillis()
+        val waitMs = intent.waitMs.coerceAtLeast(0L)
+        val clickedAtMillis = commitNow - waitMs
         val rowKind = item.activityDoneTraceRowKind()
-        val wasUnreadAtClick = item.unreadCount > 0
+        val wasUnreadAtClick = intent.wasUnreadAtClick ?: (item.unreadCount > 0)
         val traceServerId = overlayOwner?.serverId ?: intent.listOwnerServerId ?: activeServerId
+        if (rowKind != null && traceServerId != null) {
+            activityDoneTraceSink(
+                traceServerId,
+                ActivityDoneTraceEvent.DoneCommitted(
+                    trigger = intent.commitTrigger,
+                    rowKind = rowKind,
+                    wasUnreadAtClick = wasUnreadAtClick,
+                    waitMs = waitMs,
+                    frontierCaughtUp = intent.frontierCaughtUp,
+                ),
+            )
+        }
         val localDoneMeta =
             rowKind?.let { kind ->
                 ActivityLocalDoneMeta(
@@ -6050,49 +6071,66 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     } else {
                         inboxRepository.markDone(targetChannelId, frontier)
                     }
-                if (result !is DataResult.Content && result !is DataResult.Empty) {
-                    // 409/412 (frontier moved / space required) land here too: like
-                    // web, drop the hold and take the refreshed row; never replay.
-                    doneReappearTrace.forget(item.key)
-                    doneOverlay.forgetAll(overlayOwner, doneGenerations)
-                    if (rowKind != null && traceServerId != null) {
-                        activityDoneTraceSink(
-                            traceServerId,
-                            ActivityDoneTraceEvent.ItemReappeared(
-                                cause = ActivityReappearCause.DoneFailed,
-                                rowKind = rowKind,
-                                wasUnreadAtClick = wasUnreadAtClick,
-                                msSinceClick = nowMillis() - clickedAtMillis,
-                                seqChanged = ActivitySeqChange.None,
-                            ),
-                        )
+                when {
+                    result is DataResult.Content || result is DataResult.Empty -> {
+                        doneReappearTrace.forget(item.key)
+                        val generation = doneGenerations[item.key]
+                        val confirmed =
+                            overlayOwner != null &&
+                                generation != null &&
+                                doneOverlay.confirm(overlayOwner, item.key, generation)
+                        if (confirmed && localDoneMeta != null) {
+                            doneReappearTrace.noteCommitted(item.key, item, localDoneMeta)
+                        }
+                        onUnreadCountsChanged()
+                        if (sameListServer && previous.snapshot != null) {
+                            // Web refreshes after a confirmed Done with the hold still armed.
+                            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+                        }
                     }
-                    if (sameListServer && previous.snapshot != null) {
-                        refreshAfterFailure(previous, "activity_mark_done_failed")
-                    } else {
-                        diagnosticsLogger(
-                            "activity_mark_done_other_owner result=failed serverId=${intent.listOwnerServerId} key=${item.key}"
-                        )
+                    result.isDoneTargetGone404() -> {
+                        // botiverse/slock #17352 (9b5c5c4f5): a deleted conversation cannot be marked
+                        // Done again; keep the row off Activity with the Done hold armed, skip
+                        // done_failed & noteCommitted, and refresh in background.
+                        doneReappearTrace.forget(item.key)
+                        doneOverlay.confirmAll(overlayOwner, doneGenerations)
+                        onUnreadCountsChanged()
+                        if (sameListServer && previous.snapshot != null) {
+                            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+                        }
                     }
-                } else {
-                    doneReappearTrace.forget(item.key)
-                    val generation = doneGenerations[item.key]
-                    val confirmed =
-                        overlayOwner != null &&
-                            generation != null &&
-                            doneOverlay.confirm(overlayOwner, item.key, generation)
-                    if (confirmed && localDoneMeta != null) {
-                        doneReappearTrace.noteCommitted(item.key, item, localDoneMeta)
-                    }
-                    onUnreadCountsChanged()
-                    if (sameListServer && previous.snapshot != null) {
-                        // Web refreshes after a confirmed Done with the hold still armed.
-                        load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+                    else -> {
+                        // 409/412 (frontier moved / space required) land here too: like
+                        // web, drop the hold and take the refreshed row; never replay.
+                        doneReappearTrace.forget(item.key)
+                        doneOverlay.forgetAll(overlayOwner, doneGenerations)
+                        if (rowKind != null && traceServerId != null) {
+                            activityDoneTraceSink(
+                                traceServerId,
+                                ActivityDoneTraceEvent.ItemReappeared(
+                                    cause = ActivityReappearCause.DoneFailed,
+                                    rowKind = rowKind,
+                                    wasUnreadAtClick = wasUnreadAtClick,
+                                    msSinceClick = nowMillis() - clickedAtMillis,
+                                    seqChanged = ActivitySeqChange.None,
+                                ),
+                            )
+                        }
+                        if (sameListServer && previous.snapshot != null) {
+                            refreshAfterFailure(previous, "activity_mark_done_failed")
+                        } else {
+                            diagnosticsLogger(
+                                "activity_mark_done_other_owner result=failed serverId=${intent.listOwnerServerId} key=${item.key}"
+                            )
+                        }
                     }
                 }
             }
         }
     }
+
+    private fun DataResult<*>.isDoneTargetGone404(): Boolean =
+        this is DataResult.Error && error.code == "http_404"
 
     /**
      * Second Done triggered when a held storage-frontier row's served marker caught up with the
@@ -6130,40 +6168,58 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                     } else {
                         inboxRepository.markDone(targetChannelId, frontier)
                     }
-                if (result !is DataResult.Content && result !is DataResult.Empty) {
-                    doneReappearTrace.forget(item.key)
-                    doneOverlay.forgetAll(owner, doneGenerations)
-                    activityDoneTraceSink(
-                        owner.serverId,
-                        ActivityDoneTraceEvent.ItemReappeared(
-                            cause = ActivityReappearCause.DoneFailed,
-                            rowKind = meta.rowKind,
-                            wasUnreadAtClick = meta.wasUnreadAtClick,
-                            msSinceClick = nowMillis() - meta.clickedAtMillis,
-                            seqChanged = ActivitySeqChange.None,
-                        ),
-                    )
-                    val latest = _state.value
-                    if (overlayOwner(latest) == owner && latest.snapshot != null) {
-                        refreshAfterFailure(latest, "activity_mark_done_frontier_catch_up_failed")
+                when {
+                    result is DataResult.Content || result is DataResult.Empty -> {
+                        doneReappearTrace.forget(item.key)
+                        val generation = doneGenerations[item.key]
+                        val confirmed = generation != null && doneOverlay.confirm(owner, item.key, generation)
+                        if (confirmed) {
+                            doneReappearTrace.noteCommitted(item.key, item, meta)
+                        }
+                        onUnreadCountsChanged()
+                        val latest = _state.value
+                        if (overlayOwner(latest) == owner && latest.snapshot != null) {
+                            load(
+                                refresh = true,
+                                pullRefresh = false,
+                                backgroundRefresh = true,
+                                intent = SharedActivityIntent.Refresh,
+                                fetchReason = InboxFetchReason.Manual,
+                            )
+                        }
                     }
-                } else {
-                    doneReappearTrace.forget(item.key)
-                    val generation = doneGenerations[item.key]
-                    val confirmed = generation != null && doneOverlay.confirm(owner, item.key, generation)
-                    if (confirmed) {
-                        doneReappearTrace.noteCommitted(item.key, item, meta)
+                    result.isDoneTargetGone404() -> {
+                        doneReappearTrace.forget(item.key)
+                        doneOverlay.confirmAll(owner, doneGenerations)
+                        onUnreadCountsChanged()
+                        val latest = _state.value
+                        if (overlayOwner(latest) == owner && latest.snapshot != null) {
+                            load(
+                                refresh = true,
+                                pullRefresh = false,
+                                backgroundRefresh = true,
+                                intent = SharedActivityIntent.Refresh,
+                                fetchReason = InboxFetchReason.Manual,
+                            )
+                        }
                     }
-                    onUnreadCountsChanged()
-                    val latest = _state.value
-                    if (overlayOwner(latest) == owner && latest.snapshot != null) {
-                        load(
-                            refresh = true,
-                            pullRefresh = false,
-                            backgroundRefresh = true,
-                            intent = SharedActivityIntent.Refresh,
-                            fetchReason = InboxFetchReason.Manual,
+                    else -> {
+                        doneReappearTrace.forget(item.key)
+                        doneOverlay.forgetAll(owner, doneGenerations)
+                        activityDoneTraceSink(
+                            owner.serverId,
+                            ActivityDoneTraceEvent.ItemReappeared(
+                                cause = ActivityReappearCause.DoneFailed,
+                                rowKind = meta.rowKind,
+                                wasUnreadAtClick = meta.wasUnreadAtClick,
+                                msSinceClick = nowMillis() - meta.clickedAtMillis,
+                                seqChanged = ActivitySeqChange.None,
+                            ),
                         )
+                        val latest = _state.value
+                        if (overlayOwner(latest) == owner && latest.snapshot != null) {
+                            refreshAfterFailure(latest, "activity_mark_done_frontier_catch_up_failed")
+                        }
                     }
                 }
             }
@@ -6203,19 +6259,30 @@ class SharedActivityStore @RaftCoreInternalApi constructor(
                 val repo = activityObjectsRepository
                 val clientRequestId = repo?.let { ownActivityRequests.mint() }
                 val result = repo?.act(targetServerId, ActivityObjectAction.Done, row, clientRequestId)
-                if (result !is DataResult.Content) {
-                    ownActivityRequests.forget(clientRequestId)
-                    doneOverlay.forgetAll(overlayOwner, doneGenerations)
-                    if (sameServer) {
-                        refreshAfterFailure(previous, "activity_object_done_failed")
-                    } else {
-                        diagnosticsLogger(
-                            "activity_object_done_other_server result=failed serverId=$targetServerId key=${item.key}"
-                        )
+                when {
+                    result is DataResult.Content -> {
+                        doneOverlay.confirmAll(overlayOwner, doneGenerations)
+                        onUnreadCountsChanged()
                     }
-                } else {
-                    doneOverlay.confirmAll(overlayOwner, doneGenerations)
-                    onUnreadCountsChanged()
+                    result?.isDoneTargetGone404() == true -> {
+                        ownActivityRequests.forget(clientRequestId)
+                        doneOverlay.confirmAll(overlayOwner, doneGenerations)
+                        onUnreadCountsChanged()
+                        if (sameServer && previous.snapshot != null) {
+                            load(refresh = true, pullRefresh = false, backgroundRefresh = true, intent = SharedActivityIntent.Refresh, fetchReason = InboxFetchReason.Manual)
+                        }
+                    }
+                    else -> {
+                        ownActivityRequests.forget(clientRequestId)
+                        doneOverlay.forgetAll(overlayOwner, doneGenerations)
+                        if (sameServer) {
+                            refreshAfterFailure(previous, "activity_object_done_failed")
+                        } else {
+                            diagnosticsLogger(
+                                "activity_object_done_other_server result=failed serverId=$targetServerId key=${item.key}"
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -8161,6 +8228,18 @@ sealed interface SharedActivityIntent {
         val item: InboxItem,
         val listOwnerUserId: String? = null,
         val listOwnerServerId: String? = null,
+        val commitTrigger: ActivityDoneCommitTrigger = ActivityDoneCommitTrigger.NoToast,
+        val waitMs: Long = 0L,
+        val wasUnreadAtClick: Boolean? = null,
+        val frontierCaughtUp: Boolean = false,
+    ) : SharedActivityIntent
+    /**
+     * Reports a UI-side Activity Done trace event (`undo`, `calloff_newer_activity`,
+     * `calloff_frontier_moved`) through the store's `activityDoneTraceSink`.
+     */
+    data class ReportDoneTrace(
+        val event: ActivityDoneTraceEvent,
+        val serverId: String? = null,
     ) : SharedActivityIntent
     /**
      * Unfollow [item]'s thread. A row the store no longer lists (a deferred Unfollow sent after the
@@ -8304,6 +8383,7 @@ private fun SharedActivityIntent.activitySummarySource(): String =
         SharedActivityIntent.MarkAllRead -> "mark_all_read"
         is SharedActivityIntent.SetFilter -> "set_filter:${filter.wireValue}"
         is SharedActivityIntent.MarkDone -> "mark_done"
+        is SharedActivityIntent.ReportDoneTrace -> "report_done_trace"
         is SharedActivityIntent.UnfollowThread -> "unfollow_thread"
         is SharedActivityIntent.FollowThread -> "follow_thread"
         is SharedActivityIntent.MarkRead -> "mark_read"
@@ -8366,6 +8446,7 @@ private fun SharedActivityIntent.defaultUnreadFlipSource(): ActivityUnreadFlipSo
         SharedActivityIntent.DetachPrewarmViewport,
         SharedActivityIntent.SurfaceHidden,
         is SharedActivityIntent.SurfaceActive,
+        is SharedActivityIntent.ReportDoneTrace,
         is SharedActivityIntent.RowOpened -> ActivityUnreadFlipSource.Unknown
     }
 
@@ -8412,6 +8493,7 @@ private fun SharedActivityState.showsMessage(messageId: MessageId): Boolean =
         is SharedActivityIntent.SurfaceActive,
         is SharedActivityIntent.RowOpened,
         is SharedActivityIntent.ReconcileTaskWaiting,
+        is SharedActivityIntent.ReportDoneTrace,
         is SharedActivityIntent.ChannelAccessLost -> false
     }
 
