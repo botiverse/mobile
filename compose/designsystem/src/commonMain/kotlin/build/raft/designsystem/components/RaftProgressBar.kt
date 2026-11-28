@@ -59,7 +59,7 @@ enum class RaftProgressBarVariant {
 const val RaftProgressBarIndeterminateMillis = 1400
 
 /**
- * raft-ui Progress: a `fill-muted` track (sticker radius) holding a fill that is a sticker
+ * raft-ui Progress: a `fill-medium` track (sticker radius) holding a fill that is a sticker
  * with a 1.5dp `sticker-ink` inset edge, optionally under a header row: [label] (footnote
  * semibold, ink) at the start and [valueText] (Space Mono meta, `foreground-hint`) at the end.
  *
@@ -93,7 +93,7 @@ fun RaftProgressBar(
             variant == RaftProgressBarVariant.Warning -> RaftUiPalette.warning
             else -> RaftUiPalette.info
         }
-    val track = colors.fillMuted
+    val track = colors.fillMedium
     val edge = RaftUiPalette.stickerInk
     Column(
         modifier.fillMaxWidth().semantics(mergeDescendants = true) {
