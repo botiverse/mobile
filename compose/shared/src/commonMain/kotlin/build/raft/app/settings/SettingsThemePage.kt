@@ -92,7 +92,7 @@ internal fun SettingsThemeContent(
             hasServer = hasServer,
             decorSwitch = settingsThemeDecorSwitchShown(largeScreen = raftPlatformLargeScreenPossible(), windowWide = windowWide),
         )
-    // Web ServerThemeSection: what the assistant changed of this server's theme and the sidebar.
+    // Web ServerThemeSection: what the assistant changed of this server's theme.
     val assistantChangesSource = LocalAssistantSettingChangesSource.current
     val assistantChanges = rememberAssistantSettingChanges(ASSISTANT_THEME_SETTINGS, assistantChangesSource)
     LazyColumn(

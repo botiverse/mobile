@@ -96,9 +96,6 @@ class AssistantSettingChangesApiTest {
             listOf(
                 AssistantChangedSetting.Theme,
                 AssistantChangedSetting.ThemeDecor,
-                AssistantChangedSetting.SidebarMove,
-                AssistantChangedSetting.SidebarPin,
-                AssistantChangedSetting.SidebarArrange,
             ),
             all.ofSettings(ASSISTANT_THEME_SETTINGS).map { it.setting },
         )
@@ -107,7 +104,13 @@ class AssistantSettingChangesApiTest {
             all.ofSettings(ASSISTANT_NOTIFICATION_SETTINGS).map { it.setting },
         )
         assertEquals(
-            listOf(AssistantChangedSetting.AgentMove, AssistantChangedSetting.MessageSave),
+            listOf(
+                AssistantChangedSetting.SidebarMove,
+                AssistantChangedSetting.SidebarPin,
+                AssistantChangedSetting.SidebarArrange,
+                AssistantChangedSetting.AgentMove,
+                AssistantChangedSetting.MessageSave,
+            ),
             all.ofSettings(ASSISTANT_ACTION_SETTINGS).map { it.setting },
         )
     }
