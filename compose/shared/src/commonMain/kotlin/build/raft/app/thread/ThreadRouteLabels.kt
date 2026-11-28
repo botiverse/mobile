@@ -94,6 +94,7 @@ internal data class ThreadRouteLabels(
     val unableToOpenThreadRefLabel: String,
     val externalShareOtherServerTemplate: String,
     val externalShareOtherServerGenericLabel: String,
+    val appSumoStorageLimitLabel: String = "",
 )
 
 @Composable
@@ -260,6 +261,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
         stringResource(Res.string.thread_composer_external_share_other_server, ThreadLocalizedFeedbackPlaceholder)
     val externalShareOtherServerGenericLabel =
         stringResource(Res.string.thread_composer_external_share_other_server_generic)
+    val appSumoStorageLimitLabel = stringResource(Res.string.upgrade_dialog_appsumo_upload_limit_title)
     return ThreadRouteLabels(
         actionCardSuccessLabels = actionCardSuccessLabels,
         actionCardFailureLabels = actionCardFailureLabels,
@@ -340,6 +342,7 @@ internal fun threadRouteLabels(): ThreadRouteLabels {
         attachmentSkippedManyTemplate = attachmentSkippedManyTemplate,
         unableToOpenThreadRefLabel = unableToOpenThreadRefLabel,
         externalShareOtherServerTemplate = externalShareOtherServerTemplate,
-        externalShareOtherServerGenericLabel = externalShareOtherServerGenericLabel
+        externalShareOtherServerGenericLabel = externalShareOtherServerGenericLabel,
+        appSumoStorageLimitLabel = appSumoStorageLimitLabel,
     )
 }

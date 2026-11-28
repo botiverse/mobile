@@ -680,13 +680,83 @@ class SettingsRepositoryDataSourceTest {
         assertEquals(SettingsBillingSeatUsageSnapshot(humans = 3, agents = 12, universalSeats = 4.2), summary.usage)
         assertEquals(5, summary.proPackQuantity)
         assertEquals(4, summary.provisionedHumans)
-        assertEquals(SettingsBillingFileUploadQuotaSnapshot(month = "2026-11", limited = false, limitBytes = -1, remainingBytes = -1), summary.fileUploadQuota)
+        assertEquals(
+            SettingsBillingFileUploadQuotaSnapshot(
+                month = "2026-11",
+                limited = false,
+                limitBytes = -1,
+                remainingBytes = -1,
+                usedBytes = 0,
+                reservedBytes = 0,
+            ),
+            summary.fileUploadQuota,
+        )
         assertEquals("annual", summary.billingInterval)
         assertEquals("annual", summary.priceBillingInterval)
         assertEquals("2026-12-01T00:00:00.000Z", summary.currentPeriodEnd)
         assertFalse(summary.canManageBilling)
         assertEquals("pro", admin.data.serverPlan)
         assertNull(summary.agentHistoryBlocks7d)
+    }
+
+    @Test
+    fun billingSummaryParsesAppSumoRetainedStorageQuotaFieldsAndFallsBackWhenOmitted() {
+        val withGrant =
+            requireNotNull(
+                parseSharedSettingsBillingSubscription(
+                    """{"plan":"pro","source":"appsumo","stripeConfigured":true,"appsumo":{"tier":1,"lifetime":true,"maxHumans":1,"maxAgents":-1,"maxHostedJointChannels":2,"hostedJointChannels":1},"fileUploadQuota":{"month":"2026-11","plan":"pro","appsumo":{"tier":1,"lifetime":true},"limited":true,"enforced":true,"limitBytes":1073741824,"usedBytes":536870912,"reservedBytes":134217728,"remainingBytes":402653184}}"""
+                )
+            )
+        assertEquals(
+            SettingsBillingFileUploadQuotaSnapshot(
+                month = "2026-11",
+                limited = true,
+                limitBytes = 1_073_741_824L,
+                remainingBytes = 402_653_184L,
+                usedBytes = 536_870_912L,
+                reservedBytes = 134_217_728L,
+                source = "appsumo",
+            ),
+            withGrant.fileUploadQuota,
+        )
+
+        val withExplicitSource =
+            requireNotNull(
+                parseSharedSettingsBillingSubscription(
+                    """{"plan":"pro","source":"appsumo","stripeConfigured":true,"fileUploadQuota":{"month":"2026-11","limited":true,"limitBytes":1073741824,"remainingBytes":0,"usedBytes":4294967296,"source":"appsumo"}}"""
+                )
+            )
+        assertEquals(
+            SettingsBillingFileUploadQuotaSnapshot(
+                month = "2026-11",
+                limited = true,
+                limitBytes = 1_073_741_824L,
+                remainingBytes = 0L,
+                usedBytes = 4_294_967_296L,
+                reservedBytes = null,
+                source = "appsumo",
+            ),
+            withExplicitSource.fileUploadQuota,
+        )
+
+        val olderServer =
+            requireNotNull(
+                parseSharedSettingsBillingSubscription(
+                    """{"plan":"pro","source":"appsumo","stripeConfigured":true,"fileUploadQuota":{"month":"2026-11","limited":true,"limitBytes":1073741824,"remainingBytes":536870912,"usedBytes":-1,"reservedBytes":-5,"appsumo":{"tier":99}}}"""
+                )
+            )
+        assertEquals(
+            SettingsBillingFileUploadQuotaSnapshot(
+                month = "2026-11",
+                limited = true,
+                limitBytes = 1_073_741_824L,
+                remainingBytes = 536_870_912L,
+                usedBytes = null,
+                reservedBytes = null,
+                source = null,
+            ),
+            olderServer.fileUploadQuota,
+        )
     }
 
     @Test

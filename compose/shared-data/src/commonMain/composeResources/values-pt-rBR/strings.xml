@@ -392,6 +392,7 @@
     <string name="settings_billing_vo_usage_title">Uso</string>
     <string name="settings_billing_vo_usage_used">%1$s de %2$s em uso</string>
     <string name="settings_billing_vo_appsumo_unlimited_usage">Em uso: %1$d · Sem limite</string>
+    <string name="settings_billing_vo_appsumo_storage">Armazenamento</string>
     <string name="settings_billing_vo_seats">Licenças</string>
     <string name="settings_billing_vo_people">Pessoas</string>
     <string name="settings_billing_vo_agents">Agentes</string>
@@ -7233,4 +7234,8 @@
     <string name="agent_migration_error_leave_out_unsupported">O Raft no computador de origem é antigo demais para deixar caminhos de fora. Atualize-o e tente novamente.</string>
     <string name="agent_migration_error_source_offline">O computador em que este agente está agora está offline. Inicie o Raft Computer nele e tente novamente.</string>
     <string name="agent_migration_error_source_offline_named">%1$s, onde este agente está agora, está offline. Inicie o Raft Computer nele e tente novamente.</string>
+    <string name="upgrade_dialog_appsumo_upload_limit_title">Limite de armazenamento do AppSumo</string>
+    <string name="upgrade_dialog_appsumo_manage_plan">Gerenciar plano do AppSumo</string>
+    <string name="upgrade_dialog_appsumo_upload_manage_help">Exclua arquivos desnecessários para liberar espaço. Consulte o uso nas configurações de cobrança.</string>
+    <string name="upgrade_dialog_appsumo_upload_ask_owner">Exclua arquivos desnecessários ou peça ao proprietário do servidor para verificar o uso.</string>
 </resources>

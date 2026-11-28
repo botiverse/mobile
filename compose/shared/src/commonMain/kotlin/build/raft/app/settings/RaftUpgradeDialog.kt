@@ -203,6 +203,13 @@ internal enum class RaftUpgradeMode {
 
     /** No link out (iOS): the limit, stated, and OK. */
     LimitNotice,
+
+    /**
+     * An AppSumo lifetime server at its retained storage limit (web `AppSumoUploadLimit`,
+     * botiverse/slock #17191): directs users to delete unused files without Pro pricing,
+     * Stripe checkout, or monthly reset copy; owners open Plan & billing, members Close.
+     */
+    AppSumoUploadLimit,
 }
 
 /** What a limit leads to on this server ([raftUpgradeOutcome]). */
@@ -232,7 +239,11 @@ internal fun raftUpgradeOutcome(
     gate: RaftUpgradeGate,
     plan: String?,
     linksOut: Boolean = raftUpgradeLinksOut(),
+    isAppSumoUpload: Boolean = false,
 ): RaftUpgradeOutcome {
+    if (gate == RaftUpgradeGate.UploadMonthlyQuota && isAppSumoUpload) {
+        return RaftUpgradeOutcome.Dialog(RaftUpgradeMode.AppSumoUploadLimit)
+    }
     val free = isFreePlan(plan)
     val offered =
         when {
@@ -430,13 +441,17 @@ internal sealed interface RaftUpgradeUploadContext {
         val limitBytes: Long,
         val remainingBytes: Long,
         val files: List<RaftUpgradeUploadFile> = emptyList(),
-    ) : RaftUpgradeUploadContext
+        val source: String? = null,
+    ) : RaftUpgradeUploadContext {
+        val isAppSumo: Boolean get() = source.equals("appsumo", ignoreCase = true)
+    }
 }
 
 /**
  * Pairs [context] only with [RaftUpgradeGate.UploadMonthlyQuota] when well-formed (`YYYY-MM`
- * month, positive monthly limit, non-negative remaining bytes); any other gate or malformed
- * snapshot returns null so the gate's default copy is used without the 7-day agent refusal count.
+ * month for Free monthly quota, positive limit, non-negative remaining bytes); any other gate or
+ * malformed snapshot returns null so the gate's default copy is used without the 7-day agent
+ * refusal count.
  */
 internal fun uploadContextForGate(
     gate: RaftUpgradeGate,
@@ -446,7 +461,7 @@ internal fun uploadContextForGate(
     return when (context) {
         is RaftUpgradeUploadContext.MonthlyQuota ->
             context.takeIf {
-                settingsBillingYearMonth(it.month) != null &&
+                (it.isAppSumo || settingsBillingYearMonth(it.month) != null) &&
                     it.limitBytes > 0L &&
                     it.remainingBytes >= 0L
             }
@@ -456,13 +471,16 @@ internal fun uploadContextForGate(
 internal fun SettingsBillingFileUploadQuotaSnapshot.toRaftUpgradeMonthlyUploadContext(
     files: List<RaftUpgradeUploadFile> = emptyList(),
 ): RaftUpgradeUploadContext.MonthlyQuota? {
-    val cleanMonth = month?.trim()?.takeIf { settingsBillingYearMonth(it) != null } ?: return null
+    val isAppSumo = source.equals("appsumo", ignoreCase = true)
+    val cleanMonth = month?.trim()?.takeIf { settingsBillingYearMonth(it) != null }
+    if (!isAppSumo && cleanMonth == null) return null
     if (!limited || limitBytes <= 0L || remainingBytes < 0L) return null
     return RaftUpgradeUploadContext.MonthlyQuota(
-        month = cleanMonth,
+        month = cleanMonth.orEmpty(),
         limitBytes = limitBytes,
         remainingBytes = remainingBytes,
         files = files.filter { it.name.isNotBlank() && it.sizeBytes >= 0L },
+        source = if (isAppSumo) "appsumo" else source?.trim()?.takeIf { it.isNotEmpty() },
     )
 }
 
@@ -545,6 +563,7 @@ internal fun Pager.openRaftUpgradeDialog(
     uploadContext: RaftUpgradeUploadContext? = null,
     knownAgentUploadQuotaBlocks7d: Int? = null,
     fallbackUploadFiles: List<RaftUpgradeUploadFile> = emptyList(),
+    knownBillingSource: String? = null,
 ) {
     val bridge = Utils.bridgeModule(pagerId)
     val sharedStores = RaftSharedStoreRegistry.get(bridge)
@@ -561,6 +580,8 @@ internal fun Pager.openRaftUpgradeDialog(
         } else {
             emptyList()
         }
+    val uploadQuotaIsAppSumo = (pairedUploadContext as? RaftUpgradeUploadContext.MonthlyQuota)?.isAppSumo == true
+    val knownAppSumoSource = knownBillingSource.equals("appsumo", ignoreCase = true)
     raftUpgradeScope.launch {
         val session = runCatchingPreservingCancellation { authStore.readSession() }.getOrNull()
         val requestedServerId = targetServerId?.trim()?.takeIf { it.isNotEmpty() }
@@ -570,7 +591,32 @@ internal fun Pager.openRaftUpgradeDialog(
             } else {
                 session?.currentServerSummary()
             }
-        val outcome = raftUpgradeOutcome(gate, server?.plan)
+        val canReadBillingSummary = server?.role == "owner" || server?.role == "admin"
+        var isAppSumoUpload =
+            gate == RaftUpgradeGate.UploadMonthlyQuota && (knownAppSumoSource || uploadQuotaIsAppSumo)
+        if (
+            gate == RaftUpgradeGate.UploadMonthlyQuota &&
+                !isAppSumoUpload &&
+                !isFreePlan(server?.plan) &&
+                canReadBillingSummary &&
+                server != null &&
+                server.id.value.isNotBlank()
+        ) {
+            val summary =
+                loadServerBillingSubscriptionSummary(
+                    networkClient = sharedStores.networkClient(storeScope),
+                    serverId = server.id.value,
+                )
+            if (
+                summary != null &&
+                    (summary.source.equals("appsumo", ignoreCase = true) ||
+                        summary.appsumo != null ||
+                        summary.fileUploadQuota?.source.equals("appsumo", ignoreCase = true))
+            ) {
+                isAppSumoUpload = true
+            }
+        }
+        val outcome = raftUpgradeOutcome(gate, server?.plan, isAppSumoUpload = isAppSumoUpload)
         bridge.log("upgrade_dialog_open gate=${gate.wire} plan=${server?.plan ?: "unknown"} outcome=$outcome")
         when (outcome) {
             RaftUpgradeOutcome.None -> return@launch
@@ -611,16 +657,17 @@ internal fun Pager.openRaftUpgradeDialog(
         val resolvedSlug =
             server?.slug?.takeIf { it.isNotBlank() }
                 ?: if (requestedServerId == null) standaloneSettingsServerSlug(session) else null
-        val initialPricing = if (mode != RaftUpgradeMode.LimitNotice && knownBillingPresent) billingPricing(knownPricing) else null
+        val isUpgradeOrSeats = mode != RaftUpgradeMode.LimitNotice && mode != RaftUpgradeMode.AppSumoUploadLimit
+        val initialPricing = if (isUpgradeOrSeats && knownBillingPresent) billingPricing(knownPricing) else null
         val initialAgentHistoryBlocks =
-            if (mode != RaftUpgradeMode.LimitNotice && pairedHistoryContext != null) {
+            if (isUpgradeOrSeats && pairedHistoryContext != null) {
                 knownAgentHistoryBlocks7d?.takeIf { it >= 0 }
             } else {
                 null
             }
         val hasUploadQuotaContext = pairedUploadContext != null || sanitizedFallbackUploadFiles.isNotEmpty()
         val initialAgentUploadQuotaBlocks =
-            if (mode != RaftUpgradeMode.LimitNotice && gate == RaftUpgradeGate.UploadMonthlyQuota && hasUploadQuotaContext) {
+            if (isUpgradeOrSeats && gate == RaftUpgradeGate.UploadMonthlyQuota && hasUploadQuotaContext) {
                 knownAgentUploadQuotaBlocks7d?.takeIf { it >= 0 }
             } else {
                 null
@@ -647,22 +694,21 @@ internal fun Pager.openRaftUpgradeDialog(
                 pricing = initialPricing,
                 historyContext = pairedHistoryContext,
                 agentHistoryBlocks7d = initialAgentHistoryBlocks,
-                uploadContext = pairedUploadContext,
+                uploadContext = if (mode == RaftUpgradeMode.AppSumoUploadLimit) null else pairedUploadContext,
                 agentUploadQuotaBlocks7d = initialAgentUploadQuotaBlocks,
             )
         RaftUpgradeDialogState.refresher = { current -> raftReloadServerPlan(authDataSource, current.serverId) }
         RaftUpgradeDialogState.request = request
-        val canReadBillingSummary = server?.role == "owner" || server?.role == "admin"
-        val shouldLoadPricing = mode != RaftUpgradeMode.LimitNotice && !knownBillingPresent && request.serverId.isNotBlank()
+        val shouldLoadPricing = isUpgradeOrSeats && !knownBillingPresent && request.serverId.isNotBlank()
         val shouldLoadHistoryBlocks =
-            mode != RaftUpgradeMode.LimitNotice &&
+            isUpgradeOrSeats &&
                 gate == RaftUpgradeGate.History30d &&
                 pairedHistoryContext != null &&
                 knownAgentHistoryBlocks7d == null &&
                 canReadBillingSummary &&
                 request.serverId.isNotBlank()
         val shouldLoadUploadQuotaBlocks =
-            mode != RaftUpgradeMode.LimitNotice &&
+            isUpgradeOrSeats &&
                 gate == RaftUpgradeGate.UploadMonthlyQuota &&
                 hasUploadQuotaContext &&
                 knownAgentUploadQuotaBlocks7d == null &&
@@ -719,8 +765,9 @@ internal fun Pager.openRaftUpgradeDialog(
                 }
             }
         }
-        // #14968: read `agentUploadQuotaBlocks7d` (and fallback `fileUploadQuota` if the 403
-        // lacked a quota payload) from GET /api/billing/subscription (owner/admin only).
+        // #14968 / #17191: read `agentUploadQuotaBlocks7d` (and fallback `fileUploadQuota` if the
+        // 403 lacked a quota payload) from GET /api/billing/subscription (owner/admin only). If
+        // billing reveals an AppSumo license, switch to the AppSumo storage limit dialog instead.
         if (shouldLoadUploadQuotaBlocks && networkClient != null) {
             launch {
                 val summary =
@@ -737,6 +784,20 @@ internal fun Pager.openRaftUpgradeDialog(
                         current.mode == request.mode &&
                         current.uploadContext == request.uploadContext
                     ) {
+                        val summaryIsAppSumo =
+                            summary.source.equals("appsumo", ignoreCase = true) ||
+                                summary.appsumo != null ||
+                                summary.fileUploadQuota?.source.equals("appsumo", ignoreCase = true)
+                        if (summaryIsAppSumo) {
+                            RaftUpgradeDialogState.request =
+                                current.copy(
+                                    mode = RaftUpgradeMode.AppSumoUploadLimit,
+                                    uploadContext = null,
+                                    agentUploadQuotaBlocks7d = null,
+                                    pricing = null,
+                                )
+                            return@launch
+                        }
                         val hydratedContext =
                             current.uploadContext
                                 ?: sanitizedFallbackUploadFiles
@@ -771,7 +832,7 @@ private suspend fun raftReloadServerPlan(authDataSource: SharedAuthDataSource, s
 internal fun raftUpgradeDoneOnReturn(mode: RaftUpgradeMode, plan: String?): Boolean =
     when (mode) {
         RaftUpgradeMode.Upgrade -> plan != null && !isFreePlan(plan)
-        RaftUpgradeMode.AddSeats, RaftUpgradeMode.LimitNotice -> false
+        RaftUpgradeMode.AddSeats, RaftUpgradeMode.LimitNotice, RaftUpgradeMode.AppSumoUploadLimit -> false
     }
 
 /**
@@ -862,6 +923,11 @@ internal fun RaftUpgradeDialogHost(pager: Pager) {
             if (!suppressCoverDismiss[0]) {
                 RaftUpgradeDialogState.close()
             }
+        },
+        onManageAppSumoPlan = {
+            bridge.log("upgrade_dialog_appsumo_manage_plan serverId=${request.serverId}")
+            RaftUpgradeDialogState.close()
+            pager.openSettingsBillingPage(request.storeScope)
         },
     )
 }
@@ -1131,6 +1197,7 @@ internal fun RaftUpgradeDialog(
     request: RaftUpgradeRequest,
     onOpenWeb: () -> Unit,
     onDismiss: () -> Unit,
+    onManageAppSumoPlan: () -> Unit = onOpenWeb,
 ) {
     val server = request.serverName
     val copy = raftUpgradeGateCopy(request.gate)
@@ -1142,6 +1209,47 @@ internal fun RaftUpgradeDialog(
     val freezeUpcoming = pairedContext as? RaftUpgradeExternalContext.FreezeUpcoming
     val freezeDeadline = freezeUpcoming?.let { raftFormatFreezeDeadline(it.deadlineIso) }
     val slotChannel = (pairedContext as? RaftUpgradeExternalContext.Slot)?.channelName
+    // Web `AppSumoUploadLimit` (botiverse/slock #17191): a finite lifetime storage allowance is
+    // managed through AppSumo without Pro pricing, Stripe checkout, or monthly reset copy.
+    if (request.mode == RaftUpgradeMode.AppSumoUploadLimit) {
+        RaftUnifiedDialog(
+            title = stringResource(Res.string.upgrade_dialog_appsumo_upload_limit_title),
+            onDismiss = onDismiss,
+            maxWidth = 448.dp,
+            titleMaxLines = 3,
+        ) {
+            RaftText(
+                text =
+                    stringResource(
+                        if (request.owner) {
+                            Res.string.upgrade_dialog_appsumo_upload_manage_help
+                        } else {
+                            Res.string.upgrade_dialog_appsumo_upload_ask_owner
+                        }
+                    ),
+                style = RaftTheme.typography.subhead,
+                color = RaftTheme.colors.foregroundMuted,
+            )
+            RaftDialogFooter {
+                if (request.owner) {
+                    RaftButton(
+                        text = stringResource(Res.string.upgrade_dialog_appsumo_manage_plan),
+                        onClick = onManageAppSumoPlan,
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg,
+                    )
+                } else {
+                    RaftButton(
+                        text = stringResource(Res.string.common_close),
+                        onClick = onDismiss,
+                        variant = RaftButtonVariant.Primary,
+                        size = RaftButtonSize.Lg,
+                    )
+                }
+            }
+        }
+        return
+    }
     if (request.mode == RaftUpgradeMode.LimitNotice) {
         RaftUnifiedDialog(
             title = stringResource(Res.string.upgrade_dialog_limit_title),

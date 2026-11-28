@@ -392,6 +392,7 @@
     <string name="settings_billing_vo_usage_title">Usage</string>
     <string name="settings_billing_vo_usage_used">%1$s of %2$s used</string>
     <string name="settings_billing_vo_appsumo_unlimited_usage">%1$d used · Unlimited</string>
+    <string name="settings_billing_vo_appsumo_storage">Storage</string>
     <string name="settings_billing_vo_seats">Seats</string>
     <string name="settings_billing_vo_people">People</string>
     <string name="settings_billing_vo_agents">Agents</string>
@@ -7235,4 +7236,8 @@
     <string name="agent_migration_error_leave_out_unsupported">Raft on the source computer is too old to leave paths out. Update it, then try again.</string>
     <string name="agent_migration_error_source_offline">The computer this agent is on is offline. Start Raft Computer on it and try again.</string>
     <string name="agent_migration_error_source_offline_named">%1$s, where this agent is now, is offline. Start Raft Computer on it and try again.</string>
+    <string name="upgrade_dialog_appsumo_upload_limit_title">AppSumo storage limit</string>
+    <string name="upgrade_dialog_appsumo_manage_plan">Manage AppSumo plan</string>
+    <string name="upgrade_dialog_appsumo_upload_manage_help">Delete unused files to free space. You can review usage in Settings &gt; Plan &amp; billing.</string>
+    <string name="upgrade_dialog_appsumo_upload_ask_owner">Delete unused files or ask a server owner to review storage usage.</string>
 </resources>

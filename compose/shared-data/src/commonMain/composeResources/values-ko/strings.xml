@@ -392,6 +392,7 @@
     <string name="settings_billing_vo_usage_title">사용량</string>
     <string name="settings_billing_vo_usage_used">%2$s 중 %1$s 사용</string>
     <string name="settings_billing_vo_appsumo_unlimited_usage">%1$d개 사용 중 · 무제한</string>
+    <string name="settings_billing_vo_appsumo_storage">저장 공간</string>
     <string name="settings_billing_vo_seats">시트</string>
     <string name="settings_billing_vo_people">사람</string>
     <string name="settings_billing_vo_agents">에이전트</string>
@@ -7233,4 +7234,8 @@
     <string name="agent_migration_error_leave_out_unsupported">원본 컴퓨터의 Raft 버전이 오래되어 경로를 제외할 수 없어요. 업데이트한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_source_offline">이 에이전트가 지금 있는 컴퓨터가 오프라인이에요. 해당 컴퓨터에서 Raft Computer를 시작한 뒤 다시 시도해 주세요.</string>
     <string name="agent_migration_error_source_offline_named">이 에이전트가 지금 있는 컴퓨터(%1$s)가 오프라인이에요. 해당 컴퓨터에서 Raft Computer를 시작한 뒤 다시 시도해 주세요.</string>
+    <string name="upgrade_dialog_appsumo_upload_limit_title">AppSumo 저장 공간 한도</string>
+    <string name="upgrade_dialog_appsumo_manage_plan">AppSumo 요금제 관리</string>
+    <string name="upgrade_dialog_appsumo_upload_manage_help">불필요한 파일을 삭제하여 공간을 확보하세요. 설정의 요금제 및 결제에서 사용량을 확인할 수 있습니다.</string>
+    <string name="upgrade_dialog_appsumo_upload_ask_owner">불필요한 파일을 삭제하거나 서버 소유자에게 사용량 확인을 요청하세요.</string>
 </resources>

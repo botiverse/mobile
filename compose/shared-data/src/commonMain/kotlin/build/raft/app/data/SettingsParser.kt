@@ -754,11 +754,20 @@ private data class WireSettingsBillingProvisioned(
 )
 
 @Serializable
+private data class WireSettingsFileUploadQuotaAppSumo(
+    val tier: Int? = null,
+)
+
+@Serializable
 private data class WireSettingsFileUploadQuota(
     val month: String? = null,
     val limited: Boolean = false,
     val limitBytes: Long = -1,
     val remainingBytes: Long = -1,
+    val usedBytes: Long? = null,
+    val reservedBytes: Long? = null,
+    val source: String? = null,
+    val appsumo: WireSettingsFileUploadQuotaAppSumo? = null,
 )
 
 @Serializable
@@ -820,11 +829,22 @@ fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSub
         provisionedAgents = billing.provisioned?.agents ?: 0,
         proPackQuantity = billing.provisioned?.proPackQuantity ?: 0,
         fileUploadQuota = billing.fileUploadQuota?.let {
+            val rawSource = it.source?.trim()?.takeIf { s -> s.isNotEmpty() }
+            val appSumoTier = it.appsumo?.tier
+            val quotaSource =
+                if (rawSource.equals("appsumo", ignoreCase = true) || (appSumoTier != null && appSumoTier in 1..4)) {
+                    "appsumo"
+                } else {
+                    rawSource
+                }
             SettingsBillingFileUploadQuotaSnapshot(
                 month = it.month?.takeIf { month -> month.isNotBlank() },
                 limited = it.limited,
                 limitBytes = it.limitBytes,
                 remainingBytes = it.remainingBytes,
+                usedBytes = it.usedBytes?.takeIf { bytes -> bytes >= 0L },
+                reservedBytes = it.reservedBytes?.takeIf { bytes -> bytes >= 0L },
+                source = quotaSource,
             )
         },
         priceBillingInterval = billing.price?.billingInterval?.takeIf { it.isNotBlank() },

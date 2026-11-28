@@ -763,6 +763,115 @@ class DirectAttachmentUploadNetworkContractTest {
     }
 
     @Test
+    fun appSumoQuota403PreservesSourceAndRetainedUsageAcrossDirectAndLegacyFormats() = runBlocking {
+        val directExecutor =
+            RecordingExecutor(
+                respond = { _, _ ->
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"code":"FILE_UPLOAD_QUOTA_EXCEEDED","message":"The AppSumo storage limit has been reached. Delete unused files to free space.","retryable":false,"monthlyUpload":{"month":"2026-11","limitBytes":1073741824,"remainingBytes":0,"source":"appsumo"}}""",
+                    )
+                },
+            )
+        val directResult =
+            composerUpload(directExecutor).uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(bytes = byteArrayOf(1, 2, 3)),
+                clientRequestId = "11111111-1111-4111-8111-111111111113",
+            )
+        val directQuota = requireNotNull(assertIs<DataResult.Error>(directResult).error.monthlyUploadQuota)
+        assertEquals("2026-11", directQuota.month)
+        assertTrue(directQuota.limited)
+        assertEquals(1_073_741_824L, directQuota.limitBytes)
+        assertEquals(0L, directQuota.remainingBytes)
+        assertNull(directQuota.usedBytes)
+        assertNull(directQuota.reservedBytes)
+        assertEquals("appsumo", directQuota.source)
+
+        val directNoMonthExecutor =
+            RecordingExecutor(
+                respond = { _, _ ->
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"code":"FILE_UPLOAD_QUOTA_EXCEEDED","message":"The AppSumo storage limit has been reached.","monthlyUpload":{"limitBytes":1073741824,"remainingBytes":0,"source":"appsumo"}}""",
+                    )
+                },
+            )
+        val directNoMonthResult =
+            composerUpload(directNoMonthExecutor).uploadOneThreadFile(
+                channelId = ChannelId("channel-1"),
+                file = file(bytes = byteArrayOf(1, 2, 3)),
+                clientRequestId = "11111111-1111-4111-8111-111111111114",
+            )
+        val directNoMonthQuota = requireNotNull(assertIs<DataResult.Error>(directNoMonthResult).error.monthlyUploadQuota)
+        assertNull(directNoMonthQuota.month)
+        assertEquals("appsumo", directNoMonthQuota.source)
+
+        val legacyExecutor =
+            RecordingExecutor(
+                respond = { _, _ ->
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"errorCode":"FILE_UPLOAD_QUOTA_EXCEEDED","error":"The AppSumo storage limit has been reached. Delete unused files to free space.","quota":{"month":"2026-11","plan":"pro","appsumo":{"tier":1,"lifetime":true},"limited":true,"enforced":true,"limitBytes":1073741824,"usedBytes":4294967296,"reservedBytes":1048576,"remainingBytes":0}}""",
+                    )
+                },
+            )
+        val legacyRepository =
+            RealConversationRepository(
+                sessionStore = authenticatedSessionStore(),
+                networkClient = client(executor = legacyExecutor),
+                routeEnvironmentIdProvider = { ApiBaseUrl },
+            )
+        val legacyResult =
+            legacyRepository.uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(file(sizeBytes = 3L, bytes = byteArrayOf(1, 2, 3))),
+                )
+            )
+        val legacyQuota = requireNotNull(assertIs<DataResult.Error>(legacyResult).error.monthlyUploadQuota)
+        assertEquals("2026-11", legacyQuota.month)
+        assertEquals(1_073_741_824L, legacyQuota.limitBytes)
+        assertEquals(0L, legacyQuota.remainingBytes)
+        assertEquals(4_294_967_296L, legacyQuota.usedBytes)
+        assertEquals(1_048_576L, legacyQuota.reservedBytes)
+        assertEquals("appsumo", legacyQuota.source)
+
+        val invalidTierExecutor =
+            RecordingExecutor(
+                respond = { _, _ ->
+                    RaftHttpExecutorResponse(
+                        code = 403,
+                        bodyText = null,
+                        errorBodyText =
+                            """{"errorCode":"FILE_UPLOAD_QUOTA_EXCEEDED","error":"Quota exceeded.","quota":{"month":"2026-11","appsumo":{"tier":99},"limited":true,"limitBytes":104857600,"remainingBytes":0}}""",
+                    )
+                },
+            )
+        val invalidTierRepository =
+            RealConversationRepository(
+                sessionStore = authenticatedSessionStore(),
+                networkClient = client(executor = invalidTierExecutor),
+                routeEnvironmentIdProvider = { ApiBaseUrl },
+            )
+        val invalidTierResult =
+            invalidTierRepository.uploadAttachments(
+                AttachmentUploadRequest(
+                    channelId = ChannelId("channel-1"),
+                    files = listOf(file(sizeBytes = 3L, bytes = byteArrayOf(1, 2, 3))),
+                )
+            )
+        val invalidTierQuota = requireNotNull(assertIs<DataResult.Error>(invalidTierResult).error.monthlyUploadQuota)
+        assertNull(invalidTierQuota.source)
+    }
+
+    @Test
     fun legacyMultipart403BillingFrozenAndReadOnlyReturnTypedErrorsWhileTrueForbiddenStaysNoPermission() = runBlocking {
         suspend fun uploadWith403(body: String): DataResult<AttachmentUploadResult> {
             val executor =

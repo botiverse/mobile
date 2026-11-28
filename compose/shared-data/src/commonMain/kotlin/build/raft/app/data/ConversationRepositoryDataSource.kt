@@ -2830,11 +2830,20 @@ private data class ConversationRouteUploadQuotaErrorDto(
 )
 
 @Serializable
+private data class ConversationRouteMonthlyUploadQuotaAppSumoDto(
+    val tier: Int? = null,
+)
+
+@Serializable
 private data class ConversationRouteMonthlyUploadQuotaDto(
     val month: String? = null,
     val limited: Boolean? = null,
     val limitBytes: Long? = null,
     val remainingBytes: Long? = null,
+    val usedBytes: Long? = null,
+    val reservedBytes: Long? = null,
+    val source: String? = null,
+    val appsumo: ConversationRouteMonthlyUploadQuotaAppSumoDto? = null,
 )
 
 private fun HomeNetworkResponse.conversationRouteMonthlyUploadQuotaOrNull(): SettingsBillingFileUploadQuotaSnapshot? {
@@ -2847,15 +2856,27 @@ private fun HomeNetworkResponse.conversationRouteMonthlyUploadQuotaOrNull(): Set
             conversationRepositoryJson.decodeFromString<ConversationRouteUploadQuotaErrorDto>(payload)
         }.getOrNull() ?: return null
     val raw = dto.monthlyUpload ?: dto.quota ?: return null
-    val month = raw.month?.trim()?.takeIf { it.isNotEmpty() } ?: return null
     val limitBytes = raw.limitBytes ?: return null
     val remainingBytes = raw.remainingBytes ?: return null
     if (raw.limited == false || limitBytes <= 0L || remainingBytes < 0L) return null
+    val rawSource = raw.source?.trim()?.takeIf { it.isNotEmpty() }
+    val appSumoTier = raw.appsumo?.tier
+    val source =
+        if (rawSource.equals("appsumo", ignoreCase = true) || (appSumoTier != null && appSumoTier in 1..4)) {
+            "appsumo"
+        } else {
+            rawSource
+        }
+    val month = raw.month?.trim()?.takeIf { it.isNotEmpty() }
+    if (month == null && source != "appsumo") return null
     return SettingsBillingFileUploadQuotaSnapshot(
         month = month,
         limited = true,
         limitBytes = limitBytes,
         remainingBytes = remainingBytes,
+        usedBytes = raw.usedBytes?.takeIf { it >= 0L },
+        reservedBytes = raw.reservedBytes?.takeIf { it >= 0L },
+        source = source,
     )
 }
 
