@@ -5018,6 +5018,7 @@
     <string name="action_card_question_asker_has_questions_other">%1$s tiene %2$d preguntas</string>
     <string name="artifacts_app_name">Artifacts</string>
     <string name="artifacts_card_version">v%1$d</string>
+    <string name="artifacts_card_version_behind">v%1$d · última v%2$d</string>
     <string name="artifacts_card_latest_is">La última es v%1$d</string>
     <string name="artifacts_card_updated_by">%1$s actualizó %2$s</string>
     <string name="message_card_updated">Actualizado %1$s</string>

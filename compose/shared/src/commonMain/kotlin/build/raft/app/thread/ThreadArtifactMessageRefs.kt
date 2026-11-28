@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,6 +22,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -53,6 +56,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -61,6 +65,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import build.raft.app.ArtifactCardExcerpt
+import build.raft.app.ArtifactCardExcerptDefaultLines
+import build.raft.app.withoutLeadingTitle
 import build.raft.app.RaftArtifactViewerHeader
 import build.raft.app.RaftArtifactViewerOpening
 import build.raft.app.raftArtifactViewerCommentIdOrNull
@@ -71,7 +77,6 @@ import build.raft.app.badge
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.currentRaftDateTimeContext
 import build.raft.app.data.ArtifactDeletedShown
-import build.raft.app.data.ArtifactHome
 import build.raft.app.data.ArtifactKind
 import build.raft.app.data.ArtifactLinkTarget
 import build.raft.app.data.ArtifactScreenshotReader
@@ -105,14 +110,11 @@ import build.raft.designsystem.components.LocalRaftToastHostState
 import build.raft.designsystem.components.RaftBadge
 import build.raft.designsystem.components.RaftBadgeAppearance
 import build.raft.designsystem.components.RaftBadgeVariant
-import build.raft.designsystem.components.RaftConversationKindGlyph
-import build.raft.designsystem.components.RaftConversationKindIcon
-import build.raft.designsystem.components.RaftFilePreview
-import build.raft.designsystem.components.RaftFilePreviewKind
 import build.raft.designsystem.components.RaftMessageEmbed
 import build.raft.designsystem.components.RaftMessageEmbedContent
-import build.raft.designsystem.components.RaftMessageEmbedFooter
-import build.raft.designsystem.components.RaftMessageEmbedHeader
+import build.raft.designsystem.components.RaftFilePreviewBadge
+import build.raft.designsystem.components.RaftFilePreviewBadgePlacement
+import build.raft.designsystem.components.RaftMessageEmbedDefaults
 import build.raft.designsystem.components.RaftSkeleton
 import build.raft.designsystem.components.RaftSkeletonVariant
 import build.raft.designsystem.components.RaftToastIntent
@@ -272,44 +274,6 @@ internal fun artifactSizeValue(bytes: Long): Pair<String, Int> =
         }
     }
 
-@Composable
-private fun ArtifactFactPart.localized(): String =
-    when (this) {
-        is ArtifactFactPart.LatestIs -> stringResource(Res.string.artifacts_card_latest_is, version)
-        is ArtifactFactPart.Lines ->
-            if (count == 1) stringResource(Res.string.artifacts_facts_lines_one) else stringResource(Res.string.artifacts_facts_lines_many, count)
-        is ArtifactFactPart.Rows -> rowsText(count)
-        is ArtifactFactPart.RowsColumns -> stringResource(Res.string.artifacts_facts_rows_columns, rowsText(rows), columnsText(columns))
-        is ArtifactFactPart.ColumnNames -> {
-            // A pair message, not a list join: the catalog says "、" / ", ".
-            var list = names.first()
-            for (name in names.drop(1)) list = stringResource(Res.string.artifacts_facts_column_pair, list, name)
-            list
-        }
-        is ArtifactFactPart.Pixels -> stringResource(Res.string.artifacts_facts_pixels, width, height)
-        is ArtifactFactPart.Pages ->
-            if (count == 1) stringResource(Res.string.artifacts_facts_pages_one) else stringResource(Res.string.artifacts_facts_pages_many, count)
-        is ArtifactFactPart.Size -> {
-            val (value, unit) = artifactSizeValue(bytes)
-            when (unit) {
-                0 -> stringResource(Res.string.artifacts_facts_bytes, value)
-                1 -> stringResource(Res.string.artifacts_facts_kilobytes, value)
-                else -> stringResource(Res.string.artifacts_facts_megabytes, value)
-            }
-        }
-    }
-
-@Composable
-private fun rowsText(count: Int): String =
-    if (count == 1) stringResource(Res.string.artifacts_facts_rows_one) else stringResource(Res.string.artifacts_facts_rows_many, count)
-
-@Composable
-private fun columnsText(count: Int): String =
-    if (count == 1) stringResource(Res.string.artifacts_facts_columns_one) else stringResource(Res.string.artifacts_facts_columns_many, count)
-
-@Composable
-private fun List<ArtifactFactPart>.localizedLine(): String? = takeIf { it.isNotEmpty() }?.map { it.localized() }?.joinToString(" · ")
-
 /** A relative time ("2 hours ago"), or null for a missing or unreadable one (web `formatRelativeTime`). */
 @Composable
 private fun artifactRelativeTime(value: String?): String? {
@@ -437,6 +401,7 @@ internal fun ThreadArtifactMessageRefsContent(
     onToggleFollow: ((ArtifactSummary, Boolean) -> Unit)? = null,
     onRereadLatest: ((String) -> Unit)? = null,
     isPageVisible: () -> Boolean = { true },
+    maxExcerptLines: Int = ArtifactCardExcerptDefaultLines,
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         when (view) {
@@ -459,6 +424,7 @@ internal fun ThreadArtifactMessageRefsContent(
                                     onToggleFollow = onToggleFollow?.let { cb -> { next -> cb(ref.summary, next) } },
                                     onRereadLatest = onRereadLatest,
                                     isPageVisible = isPageVisible,
+                                    maxExcerptLines = maxExcerptLines,
                                 )
                             is ThreadArtifactMessageRef.Deleted -> ArtifactDeletedCard(ref.deleted)
                         }
@@ -642,16 +608,23 @@ internal fun rememberArtifactCardScreenshot(summary: ArtifactSummary): ArtifactC
 /** web `max-h-48`: a card's picture is at most 192dp tall. */
 internal val ArtifactCardScreenshotMaxHeight: Dp = 192.dp
 
+/** On a phone (under the app's wide breakpoint) a card's picture is at most 120dp tall (#proj-mobile:#439). */
+internal val ArtifactCardScreenshotCompactMaxHeight: Dp = 120.dp
+
+/** [ArtifactCardScreenshotCompactMaxHeight] on a phone ([compact]), else [ArtifactCardScreenshotMaxHeight]. */
+internal fun artifactCardScreenshotMaxHeight(compact: Boolean): Dp =
+    if (compact) ArtifactCardScreenshotCompactMaxHeight else ArtifactCardScreenshotMaxHeight
+
 /** web `aspect-[16/10] max-h-48 w-full`: the card's width, 16:10, at most [ArtifactCardScreenshotMaxHeight] tall. */
 internal fun artifactCardScreenshotHeightPx(widthPx: Int, maxHeightPx: Int): Int = minOf((widthPx * 10f / 16f).roundToInt(), maxHeightPx)
 
 /**
- * web `ArtifactMessageCard`'s cover: edge to edge above the header, `object-cover object-top` (cut
- * from the bottom: the page's top and first screen), a `line-hairline` rule under it; while it is
- * read, the same box empty on `fill-muted`.
+ * web `ArtifactMessageCard`'s cover: edge to edge between the header and the footer, `object-cover
+ * object-top` (cut from the bottom: the page's top and first screen), a `line-hairline` rule above
+ * and under it; while it is read, the same box empty on `fill-muted`. At most [maxHeight] tall.
  */
 @Composable
-internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
+internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView, maxHeight: Dp = ArtifactCardScreenshotMaxHeight) {
     val colors = RaftTheme.colors
     val coverState =
         when (view) {
@@ -662,7 +635,7 @@ internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
         }
     val boxModifier =
         Modifier
-            .artifactCardScreenshotSize()
+            .artifactCardScreenshotSize(maxHeight)
             .background(colors.fillMuted)
             .let { base ->
                 when {
@@ -675,6 +648,7 @@ internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
                 }
             }
     RaftMessageEmbedContent {
+        Box(Modifier.fillMaxWidth().height(RaftStroke.Hairline).background(colors.lineHairline))
         Box(boxModifier) {
             if (view is ArtifactCardScreenshotView.Shown) {
                 val context = LocalPlatformContext.current
@@ -698,36 +672,95 @@ internal fun ArtifactCardScreenshot(view: ArtifactCardScreenshotView) {
     }
 }
 
-private fun Modifier.artifactCardScreenshotSize(): Modifier =
+private fun Modifier.artifactCardScreenshotSize(maxHeight: Dp): Modifier =
     layout { measurable, constraints ->
         val width = if (constraints.hasBoundedWidth) constraints.maxWidth else 440.dp.roundToPx()
-        val height = artifactCardScreenshotHeightPx(width, ArtifactCardScreenshotMaxHeight.roundToPx())
+        val height = artifactCardScreenshotHeightPx(width, maxHeight.roundToPx())
         val placeable = measurable.measure(Constraints.fixed(width, height))
         layout(width, height) { placeable.place(0, 0) }
     }
 
-/** web `KindGlyph`: HTML's page is code, an image or video's a blank media page, any other a document. */
-private fun ArtifactKind.filePreviewKind(): RaftFilePreviewKind =
-    when (this) {
-        ArtifactKind.Html -> RaftFilePreviewKind.Code
-        ArtifactKind.Image, ArtifactKind.Video -> RaftFilePreviewKind.Media
-        else -> RaftFilePreviewKind.Document
+/** The Artifact icon (web `ArtifactIcon size-4`): a deleted card's title row, or a kind with no type badge. */
+internal val ArtifactCardIconSize: Dp = 16.dp
+
+/** The card's title type (raft-ui `messageCard().title()`: `subhead` bold). */
+@Composable
+@ReadOnlyComposable
+private fun artifactCardTitleStyle(): TextStyle = RaftTheme.typography.subhead.copy(fontWeight = FontWeight.Bold)
+
+/**
+ * web `ArtifactMessageCard`'s title row (`flex items-start gap-2 px-3 pt-3`): the file type badge
+ * ([badge]: "MD", "HTML", "CSV"; artin via Kirby, #proj-mobile:8518431c, in place of the 40dp file
+ * glyph), else the Artifact icon (16dp), centred on the title's first line (`h-[1lh]`), then
+ * [content] (the title and its tags).
+ */
+@Composable
+private fun ArtifactCardTitleRow(badge: String? = null, content: @Composable RowScope.() -> Unit) {
+    val lineHeight = with(LocalDensity.current) { artifactCardTitleStyle().lineHeight.toDp() }
+    Row(
+        Modifier.fillMaxWidth().padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, top = RaftMessageEmbedDefaults.Inset),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(Modifier.height(lineHeight), contentAlignment = Alignment.Center) {
+            if (badge != null) {
+                RaftFilePreviewBadge(badge, placement = RaftFilePreviewBadgePlacement.Inline)
+            } else {
+                RaftLucideIcon(RaftLucideIconName.Artifact, Modifier.size(ArtifactCardIconSize), color = raftArgbHex(RaftTheme.colors.foreground))
+            }
+        }
+        content()
     }
+}
+
+/**
+ * web `ArtifactMessageCard`'s meta line (raft-ui `messageCard().metaLine()`: `flex items-center
+ * gap-1.5 whitespace-nowrap text-caption`, `px-3 pt-2 pb-3`): one line of details at the card's foot.
+ */
+@Composable
+private fun ArtifactCardMetaLine(content: @Composable RowScope.() -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, top = 8.dp, bottom = RaftMessageEmbedDefaults.Inset),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+/**
+ * The version a card names (web `formatArtifactVersionBehind`, xxchan via Kirby, #proj-mobile:#439):
+ * only when it points at an older version and a newer one exists, both (the version shown, the latest),
+ * so the reader knows they will open an old one; the latest says nothing about its version: null.
+ */
+internal fun artifactCardVersionBehind(summary: ArtifactSummary): Pair<Int, Int>? =
+    if (summary.pinned && summary.latestVersion > summary.version) summary.version to summary.latestVersion else null
 
 /**
  * web `ArtifactMessageCard` `OkCard` (F12, F37, F31 A), interactive as a whole (a tap opens it in
- * place). Header: the kind's glyph and badge; the title (`subhead` bold, 2 lines) with its version
- * Badge; the fact line (`footnote` muted, 1 line); the description (`callout` muted, 1 line under
- * a fact line, else 2) or the start of its text (2 lines). Footer: where it lives, who updated it
- * when (Space Mono hint), and its comment count. Above them, the publish check's screenshot or
- * publisher cover image when the card has one ([ArtifactCardScreenshot]), else a Markdown version's
- * excerpt ([ArtifactCardExcerpt], web #13445 / #13472), which then is not repeated as the
- * description.
+ * place), compact (sindresorhus + Kirby, #proj-mobile:#439; web slock #17371, raft-design #1493
+ * cards-in-messages "A card with a preview"): the title once at the top, a preview that doesn't
+ * repeat it, one meta line.
+ * - Title row ([ArtifactCardTitleRow]): the file type badge (MD, HTML, CSV…; the Artifact icon for a
+ *   kind without one), the title (2 lines), then the Settled tag and the accent New badge saying what
+ *   is new to the reader ("Updated · 2 new comments", [ArtifactCardNewSticker]; not on a preview).
+ * - Preview: the publish check's screenshot or else the publisher's cover image
+ *   ([ArtifactCardScreenshot]) edge to edge between hairlines, cut from the top, at most 192dp, 120dp
+ *   on a phone; a picture is the preview, so no excerpt beside it; else a Markdown version's excerpt
+ *   ([ArtifactCardExcerpt]) 12dp in without its opening level-1 heading ([withoutLeadingTitle]), at
+ *   most [maxExcerptLines] lines on a phone (4; a Server flag later, 2..8); else the description (2 lines); else nothing. The kind's facts and a
+ *   description beside a preview are read after opening.
+ * - Meta line ([ArtifactCardMetaLine]): author · time · comments (a button opening the comments,
+ *   [onOpenComments], except on a preview), then the version only when the
+ *   card points at an older one and a newer exists ("v2 · latest v4", [artifactCardVersionBehind]).
+ *   No channel or scope tag in any conversation (xxchan, Remy): who can see it is in the details
+ *   and the share sheet.
+ * A phone is a window under the app's wide breakpoint ([raftWindowWide]).
  *
  * Settled (botiverse/slock #15654, `artifact_settled_v0`): while the Artifact is settled now, the
- * Settled tag after the version tag ([ArtifactSettledTag]; [readerId] names the reader's own settle
- * "You"), the two going under the title rather than leave it under 128dp ([ArtifactCardTitleLine]).
- * Nothing where the card says nothing of it ([ArtifactSummary.settled] null: Working, or the flag off).
+ * Settled tag after the title ([ArtifactSettledTag]; [readerId] names the reader's own settle "You"),
+ * going under the title rather than leave it under 128dp ([ArtifactCardTitleLine]). It is the only
+ * status a card shows (Kirby, #proj-mobile:#439): nothing for Working, or with the flag off
+ * ([ArtifactSummary.settled] null).
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -745,17 +778,13 @@ internal fun ArtifactMessageCard(
     onToggleFollow: ((Boolean) -> Unit)? = null,
     onRereadLatest: ((String) -> Unit)? = null,
     isPageVisible: () -> Boolean = { true },
+    maxExcerptLines: Int = ArtifactCardExcerptDefaultLines,
 ) {
     val colors = RaftTheme.colors
     val typography = RaftTheme.typography
-    val facts = artifactCardFactParts(summary).localizedLine()
-    val hasKindFacts = artifactKindFactParts(summary).isNotEmpty()
+    val compact = !raftWindowWide()
     val time = artifactRelativeTime(summary.updatedAt)
-    val meta =
-        when {
-            time != null -> stringResource(Res.string.artifacts_card_updated_by, summary.authorName, time)
-            else -> summary.authorName.takeIf { it.isNotBlank() }
-        }
+    val description = summary.description?.takeIf { it.isNotBlank() }
     val screenshot =
         rememberArtifactMessageCardScreenshot(
             summary = summary,
@@ -764,7 +793,7 @@ internal fun ArtifactMessageCard(
         )
     // web `useArtifactCardPicture`: a screenshot or publisher cover, else a Markdown version's excerpt
     // (one kind at a time from the server, so an excerpt never waits for or replaces a picture).
-    val excerpt = summary.excerpt.takeIf { screenshot == ArtifactCardScreenshotView.None }
+    val excerpt = summary.excerpt.takeIf { screenshot == ArtifactCardScreenshotView.None }?.withoutLeadingTitle(summary.title)
     // web `ArtifactCardMenu.tsx` (botiverse/slock #16110): right-click or Shift+F10/ContextMenu on
     // a live card opens the Artifact's own menu; preview cards and select mode leave it off.
     val effectiveMenuEnabled = contextMenuEnabled && !preview
@@ -825,43 +854,27 @@ internal fun ArtifactMessageCard(
             onClick = if (preview) null else onOpen,
             onClickLabel = if (preview) null else summary.title,
         ) {
-            if (screenshot != ArtifactCardScreenshotView.None) {
-                ArtifactCardScreenshot(screenshot)
-            } else if (excerpt != null) {
-                RaftMessageEmbedContent { ArtifactCardExcerpt(excerpt) }
-            }
-            RaftMessageEmbedHeader {
-                RaftFilePreview(summary.kind.filePreviewKind(), badge = summary.kind.badge)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    val title: @Composable (Modifier) -> Unit = { titleModifier ->
-                        RaftText(
-                            summary.title,
-                            modifier = titleModifier,
-                            style = typography.subhead.copy(fontWeight = FontWeight.Bold),
-                            color = colors.foreground,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    val version: @Composable (Modifier) -> Unit = { versionModifier ->
-                        RaftBadge(
-                            text = stringResource(Res.string.artifacts_card_version, summary.version),
-                            modifier = versionModifier,
-                            appearance = RaftBadgeAppearance.Outline,
-                            variant = RaftBadgeVariant.Muted,
-                        )
-                    }
-                    val settled = summary.settled
-                    val unseenMarks = artifactMessageCardUnseenMarks(summary, preview)
+            ArtifactCardTitleRow(badge = summary.kind.badge) {
+                val title: @Composable (Modifier) -> Unit = { titleModifier ->
+                    RaftText(
+                        summary.title,
+                        modifier = titleModifier,
+                        style = artifactCardTitleStyle(),
+                        color = colors.foreground,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                val settled = summary.settled
+                val unseenMarks = artifactMessageCardUnseenMarks(summary, preview)
+                Box(Modifier.weight(1f)) {
                     if (settled == null && unseenMarks.isEmpty) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Top) {
-                            title(Modifier.weight(1f, fill = false))
-                            version(Modifier.padding(top = 1.dp))
-                        }
+                        title(Modifier)
                     } else {
                         ArtifactCardTitleLine(
                             title = { title(Modifier) },
-                            // web: the version tag, then optional Settled tag and New sticker (`gap-1 pt-px flex-wrap`).
+                            // web: the Settled tag, then the New badge, after the title (`gap-1 pt-px flex-wrap`),
+                            // under it before the title gets under 8rem.
                             tags = {
                                 FlowRow(
                                     Modifier.padding(top = 1.dp),
@@ -869,7 +882,6 @@ internal fun ArtifactMessageCard(
                                     verticalArrangement = Arrangement.spacedBy(4.dp),
                                     itemVerticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    version(Modifier)
                                     if (settled != null) {
                                         ArtifactSettledTag(
                                             settled,
@@ -884,34 +896,46 @@ internal fun ArtifactMessageCard(
                             },
                         )
                     }
-                    facts?.let {
-                        RaftText(it, style = typography.footnote, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    // The card's own description only once its excerpt is drawn above (web: `card.description`).
-                    summary.description?.takeUnless { excerpt != null && summary.descriptionIsExcerpt }?.let {
-                        RaftText(
-                            it,
-                            style = typography.callout,
-                            color = colors.foregroundMuted,
-                            maxLines = if (!summary.descriptionIsExcerpt && hasKindFacts) 1 else 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
                 }
             }
-            RaftMessageEmbedFooter {
-                ArtifactCardScopeLabel(summary.home)
-                meta?.let {
+            when {
+                screenshot != ArtifactCardScreenshotView.None -> {
+                    // web `mt-2 border-y`: 8dp under the title, edge to edge between hairlines.
+                    Spacer(Modifier.height(8.dp))
+                    ArtifactCardScreenshot(screenshot, artifactCardScreenshotMaxHeight(compact))
+                }
+                excerpt != null ->
+                    // web `px-3 pt-2`: 12dp in, like the title, with no frame of its own.
+                    Box(Modifier.fillMaxWidth().padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, top = 8.dp)) {
+                        ArtifactCardExcerpt(excerpt, compact = compact, compactMaxLines = maxExcerptLines)
+                    }
+                // Without a picture or an excerpt, the description (web `line-clamp-2 text-callout`).
+                description != null ->
                     RaftText(
-                        it,
-                        modifier = Modifier.weight(1f, fill = false),
-                        style = typography.monoMeta,
-                        color = colors.foregroundHint,
-                        maxLines = 1,
+                        description,
+                        modifier = Modifier.fillMaxWidth().padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, top = 8.dp),
+                        style = typography.callout,
+                        color = colors.foregroundMuted,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
+            }
+            // One line at the foot: author · time · comments, the version only when this one is behind.
+            ArtifactCardMetaLine {
+                val ink = colors.foregroundMuted
+                val text: @Composable (String, Modifier) -> Unit = { words, textModifier ->
+                    RaftText(words, modifier = textModifier, style = typography.caption, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                val dot: @Composable () -> Unit = { text("·", Modifier.clearAndSetSemantics {}) }
+                val author = summary.authorName.takeIf { it.isNotBlank() }
+                // The author gives way first; the rest keep their words.
+                author?.let { text(it, Modifier.weight(1f, fill = false)) }
+                time?.let {
+                    if (author != null) dot()
+                    text(it, Modifier)
                 }
                 if (summary.commentCount > 0) {
+                    if (author != null || time != null) dot()
                     val label =
                         if (summary.commentCount == 1) {
                             stringResource(Res.string.artifacts_card_comments_one)
@@ -932,7 +956,6 @@ internal fun ArtifactMessageCard(
                                             onClickLabel = label,
                                             shape = RoundedCornerShape(build.raft.designsystem.tokens.RaftRadius.Control),
                                         )
-                                        .padding(horizontal = 6.dp, vertical = 4.dp)
                                 } else {
                                     base
                                 }
@@ -943,9 +966,13 @@ internal fun ArtifactMessageCard(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        RaftLucideIcon(RaftLucideIconName.Comment, Modifier.size(12.dp), color = raftArgbHex(colors.foregroundHint))
-                        RaftText(summary.commentCount.toString(), style = typography.monoMeta, color = colors.foregroundHint, maxLines = 1)
+                        RaftLucideIcon(RaftLucideIconName.Comment, Modifier.size(14.dp), color = raftArgbHex(ink))
+                        text(summary.commentCount.toString(), Modifier)
                     }
+                }
+                artifactCardVersionBehind(summary)?.let { (version, latest) ->
+                    if (author != null || time != null || summary.commentCount > 0) dot()
+                    text(stringResource(Res.string.artifacts_card_version_behind, version, latest), Modifier)
                 }
             }
         }
@@ -969,15 +996,17 @@ internal fun ArtifactMessageCard(
 /** web's `artifact-settled-tag`: the Settled tag's test tag. */
 internal const val ArtifactSettledTagTestTag = "artifact-settled-tag"
 
-/** web's `artifact-card-new`: the unseen updates / new comments sticker's test tag. */
+/** web's `artifact-card-new`: the unseen updates / new comments badge's test tag. */
 internal const val ArtifactCardNewStickerTestTag = "artifact-card-new"
 
 /** web's `artifact-card-comments`: the footer comment count button's test tag. */
 internal const val ArtifactCardCommentsButtonTestTag = "artifact-card-comments"
 
 /**
- * web `ArtifactMessageCard` `NewSticker`: accent badge combining unseen version and unseen comment
- * counts (`" · "` separated) with a screen-reader label (`"; "` separated).
+ * The card's New badge (web `ArtifactMessageCard` `NewSticker`; raft-design #1493 "News for me": one
+ * accent Badge after the title, beside the Settled tag, not a corner sticker): what is new to the
+ * reader, unseen version and unseen comment counts (`" · "` separated: "Updated · 2 new comments"),
+ * with a screen-reader label (`"; "` separated).
  */
 @Composable
 internal fun ArtifactCardNewSticker(marks: ArtifactCardUnseenMarks, modifier: Modifier = Modifier) {
@@ -1100,53 +1129,10 @@ internal fun artifactSettledTimeLabel(at: String, context: RaftTimeContext?): St
 }
 
 /**
- * web `ArtifactScopeLabel onCard`: where it lives, an outline muted Badge with its icon: a channel's
- * name bare (the icon says its kind), a DM by its peer, the whole server, or anyone with the link.
- * Display only here (the web's "who can see it" popover is not on the phone card yet).
- */
-@Composable
-private fun ArtifactCardScopeLabel(home: ArtifactHome) {
-    val ink = RaftTheme.colors.foregroundMuted
-    val text =
-        when (home) {
-            // The chip names a channel bare (its icon says its kind); a shared channel the reader's
-            // server has no copy of reads "Shared channel" (web #15244).
-            is ArtifactHome.Conversation ->
-                if (home.sharedChannelWithoutCopy) {
-                    stringResource(Res.string.artifacts_scope_shared_channel)
-                } else {
-                    (home.peerDisplayName ?: home.name).takeIf { it.isNotBlank() } ?: return
-                }
-            ArtifactHome.Server -> stringResource(Res.string.artifacts_scope_server)
-            ArtifactHome.Public -> stringResource(Res.string.artifacts_scope_public)
-        }
-    RaftBadge(
-        text = text,
-        appearance = RaftBadgeAppearance.Outline,
-        variant = RaftBadgeVariant.Muted,
-        icon = {
-            when {
-                home is ArtifactHome.Conversation && home.dm ->
-                    RaftConversationKindIcon(RaftConversationKindGlyph.DirectMessage, size = 12.dp, color = ink)
-                else -> {
-                    val icon =
-                        when {
-                            home is ArtifactHome.Conversation && home.private -> RaftLucideIconName.Lock
-                            home is ArtifactHome.Conversation -> RaftLucideIconName.Hash
-                            home == ArtifactHome.Server -> RaftLucideIconName.Users
-                            else -> RaftLucideIconName.Globe
-                        }
-                    RaftLucideIcon(icon, Modifier.size(12.dp), color = raftArgbHex(ink))
-                }
-            }
-        },
-    )
-}
-
-/**
- * web `ArtifactDeletedCard`: the card's frame and a document glyph, gray and dimmed (DS States ›
- * Dimmed: grayscale at 60%), the title as plain text (`foreground`) and who deleted it when
- * (`foreground-muted`). Nothing in it opens.
+ * web `ArtifactDeletedCard`: the card's frame and its title row (the Artifact icon, the title as
+ * plain text), gray and dimmed (DS States › Dimmed: grayscale at 60%), and who deleted it when as
+ * its meta line, a step darker than a live card's (`foreground`) so it still reads at 60%. Nothing
+ * in it opens.
  */
 @Composable
 internal fun ArtifactDeletedCard(deleted: ArtifactDeletedShown, modifier: Modifier = Modifier) {
@@ -1162,50 +1148,48 @@ internal fun ArtifactDeletedCard(deleted: ArtifactDeletedShown, modifier: Modifi
             else -> stringResource(Res.string.artifacts_card_deleted)
         }
     RaftMessageEmbed(modifier = modifier.testTag(ArtifactCardMenuTags.DeletedCard).raftGrayscale(RaftOpacity.Dimmed)) {
-        RaftMessageEmbedHeader {
-            RaftFilePreview(RaftFilePreviewKind.Document)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                RaftText(
-                    deleted.title,
-                    style = typography.subhead.copy(fontWeight = FontWeight.Bold),
-                    color = colors.foreground,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                RaftText(meta, style = typography.footnote, color = colors.foregroundMuted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
+        ArtifactCardTitleRow {
+            RaftText(
+                deleted.title,
+                modifier = Modifier.weight(1f),
+                style = artifactCardTitleStyle(),
+                color = colors.foreground,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        ArtifactCardMetaLine {
+            RaftText(meta, modifier = Modifier.weight(1f, fill = false), style = typography.caption, color = colors.foreground, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
 /**
- * web `ArtifactMessageCardLoading`, sized as the card it turns into: the header's 40dp kind glyph
- * and two lines, and the footer's badge line, so a card without a picture replaces it at about its
- * own height instead of growing under the reader (#proj-mobile:#201; the web's skeleton has the
- * header with two lines only). Whether the card will have a picture is not known before its summary is read, so
- * a picture's 16:10 box is not reserved here. Announced as loading.
+ * web `ArtifactMessageCardLoading`, in the card's shape: its title row (the icon and a line) and its
+ * meta line, so a card without a preview replaces it at about its own height instead of growing
+ * under the reader (#proj-mobile:#201). Whether the card will have a preview is not known before
+ * its summary is read, so none is reserved here. Announced as loading.
  */
 @Composable
 private fun ArtifactMessageCardLoading(animated: Boolean) {
     val label = stringResource(Res.string.artifacts_card_loading)
+    val lineHeight = with(LocalDensity.current) { artifactCardTitleStyle().lineHeight.toDp() }
     RaftMessageEmbed(Modifier.semantics { contentDescription = label }) {
-        RaftMessageEmbedHeader {
-            RaftSkeleton(Modifier.size(ArtifactCardLoadingGlyph), animated = animated)
-            // The title, then a description's two lines: the common card (web: title and one line).
-            Column(Modifier.weight(1f).padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line, animated = animated)
-                RaftSkeleton(Modifier.fillMaxWidth(0.9f), variant = RaftSkeletonVariant.Line, animated = animated)
-                RaftSkeleton(Modifier.fillMaxWidth(0.7f), variant = RaftSkeletonVariant.Line, animated = animated)
-            }
+        Row(
+            Modifier.fillMaxWidth().height(lineHeight + RaftMessageEmbedDefaults.Inset).padding(start = RaftMessageEmbedDefaults.Inset, end = RaftMessageEmbedDefaults.Inset, top = RaftMessageEmbedDefaults.Inset),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RaftSkeleton(Modifier.size(ArtifactCardIconSize), animated = animated)
+            RaftSkeleton(Modifier.fillMaxWidth(0.6f), variant = RaftSkeletonVariant.Line, animated = animated)
         }
-        RaftMessageEmbedFooter {
-            RaftSkeleton(Modifier.size(width = 96.dp, height = ArtifactCardLoadingFooterLine), animated = animated)
+        ArtifactCardMetaLine {
+            Box(Modifier.height(ArtifactCardLoadingMetaLine), contentAlignment = Alignment.Center) {
+                RaftSkeleton(Modifier.fillMaxWidth(0.4f), variant = RaftSkeletonVariant.Line, animated = animated)
+            }
         }
     }
 }
 
-/** The card header's kind glyph ([RaftFilePreview], 40dp). */
-private val ArtifactCardLoadingGlyph: Dp = 40.dp
-
-/** The card footer's tallest item, an outline Badge (20dp). */
-private val ArtifactCardLoadingFooterLine: Dp = 20.dp
+/** The meta line's height (`text-caption`, 18dp on a phone). */
+private val ArtifactCardLoadingMetaLine: Dp = 18.dp

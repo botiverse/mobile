@@ -77,7 +77,7 @@ fun RaftFilePreview(
             RaftFilePreviewKind.Media -> FilePreviewPage(RaftTheme.colors.fillMuted) {}
         }
         if (badge != null) {
-            FilePreviewBadge(
+            RaftFilePreviewBadge(
                 badge,
                 // `-right-1.5 bottom-0.5`: past the root's end by 6dp, 2dp above its bottom.
                 Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = (-2).dp),
@@ -191,9 +191,29 @@ private fun CodeBar(width: Dp, color: Color) {
     Box(Modifier.size(width = width, height = 2.dp).background(color, RoundedCornerShape(50)))
 }
 
-/** `FilePreviewBadge` (corner): `px-1 py-0.5`, Space Mono 10 bold, `leading-none`. */
+/** raft-ui `FilePreviewBadge` `placement`: where [RaftFilePreviewBadge] sits. */
+enum class RaftFilePreviewBadgePlacement {
+    /** `corner`: on a file's icon, tagging its corner (`px-1 py-0.5`); [RaftFilePreview] places it. */
+    Corner,
+
+    /** `inline`: a chip of its own in a row, before a name (`inline-flex h-3.5 w-7`, no padding, centred). */
+    Inline,
+}
+
+/**
+ * raft-ui `FilePreviewBadge`: a file's type as people know it ("MD", "HTML", "CSV"), Space Mono 10
+ * bold `leading-none` `foreground-muted` on `fill-muted`, the sticker radius, a `line-hairline` ring
+ * outside it (no layout room). [placement] [RaftFilePreviewBadgePlacement.Corner] is padded 4 x 2dp
+ * for [RaftFilePreview]'s corner; [RaftFilePreviewBadgePlacement.Inline] is a fixed 28 x 14dp chip
+ * for a text row, before a title (the Artifact message card, #proj-mobile:#439). Decorative: no
+ * semantics of its own (the row's words name the file).
+ */
 @Composable
-private fun FilePreviewBadge(text: String, modifier: Modifier) {
+fun RaftFilePreviewBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    placement: RaftFilePreviewBadgePlacement = RaftFilePreviewBadgePlacement.Corner,
+) {
     val colors = RaftTheme.colors
     val shape = RoundedCornerShape(RaftRadius.Sticker)
     val ring = colors.lineHairline
@@ -210,7 +230,13 @@ private fun FilePreviewBadge(text: String, modifier: Modifier) {
                 )
             }
             .background(colors.fillMuted, shape)
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .then(
+                when (placement) {
+                    RaftFilePreviewBadgePlacement.Corner -> Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    RaftFilePreviewBadgePlacement.Inline -> Modifier.size(width = 28.dp, height = 14.dp)
+                },
+            ),
+        contentAlignment = Alignment.Center,
     ) {
         RaftText(
             text,
