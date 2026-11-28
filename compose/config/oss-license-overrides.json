@@ -45,7 +45,7 @@
       "licenseName": "MIT License",
       "licenseUrl": "https://opensource.org/licenses/MIT",
       "sourceUrl": "https://github.com/botiverse/hands/tree/c4c5fe07c84500c666fbbea2d8791860d7faafe8/clients/android",
-      "reason": "Pin the packaged disclosure to the exact source commit paired with the official 0.16.0 Raft Maven AAR and native-symbols artifact; Gradle metadata can otherwise hide POM license/source details."
+      "reason": "Pin the packaged disclosure to the exact source commit paired with the official 0.16.1 Raft Maven AAR and native-symbols artifact; Gradle metadata can otherwise hide POM license/source details."
     },
     {
       "id": "org.slf4j:slf4j-api",
