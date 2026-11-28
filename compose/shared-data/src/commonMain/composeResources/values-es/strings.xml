@@ -6546,7 +6546,15 @@
     <string name="settings_computers_runtime_install_installed_version">Se instaló %1$s %2$s.</string>
     <string name="settings_computers_runtime_install_installed">Se instaló %1$s.</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s ya está instalado en esta computadora.</string>
-    <string name="settings_computers_runtime_install_failed">El instalador de %1$s no terminó, así que sigue sin estar instalado.</string>
+    <string name="settings_computers_runtime_install_failed_not_found">El instalador de %1$s terminó, pero %1$s sigue sin estar en esta computadora.</string>
+    <string name="settings_computers_runtime_install_failed_exit_code">El instalador de %1$s se detuvo con el código de error %2$s, así que sigue sin estar instalado.</string>
+    <string name="settings_computers_runtime_install_failed_timeout">El instalador de %1$s se detuvo antes de terminar (por el límite de %2$s minutos o por el sistema), así que sigue sin estar instalado.</string>
+    <string name="settings_computers_runtime_install_failed_download_failed">No se pudo descargar el instalador de %1$s, así que no se instaló nada.</string>
+    <string name="settings_computers_runtime_install_failed_not_a_script">Lo que se descargó para el instalador de %1$s no era un script de instalación (por ejemplo, una página web o un bloqueo de red), así que no se ejecutó nada.</string>
+    <string name="settings_computers_runtime_install_failed_timed_out">El instalador de %1$s se detuvo al llegar al límite de %2$s minutos, así que sigue sin estar instalado.</string>
+    <string name="settings_computers_runtime_install_failed_no_exit_code">El instalador de %1$s se detuvo o no pudo iniciarse, así que sigue sin estar instalado.</string>
+    <string name="settings_computers_runtime_install_failed_unusable">El instalador de %1$s terminó, pero el %1$s de esta computadora no se puede usar.</string>
+    <string name="settings_computers_runtime_install_failed_manual">Para instalarlo tú mismo, ejecuta esto en %1$s. Si allí también falla, su salida dice por qué:</string>
     <string name="settings_computers_runtime_install_failed_output_tail">Últimas líneas de la salida de la instalación:</string>
     <string name="settings_computers_runtime_install_in_progress">%1$s ya se está instalando en esta computadora.</string>
     <string name="settings_computers_runtime_install_error">No se pudo instalar %1$s. Inténtalo de nuevo.</string>

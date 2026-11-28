@@ -198,6 +198,67 @@ class RuntimeUpgradeInstallContractTest {
     }
 
     /**
+     * botiverse/slock #17210 (commit 7b7152396): `failed` results may carry OAR 0.138's typed
+     * `reason` alongside `exitCode`. All 6 known reasons decode cleanly without diagnostics; unknown
+     * valid snake_case reasons log and fall back to null (exit-code copy); invalid or non-string
+     * reasons are ignored without dropping the failure outcome.
+     */
+    @Test
+    fun failedInstallFailureReasonParsesKnownOarReasonsAndFallsBackCleanly() {
+        val logged = mutableListOf<String>()
+        mapOf(
+            """{"kind":"failed","exitCode":6,"reason":"download_failed"}""" to
+                RuntimeInstallResult.Failed(exitCode = 6, reason = RuntimeInstallFailureReason.DownloadFailed),
+            """{"kind":"failed","exitCode":null,"reason":"download_failed"}""" to
+                RuntimeInstallResult.Failed(exitCode = null, reason = RuntimeInstallFailureReason.DownloadFailed),
+            """{"kind":"failed","exitCode":null,"reason":"non_script_response"}""" to
+                RuntimeInstallResult.Failed(exitCode = null, reason = RuntimeInstallFailureReason.NonScriptResponse),
+            """{"kind":"failed","exitCode":null,"reason":"timed_out"}""" to
+                RuntimeInstallResult.Failed(exitCode = null, reason = RuntimeInstallFailureReason.TimedOut),
+            """{"kind":"failed","exitCode":2,"reason":"installer_failed"}""" to
+                RuntimeInstallResult.Failed(exitCode = 2, reason = RuntimeInstallFailureReason.InstallerFailed),
+            """{"kind":"failed","exitCode":null,"reason":"installer_failed"}""" to
+                RuntimeInstallResult.Failed(exitCode = null, reason = RuntimeInstallFailureReason.InstallerFailed),
+            """{"kind":"failed","exitCode":0,"reason":"not_found_after_install"}""" to
+                RuntimeInstallResult.Failed(exitCode = 0, reason = RuntimeInstallFailureReason.NotFoundAfterInstall),
+            """{"kind":"failed","exitCode":0,"reason":"unusable_after_install"}""" to
+                RuntimeInstallResult.Failed(exitCode = 0, reason = RuntimeInstallFailureReason.UnusableAfterInstall),
+        ).forEach { (wire, expected) ->
+            assertEquals(expected, parse(wire).toRuntimeInstallResult { logged += it }, wire)
+        }
+        assertTrue(logged.isEmpty(), "known OAR failure reasons should not log diagnostics: $logged")
+
+        // Unknown reasons matching RUNTIME_INSTALL_FAILURE_REASON_PATTERN fall back to exitCode with an unknown-type log.
+        listOf("checksum_mismatch", "other").forEach { unknown ->
+            val unknownLogs = mutableListOf<String>()
+            assertEquals(
+                RuntimeInstallResult.Failed(exitCode = 1, reason = null),
+                parse("""{"kind":"failed","exitCode":1,"reason":"$unknown"}""").toRuntimeInstallResult { unknownLogs += it },
+                unknown,
+            )
+            assertEquals(1, unknownLogs.size, unknownLogs.toString())
+            assertTrue(unknownLogs.single().startsWith("projection_value_unknown source=runtime_install_result field=reason"), unknownLogs.toString())
+            assertTrue("action=fallback_exit_code" in unknownLogs.single(), unknownLogs.toString())
+        }
+
+        // Null, blank, non-string, or out-of-shape reasons are ignored without dropping Failed.
+        val overBound = "a".repeat(49)
+        listOf(
+            """{"kind":"failed","exitCode":1,"reason":null}""",
+            """{"kind":"failed","exitCode":1,"reason":""}""",
+            """{"kind":"failed","exitCode":1,"reason":"BAD-REASON"}""",
+            """{"kind":"failed","exitCode":1,"reason":"$overBound"}""",
+            """{"kind":"failed","exitCode":1,"reason":42}""",
+            """{"kind":"failed","exitCode":1,"reason":true}""",
+            """{"kind":"failed","exitCode":1,"reason":["timed_out"]}""",
+            """{"kind":"failed","exitCode":1,"reason":{"code":"timed_out"}}""",
+        ).forEach { wire ->
+            assertEquals(RuntimeInstallResult.Failed(exitCode = 1, reason = null), parse(wire).toRuntimeInstallResult { logged += it }, wire)
+        }
+        assertTrue(logged.isEmpty(), "invalid reason shapes should not log unknown-type diagnostics: $logged")
+    }
+
+    /**
      * botiverse/slock #17305 (commit dc3153798): `failed` results may carry a redacted `outputTail`
      * (at most 2 KB). Non-blank multiline tails are preserved, outer whitespace is trimmed, and
      * null, blank, non-string, or oversized tails are ignored without dropping the failure outcome.
@@ -207,7 +268,7 @@ class RuntimeUpgradeInstallContractTest {
         val multiline = "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@deepseek-ai%2fdsh"
         val logged = mutableListOf<String>()
         assertEquals(
-            RuntimeInstallResult.Failed(exitCode = 1, outputTail = multiline),
+            RuntimeInstallResult.Failed(exitCode = 1, reason = RuntimeInstallFailureReason.InstallerFailed, outputTail = multiline),
             parse(
                 """{"kind":"failed","exitCode":1,"reason":"installer_failed","outputTail":"npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@deepseek-ai%2fdsh"}"""
             ).toRuntimeInstallResult { logged += it },
@@ -269,8 +330,8 @@ class RuntimeUpgradeInstallContractTest {
                 """POST servers/s1/machines/m1/runtimes/claude/upgrade {"respondAsync":true}""",
                 "GET servers/s1/machine-operations/$OP",
                 """POST servers/s1/machines/m1/runtimes/codex/install-plan {"respondAsync":true}""",
-                // Kimi Code installs by its sign-in id, opting into redacted outputTail on failure (slock #17305).
-                """POST servers/s1/machines/m1/runtimes/kimi/install {"respondAsync":true,"outputTail":true}""",
+                // Kimi Code installs by its sign-in id, opting into OAR failureReason (#17210) and redacted outputTail (#17305).
+                """POST servers/s1/machines/m1/runtimes/kimi/install {"respondAsync":true,"failureReason":true,"outputTail":true}""",
             ),
             api.calls,
         )
@@ -283,19 +344,21 @@ class RuntimeUpgradeInstallContractTest {
             FakeRuntimeOperationApi(
                 answer = { HomeNetworkResponse(code = 202, bodyText = """{"operationId":"$OP"}""") },
                 operation = {
-                    ok("""{"state":"done","status":200,"body":{"result":{"kind":"failed","exitCode":1,"outputTail":"npm error code E404\nnpm error 404 Not Found"}}}""")
+                    ok(
+                        """{"state":"done","status":200,"body":{"result":{"kind":"failed","exitCode":1,"reason":"installer_failed","outputTail":"npm error code E404\nnpm error 404 Not Found"}}}"""
+                    )
                 },
             )
         val owner = SharedComputersOwner(environmentId = "https://raft.example", accountId = "user-1", sessionGeneration = "gen-1")
         val store = SharedRuntimeAccountUsageStore(client = RaftComputersApiClient(api), currentIdentity = { owner }, detachedScope = backgroundScope)
 
         assertEquals(
-            RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)),
+            RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, reason = RuntimeInstallFailureReason.InstallerFailed, outputTail = tail)),
             store.installRuntime(owner, serverId = "s1", machineId = "m1", runtime = RuntimeAuthRuntime.Grok),
         )
         assertEquals(
             listOf(
-                """POST servers/s1/machines/m1/runtimes/grok/install {"respondAsync":true,"outputTail":true}""",
+                """POST servers/s1/machines/m1/runtimes/grok/install {"respondAsync":true,"failureReason":true,"outputTail":true}""",
                 "GET servers/s1/machine-operations/$OP",
             ),
             api.calls,

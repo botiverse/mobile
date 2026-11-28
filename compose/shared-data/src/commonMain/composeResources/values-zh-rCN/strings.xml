@@ -3577,7 +3577,15 @@
     <string name="settings_computers_runtime_install_installed_version">已安装 %1$s %2$s。</string>
     <string name="settings_computers_runtime_install_installed">已安装 %1$s。</string>
     <string name="settings_computers_runtime_install_already_installed">这台 Computer 上已经安装了 %1$s。</string>
-    <string name="settings_computers_runtime_install_failed">%1$s 的安装程序没有完成，所以它仍未安装。</string>
+    <string name="settings_computers_runtime_install_failed_not_found">%1$s 的安装程序已结束，但这台 Computer 上仍然没有 %1$s。</string>
+    <string name="settings_computers_runtime_install_failed_exit_code">%1$s 的安装程序以错误代码 %2$s 退出，所以它仍未安装。</string>
+    <string name="settings_computers_runtime_install_failed_timeout">%1$s 的安装程序在完成前被停止（达到 %2$s 分钟上限或被系统终止），所以它仍未安装。</string>
+    <string name="settings_computers_runtime_install_failed_download_failed">无法下载 %1$s 的安装程序，所以没有安装任何东西。</string>
+    <string name="settings_computers_runtime_install_failed_not_a_script">为 %1$s 安装程序下载到的内容不是安装脚本（例如网页或网络拦截页面），所以没有运行任何东西。</string>
+    <string name="settings_computers_runtime_install_failed_timed_out">%1$s 的安装程序在达到 %2$s 分钟上限时被停止，所以它仍未安装。</string>
+    <string name="settings_computers_runtime_install_failed_no_exit_code">%1$s 的安装程序被停止或无法启动，所以它仍未安装。</string>
+    <string name="settings_computers_runtime_install_failed_unusable">%1$s 的安装程序已结束，但这台 Computer 上的 %1$s 无法使用。</string>
+    <string name="settings_computers_runtime_install_failed_manual">要自己安装，请在 %1$s 上运行以下命令。如果在那里也失败，它的输出会说明原因：</string>
     <string name="settings_computers_runtime_install_failed_output_tail">安装输出的最后几行：</string>
     <string name="settings_computers_runtime_install_in_progress">这台 Computer 上的 %1$s 已经在安装中。</string>
     <string name="settings_computers_runtime_install_error">无法安装 %1$s，请重试。</string>

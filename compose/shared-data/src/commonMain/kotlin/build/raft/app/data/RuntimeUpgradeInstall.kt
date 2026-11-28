@@ -44,6 +44,9 @@ import kotlinx.serialization.json.JsonPrimitive
 /** slock `RUNTIME_UPGRADE_RELAY_BUDGET_MS`. */
 @RaftCoreInternalApi const val RUNTIME_UPGRADE_RELAY_BUDGET_MILLIS = 12 * 60_000L
 
+/** slock `RUNTIME_INSTALL_TIMEOUT_MS`: the bound OAR uses for the installer run. */
+@RaftCoreInternalApi const val RUNTIME_INSTALL_TIMEOUT_MILLIS = 10 * 60_000L
+
 /** slock `RUNTIME_INSTALL_RELAY_BUDGET_MS`. */
 @RaftCoreInternalApi const val RUNTIME_INSTALL_RELAY_BUDGET_MILLIS = 12 * 60_000L
 
@@ -57,13 +60,15 @@ import kotlinx.serialization.json.JsonPrimitive
 @RaftCoreInternalApi const val RUNTIME_INSTALL_OUTPUT_TAIL_MAX_CHARS = 2_048
 
 /**
- * The body of an upgrade, an install plan or an install: the runtime is the path's. [outputTail] is
- * sent (`true`) only on `install` to opt into a failed installer's redacted last lines
- * (botiverse/slock #17305); omitted (`null`) on `upgrade` and `install-plan`.
+ * The body of an upgrade, an install plan or an install: the runtime is the path's. [failureReason]
+ * and [outputTail] are sent (`true`) only on `install` to opt into OAR 0.138's typed failure reason
+ * (botiverse/slock #17210) and a failed installer's redacted last lines (botiverse/slock #17305);
+ * omitted (`null`) on `upgrade` and `install-plan`.
  */
 @Serializable
 @RaftCoreInternalApi data class RuntimeMachineOperationBody(
     val respondAsync: Boolean,
+    val failureReason: Boolean? = null,
     val outputTail: Boolean? = null,
 )
 
@@ -186,9 +191,28 @@ import kotlinx.serialization.json.JsonPrimitive
 }
 
 /**
- * slock `RuntimeInstallResult`: what an install did. A `failed` outcome may carry the installer's
- * redacted last lines (`outputTail`, botiverse/slock #17305) when requested and answered to the
- * person who attached the Computer; never logged or traced.
+ * slock `RUNTIME_INSTALL_FAILURE_REASONS` (OAR 0.138 `KnownInstallFailureReason`,
+ * botiverse/slock #17210): why a `failed` install failed, as OAR judged it. OAR's enum is open;
+ * a reason this build does not name reads as null so the UI falls back to the exit code.
+ */
+@RaftCoreInternalApi enum class RuntimeInstallFailureReason(val wire: String) {
+    DownloadFailed("download_failed"),
+    NonScriptResponse("non_script_response"),
+    TimedOut("timed_out"),
+    InstallerFailed("installer_failed"),
+    NotFoundAfterInstall("not_found_after_install"),
+    UnusableAfterInstall("unusable_after_install");
+
+    companion object {
+        fun fromWire(value: String?): RuntimeInstallFailureReason? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
+ * slock `RuntimeInstallResult`: what an install did. A `failed` outcome may carry OAR 0.138's
+ * typed failure `reason` (botiverse/slock #17210) and the installer's redacted last lines
+ * (`outputTail`, botiverse/slock #17305) when requested and answered to the person who attached
+ * the Computer; `outputTail` is never logged or traced.
  */
 @RaftCoreInternalApi sealed interface RuntimeInstallResult {
     data class Installed(val version: String? = null) : RuntimeInstallResult
@@ -197,11 +221,14 @@ import kotlinx.serialization.json.JsonPrimitive
     data class AlreadyInstalled(val version: String? = null) : RuntimeInstallResult
 
     /**
-     * The installer ran and the probe still finds nothing; null exit code when the timeout stopped it.
-     * [outputTail] is the redacted last lines of the installer's output when sent by the Computer.
+     * No usable copy after the installer, or no installer ran: [exitCode] is the installer's (or
+     * curl's for [RuntimeInstallFailureReason.DownloadFailed]; null when stopped, could not start,
+     * or nothing ran), [reason] is OAR 0.138's known failure reason when sent, and [outputTail] is
+     * the redacted last lines of the installer's output when sent by the Computer.
      */
     data class Failed(
         val exitCode: Int? = null,
+        val reason: RuntimeInstallFailureReason? = null,
         val outputTail: String? = null,
     ) : RuntimeInstallResult
 
@@ -219,7 +246,7 @@ private data class RuntimeOperationOutcomeDto(
     val version: String? = null,
     val exitCode: Int? = null,
     val outputTail: JsonElement? = null,
-    val reason: String? = null,
+    val reason: JsonElement? = null,
     val code: String? = null,
     val detail: String? = null,
     val steps: List<String>? = null,
@@ -230,6 +257,11 @@ private val runtimeOperationJson = Json { ignoreUnknownKeys = true }
 
 /** slock `runtimeVersionSchema`: a release version (`2.0.14`, `1.0.0-beta.3`), never a path. */
 private val RuntimeVersionShape = Regex("^[0-9A-Za-z][0-9A-Za-z.+_-]*$")
+
+/** slock `RUNTIME_INSTALL_FAILURE_REASON_PATTERN`: OAR's snake_case words, bounded. */
+private val RuntimeInstallFailureReasonShape = Regex("^[a-z][a-z0-9_]{0,47}$")
+
+private fun JsonElement?.stringContentOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 /** A version as the result may carry it; one that is not a version is left out (web `runtimeUpgradeVersion`). */
 @RaftCoreInternalApi fun runtimeOperationVersion(value: String?): String? =
@@ -246,7 +278,7 @@ private fun JsonElement.toRuntimeOperationOutcomeDto(): RuntimeOperationOutcomeD
         "current" -> RuntimeUpgradeResult.Current(runtimeOperationVersion(dto.version))
         "unchanged" -> RuntimeUpgradeResult.Unchanged(runtimeOperationVersion(dto.version))
         "failed" -> RuntimeUpgradeResult.Failed(dto.exitCode)
-        "unsupported" -> RuntimeUpgradeUnsupportedReason.fromWire(dto.reason)?.let(RuntimeUpgradeResult::Unsupported)
+        "unsupported" -> RuntimeUpgradeUnsupportedReason.fromWire(dto.reason.stringContentOrNull())?.let(RuntimeUpgradeResult::Unsupported)
         "not_installed" -> RuntimeUpgradeResult.NotInstalled
         "error" -> RuntimeOperationErrorCode.fromWire(dto.code)?.let(RuntimeUpgradeResult::Error)
         else -> {
@@ -357,7 +389,7 @@ private fun String?.installSource(): String? =
             RuntimeInstallPlan.Plan(steps, source)
         }
         "unsupported" -> {
-            val reason = RuntimeInstallUnsupportedReason.fromWire(dto.reason) ?: return null
+            val reason = RuntimeInstallUnsupportedReason.fromWire(dto.reason.stringContentOrNull()) ?: return null
             RuntimeInstallPlan.Unsupported(
                 reason = reason,
                 detail = dto.detail?.trim()?.takeIf { it.isNotEmpty() && it.length <= 1_000 },
@@ -371,6 +403,22 @@ private fun String?.installSource(): String? =
             null
         }
     }
+}
+
+/**
+ * slock `runtimeInstallResultSchema`'s `reason` (botiverse/slock #17210): OAR 0.138's open
+ * failure reason. Known values map to [RuntimeInstallFailureReason]; unknown values matching
+ * `RUNTIME_INSTALL_FAILURE_REASON_PATTERN` log and return null so the UI falls back to `exitCode`;
+ * absent, null, non-string, or out-of-shape values become null without dropping the failure outcome.
+ */
+private fun JsonElement?.runtimeInstallFailureReason(diagnostics: (String) -> Unit): RuntimeInstallFailureReason? {
+    val raw = stringContentOrNull() ?: return null
+    if (!RuntimeInstallFailureReasonShape.matches(raw)) return null
+    return RuntimeInstallFailureReason.fromWire(raw)
+        ?: run {
+            reportUnknownTypeDropped("runtime_install_result", "reason", raw, fallback = "exit_code", diagnostics = diagnostics)
+            null
+        }
 }
 
 /**
@@ -390,8 +438,13 @@ private fun JsonElement?.runtimeInstallOutputTail(): String? {
     return when (dto.kind) {
         "installed" -> RuntimeInstallResult.Installed(runtimeOperationVersion(dto.version))
         "already_installed" -> RuntimeInstallResult.AlreadyInstalled(runtimeOperationVersion(dto.version))
-        "failed" -> RuntimeInstallResult.Failed(dto.exitCode, dto.outputTail.runtimeInstallOutputTail())
-        "unsupported" -> RuntimeInstallUnsupportedReason.fromWire(dto.reason)?.let(RuntimeInstallResult::Unsupported)
+        "failed" ->
+            RuntimeInstallResult.Failed(
+                exitCode = dto.exitCode,
+                reason = dto.reason.runtimeInstallFailureReason(diagnostics),
+                outputTail = dto.outputTail.runtimeInstallOutputTail(),
+            )
+        "unsupported" -> RuntimeInstallUnsupportedReason.fromWire(dto.reason.stringContentOrNull())?.let(RuntimeInstallResult::Unsupported)
         "error" -> RuntimeOperationErrorCode.fromWire(dto.code)?.let(RuntimeInstallResult::Error)
         else -> {
             reportUnknownTypeDropped("runtime_install_result", "kind", dto.kind, fallback = "failed", diagnostics = diagnostics)

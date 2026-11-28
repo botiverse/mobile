@@ -3577,7 +3577,15 @@
     <string name="settings_computers_runtime_install_installed_version">%1$s %2$s をインストールしました。</string>
     <string name="settings_computers_runtime_install_installed">%1$s をインストールしました。</string>
     <string name="settings_computers_runtime_install_already_installed">%1$s はこのコンピューターにすでにインストールされています。</string>
-    <string name="settings_computers_runtime_install_failed">%1$s のインストーラーが完了しなかったため、まだインストールされていません。</string>
+    <string name="settings_computers_runtime_install_failed_not_found">%1$s のインストーラーは終了しましたが、%1$s はまだこのコンピューターにありません。</string>
+    <string name="settings_computers_runtime_install_failed_exit_code">%1$s のインストーラーがエラーコード %2$s で停止したため、まだインストールされていません。</string>
+    <string name="settings_computers_runtime_install_failed_timeout">%1$s のインストーラーは完了前に停止されたため（%2$s 分の制限またはシステムによる）、まだインストールされていません。</string>
+    <string name="settings_computers_runtime_install_failed_download_failed">%1$s のインストーラーをダウンロードできなかったため、何もインストールされていません。</string>
+    <string name="settings_computers_runtime_install_failed_not_a_script">%1$s のインストーラーとしてダウンロードされたものはインストールスクリプトではなかったため（Web ページやネットワークのブロックなど）、何も実行されていません。</string>
+    <string name="settings_computers_runtime_install_failed_timed_out">%1$s のインストーラーは %2$s 分の制限で停止されたため、まだインストールされていません。</string>
+    <string name="settings_computers_runtime_install_failed_no_exit_code">%1$s のインストーラーが停止されたか起動できなかったため、まだインストールされていません。</string>
+    <string name="settings_computers_runtime_install_failed_unusable">%1$s のインストーラーは終了しましたが、このコンピューター上の %1$s は使用できません。</string>
+    <string name="settings_computers_runtime_install_failed_manual">自分でインストールするには、%1$s で次を実行してください。そこでも失敗した場合は、その出力に理由が表示されます：</string>
     <string name="settings_computers_runtime_install_failed_output_tail">インストール出力の最後の数行：</string>
     <string name="settings_computers_runtime_install_in_progress">このコンピューターで %1$s はすでにインストール中です。</string>
     <string name="settings_computers_runtime_install_error">%1$s をインストールできませんでした。もう一度お試しください。</string>

@@ -10,6 +10,7 @@ import build.raft.app.data.RuntimeAuthRuntime
 import build.raft.app.data.RuntimeAuthStatus
 import build.raft.app.data.RuntimeAuthUnavailableReason
 import build.raft.app.data.RuntimeAuthView
+import build.raft.app.data.RuntimeInstallFailureReason
 import build.raft.app.data.RuntimeInstallPlan
 import build.raft.app.data.RuntimeInstallResult
 import build.raft.app.data.RuntimeInstallUnsupportedReason
@@ -162,23 +163,88 @@ class ComputerRuntimeOperationsTest {
     }
 
     /**
-     * botiverse/slock #17305: a failed install carries the redacted `outputTail` in state, never
-     * writes the raw tail into diagnostics logs, and clears it on retry or identity reset.
+     * botiverse/slock #17185 + #17210: a failed install reads OAR 0.138's typed reason when sent,
+     * and falls back to the exit code when no reason (or an unknown reason) was received.
+     */
+    @Test
+    fun failedInstallCopyReadsOarReasonWhenPresentAndFallsBackToExitCodeOtherwise() {
+        fun failed(exitCode: Int?, reason: RuntimeInstallFailureReason? = null) =
+            computerRuntimeInstallCopy(
+                ComputerRuntimeInstallState.Done(
+                    runtime = RuntimeAuthRuntime.Claude,
+                    raftRuntimeId = "claude",
+                    runtimeName = "Claude Code",
+                    result = RuntimeInstallResult.Failed(exitCode = exitCode, reason = reason),
+                )
+            )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_download_failed, success = false),
+            failed(6, RuntimeInstallFailureReason.DownloadFailed),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_download_failed, success = false),
+            failed(null, RuntimeInstallFailureReason.DownloadFailed),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_not_a_script, success = false),
+            failed(null, RuntimeInstallFailureReason.NonScriptResponse),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_timed_out, args = listOf("10"), success = false),
+            failed(null, RuntimeInstallFailureReason.TimedOut),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_exit_code, args = listOf("2"), success = false),
+            failed(2, RuntimeInstallFailureReason.InstallerFailed),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_no_exit_code, success = false),
+            failed(null, RuntimeInstallFailureReason.InstallerFailed),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_not_found, success = false),
+            failed(0, RuntimeInstallFailureReason.NotFoundAfterInstall),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_unusable, success = false),
+            failed(0, RuntimeInstallFailureReason.UnusableAfterInstall),
+        )
+        // Without a known OAR reason: exit-code copy (timeout / notFound / exitCode).
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_timeout, args = listOf("10"), success = false),
+            failed(null, null),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_not_found, success = false),
+            failed(0, null),
+        )
+        assertEquals(
+            ComputerRuntimeOperationCopy(Res.string.settings_computers_runtime_install_failed_exit_code, args = listOf("1"), success = false),
+            failed(1, null),
+        )
+    }
+
+    /**
+     * botiverse/slock #17185 + #17210 + #17305: a failed install preserves the confirmed plan
+     * (`steps` + `source`) for manual install guidance and carries OAR's reason plus redacted
+     * `outputTail` in state, never writes the raw tail into diagnostics logs, and clears it on
+     * retry or identity reset.
      */
     @Test
     fun failedInstallCarriesOutputTailClearsOnRetryAndNeverLogsRawTail() = runTest {
+        val expectedPlan = RuntimeInstallPlan.Plan(listOf("curl -fsSL https://x.ai/cli/install.sh | bash"), "https://docs.x.ai/docs/grok-build")
         val tail = "npm error code E404\nnpm error 404 Not Found - GET https://registry.npmjs.org/@deepseek-ai%2fdsh"
         val answers =
             ArrayDeque<RuntimeAuthCall<RuntimeInstallResult>>(
                 listOf(
-                    RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)),
+                    RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, reason = RuntimeInstallFailureReason.InstallerFailed, outputTail = tail)),
                     RuntimeAuthCall.Done(RuntimeInstallResult.Installed("0.1.9")),
-                    RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)),
+                    RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, reason = RuntimeInstallFailureReason.InstallerFailed, outputTail = tail)),
                     RuntimeAuthCall.Superseded,
                 )
             )
         val logs = mutableListOf<String>()
-        val ops = FakeInstallOps(installAnswer = { answers.removeFirst() })
+        val ops = FakeInstallOps(plan = RuntimeAuthCall.Done(expectedPlan), installAnswer = { answers.removeFirst() })
         val controller = ComputerRuntimeInstallController(ops, backgroundScope, log = { logs += it })
 
         controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
@@ -187,26 +253,37 @@ class ComputerRuntimeOperationsTest {
         runCurrent()
 
         val failedDone = assertIs<ComputerRuntimeInstallState.Done>(controller.state)
-        assertEquals(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail), failedDone.result)
-        assertEquals("Failed", RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, outputTail = tail)).operationLabel())
+        assertEquals(
+            RuntimeInstallResult.Failed(exitCode = 1, reason = RuntimeInstallFailureReason.InstallerFailed, outputTail = tail),
+            failedDone.result,
+        )
+        assertEquals(expectedPlan, failedDone.plan)
+        assertEquals(
+            "Failed",
+            RuntimeAuthCall.Done(RuntimeInstallResult.Failed(exitCode = 1, reason = RuntimeInstallFailureReason.InstallerFailed, outputTail = tail)).operationLabel(),
+        )
         assertTrue(logs.any { it == "computer_runtime_install runtime=grok result=Failed" }, logs.toString())
         assertTrue(logs.none { "E404" in it || "registry.npmjs.org" in it }, "raw outputTail must never be logged: $logs")
 
-        // Starting a retry immediately drops the failed outcome and its outputTail.
+        // Starting a retry immediately drops the failed outcome, its outputTail, and its manual plan.
         controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
         assertIs<ComputerRuntimeInstallState.Planning>(controller.state)
         runCurrent()
         assertIs<ComputerRuntimeInstallState.Confirm>(controller.state)
         controller.confirm()
         runCurrent()
-        assertEquals(RuntimeInstallResult.Installed("0.1.9"), assertIs<ComputerRuntimeInstallState.Done>(controller.state).result)
+        val succeededDone = assertIs<ComputerRuntimeInstallState.Done>(controller.state)
+        assertEquals(RuntimeInstallResult.Installed("0.1.9"), succeededDone.result)
+        assertEquals(expectedPlan, succeededDone.plan)
 
         // A second failure followed by a retry that gets superseded resets cleanly to Idle.
         controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
         runCurrent()
         controller.confirm()
         runCurrent()
-        assertEquals(tail, assertIs<RuntimeInstallResult.Failed>(assertIs<ComputerRuntimeInstallState.Done>(controller.state).result).outputTail)
+        val secondFailedDone = assertIs<ComputerRuntimeInstallState.Done>(controller.state)
+        assertEquals(tail, assertIs<RuntimeInstallResult.Failed>(secondFailedDone.result).outputTail)
+        assertEquals(expectedPlan, secondFailedDone.plan)
         controller.start(RuntimeAuthRuntime.Grok, "grok", "Grok")
         runCurrent()
         controller.confirm()
