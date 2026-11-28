@@ -318,7 +318,8 @@ internal fun ActivityToAnswerList(
 ) {
     val layout = activityRowLayout
     val edge = activityColumnMargin(RaftTheme.scale, RaftTheme.pointerInput)
-    if (state.items.isEmpty() && (state.status == ToAnswerStatus.Loading || state.status == ToAnswerStatus.Idle)) {
+    val initialLoading = state.items.isEmpty() && (state.status == ToAnswerStatus.Loading || state.status == ToAnswerStatus.Idle)
+    if (initialLoading) {
         Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             RaftCenteredLoading()
         }
@@ -329,6 +330,7 @@ internal fun ActivityToAnswerList(
             isRefreshing = pullRefreshing,
             onRefresh = onPullRefresh,
             modifier = modifier.fillMaxSize(),
+            enabled = !initialLoading,
         ) {
             Box(
                 modifier =
@@ -360,6 +362,7 @@ internal fun ActivityToAnswerList(
             isRefreshing = pullRefreshing,
             onRefresh = onPullRefresh,
             modifier = modifier.fillMaxSize(),
+            enabled = !initialLoading,
         ) {
             Box(
                 modifier =
@@ -389,6 +392,7 @@ internal fun ActivityToAnswerList(
         isRefreshing = pullRefreshing,
         onRefresh = onPullRefresh,
         modifier = modifier.fillMaxSize(),
+        enabled = !initialLoading,
     ) {
         LazyColumn(
             state = listState,
@@ -471,11 +475,12 @@ internal fun ActivityToAnswerRow(
             null
         }
     val endedText = ended?.let { toAnswerEndedLine(it) }
+    val requestTitle = item.requestTitle
     val bodyText =
         if (endedText != null) {
             endedText
-        } else if (item.kind == ToAnswerCardKind.Request && item.requestTitle != null) {
-            val localizedTitle = renderActionCardMsgText(item.requestTitle, displayLocale)
+        } else if (item.kind == ToAnswerCardKind.Request && requestTitle != null) {
+            val localizedTitle = renderActionCardMsgText(requestTitle, displayLocale)
             val note = item.text?.takeIf { it.isNotBlank() }
             if (note != null) {
                 stringResource(Res.string.activity_to_answer_request_with_note, localizedTitle, note)
