@@ -11,6 +11,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -117,8 +118,8 @@ class AndroidVoiceDictationAudioRecorderTest {
         advanceUntilIdle()
 
         assertEquals(2, chunks.size)
-        assertEquals(3_200, chunks[0].size)
-        assertEquals(600, chunks[1].size)
+        assertArrayEquals(speechSample.copyOfRange(0, 3_200), chunks[0])
+        assertArrayEquals(speechSample.copyOfRange(3_200, 3_800), chunks[1])
         assertEquals(2, levels.size)
         assertTrue(levels[0] > 0.2f && levels[0] <= 1f)
         assertTrue(levels[1] > 0.2f && levels[1] <= 1f)
@@ -130,11 +131,66 @@ class AndroidVoiceDictationAudioRecorderTest {
     }
 
     @Test
-    fun pcmLevelMatchesZeroForSilenceAndNonZeroForSpeech() {
+    fun emitsUntouchedRawPcmBytesWhileCalibratingHandheldAndLoudSpeechVisualLevels() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val roomNoise = pcm16LeChunk(sample = 100, byteSize = 3_200)
+        val handheldSpeech = pcm16LeChunk(sample = 700, byteSize = 3_200)
+        val loudCloseSpeech = pcm16LeChunk(sample = 6_000, byteSize = 3_200)
+        val moderateCloseSyllable = pcm16LeChunk(sample = 2_600, byteSize = 3_200)
+        val inputChunks =
+            listOf(
+                roomNoise,
+                handheldSpeech,
+                loudCloseSpeech,
+                loudCloseSpeech,
+                loudCloseSpeech,
+                loudCloseSpeech,
+                loudCloseSpeech,
+                loudCloseSpeech,
+                moderateCloseSyllable,
+            )
+        val recorder =
+            AndroidVoiceDictationAudioRecorder(
+                permissionRequester = { AndroidRecordAudioPermissionOutcome.Granted },
+                sourceFactory = { _, _ -> FakePcmSource(reads = inputChunks) },
+                captureDispatcher = dispatcher,
+                logWarning = {},
+            )
+
+        val emittedChunks = mutableListOf<ByteArray>()
+        val emittedLevels = mutableListOf<Float>()
+        val result =
+            recorder.start(
+                onPcmChunk = { emittedChunks += it },
+                onAudioLevel = { emittedLevels += it },
+            )
+        assertEquals(VoiceDictationAudioStartResult.Started, result)
+        advanceUntilIdle()
+
+        assertEquals(inputChunks.size, emittedChunks.size)
+        for (i in inputChunks.indices) {
+            assertArrayEquals("chunk $i raw PCM bytes must never be altered", inputChunks[i], emittedChunks[i])
+        }
+
+        // Room noise stays at 0f; handheld un-AGC'd speech (~0.021 RMS) registers strongly;
+        // loud close-up speech adapts ceiling upward so the quieter 2600-sample syllable drops visibly.
+        assertEquals(0f, emittedLevels[0], 0.0001f)
+        assertTrue("expected strong handheld speech level, got ${emittedLevels[1]}", emittedLevels[1] > 0.35f && emittedLevels[1] < 0.70f)
+        assertTrue("expected loud close-up peak > 0.95, got ${emittedLevels[7]}", emittedLevels[7] > 0.95f)
+        assertTrue(
+            "expected adapted ceiling to preserve syllable modulation (${emittedLevels[7]} -> ${emittedLevels[8]})",
+            emittedLevels[8] < emittedLevels[7] - 0.05f,
+        )
+        recorder.stop()
+    }
+
+    @Test
+    fun pcmLevelMatchesZeroForSilenceAndRoomNoiseAndNonZeroForHandheldSpeech() {
         assertEquals(0f, computeVoiceDictationPcm16LeLevel(ByteArray(3_200)), 0.0001f)
-        val speech = pcm16LeChunk(sample = 3_500, byteSize = 3_200)
+        assertEquals(0f, computeVoiceDictationPcm16LeLevel(pcm16LeChunk(sample = 100, byteSize = 3_200)), 0.0001f)
+        val speech = pcm16LeChunk(sample = 700, byteSize = 3_200)
         val level = computeVoiceDictationPcm16LeLevel(speech)
-        assertTrue(level > 0.3f && level < 1f)
+        assertTrue("expected mid-range handheld speech level, got $level", level > 0.35f && level < 1f)
     }
 
     @Test

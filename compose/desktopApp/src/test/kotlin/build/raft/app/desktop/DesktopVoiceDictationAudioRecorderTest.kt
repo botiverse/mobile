@@ -11,6 +11,7 @@ import build.raft.app.data.VoiceDictationAudioStartResult
 import java.util.concurrent.atomic.AtomicInteger
 import javax.sound.sampled.LineUnavailableException
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -104,13 +105,41 @@ class DesktopVoiceDictationAudioRecorderTest {
         advanceUntilIdle()
 
         assertEquals(1, chunks.size)
-        assertEquals(3_200, chunks[0].size)
+        assertContentEquals(payload, chunks[0])
         assertEquals(1, levels.size)
         assertTrue(levels[0] > 0.2f && levels[0] <= 1f)
 
         recorder.stop()
         recorder.stop()
         assertTrue(fakeLine.closeCount.get() >= 1)
+    }
+
+    @Test
+    fun emitsUntouchedRawPcmBytesWithCalibratedUnAgcLevels() = runTest {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val roomNoise = pcm16LeChunk(sample = 100, byteSize = 3_200)
+        val handheldSpeech = pcm16LeChunk(sample = 700, byteSize = 3_200)
+        val fakeLine = FakeDesktopPcmLine(reads = listOf(roomNoise, handheldSpeech))
+        val recorder =
+            DesktopVoiceDictationAudioRecorder(
+                lineFactory = DesktopVoiceDictationLineFactory { fakeLine },
+                captureDispatcher = dispatcher,
+            )
+
+        val chunks = mutableListOf<ByteArray>()
+        val levels = mutableListOf<Float>()
+        assertEquals<VoiceDictationAudioStartResult>(
+            VoiceDictationAudioStartResult.Started,
+            recorder.start(onPcmChunk = { chunks += it }, onAudioLevel = { levels += it }),
+        )
+        advanceUntilIdle()
+
+        assertEquals(2, chunks.size)
+        assertContentEquals(roomNoise, chunks[0])
+        assertContentEquals(handheldSpeech, chunks[1])
+        assertEquals(0f, levels[0])
+        assertTrue(levels[1] > 0.35f && levels[1] < 0.70f, "expected calibrated un-AGC level, got ${levels[1]}")
+        recorder.stop()
     }
 
     @Test

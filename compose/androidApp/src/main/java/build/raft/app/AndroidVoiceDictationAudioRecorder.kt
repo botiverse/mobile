@@ -13,9 +13,8 @@ import build.raft.app.data.RaftVoiceDictationAudioRecorder
 import build.raft.app.data.RaftVoiceDictationAudioRecorderRegistry
 import build.raft.app.data.VOICE_DICTATION_DEFAULT_SAMPLE_RATE_HZ
 import build.raft.app.data.VOICE_DICTATION_PCM16_BYTES_PER_SAMPLE
+import build.raft.app.data.VoiceDictationAudioLevelMeter
 import build.raft.app.data.VoiceDictationAudioStartResult
-import build.raft.app.data.computeVoiceDictationPcm16LeLevel
-import build.raft.app.data.smoothVoiceDictationAudioLevel
 import build.raft.app.data.voiceDictationChunkByteSize
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
@@ -198,7 +197,7 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
             captureScope.launch {
                 val chunkBuffer = ByteArray(chunkBytes)
                 var filled = 0
-                var smoothedLevel = 0f
+                val audioLevelMeter = VoiceDictationAudioLevelMeter()
                 try {
                     while (isActive && isCurrentCapture(capture)) {
                         val read =
@@ -213,18 +212,16 @@ class AndroidVoiceDictationAudioRecorder internal constructor(
                             val emit = chunkBuffer.copyOf(chunkBytes)
                             filled = 0
                             if (!isCurrentCapture(capture)) break
-                            val rawLevel = computeVoiceDictationPcm16LeLevel(emit)
-                            smoothedLevel = smoothVoiceDictationAudioLevel(smoothedLevel, rawLevel)
-                            onAudioLevel(smoothedLevel)
+                            val visualLevel = audioLevelMeter.processPcm16Le(emit)
+                            onAudioLevel(visualLevel)
                             onPcmChunk(emit)
                         }
                     }
                     val remainingEven = filled - (filled % VOICE_DICTATION_PCM16_BYTES_PER_SAMPLE)
                     if (remainingEven > 0 && isCurrentCapture(capture)) {
                         val tail = chunkBuffer.copyOf(remainingEven)
-                        val rawLevel = computeVoiceDictationPcm16LeLevel(tail)
-                        smoothedLevel = smoothVoiceDictationAudioLevel(smoothedLevel, rawLevel)
-                        onAudioLevel(smoothedLevel)
+                        val visualLevel = audioLevelMeter.processPcm16Le(tail)
+                        onAudioLevel(visualLevel)
                         onPcmChunk(tail)
                     }
                 } finally {

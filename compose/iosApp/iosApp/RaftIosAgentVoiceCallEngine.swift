@@ -490,13 +490,26 @@ final class RaftIosAgentVoiceCallEngine: NSObject, RaftAgentVoiceCallEngine, Roo
     }
 }
 
-/// Pure audio math & configuration helpers for iOS composer voice dictation (`#wg-mobile-sync:#334`).
+/// Pure audio math & configuration helpers for iOS composer voice dictation (`#wg-mobile-sync:#334`, `dm:@artin:#177`).
+///
+/// Mirrors shared Kotlin `VoiceDictationV2AudioMath.kt` for un-AGC'd `.record` + `.measurement`
+/// capture: raw PCM16 bytes forwarded to ASR are NEVER altered, while visual halo levels use an
+/// un-AGC'd noise floor (`0.0045`, ~ -47 dBFS) and adaptive ceiling (`0.045...0.25`, starting at `0.055`).
 enum RaftIosVoiceDictationPolicy {
     static let sampleRateHz: Int = 16_000
     static let chunkDurationMs: Int = 100
     static let chunkByteSize: Int = sampleRateHz * 2 * chunkDurationMs / 1_000
-    static let rmsNoiseFloor: Float = 0.015
-    static let rmsCeiling: Float = 0.16
+    static let rmsNoiseFloor: Float = 0.0045
+    static let rmsCeilingMin: Float = 0.045
+    static let rmsCeilingInitial: Float = 0.055
+    static let rmsCeilingMax: Float = 0.25
+    static let rmsCeiling: Float = rmsCeilingInitial
+    static let rmsExponent: Double = 0.60
+    static let attackMs: Double = 50.0
+    static let releaseMs: Double = 220.0
+    static let peakAttackMs: Double = 150.0
+    static let peakDecayMs: Double = 3_000.0
+    static let silenceSnapEpsilon: Float = 0.005
 
     /// Computes raw normalized RMS in `0...1` for signed 16-bit little-endian mono PCM bytes.
     static func computePcm16RawRms(data: Data) -> Float {
@@ -519,12 +532,14 @@ enum RaftIosVoiceDictationPolicy {
         return min(1, max(0, rms))
     }
 
-    /// Maps raw PCM RMS into perceptual visual level (`0...1`), matching shared & web calibration.
-    static func normalizeRms(_ rawRms: Float) -> Float {
+    /// Maps raw PCM RMS into perceptual visual level (`0...1`) against `[rmsNoiseFloor, ceiling]`.
+    static func normalizeRms(_ rawRms: Float, ceiling: Float = rmsCeiling) -> Float {
         guard rawRms.isFinite, rawRms > rmsNoiseFloor else { return 0 }
-        let span = rmsCeiling - rmsNoiseFloor
+        let safeCeiling = ceiling.isFinite ? max(rmsCeilingMin, ceiling) : rmsCeiling
+        let span = safeCeiling - rmsNoiseFloor
+        guard span > 0 else { return 0 }
         let linear = min(1, max(0, (rawRms - rmsNoiseFloor) / span))
-        let curved = Float(pow(Double(linear), 0.65))
+        let curved = Float(pow(Double(linear), rmsExponent))
         return min(1, max(0, curved))
     }
 
@@ -533,18 +548,101 @@ enum RaftIosVoiceDictationPolicy {
         normalizeRms(computePcm16RawRms(data: data))
     }
 
-    /// Asymmetric attack/release smoother (~60 ms attack, ~250 ms release at 100 ms frames).
-    static func smoothAudioLevel(previous: Float, target: Float, dtMs: Double = 100.0) -> Float {
+    /// Asymmetric attack/release smoother (~50 ms attack, ~220 ms release at 100 ms frames).
+    static func smoothAudioLevel(previous: Float, target: Float, dtMs: Double = Double(chunkDurationMs)) -> Float {
         let prev = previous.isFinite ? min(1, max(0, previous)) : 0
         let next = target.isFinite ? min(1, max(0, target)) : 0
-        let dt = dtMs > 0 ? dtMs : 100.0
-        let tau = next >= prev ? 60.0 : 250.0
+        let dt = (dtMs.isFinite && dtMs > 0) ? dtMs : Double(chunkDurationMs)
+        let tau = next >= prev ? attackMs : releaseMs
         let alpha = 1.0 - exp(-dt / tau)
         let smoothed = prev + (next - prev) * Float(alpha)
-        if next == 0 && smoothed < 0.005 {
+        if next == 0 && smoothed < silenceSnapEpsilon {
             return 0
         }
         return min(1, max(0, smoothed))
+    }
+
+    /// Splits incoming PCM16 bytes into fixed `chunkByteSize` frames and meters visual levels
+    /// without ever mutating the raw PCM bytes forwarded to ASR.
+    static func drainPcm16Chunks(
+        pendingBytes: inout Data,
+        appending incoming: Data,
+        meter: inout RaftIosVoiceDictationAudioLevelMeter
+    ) -> [(Data, Float)] {
+        pendingBytes.append(incoming)
+        var emitted: [(Data, Float)] = []
+        while pendingBytes.count >= chunkByteSize {
+            let chunk = Data(pendingBytes.prefix(chunkByteSize))
+            pendingBytes.removeFirst(chunkByteSize)
+            let level = meter.processPcm16(data: chunk)
+            emitted.append((chunk, level))
+        }
+        return emitted
+    }
+}
+
+/// Pure, deterministic stateful audio-level meter for un-AGC'd iOS microphone capture (`dm:@artin:#177`).
+/// Mirrors shared Kotlin `VoiceDictationAudioLevelMeter` in `VoiceDictationV2AudioMath.kt`.
+struct RaftIosVoiceDictationAudioLevelMeter: Sendable {
+    private let defaultPeakRms: Float
+    private(set) var peakRms: Float
+    private(set) var smoothedLevel: Float = 0
+
+    init(initialPeakRms: Float = RaftIosVoiceDictationPolicy.rmsCeilingInitial) {
+        let clamped = initialPeakRms.isFinite
+            ? min(RaftIosVoiceDictationPolicy.rmsCeilingMax, max(RaftIosVoiceDictationPolicy.rmsCeilingMin, initialPeakRms))
+            : RaftIosVoiceDictationPolicy.rmsCeilingInitial
+        self.defaultPeakRms = clamped
+        self.peakRms = clamped
+    }
+
+    mutating func reset() {
+        peakRms = defaultPeakRms
+        smoothedLevel = 0
+    }
+
+    mutating func processPcm16(
+        data: Data,
+        dtMs: Double = Double(RaftIosVoiceDictationPolicy.chunkDurationMs)
+    ) -> Float {
+        processRawRms(RaftIosVoiceDictationPolicy.computePcm16RawRms(data: data), dtMs: dtMs)
+    }
+
+    mutating func processRawRms(
+        _ rawRms: Float,
+        dtMs: Double = Double(RaftIosVoiceDictationPolicy.chunkDurationMs)
+    ) -> Float {
+        let safeRms: Float = (rawRms.isFinite && rawRms > 0) ? min(1, rawRms) : 0
+        let dt = (dtMs.isFinite && dtMs > 0) ? dtMs : Double(RaftIosVoiceDictationPolicy.chunkDurationMs)
+        let rawTarget: Float
+        if safeRms > RaftIosVoiceDictationPolicy.rmsNoiseFloor {
+            if safeRms > peakRms {
+                let targetPeak = min(safeRms, RaftIosVoiceDictationPolicy.rmsCeilingMax)
+                let alpha = 1.0 - exp(-dt / RaftIosVoiceDictationPolicy.peakAttackMs)
+                peakRms = Float(Double(peakRms) + Double(targetPeak - peakRms) * alpha)
+            } else {
+                let alpha = 1.0 - exp(-dt / RaftIosVoiceDictationPolicy.peakDecayMs)
+                peakRms = Float(Double(peakRms) + Double(RaftIosVoiceDictationPolicy.rmsCeilingInitial - peakRms) * alpha)
+            }
+            peakRms = min(RaftIosVoiceDictationPolicy.rmsCeilingMax, max(RaftIosVoiceDictationPolicy.rmsCeilingMin, peakRms))
+            rawTarget = RaftIosVoiceDictationPolicy.normalizeRms(safeRms, ceiling: peakRms)
+        } else {
+            let alpha = 1.0 - exp(-dt / RaftIosVoiceDictationPolicy.peakDecayMs)
+            peakRms = min(
+                RaftIosVoiceDictationPolicy.rmsCeilingMax,
+                max(
+                    RaftIosVoiceDictationPolicy.rmsCeilingMin,
+                    Float(Double(peakRms) + Double(RaftIosVoiceDictationPolicy.rmsCeilingInitial - peakRms) * alpha)
+                )
+            )
+            rawTarget = 0
+        }
+        smoothedLevel = RaftIosVoiceDictationPolicy.smoothAudioLevel(
+            previous: smoothedLevel,
+            target: rawTarget,
+            dtMs: dt
+        )
+        return smoothedLevel
     }
 }
 
@@ -560,7 +658,7 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
         var engine: AVAudioEngine?
         var sessionActivated: Bool = false
         var pendingBytes = Data()
-        var smoothedLevel: Float = 0
+        var audioLevelMeter = RaftIosVoiceDictationAudioLevelMeter()
 
         init(generation: UInt64, listener: RaftIosVoiceDictationRecorderListener) {
             self.generation = generation
@@ -749,26 +847,18 @@ final class RaftIosVoiceDictationAudioRecorder: NSObject, RaftIosVoiceDictationN
         guard byteCount > 0 else { return }
         let convertedData = Data(bytes: channelData[0], count: byteCount)
 
-        var chunksToEmit: [(Data, Float)] = []
-        let chunkSize = RaftIosVoiceDictationPolicy.chunkByteSize
+        let chunksToEmit: [(Data, Float)]
 
         lock.lock()
         guard activeCapture === capture else {
             lock.unlock()
             return
         }
-        capture.pendingBytes.append(convertedData)
-        while capture.pendingBytes.count >= chunkSize {
-            let chunk = Data(capture.pendingBytes.prefix(chunkSize))
-            capture.pendingBytes.removeFirst(chunkSize)
-            let rawLevel = RaftIosVoiceDictationPolicy.computePcm16AudioLevel(data: chunk)
-            let smoothed = RaftIosVoiceDictationPolicy.smoothAudioLevel(
-                previous: capture.smoothedLevel,
-                target: rawLevel
-            )
-            capture.smoothedLevel = smoothed
-            chunksToEmit.append((chunk, smoothed))
-        }
+        chunksToEmit = RaftIosVoiceDictationPolicy.drainPcm16Chunks(
+            pendingBytes: &capture.pendingBytes,
+            appending: convertedData,
+            meter: &capture.audioLevelMeter
+        )
         lock.unlock()
 
         for (chunk, level) in chunksToEmit {
