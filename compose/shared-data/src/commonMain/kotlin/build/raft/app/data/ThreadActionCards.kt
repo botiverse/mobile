@@ -189,6 +189,11 @@ private val threadActionCardJson = Json {
      * from an expiry.
      */
     val closedBy: ThreadActionCardClosedBy? = null,
+    /**
+     * `question:ask`: the person's message this card was withdrawn as handled by (wire `handledBy`,
+     * `{ messageId, userId, handle, inCardThread }`; slock #17265). Set only when `state = "withdrawn"`.
+     */
+    val handledBy: ThreadActionCardHandledBy? = null,
     /** `seats:add`: seat count recorded when the card was prepared (wire `action.seats`). */
     val seatsAddCount: Int? = null,
     /**
@@ -252,6 +257,13 @@ private val threadActionCardJson = Json {
             state.equals("withdrawn", ignoreCase = true) &&
                 (type.equals(QuestionAskActionCardType, ignoreCase = true) || isPreparedRequestAction)
 
+    /**
+     * Wire `withdrawn` with [handledBy] (slock #17265): a `question:ask` card its agent withdrew
+     * as handled by a person's message. Still counts as [isWithdrawn], [hasEnded], and [isTerminalState].
+     */
+    val isHandled: Boolean
+        get() = type.equals(QuestionAskActionCardType, ignoreCase = true) && isWithdrawn && handledBy != null
+
     /** Any wire state this build does not know: treated as ended and view-only (never open/Prepared). */
     val isUnknownState: Boolean
         get() = !isPrepared && !isExecuted && !isFrozen && !needsReconfirmation && !isExpired && !isWithdrawn && !isClosed
@@ -266,6 +278,19 @@ private val threadActionCardJson = Json {
 @RaftCoreInternalApi data class ThreadActionCardClosedBy(
     val userId: String? = null,
     val handle: String? = null,
+)
+
+/**
+ * The person's message a `question:ask` card was withdrawn as handled by (wire `handledBy`,
+ * slock #17265): that message's id, its sender (id and handle, as [ThreadActionCardClosedBy]),
+ * and whether it lives in the card's own thread (else in the card's conversation).
+ */
+@Serializable
+@RaftCoreInternalApi data class ThreadActionCardHandledBy(
+    val messageId: String,
+    val userId: String,
+    val handle: String,
+    val inCardThread: Boolean = false,
 )
 
 @RaftCoreInternalApi const val QuestionAskActionCardType = "question:ask"
@@ -445,6 +470,8 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
     val closedAt: String? = null,
     /** `question:ask`: who closed it without answering (`{ userId, handle }`), kept leniently as JSON. */
     val closedBy: JsonElement? = null,
+    /** `question:ask`: the person's message it was withdrawn as handled by (`{ messageId, userId, handle, inCardThread }`), kept leniently as JSON (slock #17265). */
+    val handledBy: JsonElement? = null,
     /*
      * A channel announcement's change line (`kind: "channel-announcement"`, ChannelAnnouncementApi.kt):
      * kept as JSON so a field of a type this client doesn't expect fails only the notice
@@ -679,6 +706,7 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
                     handle = closer.actionCardStringOrNull("handle"),
                 )
             },
+        handledBy = meta.handledBy.parseActionCardHandledBy(),
         seatsAddCount = (actionObject["seats"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 },
         seatsAddPurpose = parseSeatsAddPurpose(actionObject["purpose"] as? JsonObject),
         externalInviteAddresses =
@@ -689,6 +717,30 @@ private fun JsonObject.questionShapes(): List<ThreadActionCardQuestion> =
                 ?.takeIf { it >= 0.0 && it % 1.0 == 0.0 && it <= Int.MAX_VALUE }
                 ?.toInt(),
         resultAddresses = meta.result?.addresses?.takeIf { it >= 0 },
+    )
+}
+
+/**
+ * Parses wire `handledBy` (`{ messageId, userId, handle, inCardThread }`, slock #17265) leniently:
+ * requires non-blank string `messageId`, `userId`, and `handle`; `inCardThread` defaults to false
+ * when absent or null, and any non-boolean value rejects the object cleanly.
+ */
+private fun JsonElement?.parseActionCardHandledBy(): ThreadActionCardHandledBy? {
+    val obj = this as? JsonObject ?: return null
+    val messageId = obj.actionCardStringOrNull("messageId")?.trim() ?: return null
+    val userId = obj.actionCardStringOrNull("userId")?.trim() ?: return null
+    val handle = obj.actionCardStringOrNull("handle")?.trim() ?: return null
+    val inCardThread =
+        when (val raw = obj["inCardThread"]) {
+            null, JsonNull -> false
+            is JsonPrimitive -> if (raw.isString) return null else raw.booleanOrNull ?: return null
+            else -> return null
+        }
+    return ThreadActionCardHandledBy(
+        messageId = messageId,
+        userId = userId,
+        handle = handle,
+        inCardThread = inCardThread,
     )
 }
 
@@ -801,6 +853,9 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         closedBy?.let {
             put("${ActionCardMetadataPrefix}closedBy", threadActionCardJson.encodeToString(ThreadActionCardClosedBy.serializer(), it))
         }
+        handledBy?.let {
+            put("${ActionCardMetadataPrefix}handledBy", threadActionCardJson.encodeToString(ThreadActionCardHandledBy.serializer(), it))
+        }
         putString("seatsAddCount", seatsAddCount?.toString())
         seatsAddPurpose?.let {
             put("${ActionCardMetadataPrefix}seatsAddPurpose", threadActionCardJson.encodeToString(SeatsAddPurpose.serializer(), it))
@@ -902,6 +957,12 @@ private val actionCardSpecCache = atomic(emptyMap<String, ActionCardSpecCard?>()
         closedBy =
             metadata["${ActionCardMetadataPrefix}closedBy"]?.let { raw ->
                 runCatching { threadActionCardJson.decodeFromString(ThreadActionCardClosedBy.serializer(), raw) }.getOrNull()
+            },
+        handledBy =
+            metadata["${ActionCardMetadataPrefix}handledBy"]?.let { raw ->
+                runCatching { threadActionCardJson.decodeFromString(ThreadActionCardHandledBy.serializer(), raw) }
+                    .getOrNull()
+                    ?.takeIf { it.messageId.isNotBlank() && it.userId.isNotBlank() && it.handle.isNotBlank() }
             },
         seatsAddCount = metadata["${ActionCardMetadataPrefix}seatsAddCount"]?.toIntOrNull(),
         seatsAddPurpose =

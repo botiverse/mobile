@@ -53,6 +53,7 @@ import build.raft.app.data.QuestionAskActionCardType
 import build.raft.app.data.SeatsAddActionCardType
 import build.raft.app.data.SeatsAddPurpose
 import build.raft.app.data.ThreadActionCard
+import build.raft.app.data.ThreadActionCardHandledBy
 import build.raft.app.data.defaultNowMillis
 import build.raft.app.data.expiredAsOf
 import build.raft.app.data.expiresAtEpochMillis
@@ -103,6 +104,12 @@ internal data class ThreadActionCardSpecHost(
     val mcpPersonalAccountsEnabled: Boolean = false,
     /** Collaborator driving `integration:connect_mcp` native account choice when [mcpPersonalAccountsEnabled] is true. */
     val mcpConnectCardHost: ThreadMcpConnectCardHost? = null,
+    /**
+     * Resolves the click action for a withdrawn question card's `handledBy` link (slock #17265):
+     * opens the handling message in the card's own thread (`handledBy.inCardThread == true`) or in
+     * the card's conversation (`false`), or returns null where no navigation surface is available.
+     */
+    val resolveHandledByOpen: ((cardMessageId: String, handledBy: ThreadActionCardHandledBy) -> (() -> Unit)?)? = null,
     /** The host's diagnostics log (the bridge log in the app). */
     val log: (String) -> Unit = {},
 )
@@ -129,6 +136,7 @@ internal fun ThreadActionCard.actionCardSpecStatus(): RaftActionCardStatus =
         isExecuted -> RaftActionCardStatus.Executed
         isClosed -> RaftActionCardStatus.Closed
         isExpired -> RaftActionCardStatus.Expired
+        isHandled -> RaftActionCardStatus.Handled
         isWithdrawn -> RaftActionCardStatus.Withdrawn
         isFrozen -> RaftActionCardStatus.Frozen
         needsReconfirmation -> RaftActionCardStatus.ReconfirmRequired
@@ -364,7 +372,7 @@ internal fun ThreadActionCardSpecView(
     val inline = remember(rendered, effectiveCard) { effectiveCard.inlineQuestionForm(rendered) }
     // A question card (redesign 2026-11): C, a button row without a card, or B, a slim card.
     val questionLayout = remember(rendered, effectiveCard) { effectiveCard.questionCardLayout(rendered) }
-    val question = questionLayout?.let { rememberQuestionCardWords(effectiveCard, rendered, askerName, displayLocale, record) }
+    val question = questionLayout?.let { rememberQuestionCardWords(messageId, effectiveCard, rendered, askerName, displayLocale, record) }
     val singleQuestion = question?.single == true
     val requesterUserId = effectiveCard.requesterUserId
     val isOwnRequest =
@@ -453,6 +461,7 @@ internal fun ThreadActionCardSpecView(
             errorTraceId = slice.error.traceIdOrNull(),
             headerTrailing = closeControl,
             onWaitingChange = { answerWaiting = it },
+            endedLine = if (!effectiveCard.isExecuted) question.endedLine else null,
         )
         return
     }
@@ -484,7 +493,7 @@ internal fun ThreadActionCardSpecView(
                 RaftActionCardSlim(
                     title = it.slimTitle,
                     description = it.slimDescription,
-                    statusLine = if (effectiveCard.isExecuted) it.answeredLine else it.endedLine?.let(::AnnotatedString),
+                    statusLine = if (effectiveCard.isExecuted) it.answeredLine else it.endedLine,
                     statusCheck = effectiveCard.isExecuted,
                 )
             },
@@ -557,7 +566,7 @@ internal data class QuestionCardWords(
     val slimTitle: String?,
     val slimDescription: String?,
     /** Ended without an answer: the one line where the question's options (C) or the card (B, folded) were. */
-    val endedLine: String?,
+    val endedLine: AnnotatedString?,
 )
 
 /**
@@ -592,6 +601,7 @@ private fun ThreadActionCard.localizedAddresseeName(): String {
  */
 @Composable
 private fun rememberQuestionCardWords(
+    messageId: String,
     card: ThreadActionCard,
     spec: ActionCardSpecCard,
     askerName: String?,
@@ -621,15 +631,35 @@ private fun rememberQuestionCardWords(
         card.closedBy?.userId?.let { names.name(ThreadActionCardEntityKind.Human, it) }?.takeIf { it.isNotBlank() }
             ?: card.closedBy?.handle?.trim()?.removePrefix("@")?.takeIf { it.isNotBlank() }
             ?: someone
-    // Closed: who closed it; Expired: the person asked by name (or "Nobody answered" when asked of anyone).
-    val endedLine = card.questionEndedLine(asker, addressee.takeIf { card.questionAddresseeUserId != null }, count.coerceAtLeast(1), closer)
+    val handler =
+        card.handledBy?.let { handled ->
+            names.name(ThreadActionCardEntityKind.Human, handled.userId)?.takeIf { it.isNotBlank() }
+                ?: handled.handle.trim().removePrefix("@").takeIf { it.isNotBlank() }
+                ?: someone
+        }
+    val openHandledBy =
+        if (card.isHandled) {
+            card.handledBy?.let { handled -> host.resolveHandledByOpen?.invoke(messageId, handled) }
+        } else {
+            null
+        }
+    // Closed: who closed it; Handled: whose message handled it (linked when navigable); Expired: who was asked.
+    val endedLine =
+        card.questionEndedLine(
+            asker = asker,
+            addressee = addressee.takeIf { card.questionAddresseeUserId != null },
+            questionCount = count.coerceAtLeast(1),
+            closer = closer,
+            handler = handler,
+            onOpenHandledBy = openHandledBy,
+        )
     return QuestionCardWords(
         asked = asked,
         single = single,
         text = text,
         buttonRowHint =
             when {
-                endedLine != null -> endedLine
+                endedLine != null -> null
                 !waiting -> null
                 asked -> questionLineWithTimeLeft(stringResource(Res.string.action_card_question_waiting_for_your_answer, asker), timeLeft)
                 else -> stringResource(Res.string.action_card_question_waiting_for_answer, addressee)

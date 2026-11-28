@@ -35,7 +35,9 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import build.raft.app.RAFT_LINK_SLOT
 import build.raft.app.RaftTraceIdNote
+import build.raft.app.raftSentenceWithLink
 import build.raft.app.components.RaftDesignSystemTheme
 import build.raft.app.data.ActionCardFormIssue
 import build.raft.app.data.ActionCardFormValue
@@ -347,6 +349,7 @@ internal fun ActionCardQuestionButtonRow(
     errorTraceId: String? = null,
     headerTrailing: (@Composable () -> Unit)? = null,
     onWaitingChange: ((Boolean) -> Unit)? = null,
+    endedLine: AnnotatedString? = null,
 ) {
     RaftDesignSystemTheme {
         Column(
@@ -388,6 +391,7 @@ internal fun ActionCardQuestionButtonRow(
                         onSend = onSend,
                         onWaitingChange = onWaitingChange,
                     )
+                endedLine != null -> QuestionHint(endedLine)
                 hint != null -> QuestionHint(hint)
             }
             error?.takeIf { it.isNotBlank() }?.let {
@@ -435,6 +439,11 @@ internal fun questionAnsweredText(answerer: String, answer: String): AnnotatedSt
 
 @Composable
 private fun QuestionHint(text: String) {
+    RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
+}
+
+@Composable
+private fun QuestionHint(text: AnnotatedString) {
     RaftText(text, style = RaftTheme.typography.footnote, color = RaftTheme.colors.foregroundMuted)
 }
 
@@ -645,11 +654,31 @@ internal fun questionWaitText(wait: QuestionWait): String =
     }
 
 /**
+ * "Handled via Mei Lin's message." (web `QuestionCardEndedLine` for `handledBy`, slock #17265):
+ * when [onOpenMessage] is provided, the localized message phrase is a strong inline text link
+ * ([raftSentenceWithLink]); otherwise it renders as plain text without a link.
+ */
+@Composable
+internal fun questionHandledLine(
+    person: String,
+    onOpenMessage: (() -> Unit)? = null,
+): AnnotatedString {
+    val linkText = stringResource(Res.string.action_card_question_handled_line_link, person)
+    if (onOpenMessage == null) {
+        return AnnotatedString(stringResource(Res.string.action_card_question_handled_line, linkText))
+    }
+    val sentence = stringResource(Res.string.action_card_question_handled_line, RAFT_LINK_SLOT)
+    return raftSentenceWithLink(sentence, linkText, onClick = onOpenMessage)
+}
+
+/**
  * The one line an ended question card says where its question or options were (web
  * `QuestionCardEndedLine`, raft-design "When it ends unanswered"): closed by a person,
- * "Mei closed this question."; withdrawn, "Scout withdrew these questions."; expired, "Mei didn't
- * answer within 3 days. Scout was told." ([addressee] null: asked of anyone, "Nobody answered
- * within …"). Null for a card that hasn't ended or ended in an unknown state.
+ * "Mei closed this question."; withdrawn as handled by a person's message, "Handled via Mei's
+ * message." (linked when [onOpenHandledBy] is available, slock #17265); withdrawn, "Scout withdrew
+ * these questions."; expired, "Mei didn't answer within 3 days. Scout was told." ([addressee]
+ * null: asked of anyone, "Nobody answered within …"). Null for a card that hasn't ended or ended
+ * in an unknown state.
  */
 @Composable
 internal fun ThreadActionCard.questionEndedLine(
@@ -657,21 +686,35 @@ internal fun ThreadActionCard.questionEndedLine(
     addressee: String?,
     questionCount: Int,
     closer: String? = null,
-): String? =
+    handler: String? = null,
+    onOpenHandledBy: (() -> Unit)? = null,
+): AnnotatedString? =
     when {
         isClosed -> {
             val by = closer?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.action_card_question_someone)
-            stringResource(Res.string.action_card_question_closed_line, by)
+            AnnotatedString(stringResource(Res.string.action_card_question_closed_line, by))
+        }
+        isHandled -> {
+            val by = handler?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.action_card_question_someone)
+            questionHandledLine(by, onOpenHandledBy)
         }
         isWithdrawn ->
-            if (questionCount == 1) stringResource(Res.string.action_card_question_withdrawn_line_one, asker) else stringResource(Res.string.action_card_question_withdrawn_line_other, asker)
+            AnnotatedString(
+                if (questionCount == 1) {
+                    stringResource(Res.string.action_card_question_withdrawn_line_one, asker)
+                } else {
+                    stringResource(Res.string.action_card_question_withdrawn_line_other, asker)
+                },
+            )
         isExpired -> {
             val duration = questionWaitText(questionWait(questionExpiresInMinutes))
-            if (addressee != null) {
-                stringResource(Res.string.action_card_question_expired_line, addressee, duration, asker)
-            } else {
-                stringResource(Res.string.action_card_question_expired_line_anyone, duration, asker)
-            }
+            AnnotatedString(
+                if (addressee != null) {
+                    stringResource(Res.string.action_card_question_expired_line, addressee, duration, asker)
+                } else {
+                    stringResource(Res.string.action_card_question_expired_line_anyone, duration, asker)
+                },
+            )
         }
         else -> null
     }

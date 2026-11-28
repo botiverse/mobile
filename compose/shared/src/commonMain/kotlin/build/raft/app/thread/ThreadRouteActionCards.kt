@@ -7,6 +7,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import build.raft.app.RaftThreadSurfaceKind
 import build.raft.app.base.BridgeModule
 import build.raft.app.compat.pager.Pager
 import build.raft.app.data.DataResult
@@ -23,6 +24,7 @@ import build.raft.app.data.SharedHomeContentState
 import build.raft.app.data.SharedHomeState
 import build.raft.app.data.SharedServerMembersEntry
 import build.raft.app.data.StoredAuthSession
+import build.raft.app.data.ThreadActionCardHandledBy
 import build.raft.app.data.featureFlagClientOs
 import build.raft.app.data.raftAppActionCardCapabilities
 import build.raft.app.model.ServerId
@@ -68,6 +70,8 @@ internal fun rememberThreadRouteActionCards(
     genericActionCardSuccessLabel: String,
     routeAuthRequired: (DataResult.NoPermission) -> Boolean,
     renderedThread: RaftThreadScreenPayload,
+    replyMetadataByParentId: Map<String, ThreadReplyMetadata>,
+    onOpenThreadPayload: (RaftThreadScreenPayload) -> Unit,
     currentServerSlug: String?,
     sharedHomeState: SharedHomeState,
     currentSession: StoredAuthSession?,
@@ -145,6 +149,8 @@ internal fun rememberThreadRouteActionCards(
     val actionCardOpenInWebFailedLabel = stringResource(Res.string.thread_action_card_open_in_web_failed)
     val actionCardFrozenClosedLabel = stringResource(Res.string.thread_action_card_frozen_closed)
     val latestActionCardThread by rememberUpdatedState(renderedThread)
+    val latestReplyMetadataByParentId by rememberUpdatedState(replyMetadataByParentId)
+    val latestOnOpenThreadPayload by rememberUpdatedState(onOpenThreadPayload)
     val latestActionCardServerSlug by rememberUpdatedState(currentServerSlug)
     LaunchedEffect(actionCardSpecStore) {
         actionCardSpecStore.effects.collect { effect ->
@@ -235,6 +241,28 @@ internal fun rememberThreadRouteActionCards(
                 evaluateInviteExternalAccess = evaluateInviteExternalAccess,
                 mcpPersonalAccountsEnabled = mcpPersonalAccountsEnabled,
                 mcpConnectCardHost = mcpConnectCardHost,
+                resolveHandledByOpen = { cardMessageId, handledBy ->
+                    val thread = latestActionCardThread
+                    val knownThreadChannelId =
+                        latestReplyMetadataByParentId[cardMessageId]?.threadChannelId?.takeIf { it.isNotBlank() }
+                            ?: thread.messages.firstOrNull { it.id == cardMessageId }?.threadChannelId?.takeIf { it.isNotBlank() }
+                    resolveActionCardHandledByNavigation(
+                        renderedThread = thread,
+                        cardMessageId = cardMessageId,
+                        handledBy = handledBy,
+                        knownThreadChannelId = knownThreadChannelId,
+                    )?.let { target ->
+                        {
+                            openActionCardHandledByNavigation(
+                                target = target,
+                                renderedThread = latestActionCardThread,
+                                threadViewModel = threadViewModel,
+                                onOpenThreadPayload = latestOnOpenThreadPayload,
+                                bridge = bridge,
+                            )
+                        }
+                    }
+                },
                 log = { line -> bridge.log(line) },
             )
         }
@@ -284,5 +312,115 @@ private fun openThreadActionCardWebUrl(
         }
     } else if (!pager.openRaftOwnWebPage(url, storeScope, activeWebBaseUrl = activeWebUrl)) {
         bridge.hostCapabilities.openUrlInBrowser(url)
+    }
+}
+
+/** What tapping a withdrawn question card's `handledBy` link opens (slock #17265). */
+internal sealed interface ActionCardHandledByNavigation {
+    /** Focus (scroll to and highlight) [messageId] in the currently open conversation timeline. */
+    data class JumpInCurrentConversation(val messageId: String) : ActionCardHandledByNavigation
+
+    /** Open the card's own reply thread ([parentMessageId] in [parentChannelId]) focused on [focusedMessageId]. */
+    data class OpenCardThread(
+        val parentMessageId: String,
+        val parentChannelId: String,
+        val threadChannelId: String?,
+        val focusedMessageId: String,
+    ) : ActionCardHandledByNavigation
+
+    /** Open the parent conversation (channel or DM) focused on [focusedMessageId]. */
+    data class OpenParentConversation(val focusedMessageId: String) : ActionCardHandledByNavigation
+}
+
+/**
+ * Resolves where tapping a withdrawn question card's `handledBy` link should navigate (slock #17265):
+ * - Channel / DM: in-card-thread opens the card's reply thread focused on `handledBy.messageId`;
+ *   same-conversation jumps to `handledBy.messageId` in place.
+ * - Reply thread: an origin card's in-card-thread message jumps in place and its same-conversation
+ *   message opens the parent channel/DM focused on `handledBy.messageId`; a reply card's
+ *   same-conversation message jumps in place; nested threads do not exist (null).
+ * - Task conversation: same-conversation jumps in place; nested threads do not exist (null).
+ */
+internal fun resolveActionCardHandledByNavigation(
+    renderedThread: RaftThreadScreenPayload,
+    cardMessageId: String,
+    handledBy: ThreadActionCardHandledBy,
+    knownThreadChannelId: String? = null,
+): ActionCardHandledByNavigation? {
+    val cleanCardId = cardMessageId.trim().takeIf { it.isNotEmpty() } ?: return null
+    val targetMessageId = handledBy.messageId.trim().takeIf { it.isNotEmpty() } ?: return null
+    if (renderedThread.surfaceKind == RaftThreadSurfaceKind.ReplyThread) {
+        val isOriginCard =
+            cleanCardId == renderedThread.parentMessageId?.trim() ||
+                cleanCardId == renderedThread.originParentMessageId?.trim()
+        return when {
+            isOriginCard && handledBy.inCardThread ->
+                ActionCardHandledByNavigation.JumpInCurrentConversation(targetMessageId)
+            isOriginCard && !handledBy.inCardThread ->
+                if (renderedThread.parentChannelId?.isNotBlank() == true) {
+                    ActionCardHandledByNavigation.OpenParentConversation(targetMessageId)
+                } else {
+                    null
+                }
+            !handledBy.inCardThread ->
+                ActionCardHandledByNavigation.JumpInCurrentConversation(targetMessageId)
+            else -> null
+        }
+    }
+    if (renderedThread.isTaskConversationSurface()) {
+        return if (handledBy.inCardThread) {
+            null
+        } else {
+            ActionCardHandledByNavigation.JumpInCurrentConversation(targetMessageId)
+        }
+    }
+    if (handledBy.inCardThread) {
+        val parentChannelId = renderedThread.replyParentChannelIdForNestedOpen()?.takeIf { it.isNotBlank() } ?: return null
+        return ActionCardHandledByNavigation.OpenCardThread(
+            parentMessageId = cleanCardId,
+            parentChannelId = parentChannelId,
+            threadChannelId = knownThreadChannelId?.trim()?.takeIf { it.isNotEmpty() },
+            focusedMessageId = targetMessageId,
+        )
+    }
+    return ActionCardHandledByNavigation.JumpInCurrentConversation(targetMessageId)
+}
+
+private fun openActionCardHandledByNavigation(
+    target: ActionCardHandledByNavigation,
+    renderedThread: RaftThreadScreenPayload,
+    threadViewModel: SharedThreadViewModel,
+    onOpenThreadPayload: (RaftThreadScreenPayload) -> Unit,
+    bridge: BridgeModule,
+) {
+    when (target) {
+        is ActionCardHandledByNavigation.JumpInCurrentConversation -> {
+            bridge.log("thread_action_card_handled_by_open mode=jump target=${target.messageId.take(8)}")
+            threadViewModel.dispatch(
+                SharedThreadIntent.JumpToMessage(
+                    messageId = target.messageId,
+                    switchToTab = RaftThreadTab.Chat.wireValue,
+                    unreadThreadPill = false,
+                )
+            )
+        }
+        is ActionCardHandledByNavigation.OpenCardThread -> {
+            bridge.log(
+                "thread_action_card_handled_by_open mode=card_thread " +
+                    "parent=${target.parentMessageId.take(8)} target=${target.focusedMessageId.take(8)}"
+            )
+            onOpenThreadPayload(
+                renderedThread.replyThreadLoadingPayload(
+                    parentMessageId = target.parentMessageId,
+                    parentChannelId = target.parentChannelId,
+                    threadChannelId = target.threadChannelId,
+                    focusedMessageId = target.focusedMessageId,
+                )
+            )
+        }
+        is ActionCardHandledByNavigation.OpenParentConversation -> {
+            bridge.log("thread_action_card_handled_by_open mode=parent target=${target.focusedMessageId.take(8)}")
+            onOpenThreadPayload(renderedThread.parentMessageContextLoadingPayload(parentMessageId = target.focusedMessageId))
+        }
     }
 }

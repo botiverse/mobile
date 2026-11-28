@@ -4921,6 +4921,9 @@
     <string name="action_card_question_expired_line_anyone">%1$s 內無人回答，已告知 %2$s。</string>
     <string name="action_card_question_withdrawn_line_one">%1$s 撤回了問題。</string>
     <string name="action_card_question_withdrawn_line_other">%1$s 撤回了問題。</string>
+    <string name="action_card_question_status_handled">已處理</string>
+    <string name="action_card_question_handled_line">已依 %1$s處理。</string>
+    <string name="action_card_question_handled_line_link">%1$s 的訊息</string>
     <string name="action_card_question_closed_line">%1$s 關閉了問題。</string>
     <string name="action_card_question_wait_days_one">%1$d 天</string>
     <string name="action_card_question_wait_days_other">%1$d 天</string>

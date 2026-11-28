@@ -55,6 +55,9 @@ internal enum class RaftActionCardStatus {
     /** A question card its agent took back (wire `withdrawn`). */
     Withdrawn,
 
+    /** A question card its agent withdrew as handled by a person's message (wire `withdrawn` with `handledBy`, slock #17265). */
+    Handled,
+
     /** A question card a person closed without answering (wire `closed`, or `expired` with `closedBy`). */
     Closed,
 
@@ -63,7 +66,7 @@ internal enum class RaftActionCardStatus {
 
     /** Ended without running: folded, no Button that changes it. */
     val ended: Boolean
-        get() = this == Expired || this == Withdrawn || this == Closed || this == Ended
+        get() = this == Expired || this == Withdrawn || this == Handled || this == Closed || this == Ended
 }
 
 /**
@@ -239,11 +242,12 @@ internal fun RaftActionCardView(
                 },
             status =
                 when {
-                    // A slim question card says answered / expired / withdrawn / closed in its status line, not a tag.
+                    // A slim question card says answered / expired / withdrawn / handled / closed in its status line, not a tag.
                     slim != null && (executed || ended) -> null
                     executed -> stringResource(Res.string.common_done)
                     state.status == RaftActionCardStatus.Closed -> stringResource(Res.string.thread_action_card_status_closed)
                     state.status == RaftActionCardStatus.Expired -> stringResource(Res.string.thread_action_card_status_expired)
+                    state.status == RaftActionCardStatus.Handled -> stringResource(Res.string.action_card_question_status_handled)
                     state.status == RaftActionCardStatus.Withdrawn -> stringResource(Res.string.thread_action_card_status_withdrawn)
                     state.status == RaftActionCardStatus.Ended -> stringResource(Res.string.thread_action_card_view_only)
                     state.status == RaftActionCardStatus.Frozen -> stringResource(Res.string.thread_action_card_frozen)
