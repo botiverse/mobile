@@ -64,8 +64,9 @@ import org.robolectric.annotation.GraphicsMode
  * `thread.artifact-message-cards.screenshot`: the publish check's screenshot under the header (slock
  * #13046): a card whose phone shot is shown (this window is phone width), cover and top-aligned
  * (the shot's top band stays, its bottom is cut), at most 120dp on a phone; then a card still reading its
- * desktop shot, its place kept empty on `fill-muted`; then a Markdown card with a publisher cover
- * image and an excerpt: the cover is its preview (cut from the top, 120dp), no excerpt. A fake reader answers in place of the network
+ * desktop shot, its place kept empty on `fill-muted`. `thread.artifact-message-cards.cover`: a
+ * Markdown card with a publisher cover image and an excerpt: the cover is its preview (cut from the
+ * top, 120dp on a phone) and no excerpt is drawn (Kirby, raft-design #1493). A fake reader answers in place of the network
  * and Coil's preview handler draws each file as a flat fixture.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -83,6 +84,9 @@ class ThreadArtifactMessageCardScreenshotTest {
 
     @Test
     fun artifactMessageCardScreenshotLight() = captureScreenshots("thread.artifact-message-cards.screenshot", RaftAppAppearance.Light)
+
+    @Test
+    fun artifactMessageCardCoverLight() = captureScreenshots("thread.artifact-message-cards.cover", RaftAppAppearance.Light, cover = true)
 
     @Test
     fun artifactMessageCardExcerptLight() = captureExcerpt("thread.artifact-message-cards.excerpt", RaftAppAppearance.Light)
@@ -148,7 +152,7 @@ class ThreadArtifactMessageCardScreenshotTest {
     }
 
     @OptIn(ExperimentalCoilApi::class)
-    private fun captureScreenshots(name: String, appearance: RaftAppAppearance) {
+    private fun captureScreenshots(name: String, appearance: RaftAppAppearance, cover: Boolean = false) {
         // As ThreadMessageAttachmentsScreenshotTest: the app's loader first, then Coil's preview handler.
         build.raft.app.image.raftInstallImageLoader()
         val now = 1_792_635_000_000L
@@ -191,11 +195,14 @@ class ThreadArtifactMessageCardScreenshotTest {
             )
         val view =
             ThreadArtifactMessageRefsView.Cards(
-                listOf(
-                    ThreadArtifactMessageRef.Card("a", ArtifactLinkTarget(shown.id), shown),
-                    ThreadArtifactMessageRef.Card("b", ArtifactLinkTarget(pending.id), pending),
-                    ThreadArtifactMessageRef.Card("c", ArtifactLinkTarget(covered.id), covered),
-                ),
+                if (cover) {
+                    listOf(ThreadArtifactMessageRef.Card("c", ArtifactLinkTarget(covered.id), covered))
+                } else {
+                    listOf(
+                        ThreadArtifactMessageRef.Card("a", ArtifactLinkTarget(shown.id), shown),
+                        ThreadArtifactMessageRef.Card("b", ArtifactLinkTarget(pending.id), pending),
+                    )
+                },
             )
         val reader =
             object : ArtifactScreenshotReader {
