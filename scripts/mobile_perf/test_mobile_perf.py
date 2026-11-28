@@ -775,6 +775,41 @@ class TestAndroidPerfettoAndFallback(unittest.TestCase):
         self.assertAlmostEqual(diag_full["window_ms"], 6012.5, places=1)
         self.assertEqual(run_full["extra"]["capture_mode"], "perfetto+dumpsys")
 
+    def test_perfetto_unknown_jank_falls_back_to_duration_over_expected(self) -> None:
+        # Virtual displays (e.g. redroid/Wuying) emit jank_type="Unknown Jank" on every frame.
+        # Even when an older SQL CSV set is_jank=1, the parser must evaluate dur_ms > expected_dur_ms.
+        self.assertIn("'Unknown Jank'", android_perfetto.PERFETTO_FRAME_TIMELINE_SQL)
+        frame_csv = (
+            "frame_token,dur_ms,expected_dur_ms,jank_type,is_jank\n"
+            "10,12.5,33.333333,Unknown Jank,1\n"
+            "11,26.7,33.333333,Unknown Jank,1\n"
+            "12,40.0,33.333333,Unknown Jank,1\n"
+            "13,8.1,33.333333,Unknown Jank,1\n"
+        )
+        run_row, diag_row = android_perfetto.parse_android_capture(
+            run_id="and-perfetto-unknown-jank",
+            commit_sha="0123456789abcdef0123456789abcdef01234567",
+            app_version="1.32.0-alpha5",
+            app_build="13200005",
+            build_type="release-profileable",
+            scenario="channel_switch",
+            device_id="5007597a",
+            device_model="wuying android12",
+            os_version="android-12",
+            refresh_hz=30.0,
+            duration_ms=416.7,
+            perfetto_frame_timeline=frame_csv,
+            taken_at="2026-11-28T09:46:00Z",
+        )
+        self.assertEqual(validate_run_row(run_row), [])
+        self.assertEqual(validate_diagnose_row(diag_row), [])
+        self.assertEqual(diag_row["slow_frame_count"], 1)
+        self.assertAlmostEqual(run_row["slow_frame_ratio"], 0.25, places=6)
+        self.assertEqual(
+            run_row["extra"]["perfetto_jank_source"],
+            "duration_over_expected_unknown_jank_fallback",
+        )
+
     def test_android_requires_refresh_hz_without_silent_60hz_default(self) -> None:
         with self.assertRaises(ValueError):
             android_perfetto.parse_dumpsys_gfxinfo_framestats("Total frames rendered: 10\n")
