@@ -3416,6 +3416,7 @@
     <string name="settings_computers_placeholder_description">這台電腦要用來做什麼？</string>
     <string name="settings_computers_state_no_description">沒有說明</string>
     <string name="settings_computers_section_info">資訊</string>
+    <string name="settings_computers_section_resources">資源</string>
     <string name="settings_computers_label_os">作業系統</string>
     <string name="settings_computers_label_version">電腦版本</string>
     <string name="settings_computers_label_created">建立時間</string>
@@ -3692,6 +3693,8 @@
     <string name="settings_computers_rack_no_match_title">沒有符合的 Computer</string>
     <string name="settings_computers_disk_low">磁碟空間不足</string>
     <string name="settings_computers_disk_low_detail">剩 %1$s，共 %2$s</string>
+    <string name="settings_computers_disk_low_banner_title">磁碟空間不足：剩餘 %1$s，共 %2$s</string>
+    <string name="settings_computers_disk_low_banner_body">這台電腦上的 Agent 可能無法儲存工作內容或啟動。Raft 會自動清除自己留下的舊遷移資料；如果空間仍然不足，請釋放這台電腦上的磁碟空間。</string>
     <string name="settings_computers_rack_resource_detail">剩 %1$s，共 %2$s</string>
     <string name="settings_computers_workspace_status_active">啟用中</string>
     <string name="settings_computers_workspace_status_orphan">已孤立</string>

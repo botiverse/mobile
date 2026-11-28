@@ -2030,6 +2030,8 @@ private fun RaftRackUsageCellContent(line: RaftRackLine, click: (() -> Unit)?) {
 /** Web rack card line's name column (`grid-cols-[76px_…]`). */
 private val RaftRackLineLabelWidth = 76.dp
 private val RaftRackLineGap = 8.dp
+/** 12dp runtime mark + 6dp spacing before the label text (web `pl-[18px]`). */
+private val RaftRackLineMarkIndent = 18.dp
 
 /**
  * One line of a card's meters: its name (with the runtime's mark for a usage line), its bar
@@ -2058,9 +2060,34 @@ private class RaftRackLine(
     val pending: RaftRackLinePending? = null,
     /** A disk or memory line's "free of total", in a tooltip on a long press or hover (web `RackResource`'s `Tooltip`). */
     val tooltip: String? = null,
+    /** Web `RackResource` `layout="page"`: draws the resource line with [inlineDetail] under the bar instead of a tooltip. */
+    val pageLayout: Boolean = false,
+    /** Free/total detail shown directly under the bar on the detail page in body ink. */
+    val inlineDetail: String? = null,
+    val testTag: String? = null,
+    val detailTestTag: String? = null,
 ) {
     fun emphasize(): RaftRackLine =
-        RaftRackLine(label, runtimeMark, bar, value, warn, attention, dimmed, semantics, onClick, usageCard, emphasized = true, model = model, pending = pending, tooltip = tooltip)
+        RaftRackLine(
+            label = label,
+            runtimeMark = runtimeMark,
+            bar = bar,
+            value = value,
+            warn = warn,
+            attention = attention,
+            dimmed = dimmed,
+            semantics = semantics,
+            onClick = onClick,
+            usageCard = usageCard,
+            emphasized = true,
+            model = model,
+            pending = pending,
+            tooltip = tooltip,
+            pageLayout = pageLayout,
+            inlineDetail = inlineDetail,
+            testTag = testTag,
+            detailTestTag = detailTestTag,
+        )
 }
 
 /** A pending usage line's shape: two lines when it last had a model line; whether its placeholders pulse. */
@@ -2152,34 +2179,68 @@ private fun RaftComputerRackMeters(
 }
 
 @Composable
-private fun RaftRackLineRow(line: RaftRackLine, valueWidth: Dp) {
+private fun RaftRackLineRow(
+    line: RaftRackLine,
+    valueWidth: Dp,
+    labelWidth: Dp = RaftRackLineLabelWidth,
+) {
     val card = line.usageCard
     val tooltip = line.tooltip
     if (card != null) {
-        card { click -> RaftRackLineRowContent(line, valueWidth, click = click) }
+        card { click -> RaftRackLineRowContent(line, valueWidth, labelWidth = labelWidth, click = click) }
     } else if (tooltip != null) {
-        RaftTooltip(tooltip) { RaftRackLineRowContent(line, valueWidth, click = line.onClick) }
+        RaftTooltip(tooltip) { RaftRackLineRowContent(line, valueWidth, labelWidth = labelWidth, click = line.onClick) }
     } else {
-        RaftRackLineRowContent(line, valueWidth, click = line.onClick)
+        RaftRackLineRowContent(line, valueWidth, labelWidth = labelWidth, click = line.onClick)
     }
 }
 
 @Composable
-private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: (() -> Unit)?) {
+private fun RaftRackLineRowContent(
+    line: RaftRackLine,
+    valueWidth: Dp,
+    labelWidth: Dp = RaftRackLineLabelWidth,
+    click: (() -> Unit)?,
+) {
     line.pending?.let { pending ->
-        RaftRackPendingLineRow(line, pending, valueWidth)
+        RaftRackPendingLineRow(line, pending, valueWidth, labelWidth)
+        return
+    }
+    if (line.pageLayout) {
+        // Web `RackResource` `layout="page"`: card line plus free/total under column 2 in body ink (data, not helper text).
+        val rowModifier =
+            Modifier
+                .fillMaxWidth()
+                .then(if (line.testTag != null) Modifier.testTag(line.testTag) else Modifier)
+        Column(rowModifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            RaftRackLineRowFace(line, valueWidth, labelWidth, Modifier)
+            line.inlineDetail?.let { detail ->
+                Row(Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.width(labelWidth + RaftRackLineGap))
+                    RaftText(
+                        detail,
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .then(if (line.detailTestTag != null) Modifier.testTag(line.detailTestTag) else Modifier),
+                        style = RaftTheme.typography.caption,
+                        color = RaftTheme.colors.foreground,
+                    )
+                }
+            }
+        }
         return
     }
     val model = line.model
     if (model == null) {
-        RaftRackLineRowFace(line, valueWidth, Modifier.raftRackLineTarget(line, click))
+        RaftRackLineRowFace(line, valueWidth, labelWidth, Modifier.raftRackLineTarget(line, click))
         return
     }
     // Web `ModelCardLine`: the model's name (under the provider's), its bar and its value, a second row of the line.
     Column(Modifier.raftRackLineTarget(line, click), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        RaftRackLineRowFace(line, valueWidth, Modifier)
+        RaftRackLineRowFace(line, valueWidth, labelWidth, Modifier)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(RaftRackLineLabelWidth).padding(start = 18.dp)) {
+            Box(Modifier.width(labelWidth).padding(start = RaftRackLineMarkIndent)) {
                 RaftText(
                     model.name,
                     style = RaftTheme.typography.footnote,
@@ -2209,13 +2270,21 @@ private fun RaftRackLineRowContent(line: RaftRackLine, valueWidth: Dp, click: ((
  * placeholder in the grid's columns; a second row (name, bar, value) when it last had a model line.
  */
 @Composable
-private fun RaftRackPendingLineRow(line: RaftRackLine, pending: RaftRackLinePending, valueWidth: Dp) {
+private fun RaftRackPendingLineRow(
+    line: RaftRackLine,
+    pending: RaftRackLinePending,
+    valueWidth: Dp,
+    labelWidth: Dp = RaftRackLineLabelWidth,
+) {
     Column(
-        Modifier.fillMaxWidth().clearAndSetSemantics { contentDescription = line.semantics },
+        Modifier
+            .fillMaxWidth()
+            .then(if (line.testTag != null) Modifier.testTag(line.testTag) else Modifier)
+            .clearAndSetSemantics { contentDescription = line.semantics },
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.width(RaftRackLineLabelWidth)) { RaftRackLineLabel(line) }
+            Box(Modifier.width(labelWidth)) { RaftRackLineLabel(line) }
             Spacer(Modifier.width(RaftRackLineGap))
             Box(Modifier.weight(1f)) { RaftRackPendingBar(pending.animated) }
             Spacer(Modifier.width(RaftRackLineGap))
@@ -2223,7 +2292,7 @@ private fun RaftRackPendingLineRow(line: RaftRackLine, pending: RaftRackLinePend
         }
         if (pending.twoLines) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(RaftRackLineLabelWidth).padding(start = 18.dp)) {
+                Box(Modifier.width(labelWidth).padding(start = RaftRackLineMarkIndent)) {
                     RaftSkeleton(Modifier.width(40.dp).height(9.dp), variant = RaftSkeletonVariant.Line, animated = pending.animated)
                 }
                 Spacer(Modifier.width(RaftRackLineGap))
@@ -2237,17 +2306,23 @@ private fun RaftRackPendingLineRow(line: RaftRackLine, pending: RaftRackLinePend
 
 private fun Modifier.raftRackLineTarget(line: RaftRackLine, click: (() -> Unit)?): Modifier =
     fillMaxWidth()
+        .then(if (line.testTag != null) Modifier.testTag(line.testTag) else Modifier)
         .then(if (line.dimmed) Modifier.alpha(0.6f) else Modifier)
         .then(if (click != null) Modifier.raftClickable(onClick = click, onClickLabel = line.semantics, tier = RaftHoverTier.Subtle) else Modifier)
         .clearAndSetSemantics { contentDescription = line.semantics }
 
 @Composable
-private fun RaftRackLineRowFace(line: RaftRackLine, valueWidth: Dp, modifier: Modifier) {
+private fun RaftRackLineRowFace(
+    line: RaftRackLine,
+    valueWidth: Dp,
+    labelWidth: Dp = RaftRackLineLabelWidth,
+    modifier: Modifier,
+) {
     Row(
         modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(RaftRackLineLabelWidth)) { RaftRackLineLabel(line) }
+        Box(Modifier.width(labelWidth)) { RaftRackLineLabel(line) }
         Spacer(Modifier.width(RaftRackLineGap))
         Box(Modifier.weight(1f)) { line.bar?.invoke() }
         Spacer(Modifier.width(RaftRackLineGap))
@@ -2286,13 +2361,31 @@ private fun RaftRackLineLabel(line: RaftRackLine) {
 }
 
 /**
- * Web `RackResource` as a card line: a Progress (orange when it warns), or "—" when not reported.
- * Its free of total (a disk in decimal units, memory in binary ones; botiverse/slock #14306) is the
- * web's hover tooltip: here a long press or a hover, and read out after the value.
+ * Web `RackResource` as a card line (or Computer detail page line when [pageLayout] is true): a
+ * Progress (orange when it warns), or "—" when not reported. Its free of total (a disk in decimal
+ * units, memory in binary ones; botiverse/slock #14306) is a long-press/hover tooltip on cards and
+ * written directly under the bar in body ink on the detail page (botiverse/slock #17335).
  */
 @Composable
-private fun raftRackResourceLine(label: String, meter: RaftComputerResourceMeter?, kind: RaftComputerResourceKind): RaftRackLine {
-    if (meter == null) return RaftRackLine(label = label, bar = null, value = "—", warn = false, semantics = "$label —")
+private fun raftRackResourceLine(
+    label: String,
+    meter: RaftComputerResourceMeter?,
+    kind: RaftComputerResourceKind,
+    pageLayout: Boolean = false,
+    testTag: String? = null,
+    detailTestTag: String? = null,
+): RaftRackLine {
+    if (meter == null) {
+        return RaftRackLine(
+            label = label,
+            bar = null,
+            value = "—",
+            warn = false,
+            semantics = "$label —",
+            pageLayout = pageLayout,
+            testTag = testTag,
+        )
+    }
     val value = stringResource(Res.string.settings_computers_rack_percent_used, "${meter.percentUsed}%")
     val (free, total) = meter.freeAndTotal(kind)
     val detail = stringResource(Res.string.settings_computers_rack_resource_detail, free, total)
@@ -2301,6 +2394,7 @@ private fun raftRackResourceLine(label: String, meter: RaftComputerResourceMeter
         bar = {
             RaftProgressBar(
                 value = meter.percentUsed / 100f,
+                modifier = if (pageLayout && meter.warn && testTag != null) Modifier.testTag("$testTag-bar-warning") else Modifier,
                 variant = if (meter.warn) RaftProgressBarVariant.Warning else RaftProgressBarVariant.Primary,
                 size = RaftProgressBarSize.Sm,
                 contentDescription = null,
@@ -2309,7 +2403,11 @@ private fun raftRackResourceLine(label: String, meter: RaftComputerResourceMeter
         value = value,
         warn = meter.warn,
         semantics = "$label $value, $detail",
-        tooltip = detail,
+        tooltip = if (pageLayout) null else detail,
+        pageLayout = pageLayout,
+        inlineDetail = if (pageLayout) detail else null,
+        testTag = testTag,
+        detailTestTag = if (pageLayout) detailTestTag else null,
     )
 }
 
@@ -3493,9 +3591,15 @@ private fun RaftComputerDetailBody(
     }
     // Back leaves select mode first.
     RaftBackHandler(enabled = bulk != null && bulkState.selectionMode, label = "computer_agents_select") { bulkState.clearSelection() }
+    val showResourcesSection = raftComputerDetailShowsResourcesSection(computer)
     LazyColumn(Modifier.fillMaxSize().raftSafeAreaHorizontalPadding()) {
         item(key = "header") { RaftComputerDetailHeader(computer, model.sameMachinePeerNames, onOpenMigrationLog) }
         item(key = "version-notice") { RaftComputerVersionNotice(controls) }
+        if (computer.diskLow) {
+            computer.disk?.let { disk ->
+                item(key = "disk-low") { RaftComputerDiskLowBanner(disk) }
+            }
+        }
         raftComputerMemoryLimitNotApplied(snapshot.computer)?.let { scopes ->
             item(key = "memory-limit-not-applied") { RaftComputerMemoryLimitNotAppliedBanner(scopes) }
         }
@@ -3511,7 +3615,10 @@ private fun RaftComputerDetailBody(
             ?.let { failed ->
                 item(key = "action-error") { RaftComputerActionErrorBanner(failed) }
             }
-        // Web MachineDetailPanel order: Name, Description, Info, Agents, Workspaces, Actions.
+        // Web MachineDetailPanel order: Resources (Disk & Memory, online only), Name, Description, Info, Agents, Workspaces, Actions.
+        if (showResourcesSection) {
+            item(key = "resources") { RaftComputerDetailResourcesSection(computer) }
+        }
         item(key = "name") {
             RaftComputerEditableSection(
                 key = machineId,
@@ -4103,6 +4210,82 @@ private fun raftComputerCreatedDate(createdAt: String?): String? {
 }
 
 internal const val RAFT_COMPUTER_DETAIL_SAME_MACHINE_TAG = "machine-detail-same-machine"
+internal const val RAFT_COMPUTER_DETAIL_DISK_LOW_BANNER_TAG = "computer-detail-disk-low-banner"
+internal const val RAFT_COMPUTER_DETAIL_RESOURCES_TAG = "computer-detail-resources"
+internal const val RAFT_COMPUTER_DETAIL_DISK_TAG = "computer-detail-disk"
+internal const val RAFT_COMPUTER_DETAIL_MEMORY_TAG = "computer-detail-memory"
+internal const val RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG = "computer-detail-disk-detail"
+internal const val RAFT_COMPUTER_DETAIL_MEMORY_DETAIL_TAG = "computer-detail-memory-detail"
+
+/** Web `MachineDetailPanel` `machine-detail-disk-low` warning banner, directly below the version notice. */
+@Composable
+private fun RaftComputerDiskLowBanner(disk: RaftComputerResourceMeter) {
+    val (free, total) = disk.freeAndTotal(RaftComputerResourceKind.Disk)
+    RaftBanner(
+        description = stringResource(Res.string.settings_computers_disk_low_banner_body),
+        status = RaftBannerStatus.Warning,
+        title = stringResource(Res.string.settings_computers_disk_low_banner_title, free, total),
+        size = RaftBannerSize.Sm,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp).testTag(RAFT_COMPUTER_DETAIL_DISK_LOW_BANNER_TAG),
+    )
+}
+
+/**
+ * Web `MachineResourcesSection` (botiverse/slock #17338): Disk and Memory progress meters with
+ * inline free/total sizes in body ink directly under each bar (runtime account usage chips stay in
+ * the Info section below). The label column starts at [RaftRackLineLabelWidth] (76dp) and widens
+ * for wider localized labels (e.g. Russian) so Disk/Memory labels never clip.
+ */
+@Composable
+private fun RaftComputerDetailResourcesSection(computer: RaftComputerRowModel) {
+    val diskLabel = stringResource(Res.string.agent_migration_target_disk)
+    val memoryLabel = stringResource(Res.string.agent_migration_target_memory)
+    val disk =
+        raftRackResourceLine(
+            label = diskLabel,
+            meter = computer.disk,
+            kind = RaftComputerResourceKind.Disk,
+            pageLayout = true,
+            testTag = RAFT_COMPUTER_DETAIL_DISK_TAG,
+            detailTestTag = RAFT_COMPUTER_DETAIL_DISK_DETAIL_TAG,
+        )
+    val memory =
+        raftRackResourceLine(
+            label = memoryLabel,
+            meter = computer.memory,
+            kind = RaftComputerResourceKind.Memory,
+            pageLayout = true,
+            testTag = RAFT_COMPUTER_DETAIL_MEMORY_TAG,
+            detailTestTag = RAFT_COMPUTER_DETAIL_MEMORY_DETAIL_TAG,
+        )
+    val resources = listOf(disk, memory)
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val footnoteStyle = RaftTheme.typography.footnote
+    val labelWidth =
+        with(density) {
+            val widest =
+                resources.maxOf { line ->
+                    val style = if (line.emphasized) footnoteStyle.copy(fontWeight = FontWeight.Bold) else footnoteStyle
+                    measurer.measure(line.label, style = style, maxLines = 1, softWrap = false).size.width.toDp() + 1.dp
+                }
+            maxOf(RaftRackLineLabelWidth, widest)
+        }
+    val valueWidth =
+        with(density) {
+            resources.maxOf { line ->
+                measurer.measure(line.value, style = line.valueStyle(), maxLines = 1, softWrap = false).size.width.toDp()
+            } + 1.dp
+        }
+    RaftSection(
+        title = stringResource(Res.string.settings_computers_section_resources),
+        modifier = Modifier.testTag(RAFT_COMPUTER_DETAIL_RESOURCES_TAG),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            resources.forEach { RaftRackLineRow(it, valueWidth, labelWidth = labelWidth) }
+        }
+    }
+}
 
 @Composable
 private fun RaftComputerDetailHeader(

@@ -3416,6 +3416,7 @@
     <string name="settings_computers_placeholder_description">이 컴퓨터를 어떤 용도로 사용하나요?</string>
     <string name="settings_computers_state_no_description">설명 없음</string>
     <string name="settings_computers_section_info">정보</string>
+    <string name="settings_computers_section_resources">리소스</string>
     <string name="settings_computers_label_os">OS</string>
     <string name="settings_computers_label_version">컴퓨터 버전</string>
     <string name="settings_computers_label_created">생성일</string>
@@ -3692,6 +3693,8 @@
     <string name="settings_computers_rack_no_match_title">일치하는 Computer가 없습니다</string>
     <string name="settings_computers_disk_low">디스크 부족</string>
     <string name="settings_computers_disk_low_detail">%2$s 중 %1$s 남음</string>
+    <string name="settings_computers_disk_low_banner_title">디스크 공간 부족: %2$s 중 %1$s 남음</string>
+    <string name="settings_computers_disk_low_banner_body">이 컴퓨터의 에이전트가 작업 내용을 저장하지 못하거나 시작되지 않을 수 있어요. Raft는 자신이 남긴 오래된 마이그레이션 데이터를 자동으로 정리해요. 그래도 공간이 부족하면 이 컴퓨터의 저장 공간을 확보해 주세요.</string>
     <string name="settings_computers_rack_resource_detail">%2$s 중 %1$s 남음</string>
     <string name="settings_computers_workspace_status_active">활성</string>
     <string name="settings_computers_workspace_status_orphan">고립됨</string>

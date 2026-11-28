@@ -551,6 +551,14 @@ private fun RuntimeAccountUsageWindowScope.modelLineName(): String =
     }
 
 /**
+ * Computer detail page Resources section visibility (web `MachineResourcesSection`,
+ * botiverse/slock #17338): shown only for an online Computer that reports live disk or memory
+ * status (runtime account usage stays in the Info section's Detected runtimes chips below).
+ */
+internal fun raftComputerDetailShowsResourcesSection(computer: RaftComputerRowModel): Boolean =
+    computer.online && (computer.disk != null || computer.memory != null)
+
+/**
  * Web `modelLineOf`: the account's tightest model (or model group) window, or null when it
  * reports none it can read, or nothing but model windows (its first line already counts them).
  * The computer's agents' model groups are not known here, so every group counts (as web does

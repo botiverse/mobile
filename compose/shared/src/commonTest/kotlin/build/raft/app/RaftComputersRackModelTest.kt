@@ -15,8 +15,10 @@ import build.raft.app.data.SettingsComputerSnapshot
 import build.raft.app.model.RaftRelativeTimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** Web rack card meters and usage lines (botiverse/slock rack/rackRuntimeColumns.ts, ComputersRack.tsx). */
 class RaftComputersRackModelTest {
@@ -196,6 +198,29 @@ class RaftComputersRackModelTest {
         val row = computer().copy(hostProvider = "aws", deviceClass = "server").toRaftComputerRow()
         assertEquals("aws", row.hostProvider)
         assertEquals("server", row.deviceClass)
+    }
+
+    @Test
+    fun detailResourcesSectionShowsOnlyForOnlineComputersWithDiskOrMemory() {
+        val onlineEmptyWithRuntimes = computer(online = true).copy(runtimes = listOf("claude", "codex")).toRaftComputerRow()
+        assertFalse(raftComputerDetailShowsResourcesSection(onlineEmptyWithRuntimes))
+
+        val onlineWithDisk =
+            computer(online = true, disk = SettingsComputerSizeStatusSnapshot(availableBytes = 100 * gib, totalBytes = 500 * gib)).toRaftComputerRow()
+        assertTrue(raftComputerDetailShowsResourcesSection(onlineWithDisk))
+
+        val onlineWithMemory =
+            computer(online = true, memory = SettingsComputerSizeStatusSnapshot(availableBytes = 4 * gib, totalBytes = 16 * gib)).toRaftComputerRow()
+        assertTrue(raftComputerDetailShowsResourcesSection(onlineWithMemory))
+
+        val offlineWithLowDiskAndMemory =
+            computer(
+                online = false,
+                disk = SettingsComputerSizeStatusSnapshot(availableBytes = 6 * gib, totalBytes = 500 * gib),
+                memory = SettingsComputerSizeStatusSnapshot(availableBytes = 4 * gib, totalBytes = 16 * gib),
+            ).toRaftComputerRow()
+        assertFalse(raftComputerDetailShowsResourcesSection(offlineWithLowDiskAndMemory))
+        assertFalse(offlineWithLowDiskAndMemory.diskLow)
     }
 
     private fun computer(

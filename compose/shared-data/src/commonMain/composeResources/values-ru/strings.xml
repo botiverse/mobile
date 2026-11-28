@@ -3416,6 +3416,7 @@
     <string name="settings_computers_placeholder_description">Для чего используется этот компьютер?</string>
     <string name="settings_computers_state_no_description">Нет описания</string>
     <string name="settings_computers_section_info">Сведения</string>
+    <string name="settings_computers_section_resources">Ресурсы</string>
     <string name="settings_computers_label_os">ОС</string>
     <string name="settings_computers_label_version">Версия Raft Computer</string>
     <string name="settings_computers_label_created">Дата создания</string>
@@ -3692,6 +3693,8 @@
     <string name="settings_computers_rack_no_match_title">Нет подходящих Computer</string>
     <string name="settings_computers_disk_low">Мало места</string>
     <string name="settings_computers_disk_low_detail">Свободно %1$s из %2$s</string>
+    <string name="settings_computers_disk_low_banner_title">Мало места на диске: свободно %1$s из %2$s</string>
+    <string name="settings_computers_disk_low_banner_body">Агенты на этом компьютере могут не сохранить работу или не запуститься. Raft сам удаляет свои устаревшие данные переноса; если места по-прежнему мало, освободите место на этом компьютере.</string>
     <string name="settings_computers_rack_resource_detail">Свободно %1$s из %2$s</string>
     <string name="settings_computers_workspace_status_active">Активно</string>
     <string name="settings_computers_workspace_status_orphan">Осиротевшее</string>

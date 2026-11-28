@@ -3416,6 +3416,7 @@
     <string name="settings_computers_placeholder_description">Para que este computador será usado?</string>
     <string name="settings_computers_state_no_description">Sem descrição</string>
     <string name="settings_computers_section_info">Informações</string>
+    <string name="settings_computers_section_resources">Recursos</string>
     <string name="settings_computers_label_os">SO</string>
     <string name="settings_computers_label_version">Versão do computador</string>
     <string name="settings_computers_label_created">Criado em</string>
@@ -3692,6 +3693,8 @@
     <string name="settings_computers_rack_no_match_title">Nenhum computador corresponde</string>
     <string name="settings_computers_disk_low">Pouco espaço</string>
     <string name="settings_computers_disk_low_detail">%1$s livres de %2$s</string>
+    <string name="settings_computers_disk_low_banner_title">Pouco espaço em disco: %1$s livres de %2$s</string>
+    <string name="settings_computers_disk_low_banner_body">Os agentes deste computador podem não conseguir salvar o trabalho ou iniciar. O Raft remove automaticamente os próprios dados antigos de migração; se o espaço continuar baixo, libere espaço neste computador.</string>
     <string name="settings_computers_rack_resource_detail">%1$s livres de %2$s</string>
     <string name="settings_computers_workspace_status_active">Ativo</string>
     <string name="settings_computers_workspace_status_orphan">Órfão</string>
