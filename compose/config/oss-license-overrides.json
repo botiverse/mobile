@@ -44,7 +44,7 @@
       "displayName": "Hands Android SDK",
       "licenseName": "MIT License",
       "licenseUrl": "https://opensource.org/licenses/MIT",
-      "sourceUrl": "https://github.com/botiverse/hands/tree/c4c5fe07c84500c666fbbea2d8791860d7faafe8/clients/android",
+      "sourceUrl": "https://github.com/botiverse/hands/tree/de1c6358924c3f812168402d1c5390c0a982e785/clients/android",
       "reason": "Pin the packaged disclosure to the exact source commit paired with the official 0.16.1 Raft Maven AAR and native-symbols artifact; Gradle metadata can otherwise hide POM license/source details."
     },
     {
