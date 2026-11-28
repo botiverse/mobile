@@ -3419,6 +3419,7 @@
     <string name="settings_computers_placeholder_description">このコンピューターは何に使いますか？</string>
     <string name="settings_computers_state_no_description">説明はありません</string>
     <string name="settings_computers_section_info">情報</string>
+    <string name="settings_computers_section_usage">使用状況</string>
     <string name="settings_computers_label_os">OS</string>
     <string name="settings_computers_label_version">コンピューターのバージョン</string>
     <string name="settings_computers_label_created">作成日</string>
@@ -3880,6 +3881,8 @@
     <string name="settings_computers_rack_no_match_title">一致する Computer はありません</string>
     <string name="settings_computers_disk_low">ディスク不足</string>
     <string name="settings_computers_disk_low_detail">空き %1$s / 合計 %2$s</string>
+    <string name="settings_computers_disk_low_banner_title">ディスクの空き容量が不足しています：空き %1$s / 合計 %2$s</string>
+    <string name="settings_computers_disk_low_banner_body">このコンピューター上のエージェントが、作業を保存できなかったり起動できなかったりする可能性があります。Raft は自身の古い移行データを自動的に削除します。空き容量が少ないままの場合は、このコンピューターの空き容量を増やしてください。</string>
     <string name="settings_computers_rack_resource_detail">空き %1$s / 合計 %2$s</string>
     <string name="settings_computers_workspace_status_active">アクティブ</string>
     <string name="settings_computers_workspace_status_orphan">孤立</string>
