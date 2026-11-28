@@ -177,6 +177,10 @@ function build.raft.app.data.RaftAvatarNativeStageSink.write
 callable build.raft.app.data.RaftAvatarNativeStageSink.Companion.*
 callable build.raft.app.data.RaftAvatarNativeStagedCandidate.*
 callable build.raft.app.data.RaftAvatarNativeStagedCandidate.Companion.*
+callable build.raft.app.data.RaftConversationReadHost.*
+callable build.raft.app.data.RaftConversationReadHost.Companion.*
+function build.raft.app.data.RaftConversationReadListener.onConversationRead
+callable build.raft.app.data.RaftConversationReadListener.Companion.*
 callable build.raft.app.data.RaftIosMobileOAuthBridge.*
 callable build.raft.app.data.RaftIosMobileOAuthBridge.Companion.*
 callable build.raft.app.data.RaftIosMobileOAuthCompletionResult.*

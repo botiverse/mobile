@@ -77,11 +77,20 @@ private enum RaftIosPushDeliveryObservability {
 final class RaftIosBadgeTelemetryBridge: NSObject {
     @objc(recordAppBadgeSet:)
     static func recordAppBadgeSet(_ count: Int) {
+        RaftIosPushHost.noteAuthoritativeAppBadge(count)
         RaftIosPushDeliveryTraceBridge.shared.recordBadgeSet(
             count: Int32(max(0, count)),
             source: "app",
             setAtMs: RaftIosPushDeliveryObservability.nowEpochMillis()
         )
+    }
+}
+
+/// Bridges shared `RaftConversationReadHost` local reads so iOS immediately clears delivered
+/// Notification Center entries for that conversation and records a local retract watermark.
+private final class RaftIosConversationReadListener: NSObject, RaftConversationReadListener {
+    func onConversationRead(serverId: String, channelId: String) {
+        RaftIosPushHost.handleLocalConversationRead(serverId: serverId, conversationId: channelId)
     }
 }
 
@@ -91,6 +100,8 @@ enum RaftIosPushHost {
     private static let systemNotificationOpenName = Notification.Name("slockSystemNotificationOpen")
     private static let systemNotificationOpenReadyName = Notification.Name("slockSystemNotificationOpenReady")
     private static let systemNotificationOpenNotReadyName = Notification.Name("slockSystemNotificationOpenNotReady")
+    private static let conversationReadListener = RaftIosConversationReadListener()
+    private static var foregroundBadgeReconciler = RaftIosForegroundBadgeReconciler()
     private static var installationId: String?
     private static var remoteNotificationsObserver: NSObjectProtocol?
     private static var systemNotificationOpenReadyObserver: NSObjectProtocol?
@@ -102,6 +113,7 @@ enum RaftIosPushHost {
     private static var pendingSystemNotificationOpenKeys: Set<String> = []
 
     static func install() {
+        RaftConversationReadHost.shared.listener = conversationReadListener
         if remoteNotificationsObserver == nil {
             remoteNotificationsObserver = NotificationCenter.default.addObserver(
                 forName: remoteNotificationsStateName,
@@ -190,10 +202,65 @@ enum RaftIosPushHost {
         }
     }
 
+    static func noteAuthoritativeAppBadge(_ count: Int) {
+        runOnMain {
+            foregroundBadgeReconciler.recordAppBadge(
+                count,
+                isBackground: UIApplication.shared.applicationState == .background
+            )
+        }
+    }
+
+    static func handleDidEnterBackground() {
+        runOnMain {
+            foregroundBadgeReconciler.didEnterBackground()
+        }
+    }
+
+    static func reconcileForegroundBadgeIfNeeded() {
+        runOnMain {
+            let currentBadge = UIApplication.shared.applicationIconBadgeNumber
+            guard let expectedBadge = foregroundBadgeReconciler.badgeToRestoreOnDidBecomeActive(
+                currentIconBadge: currentBadge
+            ) else {
+                return
+            }
+            setBadgeCount(expectedBadge, source: "app") {
+                RaftIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "foreground_badge_reconciled previous=\(currentBadge) restored=\(expectedBadge)"
+                )
+            }
+        }
+    }
+
+    static func handleLocalConversationRead(serverId: String, conversationId: String) {
+        guard let retract = RaftIosNotificationRetraction.localReadRetract(
+            serverId: serverId,
+            conversationId: conversationId
+        ) else {
+            return
+        }
+        RaftIosNotificationRetraction.apply(retract) { removed in
+            if removed > 0 {
+                RaftIosDiagnosticsRecord(
+                    "info",
+                    "SlockIosPush",
+                    "local_conversation_read_retract_applied removed=\(removed)"
+                )
+            }
+        }
+    }
+
     /// APNs background push (`content-available`): `sync` sets the badge, `retract` removes the
     /// group's delivered notifications and then sets the badge. Alert / unknown types: `.noData`.
+    /// When the app is `.active` in the foreground, Kotlin's `bridge.appBadge` owns the icon badge,
+    /// so delayed priority-5 `sync` / `retract` pushes do not overwrite `setBadgeCount` (retract
+    /// still removes delivered notifications and records its watermark).
     static func handleBackgroundPush(
         userInfo: [AnyHashable: Any],
+        isForegroundActive: Bool = false,
         completion: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         guard let push = RaftIosNotificationRetraction.parseBackgroundPush(userInfo) else {
@@ -204,6 +271,14 @@ enum RaftIosPushHost {
         case .sync(let badge):
             guard let badge else {
                 RaftIosDiagnosticsRecord("info", "SlockIosPush", "background_sync_skipped reason=missing_badge")
+                completion(.noData)
+                return
+            }
+            guard RaftIosNotificationRetraction.shouldApplyBackgroundPushBadge(
+                badge: badge,
+                isForegroundActive: isForegroundActive
+            ) else {
+                RaftIosDiagnosticsRecord("info", "SlockIosPush", "background_sync_skipped reason=foreground_active")
                 completion(.noData)
                 return
             }
@@ -218,17 +293,25 @@ enum RaftIosPushHost {
                 hasThroughSeq: retract.throughSeq != nil,
                 retractedAtMs: RaftIosPushDeliveryObservability.nowEpochMillis()
             )
+            let applyBadge = RaftIosNotificationRetraction.shouldApplyBackgroundPushBadge(
+                badge: retract.badge,
+                isForegroundActive: isForegroundActive
+            )
+            let badgeSetter: ((Int, @escaping () -> Void) -> Void)? =
+                applyBadge
+                    ? { badge, done in setBadgeCount(badge, source: "retract", completion: done) }
+                    : nil
             RaftIosNotificationRetraction.apply(
                 retract,
-                badgeSetter: { badge, done in setBadgeCount(badge, source: "retract", completion: done) }
+                badgeSetter: badgeSetter
             ) { removed in
                 RaftIosDiagnosticsRecord(
                     "info",
                     "SlockIosPush",
                     "background_retract_applied removed=\(removed) wholeGroup=\(retract.throughSeq == nil) " +
-                        "badgeApplied=\(retract.badge != nil)"
+                        "badgeApplied=\(applyBadge) foregroundActive=\(isForegroundActive)"
                 )
-                completion(removed > 0 || retract.badge != nil ? .newData : .noData)
+                completion(removed > 0 || applyBadge ? .newData : .noData)
             }
         }
     }
@@ -239,11 +322,18 @@ enum RaftIosPushHost {
             remoteNotificationsGeneration &+= 1
             let generation = remoteNotificationsGeneration
             if !enabled {
+                // Only called when no authenticated session exists (logout, session invalidation,
+                // or startup without a session); clear icon badge, delivered alerts, and watermarks
+                // so a signed-out account never leaves ghost badges or Notification Center entries.
+                foregroundBadgeReconciler.didSignOut()
                 UIApplication.shared.unregisterForRemoteNotifications()
+                UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+                RaftIosRetractWatermarks.clearAll()
+                setBadgeCount(0)
                 RaftIosDiagnosticsRecord(
                     "info",
                     "SlockIosPush",
-                    "remote_notifications_state_applied enabled=false"
+                    "remote_notifications_state_applied enabled=false badge_cleared=true delivered_cleared=true"
                 )
                 return
             }
@@ -405,7 +495,8 @@ enum RaftIosPushHost {
         categoryIdentifier: String? = nil,
         shellInstanceId: String? = nil,
         source: String,
-        notificationDate: Date? = nil
+        notificationDate: Date? = nil,
+        tappedIdentifier: String? = nil
     ) {
         // Product analytics: this open came from a notification (`app_opened.via`). Reported
         // before the activation it belongs to, so not deferred to the main queue.
@@ -455,6 +546,23 @@ enum RaftIosPushHost {
                 isActivityTarget: landing.isActivityTarget
             )
         }
+        // Clear sibling delivered notifications for the same conversation after snapshotting
+        // `read_before_open` telemetry so tapping one alert dismisses the whole conversation stack.
+        if let siblingRetract = RaftIosNotificationRetraction.tappedSiblingRetract(userInfo: userInfo) {
+            let extraIdentifiers = tappedIdentifier.map { [$0] } ?? []
+            RaftIosNotificationRetraction.apply(
+                siblingRetract,
+                extraIdentifiersToRemove: extraIdentifiers
+            ) { removed in
+                if removed > 0 {
+                    RaftIosDiagnosticsRecord(
+                        "info",
+                        "SlockIosPush",
+                        "notification_tap_siblings_removed removed=\(removed) source=\(source)"
+                    )
+                }
+            }
+        }
         runOnMain {
             guard let payload = sanitizedSystemNotificationOpenPayload(
                 userInfo: userInfo,
@@ -496,18 +604,16 @@ enum RaftIosPushHost {
     }
 
     static func targetsVisibleConversation(userInfo: [AnyHashable: Any]) -> Bool {
-        func stringValue(_ key: String) -> String? {
-            userInfo[key] as? String
-        }
+        let query = RaftIosNotificationOpen.visibleConversationQuery(userInfo: userInfo)
         return RaftVisibleConversationRegistryKt.raftSystemNotificationTargetsVisibleConversation(
-            serverId: stringValue("serverId"),
-            kind: stringValue("kind"),
-            channelId: stringValue("channelId"),
-            threadId: stringValue("threadId"),
-            parentChannelId: stringValue("parentChannelId"),
-            parentMessageId: stringValue("parentMessageId"),
-            messageId: stringValue("messageId"),
-            category: (userInfo["aps"] as? [AnyHashable: Any])?["category"] as? String
+            serverId: query.serverId,
+            kind: query.kind,
+            channelId: query.channelId,
+            threadId: query.threadId,
+            parentChannelId: query.parentChannelId,
+            parentMessageId: query.parentMessageId,
+            messageId: query.messageId,
+            category: query.category
         )
     }
 
@@ -703,11 +809,19 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         // osPermission rides the push registration; a change in Settings re-registers on return.
         RaftIosPushHost.refreshOsPermission()
         NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            RaftIosPushHost.handleDidEnterBackground()
+        }
+        NotificationCenter.default.addObserver(
             forName: UIApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
         ) { _ in
             RaftIosPushHost.refreshOsPermission()
+            RaftIosPushHost.reconcileForegroundBadgeIfNeeded()
             // Review N1: close delivered alerts that an applied retract covers (a late alert posted after it).
             RaftIosRetractWatermarks.removeCoveredDelivered { removed in
                 if removed > 0 {
@@ -787,7 +901,11 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        RaftIosPushHost.handleBackgroundPush(userInfo: userInfo, completion: completionHandler)
+        RaftIosPushHost.handleBackgroundPush(
+            userInfo: userInfo,
+            isForegroundActive: application.applicationState == .active,
+            completion: completionHandler
+        )
     }
 
     func userNotificationCenter(
@@ -815,75 +933,20 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             RaftNotificationTestAck.shared.ack(testId: testId, shown: true)
         }
         // Review N1: an alert that arrives after the retract covering it (out-of-order delivery) is dropped.
-        if RaftIosRetractWatermarks.isCovered(
+        let isCovered = RaftIosRetractWatermarks.isCovered(
             userInfo: userInfo,
             postedAt: notification.date,
             watermarks: RaftIosRetractWatermarks.load(),
             now: Date()
-        ) {
-            if let deliveryId {
-                RaftIosPushDeliveryTraceBridge.shared.recordApnsSuppressed(
-                    deliveryId: deliveryId,
-                    serverId: deliveryServerId,
-                    suppressReason: "retracted",
-                    isForeground: isForeground,
-                    occurredAtMs: occurredAtMs
-                )
-            }
-            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=retracted")
-            completionHandler([])
-            return
-        }
-        if RaftIosPushHost.targetsVisibleConversation(userInfo: userInfo) {
-            // The user is already looking at this conversation: no banner or sound, same as the in-app banner.
-            if let apsBadge = RaftIosNotificationRetraction.apsBadge(userInfo) {
-                RaftIosPushDeliveryTraceBridge.shared.recordBadgeSet(
-                    count: Int32(apsBadge),
-                    source: "alert",
-                    setAtMs: occurredAtMs
-                )
-            }
-            if let deliveryId {
-                RaftIosPushDeliveryTraceBridge.shared.recordApnsSuppressed(
-                    deliveryId: deliveryId,
-                    serverId: deliveryServerId,
-                    suppressReason: "visible_conversation",
-                    isForeground: isForeground,
-                    occurredAtMs: occurredAtMs
-                )
-            }
-            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_suppressed reason=visible_conversation")
-            completionHandler([.badge])
-            return
-        }
-        // The in-app banner renders message notifications only: a reminder, account notice or test
-        // (no message) keeps its system banner in the foreground.
-        let raftCategory = (notification.request.content.userInfo["raftCategory"] as? String) ?? ""
-        let messageLess = ["reminder", "system_notice", "test"].contains(raftCategory)
-        if isForeground && !messageLess {
-            // Review S7: in the foreground only the shared in-app banner shows (it gets the same
-            // notification over the socket); the system copy goes to Notification Center silently.
-            if let apsBadge = RaftIosNotificationRetraction.apsBadge(userInfo) {
-                RaftIosPushDeliveryTraceBridge.shared.recordBadgeSet(
-                    count: Int32(apsBadge),
-                    source: "alert",
-                    setAtMs: occurredAtMs
-                )
-            }
-            if let deliveryId {
-                RaftIosPushDeliveryTraceBridge.shared.recordApnsSuppressed(
-                    deliveryId: deliveryId,
-                    serverId: deliveryServerId,
-                    suppressReason: "foreground_suppressed",
-                    isForeground: true,
-                    occurredAtMs: occurredAtMs
-                )
-            }
-            RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present mode=list_only reason=foreground")
-            completionHandler([.list, .badge])
-            return
-        }
-        if let apsBadge = RaftIosNotificationRetraction.apsBadge(userInfo) {
+        )
+        let targetsVisible = !isCovered && RaftIosPushHost.targetsVisibleConversation(userInfo: userInfo)
+        let decision = RaftIosForegroundAlertPresentation.decide(
+            isCoveredByWatermark: isCovered,
+            targetsVisibleConversation: targetsVisible,
+            isForegroundActive: isForeground,
+            raftCategory: userInfo["raftCategory"] as? String
+        )
+        if decision.appliesAlertBadge, let apsBadge = RaftIosNotificationRetraction.apsBadge(userInfo) {
             RaftIosPushDeliveryTraceBridge.shared.recordBadgeSet(
                 count: Int32(apsBadge),
                 source: "alert",
@@ -891,15 +954,25 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             )
         }
         if let deliveryId {
-            RaftIosPushDeliveryTraceBridge.shared.recordApnsPresented(
-                deliveryId: deliveryId,
-                serverId: deliveryServerId,
-                isForeground: isForeground,
-                occurredAtMs: occurredAtMs
-            )
+            if let suppressReason = decision.suppressReason {
+                RaftIosPushDeliveryTraceBridge.shared.recordApnsSuppressed(
+                    deliveryId: deliveryId,
+                    serverId: deliveryServerId,
+                    suppressReason: suppressReason,
+                    isForeground: isForeground,
+                    occurredAtMs: occurredAtMs
+                )
+            } else {
+                RaftIosPushDeliveryTraceBridge.shared.recordApnsPresented(
+                    deliveryId: deliveryId,
+                    serverId: deliveryServerId,
+                    isForeground: isForeground,
+                    occurredAtMs: occurredAtMs
+                )
+            }
         }
-        RaftIosDiagnosticsRecord("info", "SlockIosPush", "system_notification_will_present")
-        completionHandler([.banner, .list, .sound, .badge])
+        RaftIosDiagnosticsRecord("info", "SlockIosPush", decision.diagnosticMessage)
+        completionHandler(decision.options)
     }
 
     func userNotificationCenter(
@@ -932,7 +1005,8 @@ final class RaftIosAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             categoryIdentifier: content.categoryIdentifier,
             shellInstanceId: shellInstanceId,
             source: "notification_response",
-            notificationDate: response.notification.date
+            notificationDate: response.notification.date,
+            tappedIdentifier: response.notification.request.identifier
         )
         completionHandler()
     }

@@ -1,6 +1,7 @@
 package build.raft.app
 
 import build.raft.app.data.SharedConversationDirectoryState
+import build.raft.app.model.ChannelId
 import build.raft.app.thread.RaftVisibleConversationRegistry
 import build.raft.app.thread.RaftVisibleConversationSnapshot
 import build.raft.app.thread.raftSystemNotificationPushEventOrNull
@@ -87,6 +88,38 @@ class RaftVisibleConversationRegistryTest {
                 parentMessageId = null,
                 messageId = "message-1",
                 category = null
+            )
+        )
+    }
+
+    @Test
+    fun taskConversationPushMatchesOpenTaskConversationOnly() {
+        val taskPush =
+            assertNotNull(
+                raftSystemNotificationPushEventOrNull(
+                    serverId = "server-1",
+                    kind = "task",
+                    channelId = "task-ch-7",
+                    threadId = null,
+                    parentChannelId = null,
+                    parentMessageId = null,
+                    messageId = "reply-9",
+                    category = "thread"
+                )
+            )
+        val openTaskRoute = taskConversationLaunchIdentity(ChannelId("task-ch-7")).resolveThreadRouteIdentity()
+        val visibleTask =
+            RaftVisibleConversationSnapshot(
+                currentServerId = "server-1",
+                visibleConversationKey = null,
+                visibleRouteIdentity = openTaskRoute,
+                conversationDirectory = SharedConversationDirectoryState()
+            )
+        assertTrue(taskPush.targetsForegroundVisibleConversation(visibleTask))
+        assertFalse(taskPush.targetsForegroundVisibleConversation(visible("parent-ch-1")))
+        assertFalse(
+            taskPush.targetsForegroundVisibleConversation(
+                visibleTask.copy(currentServerId = "server-2")
             )
         )
     }

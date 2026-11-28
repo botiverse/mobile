@@ -102,13 +102,14 @@ enum RaftIosNotificationRetraction {
     // MARK: Applying
 
     /// Records the retract's watermark (`RaftIosRetractWatermarks`, so a late alert of the group is dropped
-    /// too), removes the matching delivered notifications plus any other delivered one a watermark covers,
-    /// then applies `retract.badge` through [badgeSetter] (skipped when nil or the payload has no badge),
-    /// then calls [completion] with the removed count.
+    /// too), removes the matching delivered notifications plus any other delivered one a watermark covers
+    /// (and any explicit [extraIdentifiersToRemove]), then applies `retract.badge` through [badgeSetter]
+    /// (skipped when nil or the payload has no badge), then calls [completion] with the removed count.
     static func apply(
         _ retract: RaftIosNotificationRetract,
         center: UNUserNotificationCenter = .current(),
         defaults: UserDefaults = .standard,
+        extraIdentifiersToRemove: [String] = [],
         badgeSetter: ((Int, @escaping () -> Void) -> Void)? = nil,
         completion: @escaping (Int) -> Void = { _ in }
     ) {
@@ -118,12 +119,18 @@ enum RaftIosNotificationRetraction {
                 (identifier: $0.request.identifier, userInfo: $0.request.content.userInfo)
             }
             var identifiers = identifiersToRemove(delivered: delivered, retract: retract)
-            let matched = Set(identifiers)
-            identifiers += RaftIosRetractWatermarks.coveredIdentifiers(
+            var matched = Set(identifiers)
+            let covered = RaftIosRetractWatermarks.coveredIdentifiers(
                 delivered: notifications.map(RaftIosRetractWatermarks.deliveredItem),
                 watermarks: watermarks,
                 now: Date()
-            ).filter { !matched.contains($0) }
+            )
+            for id in covered where matched.insert(id).inserted {
+                identifiers.append(id)
+            }
+            for id in extraIdentifiersToRemove where !id.isEmpty && matched.insert(id).inserted {
+                identifiers.append(id)
+            }
             if !identifiers.isEmpty {
                 center.removeDeliveredNotifications(withIdentifiers: identifiers)
             }
@@ -133,6 +140,82 @@ enum RaftIosNotificationRetraction {
             }
             badgeSetter(badge) { completion(identifiers.count) }
         }
+    }
+
+    /// Local in-app read (`RaftConversationReadHost`): closes every delivered notification of
+    /// `serverId:conversationId` and records a whole-group watermark so late out-of-order alerts for
+    /// the just-read messages are suppressed too. Never carries a badge (Kotlin `bridge.appBadge`
+    /// owns the foreground icon badge).
+    static func localReadRetract(serverId: String, conversationId: String) -> RaftIosNotificationRetract? {
+        guard let cleanServerId = string(serverId),
+              let cleanConversationId = string(conversationId),
+              let groupKey = groupKey(serverId: cleanServerId, conversationId: cleanConversationId)
+        else {
+            return nil
+        }
+        return RaftIosNotificationRetract(
+            serverId: cleanServerId,
+            groupKey: groupKey,
+            conversationId: cleanConversationId,
+            throughSeq: nil,
+            badge: nil
+        )
+    }
+
+    /// Retract descriptor for clearing sibling delivered notifications when the user taps an alert
+    /// belonging to a conversation (`didReceive response` / cold-launch tap). Message-less notices
+    /// (`reminder`, `system_notice`, `test`, `app` routes) and background `sync` / `retract` pushes
+    /// return nil so distinct reminders/notices are not wiped together.
+    static func tappedSiblingRetract(userInfo: [AnyHashable: Any]) -> RaftIosNotificationRetract? {
+        if let type = string(userInfo["type"])?.lowercased(), type == "sync" || type == "retract" {
+            return nil
+        }
+        let route = userInfo["route"] as? [AnyHashable: Any]
+        let routeType = string(route?["type"])?.lowercased()
+        if routeType == "app" {
+            return nil
+        }
+        let raftCategory = string(userInfo["raftCategory"])?.lowercased()
+        let messageLessCategories: Set<String> = ["reminder", "system_notice", "test"]
+        if let raftCategory, messageLessCategories.contains(raftCategory) {
+            return nil
+        }
+        let serverId = string(userInfo["serverId"]) ?? string(route?["serverId"]) ?? ""
+        let taskConversationChannelId =
+            string(userInfo["taskConversationChannelId"])
+                ?? (routeType == "task" ? string(userInfo["conversationId"]) : nil)
+        let conversationId =
+            taskConversationChannelId
+                ?? string(userInfo["conversationId"])
+                ?? string(userInfo["threadId"])
+                ?? string(userInfo["channelId"])
+                ?? string(route?["channelId"])
+                ?? ""
+        guard !conversationId.isEmpty else {
+            return nil
+        }
+        guard let resolvedGroupKey =
+            notificationGroupKey(userInfo)
+                ?? groupKey(serverId: serverId, conversationId: conversationId)
+        else {
+            return nil
+        }
+        return RaftIosNotificationRetract(
+            serverId: serverId,
+            groupKey: resolvedGroupKey,
+            conversationId: conversationId,
+            throughSeq: nil,
+            badge: nil
+        )
+    }
+
+    /// Whether a priority-5 APNs background (`content-available`) `sync` or `retract` push may write
+    /// its `badge` to the OS app icon. While the app is `.active` in the foreground, Kotlin's
+    /// `bridge.appBadge` is the authoritative badge owner and delayed background pushes must not
+    /// clobber it with an older count.
+    static func shouldApplyBackgroundPushBadge(badge: Int?, isForegroundActive: Bool) -> Bool {
+        guard badge != nil else { return false }
+        return !isForegroundActive
     }
 
     // MARK: Value helpers
@@ -368,6 +451,13 @@ enum RaftIosRetractWatermarks {
         }
     }
 
+    /// Clears all persisted retract watermarks (e.g. on sign-out so a signed-out account leaves no state).
+    static func clearAll(defaults: UserDefaults = .standard) {
+        lock.lock()
+        defer { lock.unlock() }
+        defaults.removeObject(forKey: defaultsKey)
+    }
+
     private static func loadUnlocked(_ defaults: UserDefaults) -> [String: RaftIosRetractWatermark] {
         guard let raw = defaults.dictionary(forKey: defaultsKey) else { return [:] }
         var result: [String: RaftIosRetractWatermark] = [:]
@@ -587,6 +677,188 @@ enum RaftIosNotificationOpen {
             taskConversationChannelId: taskConversationChannelId,
             isActivityTarget: isActivityTarget
         )
+    }
+
+    /// Normalized parameters passed to Kotlin `raftSystemNotificationTargetsVisibleConversation`.
+    /// Pure: no UIKit / shared dependency so unit tests verify every APNs payload shape directly.
+    struct VisibleConversationQuery: Equatable {
+        let serverId: String?
+        let kind: String?
+        let channelId: String?
+        let threadId: String?
+        let parentChannelId: String?
+        let parentMessageId: String?
+        let messageId: String?
+        let category: String?
+    }
+
+    /// Extracts visible-conversation matching fields from an APNs `userInfo` payload.
+    /// Task conversation pushes place the parent channel in legacy `channelId`/`kind` and the task
+    /// conversation in `taskConversationChannelId` (or `conversationId` under `route.type == "task"`),
+    /// so task pushes are resolved against the task conversation itself rather than its parent channel.
+    static func visibleConversationQuery(userInfo: [AnyHashable: Any]) -> VisibleConversationQuery {
+        func stringValue(_ key: String) -> String? {
+            RaftIosNotificationRetraction.string(userInfo[key])
+        }
+        let route = userInfo["route"] as? [AnyHashable: Any]
+        func routeValue(_ key: String) -> String? {
+            RaftIosNotificationRetraction.string(route?[key])
+        }
+        let routeType = routeValue("type")?.lowercased()
+        let serverId = stringValue("serverId") ?? routeValue("serverId")
+        let category =
+            stringValue("raftCategory")
+                ?? stringValue("category")
+                ?? RaftIosNotificationRetraction.string((userInfo["aps"] as? [AnyHashable: Any])?["category"])
+
+        let taskConversationChannelId =
+            stringValue("taskConversationChannelId")
+                ?? (routeType == "task" ? stringValue("conversationId") : nil)
+        if let taskConversationChannelId {
+            let taskMessageId =
+                stringValue("taskMessageId")
+                    ?? routeValue("messageId")
+                    ?? stringValue("messageId")
+                    ?? stringValue("id")
+            return VisibleConversationQuery(
+                serverId: serverId,
+                kind: "task",
+                channelId: taskConversationChannelId,
+                threadId: nil,
+                parentChannelId: nil,
+                parentMessageId: nil,
+                messageId: taskMessageId,
+                category: category
+            )
+        }
+
+        let isThreadRoute = routeType == "thread"
+        let kind: String? =
+            stringValue("kind")
+                ?? (isThreadRoute ? "thread" : nil)
+                ?? ((routeType == "channel" || routeType == "dm") ? routeType : nil)
+        let threadId =
+            stringValue("threadId")
+                ?? (isThreadRoute ? (stringValue("conversationId") ?? stringValue("channelId")) : nil)
+        let channelId =
+            stringValue("channelId")
+                ?? (isThreadRoute ? threadId : nil)
+                ?? routeValue("channelId")
+                ?? stringValue("conversationId")
+        let parentChannelId = stringValue("parentChannelId") ?? routeValue("parentChannelId")
+        let parentMessageId = stringValue("parentMessageId") ?? routeValue("parentMessageId")
+        let messageId = routeValue("messageId") ?? stringValue("messageId")
+        return VisibleConversationQuery(
+            serverId: serverId,
+            kind: kind,
+            channelId: channelId,
+            threadId: threadId,
+            parentChannelId: parentChannelId,
+            parentMessageId: parentMessageId,
+            messageId: messageId,
+            category: category
+        )
+    }
+}
+
+/// Pure presentation-option policy for `UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:)`.
+///
+/// Never includes `.badge` while the app is actively in the foreground or when the notification is
+/// suppressed (retracted or targeting the conversation already on screen): Kotlin's `bridge.appBadge`
+/// owns the foreground icon badge, so stale APNs `aps.badge` values must not overwrite SpringBoard.
+enum RaftIosForegroundAlertPresentation {
+    static let messageLessCategories: Set<String> = ["reminder", "system_notice", "test"]
+
+    struct Decision: Equatable {
+        let options: UNNotificationPresentationOptions
+        let suppressReason: String?
+        let diagnosticMessage: String
+
+        var appliesAlertBadge: Bool {
+            options.contains(.badge)
+        }
+    }
+
+    static func decide(
+        isCoveredByWatermark: Bool,
+        targetsVisibleConversation: Bool,
+        isForegroundActive: Bool,
+        raftCategory: String?
+    ) -> Decision {
+        if isCoveredByWatermark {
+            return Decision(
+                options: [],
+                suppressReason: "retracted",
+                diagnosticMessage: "system_notification_suppressed reason=retracted"
+            )
+        }
+        if targetsVisibleConversation {
+            return Decision(
+                options: [],
+                suppressReason: "visible_conversation",
+                diagnosticMessage: "system_notification_suppressed reason=visible_conversation"
+            )
+        }
+        let normalizedCategory = RaftIosNotificationRetraction.string(raftCategory)?.lowercased() ?? ""
+        let messageLess = messageLessCategories.contains(normalizedCategory)
+        if isForegroundActive && !messageLess {
+            // Review S7: in the foreground only the shared in-app banner shows (it gets the same
+            // notification over the socket); the system copy goes to Notification Center silently
+            // without applying APNs `aps.badge` over the live foreground app badge.
+            return Decision(
+                options: [.list],
+                suppressReason: "foreground_suppressed",
+                diagnosticMessage: "system_notification_will_present mode=list_only reason=foreground"
+            )
+        }
+        if isForegroundActive {
+            // Message-less alerts (`reminder`, `system_notice`, `test`) keep their system banner
+            // and sound in the foreground, but omit `.badge` while `.active` so stale APNs
+            // `aps.badge` cannot overwrite the foreground app's authoritative badge.
+            return Decision(
+                options: [.banner, .list, .sound],
+                suppressReason: nil,
+                diagnosticMessage: "system_notification_will_present mode=foreground_messageless"
+            )
+        }
+        return Decision(
+            options: [.banner, .list, .sound, .badge],
+            suppressReason: nil,
+            diagnosticMessage: "system_notification_will_present"
+        )
+    }
+}
+
+/// Tracks the latest authoritative Kotlin `bridge.appBadge` count for the current foreground session
+/// so transient `.inactive` -> `.active` transitions (Notification Center pull-down, Control Center,
+/// system sheets) immediately repair badge drift without re-applying a stale pre-background count
+/// across a background -> foreground return.
+struct RaftIosForegroundBadgeReconciler: Equatable {
+    private(set) var authoritativeForegroundBadge: Int?
+
+    init(authoritativeForegroundBadge: Int? = nil) {
+        self.authoritativeForegroundBadge = authoritativeForegroundBadge
+    }
+
+    mutating func recordAppBadge(_ count: Int, isBackground: Bool) {
+        guard !isBackground else { return }
+        authoritativeForegroundBadge = max(0, count)
+    }
+
+    mutating func didEnterBackground() {
+        authoritativeForegroundBadge = nil
+    }
+
+    mutating func didSignOut() {
+        authoritativeForegroundBadge = nil
+    }
+
+    /// Returns the badge count to re-apply on `didBecomeActive`, or `nil` when either no
+    /// authoritative badge has been written in the current foreground session or SpringBoard
+    /// already matches it.
+    func badgeToRestoreOnDidBecomeActive(currentIconBadge: Int) -> Int? {
+        guard let authoritative = authoritativeForegroundBadge else { return nil }
+        return max(0, currentIconBadge) == authoritative ? nil : authoritative
     }
 }
 
