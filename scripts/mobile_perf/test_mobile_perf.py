@@ -609,6 +609,77 @@ class TestAndroidPerfettoAndFallback(unittest.TestCase):
         self.assertIsNone(summary_parsed["worst_frame_ms"])
         self.assertFalse(summary_parsed["gfxinfo_profiledata_truncated"])
 
+    def test_gfxinfo_virtual_display_zero_jank_uses_histogram_and_legacy_fallbacks(self) -> None:
+        # Real Android 12 redroid/Wuying channel_switch capture where GpuCompleted=-1 yields
+        # `Janky frames: 0 (0.00%)` despite p95=129ms at 30Hz (budget 33.33ms) and legacy=105.
+        redroid_gfx = (
+            "Total frames rendered: 183\n"
+            "Janky frames: 0 (0.00%)\n"
+            "Janky frames (legacy): 105 (57.38%)\n"
+            "50th percentile: 19ms\n"
+            "90th percentile: 73ms\n"
+            "95th percentile: 129ms\n"
+            "99th percentile: 250ms\n"
+            "HISTOGRAM: 5ms=10 6ms=23 7ms=15 8ms=8 10ms=4 11ms=4 12ms=2 13ms=5 14ms=3 15ms=4 16ms=2 "
+            "17ms=1 18ms=6 19ms=17 20ms=5 21ms=4 22ms=2 23ms=4 24ms=3 25ms=1 26ms=3 27ms=1 30ms=4 32ms=1 "
+            "34ms=7 38ms=1 40ms=1 44ms=2 46ms=1 48ms=5 53ms=1 57ms=3 61ms=4 65ms=2 69ms=5 73ms=1 "
+            "85ms=1 89ms=1 93ms=1 101ms=2 109ms=1 121ms=1 129ms=2 150ms=6 250ms=2 300ms=1 4950ms=0\n"
+            "50th gpu percentile: 4950ms\n"
+            "GPU HISTOGRAM: 1ms=0 25ms=0 4950ms=0\n"
+        )
+        run_row, diag_row = android_perfetto.parse_android_capture(
+            run_id="and-redroid-hist-01",
+            commit_sha="cadafabab94a198a5b3a6bac5d2ff5365253accf",
+            app_version="1.31.0",
+            app_build="13100019",
+            build_type="release",
+            scenario="channel_switch",
+            device_id="04a70761",
+            device_model="wuying android12",
+            os_version="android-12",
+            refresh_hz=30.0,
+            gfxinfo_text=redroid_gfx,
+            taken_at="2026-11-28T06:06:10Z",
+        )
+        self.assertEqual(validate_run_row(run_row), [])
+        self.assertEqual(validate_diagnose_row(diag_row), [])
+        # At 30Hz (33.33ms budget), buckets >= 34ms sum to 51 of 183 frames (not 0 and not legacy 105).
+        self.assertEqual(diag_row["slow_frame_count"], 51)
+        self.assertAlmostEqual(run_row["slow_frame_ratio"], 51 / 183, places=6)
+        self.assertEqual(run_row["extra"]["gfxinfo_janky_source"], "histogram_fallback")
+        self.assertEqual(run_row["extra"]["gfxinfo_janky_legacy_count"], 105)
+        self.assertEqual(diag_row["extra"]["gfxinfo_janky_source"], "histogram_fallback")
+
+        # Smooth 30Hz run where every frame is 20ms (legacy counts >16.67ms, but HISTOGRAM proves 0 > 33.33ms).
+        smooth_30hz_gfx = (
+            "Total frames rendered: 50\n"
+            "Janky frames: 0 (0.00%)\n"
+            "Janky frames (legacy): 50 (100.00%)\n"
+            "50th percentile: 20ms\n"
+            "95th percentile: 22ms\n"
+            "99th percentile: 24ms\n"
+            "HISTOGRAM: 19ms=10 20ms=30 22ms=8 24ms=2\n"
+        )
+        smooth_parsed = android_perfetto.parse_dumpsys_gfxinfo_framestats(smooth_30hz_gfx, refresh_hz=30.0)
+        self.assertEqual(smooth_parsed["slow_frame_count"], 0)
+        self.assertEqual(smooth_parsed["slow_frame_ratio"], 0.0)
+        self.assertIsNone(smooth_parsed.get("gfxinfo_janky_source"))
+
+        # Without HISTOGRAM, falls back to legacy when percentiles exceed the frame budget.
+        no_hist_gfx = (
+            "Total frames rendered: 100\n"
+            "Janky frames: 0 (0.00%)\n"
+            "Janky frames (legacy): 25 (25.00%)\n"
+            "50th percentile: 14ms\n"
+            "95th percentile: 42ms\n"
+            "99th percentile: 80ms\n"
+        )
+        legacy_parsed = android_perfetto.parse_dumpsys_gfxinfo_framestats(no_hist_gfx, refresh_hz=30.0)
+        self.assertEqual(legacy_parsed["slow_frame_count"], 25)
+        self.assertAlmostEqual(legacy_parsed["slow_frame_ratio"], 0.25, places=6)
+        self.assertEqual(legacy_parsed["gfxinfo_janky_source"], "legacy_fallback")
+        self.assertEqual(legacy_parsed["gfxinfo_janky_legacy_count"], 25)
+
     def test_perfetto_sql_csv_and_json_parsing_and_full_window_cpu(self) -> None:
         frame_csv = (
             "frame_token,dur_ms,expected_dur_ms,jank_type,is_jank\n"
